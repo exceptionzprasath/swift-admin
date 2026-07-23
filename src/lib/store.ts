@@ -120,6 +120,7 @@ export type Branch = {
   lat?: number;
   lng?: number;
   radiusMeters?: number;
+  geofenceDisabled?: boolean;
   wifiSSIDs?: string[];
   ipAllowlist?: string[];
   shiftStart?: string;
@@ -896,7 +897,16 @@ export const useStore = create<State>()(
       addBranch: (b) => {
         const branch: Branch = { ...b, id: crypto.randomUUID() };
         set((s) => {
-          const nextCompany = { ...s.company, branches: [...(s.company.branches ?? []), branch] };
+          const updatedBranches = [...(s.company.branches ?? []), branch];
+          const headBranch = updatedBranches.find((x) => x.isHead) || updatedBranches[0];
+          const nextGeofence = (headBranch && headBranch.lat != null && headBranch.lng != null)
+            ? { lat: headBranch.lat, lng: headBranch.lng, radiusM: headBranch.radiusMeters ?? 150 }
+            : s.company.geofence;
+          const nextCompany = {
+            ...s.company,
+            geofence: nextGeofence,
+            branches: updatedBranches,
+          };
           const tenantId = useAuth.getState().activeTenantId;
           if (tenantId && !s.demoMode) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });
@@ -911,9 +921,15 @@ export const useStore = create<State>()(
       },
       updateBranch: (id, patch) =>
         set((s) => {
+          const updatedBranches = (s.company.branches ?? []).map((b) => (b.id === id ? { ...b, ...patch } : b));
+          const headBranch = updatedBranches.find((x) => x.isHead) || updatedBranches[0];
+          const nextGeofence = (headBranch && headBranch.lat != null && headBranch.lng != null)
+            ? { lat: headBranch.lat, lng: headBranch.lng, radiusM: headBranch.radiusMeters ?? 150 }
+            : s.company.geofence;
           const nextCompany = {
             ...s.company,
-            branches: (s.company.branches ?? []).map((b) => (b.id === id ? { ...b, ...patch } : b)),
+            geofence: nextGeofence,
+            branches: updatedBranches,
           };
           const tenantId = useAuth.getState().activeTenantId;
           if (tenantId && !s.demoMode) {

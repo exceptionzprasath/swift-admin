@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Building2, Plus, Trash2, Pencil, MapPin, Users, LocateFixed, Wifi, Shield, Clock } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,7 +18,7 @@ export const Route = createFileRoute("/admin/branches")({
 
 const empty: Omit<Branch, "id"> = {
   name: "", code: "", address: "", city: "", state: "", gstin: "", isHead: false,
-  lat: undefined, lng: undefined, radiusMeters: 150,
+  lat: undefined, lng: undefined, radiusMeters: 150, geofenceDisabled: false,
   wifiSSIDs: [], ipAllowlist: [],
   shiftStart: "09:00", shiftEnd: "18:00", weeklyOff: ["Sun"],
 };
@@ -54,6 +55,20 @@ function BranchesPage() {
       (pos) => { setForm({ ...form, lat: +pos.coords.latitude.toFixed(6), lng: +pos.coords.longitude.toFixed(6) }); toast.success("Location captured"); },
       (e) => toast.error(e.message || "Unable to fetch location"),
       { enableHighAccuracy: true },
+    );
+  };
+
+  const updateToMyLocation = (b: Branch) => {
+    if (!navigator.geolocation) return toast.error("Geolocation not available");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = +pos.coords.latitude.toFixed(6);
+        const lng = +pos.coords.longitude.toFixed(6);
+        updateBranch(b.id, { ...b, lat, lng });
+        toast.success(`Updated ${b.name} location to (${lat}, ${lng})`);
+      },
+      (e) => toast.error(e.message || "Unable to fetch location"),
+      { enableHighAccuracy: true }
     );
   };
 
@@ -103,6 +118,12 @@ function BranchesPage() {
               )}
               {(b.wifiSSIDs?.length ?? 0) > 0 && <Badge variant="outline" className="text-[10px]"><Wifi className="h-2.5 w-2.5 mr-0.5" />{b.wifiSSIDs!.length} SSID</Badge>}
               {b.shiftStart && b.shiftEnd && <Badge variant="outline" className="text-[10px]"><Clock className="h-2.5 w-2.5 mr-0.5" />{b.shiftStart}–{b.shiftEnd}</Badge>}
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-border/50 text-xs">
+              <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => updateToMyLocation(b)}>
+                <LocateFixed className="h-3 w-3 mr-1 text-primary" /> Set to My Location
+              </Button>
+              {b.geofenceDisabled && <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">Remote Mode</Badge>}
             </div>
           </div>
         ))}
@@ -179,6 +200,16 @@ function BranchesPage() {
               <Button variant="outline" size="sm" type="button" onClick={useMyLocation}>
                 <LocateFixed className="h-3.5 w-3.5 mr-1.5" /> Use my current location
               </Button>
+              <div className="flex items-center gap-2 py-2 border-y border-border/50">
+                <Checkbox
+                  id="geofenceDisabled"
+                  checked={!!form.geofenceDisabled}
+                  onCheckedChange={(c) => setForm({ ...form, geofenceDisabled: !!c })}
+                />
+                <Label htmlFor="geofenceDisabled" className="text-xs font-medium cursor-pointer">
+                  Disable Geofence Restriction (Allow Remote / Anywhere Check-in for this branch)
+                </Label>
+              </div>
               <BranchGoogleMap
                 lat={form.lat}
                 lng={form.lng}

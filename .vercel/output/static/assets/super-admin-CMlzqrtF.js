@@ -1,0 +1,1 @@
+import{d as e,h as t,n}from"./store-BIEHShU2.js";import{o as r}from"./index-A4UUd8zK.js";var i=t();function a(){let{user:t,isSuperAdmin:a,loading:o}=e(),s=n(e=>e.demoMode),c=n(e=>e.demoSuper);return typeof window<`u`&&!o&&!(t&&a)&&!(s&&c)&&n.getState().seedSuperDemo(),(0,i.jsx)(r,{})}export{a as component};

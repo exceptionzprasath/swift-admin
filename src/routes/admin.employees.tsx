@@ -21,7 +21,7 @@ import { ESignPad } from "@/components/esign-pad";
 import {
   Plus, FileDown, Trash2, ChevronLeft, ChevronRight, User, Briefcase, Building2,
   FileSignature, CheckCircle2, Sparkles, Wand2, Camera, Home, Users as UsersIcon,
-  GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen,
+  GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
 } from "lucide-react";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
 import { toast } from "sonner";
@@ -96,6 +96,7 @@ function EmployeesPage() {
   const [open, setOpen] = useState(false);
   const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
   const [actionEmp, setActionEmp] = useState<Employee | null>(null);
+  const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [actionKind, setActionKind] = useState<"exit" | "transfer" | "manual">("exit");
 
   const openWizard = (draftId?: string) => {
@@ -187,6 +188,9 @@ function EmployeesPage() {
                     <td className="p-3 text-right text-primary font-medium">{inr(p.monthlyCTC)}</td>
                     <td className="p-3 text-right">
                       <div className="inline-flex gap-1">
+                        <Button size="sm" variant="ghost" title="Edit Employee" onClick={() => setEditingEmp(e)}>
+                          <Pencil className="h-4 w-4 text-primary" />
+                        </Button>
                         <Button size="sm" variant="ghost" title="Appointment letter" onClick={() => generateAppointmentPDF(company, e, p)}>
                           <FileDown className="h-4 w-4" />
                         </Button>
@@ -200,7 +204,7 @@ function EmployeesPage() {
                           <FileSignature className="h-4 w-4" />
                         </Button>
                         <Button size="sm" variant="ghost" title="Delete" onClick={() => { deleteEmployee(e.id); toast.success("Removed"); }}>
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     </td>
@@ -216,6 +220,11 @@ function EmployeesPage() {
         open={!!actionEmp}
         defaultKind={actionKind}
         onClose={() => setActionEmp(null)}
+      />
+      <EditEmployeeDialog
+        employee={editingEmp}
+        open={!!editingEmp}
+        onClose={() => setEditingEmp(null)}
       />
     </div>
   );
@@ -971,5 +980,129 @@ function RepeatingList<T extends Record<string, unknown>>({
         </div>
       )}
     </div>
+  );
+}
+
+function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | null; open: boolean; onClose: () => void }) {
+  const { updateEmployee, company } = useStore();
+  const [form, setForm] = useState<Partial<Employee>>({});
+
+  useEffect(() => {
+    if (employee) {
+      setForm({ ...employee });
+    }
+  }, [employee]);
+
+  if (!employee) return null;
+
+  const handleSave = () => {
+    if (!form.name?.trim() || !form.empCode?.trim()) {
+      return toast.error("Full Name and Employee Code are required");
+    }
+    updateEmployee(employee.id, { ...form, faceRegistered: !!form.photoDataUrl || form.faceRegistered });
+    toast.success(`${form.name} updated successfully`);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display text-xl">
+            <Pencil className="h-5 w-5 text-primary" /> Edit Employee Details
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Photo & Credentials</div>
+            <PhotoCapture
+              value={form.photoDataUrl}
+              onChange={(u) => setForm({ ...form, photoDataUrl: u, faceRegistered: !!u })}
+              name={form.name}
+              size="lg"
+            />
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              <div>
+                <Label>Full Name *</Label>
+                <Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </div>
+              <div>
+                <Label>Employee Code *</Label>
+                <Input value={form.empCode || ""} onChange={(e) => setForm({ ...form, empCode: e.target.value })} />
+              </div>
+              <div className="col-span-2">
+                <Label>Password * (for Employee Portal login)</Label>
+                <Input type="text" value={form.password || ""} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Enter password" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Employment Information</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Work Email</Label>
+                <Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              </div>
+              <div>
+                <Label>Department</Label>
+                <Select value={form.department || "Engineering"} onValueChange={(v) => setForm({ ...form, department: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["Engineering", "HR", "Sales", "Operations", "Finance", "Marketing", "Legal", "Executive", "Design"].map((d) => (
+                      <SelectItem key={d} value={d}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Designation</Label>
+                <Input value={form.designation || ""} onChange={(e) => setForm({ ...form, designation: e.target.value })} />
+              </div>
+              <div>
+                <Label>Date of Joining</Label>
+                <Input type="date" value={form.doj || ""} onChange={(e) => setForm({ ...form, doj: e.target.value })} />
+              </div>
+              <div>
+                <Label>Basic Salary (₹)</Label>
+                <Input type="number" value={form.basic ?? 25000} onChange={(e) => setForm({ ...form, basic: +e.target.value })} />
+              </div>
+              <div>
+                <Label>Branch</Label>
+                <Select value={form.branchId || "__none"} onValueChange={(v) => setForm({ ...form, branchId: v === "__none" ? undefined : v })}>
+                  <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Unassigned —</SelectItem>
+                    {(company.branches ?? []).map((b) => (
+                      <SelectItem key={b.id} value={b.id}>{b.name} · {b.code}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Select value={form.status || "active"} onValueChange={(v) => setForm({ ...form, status: v as "active" | "inactive" })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} className="bg-gradient-brand text-white">Save Changes</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
