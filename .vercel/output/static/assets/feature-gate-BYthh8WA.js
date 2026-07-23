@@ -1,1 +1,0 @@
-import{d as e,h as t,n}from"./store-BIEHShU2.js";import{t as r}from"./billing-store-CSu2GfqE.js";t();function i(){let{activeTenantId:t}=e(),{demoMode:i}=n(),a=t??(i?`demo-tenant`:`default`),{plans:o,subscriptions:s,ensureSubscription:c}=r(),l=s.find(e=>e.tenantId===a)??c(a);return{tenantId:a,plan:o.find(e=>e.id===l.planId)??o[0],sub:l}}export{i as t};

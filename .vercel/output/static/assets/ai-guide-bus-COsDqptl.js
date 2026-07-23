@@ -1,1 +1,0 @@
-var e=class{handlers=new Set;on(e){return this.handlers.add(e),()=>this.handlers.delete(e)}emit(e){this.handlers.forEach(t=>t(e))}},t={ask:new e,answer:new e,notify:new e,mode:new e},n=new Map;t.answer.on(e=>{let t=n.get(e.id);t&&(t(e.value),n.delete(e.id))});function r(e){t.notify.emit(e)}function i(e){t.mode.emit(e)}export{r as n,i as r,t};

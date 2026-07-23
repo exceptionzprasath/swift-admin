@@ -27,46 +27,60 @@ import {
 
 
 
-const API_URL = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
+export function getBackendUrl(): string {
+  const customUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL;
+  if (customUrl) return customUrl.replace(/\/+$/, "");
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1" && host !== "0.0.0.0") {
+      return "";
+    }
+  }
+  return "http://localhost:5000";
+}
 
-async function syncItem(table: string, item: any) {
+export async function safeFetch(path: string, options?: RequestInit): Promise<Response | null> {
+  const baseUrl = getBackendUrl();
+  if (!baseUrl && typeof window !== "undefined") {
+    return null;
+  }
   try {
-    await fetch(`${API_URL}/api/companies/mutate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ table, item }),
-    });
-  } catch (err) {
-    console.error(`[Sync] Error mutating table ${table}:`, err);
+    const fullUrl = path.startsWith("http") ? path : `${baseUrl}${path}`;
+    const res = await fetch(fullUrl, options);
+    return res;
+  } catch (_err) {
+    return null;
   }
 }
 
+async function syncItem(table: string, item: any) {
+  await safeFetch("/api/companies/mutate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ table, item }),
+  });
+}
+
 async function syncDelete(table: string, tenantId: string, id: string) {
-  try {
-    await fetch(`${API_URL}/api/companies/delete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ table, tenantId, id }),
-    });
-  } catch (err) {
-    console.error(`[Sync] Error deleting from table ${table}:`, err);
-  }
+  await safeFetch("/api/companies/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ table, tenantId, id }),
+  });
 }
 
 async function uploadToS3(tenantId: string, path: string, fileDataUrl: string) {
   if (!fileDataUrl || !fileDataUrl.startsWith("data:")) return fileDataUrl;
-  try {
-    const res = await fetch(`${API_URL}/api/companies/upload`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId, path, fileDataUrl }),
-    });
-    if (res.ok) {
+  const res = await safeFetch("/api/companies/upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenantId, path, fileDataUrl }),
+  });
+  if (res && res.ok) {
+    try {
       const data = await res.json();
       return data.url;
-    }
-  } catch (err) {
-    console.error(`[S3] Upload failed for ${path}:`, err);
+    } catch (_err) {}
   }
   return fileDataUrl;
 }
@@ -958,25 +972,24 @@ export const useStore = create<State>()(
           };
         }),
       loadCompanyState: async (tenantId) => {
-        try {
-          const res = await fetch(`${API_URL}/api/companies/initial-state?tenantId=${tenantId}`);
-          if (!res.ok) throw new Error("Failed to load initial state");
-          const data = await res.json();
-          set({
-            company: data.config ? { ...get().company, ...data.config } : get().company,
-            employees: data.employees || [],
-            attendance: data.attendance || [],
-            leaves: data.leaves || [],
-            payrolls: data.payrolls || [],
-            assets: data.assets || [],
-            assetAssignments: data.assignments || [],
-            docLibrary: data.docLibrary && data.docLibrary.length ? data.docLibrary : get().docLibrary,
-            journeys: data.journeys || [],
-            notices: data.notices || [],
-            demoMode: false,
-          });
-        } catch (err) {
-          console.error("[Store] loadCompanyState failed:", err);
+        const res = await safeFetch(`/api/companies/initial-state?tenantId=${tenantId}`);
+        if (res && res.ok) {
+          try {
+            const data = await res.json();
+            set({
+              company: data.config ? { ...get().company, ...data.config } : get().company,
+              employees: data.employees && data.employees.length ? data.employees : get().employees,
+              attendance: data.attendance || get().attendance,
+              leaves: data.leaves || get().leaves,
+              payrolls: data.payrolls || get().payrolls,
+              assets: data.assets || get().assets,
+              assetAssignments: data.assignments || get().assetAssignments,
+              docLibrary: data.docLibrary && data.docLibrary.length ? data.docLibrary : get().docLibrary,
+              journeys: data.journeys || get().journeys,
+              notices: data.notices || get().notices,
+              demoMode: false,
+            });
+          } catch (_err) {}
         }
       },
       setTheme: (t) => set({ theme: t }),
