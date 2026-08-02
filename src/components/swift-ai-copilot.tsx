@@ -1,7 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import JSZip from "jszip";
+import LottieRaw from "lottie-react";
+import chatbotAnimationRaw from "@/assets/chatbot.json";
 import { useStore } from "@/lib/store";
+
+const Lottie = (LottieRaw as any)?.default || LottieRaw;
+const chatbotAnimation = (chatbotAnimationRaw as any)?.default || chatbotAnimationRaw;
 import { type Role } from "@/lib/ai-context";
 import { buildEnterpriseSnapshot, suggestionsFor } from "@/lib/ai-knowledge";
 import { askSwiftAi } from "@/lib/ai.functions";
@@ -121,28 +126,21 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
           initial={{ scale: 0, rotate: -90 }}
           animate={{ scale: 1, rotate: 0 }}
           transition={{ type: "spring", stiffness: 200, damping: 14 }}
-          whileHover={{ scale: 1.08 }}
+          whileHover={{ scale: 1.12 }}
           whileTap={{ scale: 0.94 }}
-          className="fixed bottom-24 md:bottom-6 left-4 md:left-6 z-50 h-16 w-16 rounded-full flex items-center justify-center animate-swift-float"
+          className="fixed bottom-24 md:bottom-6 left-4 md:left-6 z-50 h-24 w-24 rounded-full flex items-center justify-center animate-swift-float cursor-pointer group"
           aria-label="Open SWIFT AI"
         >
-          {/* Ping rings */}
+          {/* Ping rings (commented out as requested)
           <span className="absolute inset-0 rounded-full bg-gradient-brand opacity-40 animate-swift-ping" />
           <span className="absolute inset-0 rounded-full bg-gradient-brand opacity-20 animate-swift-ping" style={{ animationDelay: "0.7s" }} />
-          {/* Core */}
-          <span className="relative h-14 w-14 rounded-full bg-gradient-brand animate-swift-gradient animate-swift-glow flex items-center justify-center text-white shadow-glow">
-            <Bot className="h-6 w-6 drop-shadow" />
-            {/* Orbiting sparkle */}
-            <motion.span
-              className="absolute h-2.5 w-2.5 rounded-full bg-white shadow-glow"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-              style={{ transformOrigin: "center", top: -6, left: "50%", marginLeft: -5 }}
-            />
-            <Sparkles className="absolute -top-1 -right-1 h-3.5 w-3.5 text-coral animate-pulse" />
+          */}
+          {/* Lottie Animation Only */}
+          <span className="relative h-24 w-24 flex items-center justify-center overflow-hidden">
+            <Lottie animationData={chatbotAnimation} loop={true} className="w-full h-full object-contain scale-110" />
           </span>
           {(guideActive || pulse) && (
-            <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-coral text-[10px] font-bold text-white grid place-items-center ring-2 ring-background">
+            <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-coral text-[10px] font-bold text-white grid place-items-center ring-2 ring-background z-10">
               <Zap className="h-3 w-3" />
             </span>
           )}
