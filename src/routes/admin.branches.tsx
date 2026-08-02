@@ -42,8 +42,20 @@ function BranchesPage() {
 
   const submit = () => {
     if (!form.name.trim() || !form.code.trim()) return toast.error("Name and code required");
-    if (editing) { updateBranch(editing.id, form); toast.success("Branch updated"); }
-    else { addBranch(form); toast.success("Branch added"); }
+
+    const rawLat = form.lat;
+    const rawLng = form.lng;
+    const parsedLat = rawLat !== "" && rawLat != null ? parseFloat(String(rawLat)) : undefined;
+    const parsedLng = rawLng !== "" && rawLng != null ? parseFloat(String(rawLng)) : undefined;
+
+    const finalForm: Omit<Branch, "id"> = {
+      ...form,
+      lat: parsedLat != null && !isNaN(parsedLat) ? parsedLat : undefined,
+      lng: parsedLng != null && !isNaN(parsedLng) ? parsedLng : undefined,
+    };
+
+    if (editing) { updateBranch(editing.id, finalForm); toast.success("Branch updated"); }
+    else { addBranch(finalForm); toast.success("Branch added"); }
     setOpen(false);
   };
 
@@ -52,7 +64,12 @@ function BranchesPage() {
   const useMyLocation = () => {
     if (!navigator.geolocation) return toast.error("Geolocation not available");
     navigator.geolocation.getCurrentPosition(
-      (pos) => { setForm({ ...form, lat: +pos.coords.latitude.toFixed(6), lng: +pos.coords.longitude.toFixed(6) }); toast.success("Location captured"); },
+      (pos) => {
+        const lat = +pos.coords.latitude.toFixed(6);
+        const lng = +pos.coords.longitude.toFixed(6);
+        setForm((prev) => ({ ...prev, lat, lng }));
+        toast.success("Location captured");
+      },
       (e) => toast.error(e.message || "Unable to fetch location"),
       { enableHighAccuracy: true },
     );
@@ -193,9 +210,9 @@ function BranchesPage() {
                 Employees checking in must be inside this fence. Use the button to auto-fill from device location.
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <div><Label>Latitude</Label><Input type="number" step="any" value={form.lat ?? ""} onChange={(e) => setForm({ ...form, lat: e.target.value === "" ? undefined : +e.target.value })} /></div>
-                <div><Label>Longitude</Label><Input type="number" step="any" value={form.lng ?? ""} onChange={(e) => setForm({ ...form, lng: e.target.value === "" ? undefined : +e.target.value })} /></div>
-                <div><Label>Radius (m)</Label><Input type="number" value={form.radiusMeters ?? 150} onChange={(e) => setForm({ ...form, radiusMeters: +e.target.value || 0 })} /></div>
+                <div><Label>Latitude</Label><Input type="text" placeholder="e.g. 11.305639" value={form.lat ?? ""} onChange={(e) => setForm((prev) => ({ ...prev, lat: e.target.value }))} /></div>
+                <div><Label>Longitude</Label><Input type="text" placeholder="e.g. 77.703474" value={form.lng ?? ""} onChange={(e) => setForm((prev) => ({ ...prev, lng: e.target.value }))} /></div>
+                <div><Label>Radius (m)</Label><Input type="number" value={form.radiusMeters ?? 150} onChange={(e) => setForm((prev) => ({ ...prev, radiusMeters: +e.target.value || 0 }))} /></div>
               </div>
               <Button variant="outline" size="sm" type="button" onClick={useMyLocation}>
                 <LocateFixed className="h-3.5 w-3.5 mr-1.5" /> Use my current location
@@ -214,7 +231,7 @@ function BranchesPage() {
                 lat={form.lat}
                 lng={form.lng}
                 radius={form.radiusMeters ?? 150}
-                onChange={(lat, lng) => setForm({ ...form, lat, lng })}
+                onChange={(lat, lng) => setForm((prev) => ({ ...prev, lat, lng }))}
               />
               <div>
                 <Label>Allowed Wi-Fi SSIDs (comma-separated)</Label>
@@ -304,6 +321,11 @@ function BranchGoogleMap({ lat, lng, radius, onChange }: BranchGoogleMapProps) {
   const googleMapInstance = useRef<any>(null);
   const markerInstance = useRef<any>(null);
   const circleInstance = useRef<any>(null);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     loadGoogleMaps(GOOGLE_MAPS_API_KEY, () => {
@@ -349,7 +371,7 @@ function BranchGoogleMap({ lat, lng, radius, onChange }: BranchGoogleMapProps) {
         if (pos) {
           const newLat = +pos.lat().toFixed(6);
           const newLng = +pos.lng().toFixed(6);
-          onChange(newLat, newLng);
+          onChangeRef.current(newLat, newLng);
         }
       });
 
@@ -359,7 +381,7 @@ function BranchGoogleMap({ lat, lng, radius, onChange }: BranchGoogleMapProps) {
           marker.setPosition(pos);
           const newLat = +pos.lat().toFixed(6);
           const newLng = +pos.lng().toFixed(6);
-          onChange(newLat, newLng);
+          onChangeRef.current(newLat, newLng);
         }
       });
     });
@@ -367,8 +389,10 @@ function BranchGoogleMap({ lat, lng, radius, onChange }: BranchGoogleMapProps) {
 
   useEffect(() => {
     if (googleMapInstance.current && markerInstance.current && circleInstance.current) {
-      if (lat != null && lng != null) {
-        const pos = { lat, lng };
+      const numLat = lat != null && lat !== "" ? parseFloat(String(lat)) : undefined;
+      const numLng = lng != null && lng !== "" ? parseFloat(String(lng)) : undefined;
+      if (numLat != null && !isNaN(numLat) && numLng != null && !isNaN(numLng)) {
+        const pos = { lat: numLat, lng: numLng };
         markerInstance.current.setPosition(pos);
         circleInstance.current.setCenter(pos);
         circleInstance.current.setRadius(radius);

@@ -54,11 +54,16 @@ export async function safeFetch(path: string, options?: RequestInit): Promise<Re
 }
 
 async function syncItem(table: string, item: any) {
-  await safeFetch("/api/companies/mutate", {
+  const res = await safeFetch("/api/companies/mutate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ table, item }),
   });
+  if (res && !res.ok) {
+    console.warn(`[SWIFT] Failed to sync ${table}:`, res.status, res.statusText);
+  } else if (!res) {
+    console.warn(`[SWIFT] Network error syncing ${table} — data saved locally only`);
+  }
 }
 
 async function syncDelete(table: string, tenantId: string, id: string) {
@@ -536,7 +541,7 @@ const defaultCompany: Company = {
   washingPct: 10,
   otherPct: 20,
   ptAmount: 200,
-  geofence: { lat: 12.9716, lng: 77.5946, radiusM: 150 },
+  geofence: { lat: 11.30564, lng: 77.70347, radiusM: 50 },
   leaveTypes: [
     { id: "cl", name: "Casual Leave", days: 12 },
     { id: "sl", name: "Sick Leave", days: 12 },
@@ -547,7 +552,7 @@ const defaultCompany: Company = {
     { id: "night", name: "Night", start: "22:00", end: "06:00", allowancePerDay: 250 },
   ],
   branches: [
-    { id: "br-hq", name: "Head Office", code: "HQ", address: "123 Business Ave", city: "Bangalore", state: "Karnataka", isHead: true, lat: 12.9716, lng: 77.5946, radiusMeters: 150, shiftStart: "09:00", shiftEnd: "18:00", weeklyOff: ["Sun"] },
+    { id: "br-hq", name: "Head Office", code: "HQ", address: "123 Business Ave", city: "Erode", state: "Tamil Nadu", isHead: true, lat: 11.30564, lng: 77.70347, radiusMeters: 50, shiftStart: "09:00", shiftEnd: "18:00", weeklyOff: ["Sun"] },
   ],
 
   appointmentTemplate: `Dear {{name}},
@@ -701,7 +706,7 @@ export const useStore = create<State>()(
         const asset: Asset = { ...a, id: crypto.randomUUID(), status: a.status ?? "available" };
         set((s) => ({ assets: [...s.assets, asset] }));
         const tenantId = useAuth.getState().activeTenantId;
-        if (tenantId && !get().demoMode) {
+        if (tenantId && !tenantId.startsWith("demo-tenant-")) {
           syncItem("assets", { tenantId, ...asset });
         }
         return asset;
@@ -711,7 +716,7 @@ export const useStore = create<State>()(
           const nextAssets = s.assets.map((a) => (a.id === id ? { ...a, ...patch } : a));
           const item = nextAssets.find((a) => a.id === id);
           const tenantId = useAuth.getState().activeTenantId;
-          if (tenantId && item && !s.demoMode) {
+          if (tenantId && item && !tenantId.startsWith("demo-tenant-")) {
             syncItem("assets", { tenantId, ...item });
           }
           return { assets: nextAssets };
@@ -719,7 +724,7 @@ export const useStore = create<State>()(
       deleteAsset: (id) =>
         set((s) => {
           const tenantId = useAuth.getState().activeTenantId;
-          if (tenantId && !s.demoMode) {
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncDelete("assets", tenantId, id);
             s.assetAssignments.forEach((x) => {
               if (x.assetId === id) {
@@ -751,7 +756,7 @@ export const useStore = create<State>()(
         }));
 
         const tenantId = useAuth.getState().activeTenantId;
-        if (tenantId && !get().demoMode) {
+        if (tenantId && !tenantId.startsWith("demo-tenant-")) {
           const runAssignAndSync = async () => {
             let finalSigUrl = acknowledgementSignatureDataUrl;
             if (acknowledgementSignatureDataUrl && acknowledgementSignatureDataUrl.startsWith("data:")) {
@@ -781,7 +786,7 @@ export const useStore = create<State>()(
           );
 
           const tenantId = useAuth.getState().activeTenantId;
-          if (tenantId && !s.demoMode) {
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             const updatedAssn = nextAssignments.find((x) => x.id === assignmentId);
             const updatedAsset = nextAssets.find((a) => a.id === assn.assetId);
             if (updatedAssn) syncItem("assetAssignments", { tenantId, ...updatedAssn });
@@ -873,7 +878,7 @@ export const useStore = create<State>()(
         const notice: Notice = { ...n, id: crypto.randomUUID(), createdAt: new Date().toISOString(), readBy: [] };
         set((s) => ({ notices: [notice, ...s.notices] }));
         const tenantId = useAuth.getState().activeTenantId;
-        if (tenantId && !get().demoMode) {
+        if (tenantId && !tenantId.startsWith("demo-tenant-")) {
           syncItem("notices", { tenantId, ...notice });
         }
         return notice;
@@ -883,7 +888,7 @@ export const useStore = create<State>()(
           const nextNotices = s.notices.map((n) => (n.id === id ? { ...n, ...patch } : n));
           const tenantId = useAuth.getState().activeTenantId;
           const item = nextNotices.find((n) => n.id === id);
-          if (tenantId && item && !s.demoMode) {
+          if (tenantId && item && !tenantId.startsWith("demo-tenant-")) {
             syncItem("notices", { tenantId, ...item });
           }
           return { notices: nextNotices };
@@ -891,7 +896,7 @@ export const useStore = create<State>()(
       deleteNotice: (id) =>
         set((s) => {
           const tenantId = useAuth.getState().activeTenantId;
-          if (tenantId && !s.demoMode) {
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncDelete("notices", tenantId, id);
           }
           return { notices: s.notices.filter((n) => n.id !== id) };
@@ -903,7 +908,7 @@ export const useStore = create<State>()(
           );
           const tenantId = useAuth.getState().activeTenantId;
           const item = nextNotices.find((n) => n.id === id);
-          if (tenantId && item && !s.demoMode) {
+          if (tenantId && item && !tenantId.startsWith("demo-tenant-")) {
             syncItem("notices", { tenantId, ...item });
           }
           return { notices: nextNotices };
@@ -922,7 +927,7 @@ export const useStore = create<State>()(
             branches: updatedBranches,
           };
           const tenantId = useAuth.getState().activeTenantId;
-          if (tenantId && !s.demoMode) {
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });
           }
           return { company: nextCompany };
@@ -946,7 +951,7 @@ export const useStore = create<State>()(
             branches: updatedBranches,
           };
           const tenantId = useAuth.getState().activeTenantId;
-          if (tenantId && !s.demoMode) {
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });
           }
           return { company: nextCompany };
@@ -958,7 +963,7 @@ export const useStore = create<State>()(
             branches: (s.company.branches ?? []).filter((b) => b.id !== id),
           };
           const tenantId = useAuth.getState().activeTenantId;
-          if (tenantId && !s.demoMode) {
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });
             s.employees.forEach((e) => {
               if (e.branchId === id) {
@@ -976,8 +981,28 @@ export const useStore = create<State>()(
         if (res && res.ok) {
           try {
             const data = await res.json();
+            let nextCompany = get().company;
+            if (data.config) {
+              // Strip DynamoDB key fields that aren't part of the Company type
+              const { id: _id, tenantId: _tid, ...backendConfig } = data.config;
+              nextCompany = { ...get().company, ...backendConfig };
+              // Re-derive geofence from the head branch to ensure geo-coordinates
+              // stay consistent (mirrors admin-side updateBranch logic)
+              const headBranch = (nextCompany.branches ?? []).find((b: any) => b.isHead)
+                || (nextCompany.branches ?? [])[0];
+              if (headBranch && headBranch.lat != null && headBranch.lng != null) {
+                nextCompany = {
+                  ...nextCompany,
+                  geofence: {
+                    lat: headBranch.lat,
+                    lng: headBranch.lng,
+                    radiusM: headBranch.radiusMeters ?? nextCompany.geofence?.radiusM ?? 150,
+                  },
+                };
+              }
+            }
             set({
-              company: data.config ? { ...get().company, ...data.config } : get().company,
+              company: nextCompany,
               employees: data.employees && data.employees.length ? data.employees : get().employees,
               attendance: data.attendance || get().attendance,
               leaves: data.leaves || get().leaves,
@@ -997,7 +1022,7 @@ export const useStore = create<State>()(
         set((s) => {
           const nextCompany = { ...s.company, ...c };
           const tenantId = useAuth.getState().activeTenantId;
-          if (tenantId && !s.demoMode) {
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             // Background S3 upload if appointmentTemplate has image/logo in base64, or just sync config
             syncItem("config", { id: "config", tenantId, ...nextCompany });
           }
@@ -1016,12 +1041,12 @@ export const useStore = create<State>()(
         set((s) => ({ employees: [...s.employees, emp] }));
 
         const tenantId = useAuth.getState().activeTenantId;
-        if (tenantId && !st.demoMode) {
+        if (tenantId && !tenantId.startsWith("demo-tenant-")) {
           const runRegisterAndSync = async () => {
             let finalPhotoUrl = emp.photoDataUrl;
             if (emp.photoDataUrl && emp.photoDataUrl.startsWith("data:")) {
               try {
-                const res = await fetch(`${API_URL}/api/companies/face-register`, {
+                const res = await fetch(`${getBackendUrl()}/api/companies/face-register`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ tenantId, employeeId: emp.id, photoDataUrl: emp.photoDataUrl }),
@@ -1065,14 +1090,14 @@ export const useStore = create<State>()(
         set((s) => ({ employees: s.employees.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
         if (before) {
           const tenantId = useAuth.getState().activeTenantId;
-          if (tenantId && !st.demoMode) {
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             const runUpdateAndSync = async () => {
               let finalPhotoUrl = patch.photoDataUrl ?? before.photoDataUrl;
               let isFaceRegistered = patch.faceRegistered ?? before.faceRegistered;
 
               if (patch.photoDataUrl && patch.photoDataUrl.startsWith("data:")) {
                 try {
-                  const res = await fetch(`${API_URL}/api/companies/face-register`, {
+                  const res = await fetch(`${getBackendUrl()}/api/companies/face-register`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ tenantId, employeeId: id, photoDataUrl: patch.photoDataUrl }),
