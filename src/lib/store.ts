@@ -476,6 +476,7 @@ type State = {
   assignAsset: (input: { assetId: string; employeeId: string; assignedBy: string; conditionOnAssign?: AssetCondition; acknowledgementSignatureDataUrl?: string; notes?: string }) => AssetAssignment | null;
   returnAsset: (assignmentId: string, actor: string, conditionOnReturn?: AssetCondition, notes?: string) => void;
   setDocAssets: (patch: Partial<CompanyDocumentAssets>) => void;
+  saveAllCompanySettings: () => Promise<void>;
   addLibraryItem: (item: Omit<DocumentLibraryItem, "id">) => DocumentLibraryItem;
   updateLibraryItem: (id: string, patch: Partial<DocumentLibraryItem>) => void;
   deleteLibraryItem: (id: string) => void;
@@ -798,7 +799,52 @@ export const useStore = create<State>()(
             assets: nextAssets,
           };
         }),
-      setDocAssets: (patch) => set((s) => ({ docAssets: { ...s.docAssets, ...patch } })),
+      setDocAssets: (patch) =>
+        set((s) => {
+          const nextDocAssets = { ...s.docAssets, ...patch };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            const runUploadAndSync = async () => {
+              const updatedPatch: Partial<CompanyDocumentAssets> = {};
+              for (const k of Object.keys(patch) as (keyof CompanyDocumentAssets)[]) {
+                const val = patch[k];
+                if (typeof val === "string" && val.startsWith("data:")) {
+                  const s3Url = await uploadToS3(tenantId, `doc-assets/${k}.png`, val);
+                  updatedPatch[k] = s3Url as any;
+                }
+              }
+              const finalDocAssets = { ...nextDocAssets, ...updatedPatch };
+              if (Object.keys(updatedPatch).length) {
+                set((st) => ({ docAssets: { ...st.docAssets, ...updatedPatch } }));
+              }
+              syncItem("docAssets", { id: "doc_assets", tenantId, ...finalDocAssets });
+            };
+            runUploadAndSync();
+          }
+          return { docAssets: nextDocAssets };
+        }),
+      saveAllCompanySettings: async () => {
+        const st = get();
+        const tenantId = useAuth.getState().activeTenantId;
+        if (!tenantId || tenantId.startsWith("demo-tenant-")) return;
+
+        const docAssets = st.docAssets;
+        const uploadedDocAssets: Partial<CompanyDocumentAssets> = {};
+        for (const k of Object.keys(docAssets) as (keyof CompanyDocumentAssets)[]) {
+          const val = docAssets[k];
+          if (typeof val === "string" && val.startsWith("data:")) {
+            const s3Url = await uploadToS3(tenantId, `doc-assets/${k}.png`, val);
+            uploadedDocAssets[k] = s3Url as any;
+          }
+        }
+        const finalDocAssets = { ...docAssets, ...uploadedDocAssets };
+        if (Object.keys(uploadedDocAssets).length) {
+          set({ docAssets: finalDocAssets });
+        }
+
+        syncItem("config", { id: "config", tenantId, ...st.company });
+        syncItem("docAssets", { id: "doc_assets", tenantId, ...finalDocAssets });
+      },
       addLibraryItem: (item) => {
         const it: DocumentLibraryItem = { ...item, id: crypto.randomUUID() };
         set((s) => ({ docLibrary: [...s.docLibrary, it].sort((a, b) => a.sequence - b.sequence) }));
@@ -1003,6 +1049,7 @@ export const useStore = create<State>()(
             }
             set({
               company: nextCompany,
+              docAssets: data.docAssets ? { ...get().docAssets, ...data.docAssets } : get().docAssets,
               employees: data.employees && data.employees.length ? data.employees : get().employees,
               attendance: data.attendance || get().attendance,
               leaves: data.leaves || get().leaves,

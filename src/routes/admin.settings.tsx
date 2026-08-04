@@ -9,20 +9,37 @@ import { Switch } from "@/components/ui/switch";
 import { Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
+import { useState } from "react";
+
 export const Route = createFileRoute("/admin/settings")({
   head: () => ({ meta: [{ title: "Settings · SWIFT" }] }),
   component: SettingsPage,
 });
 
 function SettingsPage() {
-  const { company, setCompany, docAssets, setDocAssets } = useStore();
+  const { company, setCompany, docAssets, setDocAssets, saveAllCompanySettings } = useStore();
+  const [saving, setSaving] = useState(false);
 
   const readAsset = (key: keyof typeof docAssets) => (file: File | null) => {
     if (!file) return;
     const r = new FileReader();
-    r.onload = () => setDocAssets({ [key]: r.result as string } as Partial<typeof docAssets>);
+    r.onload = () => {
+      setDocAssets({ [key]: r.result as string } as Partial<typeof docAssets>);
+      toast.success("File uploaded to assets draft");
+    };
     r.readAsDataURL(file);
-    toast.success("Uploaded");
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await saveAllCompanySettings();
+      toast.success("Settings & document assets saved to DynamoDB and S3!");
+    } catch (err: any) {
+      toast.error("Save error: " + (err?.message || err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const num = (k: keyof typeof company) => (
@@ -401,9 +418,13 @@ function SettingsPage() {
         </Field>
       </Card>
 
-      <AttendanceDefaultsCard />
-
-      <Button className="bg-gradient-brand text-white shadow-glow" onClick={() => toast.success("Settings saved")}>Save changes</Button>
+      <Button
+        className="bg-gradient-brand text-white shadow-glow px-6 py-2"
+        onClick={handleSave}
+        disabled={saving}
+      >
+        {saving ? "Saving to Database & S3..." : "Save changes"}
+      </Button>
     </div>
   );
 
