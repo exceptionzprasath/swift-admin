@@ -46,6 +46,9 @@ export const useAuth = create<AuthState>((set, get) => ({
   setActiveTenant: (id) => {
     localStorage.setItem("swift-active-tenant", id);
     set({ activeTenantId: id });
+    if (id) {
+      import("./store").then((mod) => mod.useStore.getState().loadCompanyState(id));
+    }
   },
   signIn: async (email, role, password) => {
     if (role === "super_admin" || email.startsWith("super")) {
@@ -69,12 +72,29 @@ export const useAuth = create<AuthState>((set, get) => ({
       const id = crypto.randomUUID();
       const user = { id, email, name: email.split("@")[0] };
       const activeTenantId = "demo-tenant-1";
-      const memberships = [{ tenant_id: activeTenantId, tenant_name: "SWIFT Demo Pvt Ltd", role: "company_admin" }];
+      const memberships: TenantMembership[] = [
+        {
+          tenant_id: activeTenantId,
+          role: "owner",
+          tenant: {
+            id: activeTenantId,
+            name: "SWIFT Demo Pvt Ltd",
+            slug: "demo",
+            legal_name: "SWIFT Demo Private Limited",
+            address: null,
+            gstin: null,
+            plan: "growth",
+            status: "active",
+            created_at: new Date().toISOString(),
+          },
+        },
+      ];
       localStorage.setItem("swift-auth-user", JSON.stringify(user));
       localStorage.setItem("swift-auth-role", "user");
       localStorage.setItem("swift-auth-memberships", JSON.stringify(memberships));
       localStorage.setItem("swift-active-tenant", activeTenantId);
       set({ user, isSuperAdmin: false, memberships, activeTenantId, loading: false });
+      import("./store").then((mod) => mod.useStore.getState().loadCompanyState(activeTenantId));
       return;
     }
 
@@ -91,6 +111,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     const activeTenantId = memberships[0]?.tenant_id ?? null;
     if (activeTenantId) {
       localStorage.setItem("swift-active-tenant", activeTenantId);
+      import("./store").then((mod) => mod.useStore.getState().loadCompanyState(activeTenantId));
     }
     
     set({ user, isSuperAdmin: false, memberships, activeTenantId, loading: false });
@@ -114,6 +135,9 @@ export const useAuth = create<AuthState>((set, get) => ({
       memberships[0]?.tenant_id ??
       null;
     set({ user, isSuperAdmin, memberships, activeTenantId, loading: false });
+    if (activeTenantId) {
+      import("./store").then((mod) => mod.useStore.getState().loadCompanyState(activeTenantId));
+    }
   },
   signOut: async () => {
     localStorage.removeItem("swift-auth-user");
@@ -121,6 +145,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     localStorage.removeItem("swift-auth-memberships");
     localStorage.removeItem("swift-active-tenant");
     set({ user: null, isSuperAdmin: false, memberships: [], activeTenantId: null });
+    import("./store").then((mod) => mod.useStore.getState().resetTenantState());
   },
 }));
 

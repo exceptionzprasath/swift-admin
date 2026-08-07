@@ -33,6 +33,7 @@ const nav: NavItem[] = [
   { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket },
   { to: "/admin/branches", label: "Branches", icon: Building2 },
   { to: "/admin/org", label: "Organization", icon: Network },
+  { to: "/admin/roles", label: "Role Creation", icon: ShieldCheck },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
   { to: "/admin/payroll", label: "Payroll & AI Decisions", icon: Calculator },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },

@@ -330,6 +330,54 @@ export type Employee = {
   };
   portalActivated?: boolean;
   portalActivatedAt?: string;
+  roleId?: string;
+  roleName?: string;
+  fixedSalary?: number;
+  pfEligible?: boolean;
+  esiEligible?: boolean;
+  ptEligible?: boolean;
+  tdsEligible?: boolean;
+  eligibleDate?: string;
+  probationDate?: string;
+  leaveApplyEligible?: boolean;
+};
+
+export type DocumentPermissionTypes = {
+  offerLetter: boolean;
+  appointmentLetter: boolean;
+  incrementLetter: boolean;
+  promotionLetter: boolean;
+  relievingLetter: boolean;
+  experienceLetter: boolean;
+  salaryCertificate: boolean;
+  warningLetter: boolean;
+  showCauseNotice: boolean;
+};
+
+export type RolePermissions = {
+  leaveApproval: boolean;
+  attendanceApproval: boolean;
+  payrollDashboard: boolean;
+  employeeManagement: boolean;
+  expenseHandloanApproval: boolean;
+  documentsApproval: boolean;
+  documentTypes: DocumentPermissionTypes;
+  invoiceApproval: boolean;
+  resignationApproval: boolean;
+  assetManagement: boolean;
+  noticesAnnouncements: boolean;
+  performanceReviews: boolean;
+  auditLogView: boolean;
+};
+
+export type PredefinedRole = {
+  id: string;
+  tenantId?: string;
+  name: string;
+  description: string;
+  permissions: RolePermissions;
+  isSystemDefault?: boolean;
+  createdAt: string;
 };
 
 export type FamilyMember = { name: string; relation: string; dob?: string; dependent?: boolean };
@@ -464,6 +512,10 @@ type State = {
   assetAssignments: AssetAssignment[];
   auditLog: AuditEntry[];
   registrationDrafts: RegistrationDraft[];
+  roles: PredefinedRole[];
+  addRole: (r: Omit<PredefinedRole, "id" | "createdAt">) => PredefinedRole;
+  updateRole: (id: string, patch: Partial<PredefinedRole>) => void;
+  deleteRole: (id: string) => void;
   addAudit: (entry: Omit<AuditEntry, "id" | "ts">) => AuditEntry;
   saveRegistrationDraft: (draft: Omit<RegistrationDraft, "updatedAt">) => void;
   deleteRegistrationDraft: (id: string) => void;
@@ -495,6 +547,7 @@ type State = {
   updateBranch: (id: string, patch: Partial<Branch>) => void;
   deleteBranch: (id: string) => void;
   loadCompanyState: (tenantId: string) => Promise<void>;
+  resetTenantState: () => void;
   setTheme: (t: "light" | "dark") => void;
   setCompany: (c: Partial<Company>) => void;
   addEmployee: (e: Omit<Employee, "id">) => Employee;
@@ -656,6 +709,137 @@ function buildDemoData() {
   return { employees, attendance, leaves };
 }
 
+export const DEFAULT_PREDEFINED_ROLES: PredefinedRole[] = [
+  {
+    id: "role-hr-manager",
+    name: "HR Manager",
+    description: "Full access to employee management, leaves, attendance, documents, and onboarding.",
+    isSystemDefault: true,
+    createdAt: new Date().toISOString(),
+    permissions: {
+      leaveApproval: true,
+      attendanceApproval: true,
+      payrollDashboard: true,
+      employeeManagement: true,
+      expenseHandloanApproval: true,
+      documentsApproval: true,
+      documentTypes: {
+        offerLetter: true,
+        appointmentLetter: true,
+        incrementLetter: true,
+        promotionLetter: true,
+        relievingLetter: true,
+        experienceLetter: true,
+        salaryCertificate: true,
+        warningLetter: true,
+        showCauseNotice: true,
+      },
+      invoiceApproval: true,
+      resignationApproval: true,
+      assetManagement: true,
+      noticesAnnouncements: true,
+      performanceReviews: true,
+      auditLogView: true,
+    },
+  },
+  {
+    id: "role-team-lead",
+    name: "Team Lead / Reporting Manager",
+    description: "Leave approval, attendance verification, performance reviews, and document approvals.",
+    isSystemDefault: true,
+    createdAt: new Date().toISOString(),
+    permissions: {
+      leaveApproval: true,
+      attendanceApproval: true,
+      payrollDashboard: false,
+      employeeManagement: false,
+      expenseHandloanApproval: true,
+      documentsApproval: true,
+      documentTypes: {
+        offerLetter: false,
+        appointmentLetter: false,
+        incrementLetter: true,
+        promotionLetter: true,
+        relievingLetter: true,
+        experienceLetter: true,
+        salaryCertificate: false,
+        warningLetter: true,
+        showCauseNotice: false,
+      },
+      invoiceApproval: false,
+      resignationApproval: true,
+      assetManagement: false,
+      noticesAnnouncements: true,
+      performanceReviews: true,
+      auditLogView: false,
+    },
+  },
+  {
+    id: "role-finance-manager",
+    name: "Finance / Payroll Manager",
+    description: "Payroll dashboard access, expense & handloan approvals, and invoice approvals.",
+    isSystemDefault: true,
+    createdAt: new Date().toISOString(),
+    permissions: {
+      leaveApproval: false,
+      attendanceApproval: false,
+      payrollDashboard: true,
+      employeeManagement: false,
+      expenseHandloanApproval: true,
+      documentsApproval: true,
+      documentTypes: {
+        offerLetter: false,
+        appointmentLetter: false,
+        incrementLetter: true,
+        promotionLetter: false,
+        relievingLetter: false,
+        experienceLetter: false,
+        salaryCertificate: true,
+        warningLetter: false,
+        showCauseNotice: false,
+      },
+      invoiceApproval: true,
+      resignationApproval: false,
+      assetManagement: false,
+      noticesAnnouncements: false,
+      performanceReviews: false,
+      auditLogView: true,
+    },
+  },
+  {
+    id: "role-general-employee",
+    name: "General Employee",
+    description: "Standard self-service employee access.",
+    isSystemDefault: true,
+    createdAt: new Date().toISOString(),
+    permissions: {
+      leaveApproval: false,
+      attendanceApproval: false,
+      payrollDashboard: false,
+      employeeManagement: false,
+      expenseHandloanApproval: false,
+      documentsApproval: false,
+      documentTypes: {
+        offerLetter: false,
+        appointmentLetter: false,
+        incrementLetter: false,
+        promotionLetter: false,
+        relievingLetter: false,
+        experienceLetter: false,
+        salaryCertificate: false,
+        warningLetter: false,
+        showCauseNotice: false,
+      },
+      invoiceApproval: false,
+      resignationApproval: false,
+      assetManagement: false,
+      noticesAnnouncements: false,
+      performanceReviews: false,
+      auditLogView: false,
+    },
+  },
+];
+
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
@@ -678,6 +862,38 @@ export const useStore = create<State>()(
       assetAssignments: [],
       auditLog: [],
       registrationDrafts: [],
+      roles: DEFAULT_PREDEFINED_ROLES,
+      addRole: (r) => {
+        const role: PredefinedRole = {
+          ...r,
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+        };
+        set((s) => ({ roles: [role, ...s.roles] }));
+        const tenantId = useAuth.getState().activeTenantId;
+        if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+          syncItem("roles", { tenantId, ...role });
+        }
+        return role;
+      },
+      updateRole: (id, patch) =>
+        set((s) => {
+          const nextRoles = s.roles.map((r) => (r.id === id ? { ...r, ...patch } : r));
+          const updated = nextRoles.find((r) => r.id === id);
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && updated && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("roles", { tenantId, ...updated });
+          }
+          return { roles: nextRoles };
+        }),
+      deleteRole: (id) =>
+        set((s) => {
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncDelete("roles", tenantId, id);
+          }
+          return { roles: s.roles.filter((r) => r.id !== id) };
+        }),
       addAudit: (entry) => {
         const e: AuditEntry = { ...entry, id: crypto.randomUUID(), ts: new Date().toISOString() };
         set((s) => ({ auditLog: [e, ...s.auditLog].slice(0, 2000) }));
@@ -1049,20 +1265,37 @@ export const useStore = create<State>()(
             }
             set({
               company: nextCompany,
-              docAssets: data.docAssets ? { ...get().docAssets, ...data.docAssets } : get().docAssets,
-              employees: data.employees && data.employees.length ? data.employees : get().employees,
-              attendance: data.attendance || get().attendance,
-              leaves: data.leaves || get().leaves,
-              payrolls: data.payrolls || get().payrolls,
-              assets: data.assets || get().assets,
-              assetAssignments: data.assignments || get().assetAssignments,
-              docLibrary: data.docLibrary && data.docLibrary.length ? data.docLibrary : get().docLibrary,
-              journeys: data.journeys || get().journeys,
-              notices: data.notices || get().notices,
+              docAssets: data.docAssets || get().docAssets,
+              employees: data.employees || [],
+              attendance: data.attendance || [],
+              leaves: data.leaves || [],
+              payrolls: data.payrolls || [],
+              assets: data.assets || [],
+              assetAssignments: data.assignments || [],
+              docLibrary: data.docLibrary || [],
+              journeys: data.journeys || [],
+              notices: data.notices || [],
+              roles: data.roles && data.roles.length ? data.roles : get().roles,
               demoMode: false,
             });
           } catch (_err) {}
         }
+      },
+      resetTenantState: () => {
+        set({
+          employees: [],
+          attendance: [],
+          leaves: [],
+          payrolls: [],
+          assets: [],
+          assetAssignments: [],
+          docRequests: [],
+          salaryRevisions: [],
+          auditLog: [],
+          roles: DEFAULT_PREDEFINED_ROLES,
+          currentUser: null,
+          demoMode: false,
+        });
       },
       setTheme: (t) => set({ theme: t }),
       setCompany: (c) =>
@@ -1423,6 +1656,24 @@ export const useStore = create<State>()(
     {
       name: "swift-hrms",
       version: 6,
+      storage: {
+        getItem: (name) => {
+          const tenantId = typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null;
+          const key = tenantId ? `${name}-${tenantId}` : name;
+          const str = localStorage.getItem(key);
+          return str ? JSON.parse(str) : null;
+        },
+        setItem: (name, value) => {
+          const tenantId = typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null;
+          const key = tenantId ? `${name}-${tenantId}` : name;
+          localStorage.setItem(key, JSON.stringify(value));
+        },
+        removeItem: (name) => {
+          const tenantId = typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null;
+          const key = tenantId ? `${name}-${tenantId}` : name;
+          localStorage.removeItem(key);
+        },
+      },
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<State>;
         return {

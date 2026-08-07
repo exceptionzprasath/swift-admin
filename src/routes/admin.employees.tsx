@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStore, resolveAttendanceProfile, type Employee, type FamilyMember, type EducationEntry, type ExperienceEntry } from "@/lib/store";
+import { useStore, resolveAttendanceProfile, type Employee, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { generateAppointmentPDF } from "@/lib/pdf";
 import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, type LetterKey } from "@/lib/documents";
@@ -22,7 +22,9 @@ import {
   Plus, FileDown, Trash2, ChevronLeft, ChevronRight, User, Briefcase, Building2,
   FileSignature, CheckCircle2, Sparkles, Wand2, Camera, Home, Users as UsersIcon,
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
+  FileSpreadsheet, Upload, Download, AlertTriangle, FileText,
 } from "lucide-react";
+import { downloadEmployeeTemplate, parseEmployeeCsvText } from "@/lib/bulk-employee";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
 import { toast } from "sonner";
 import { aiNotify, setAiGuideMode } from "@/lib/ai-guide-bus";
@@ -43,6 +45,14 @@ const empty: Omit<Employee, "id"> = {
   designation: "",
   doj: new Date().toISOString().slice(0, 10),
   basic: 25000,
+  fixedSalary: 25000,
+  pfEligible: true,
+  esiEligible: false,
+  ptEligible: true,
+  tdsEligible: false,
+  eligibleDate: new Date().toISOString().slice(0, 10),
+  probationDate: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
+  leaveApplyEligible: true,
   pan: "",
   aadhaar: "",
   bankAcc: "",
@@ -92,8 +102,9 @@ type FlowStep =
   | { kind: "doc"; key: string; title: string; icon: typeof User; docCode: string; docId: string };
 
 function EmployeesPage() {
-  const { employees, addEmployee, deleteEmployee, company, docAssets, ensureJourney, docLibrary, advanceJourneyStep, registrationDrafts, saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser } = useStore();
+  const { employees, addEmployee, deleteEmployee, company, docAssets, ensureJourney, docLibrary, advanceJourneyStep, registrationDrafts, saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, roles } = useStore();
   const [open, setOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
   const [actionEmp, setActionEmp] = useState<Employee | null>(null);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
@@ -108,22 +119,45 @@ function EmployeesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-semibold">Employees</h1>
-          <p className="text-sm text-muted-foreground">Guided 20-step registration with AI validation, autosave, and audit trail.</p>
+          <p className="text-sm text-muted-foreground">Guided 20-step registration with AI validation, bulk Excel import, autosave, and audit trail.</p>
         </div>
-        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setAiGuideMode({ active: false }); }}>
-          <DialogTrigger asChild>
-            <Button className="bg-gradient-brand text-white shadow-glow" onClick={() => openWizard()}>
-              <Plus className="mr-2 h-4 w-4" /> Add Employee
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl h-[80vh] max-h-[calc(100vh-40px)] p-0 overflow-hidden">
-            <RegistrationWizard key={resumeDraftId ?? "new"} draftId={resumeDraftId} onDone={() => { setOpen(false); setAiGuideMode({ active: false }); }} />
-          </DialogContent>
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            className="border-border hover:bg-muted"
+            onClick={() => {
+              downloadEmployeeTemplate(company.name);
+              toast.success("Excel template downloaded with sample employee columns.");
+            }}
+            title="Download Excel / CSV template with prefilled column headers"
+          >
+            <Download className="mr-2 h-4 w-4 text-primary" /> Download Template
+          </Button>
 
-        </Dialog>
+          <Button
+            id="trigger-bulk-upload-btn"
+            variant="outline"
+            className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary font-medium"
+            onClick={() => setBulkOpen(true)}
+            title="Upload Excel or CSV file to import employees without photos"
+          >
+            <FileSpreadsheet className="mr-2 h-4 w-4" /> Bulk Upload
+          </Button>
+
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setAiGuideMode({ active: false }); }}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-brand text-white shadow-glow" onClick={() => openWizard()}>
+                <Plus className="mr-2 h-4 w-4" /> Add Employee
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl h-[80vh] max-h-[calc(100vh-40px)] p-0 overflow-hidden">
+              <RegistrationWizard key={resumeDraftId ?? "new"} draftId={resumeDraftId} onDone={() => { setOpen(false); setAiGuideMode({ active: false }); }} />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {registrationDrafts.length > 0 && (
@@ -226,6 +260,10 @@ function EmployeesPage() {
         open={!!editingEmp}
         onClose={() => setEditingEmp(null)}
       />
+      <BulkUploadDialog
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+      />
     </div>
   );
 }
@@ -233,7 +271,7 @@ function EmployeesPage() {
 function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?: string | null }) {
   const {
     addEmployee, company, docAssets, ensureJourney, docLibrary, advanceJourneyStep,
-    saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, employees,
+    saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, employees, roles,
   } = useStore();
   // Read initial draft ONCE without subscribing to registrationDrafts — otherwise every
   // autosave re-renders the parent and the wizard flickers/appears to reload.
@@ -392,7 +430,48 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
             >
               {current?.kind === "form" && current.key === "photo" && (
                 <div className="space-y-5">
-                  <StepHead icon={Camera} title="Photo & Identity" subtitle="Photo is mandatory. Shows across HRMS, ID card, and org chart." />
+                  <StepHead icon={Camera} title="Photo & Identity" subtitle="Photo is mandatory for single guided registration. Or use Bulk Upload below to import from Excel without photos." />
+
+                  {/* Bulk Upload Banner */}
+                  <div className="rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="h-9 w-9 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0 mt-0.5">
+                        <FileSpreadsheet className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wider text-primary">Need to register multiple employees?</div>
+                        <div className="text-sm font-medium">Download the Excel template or Bulk Upload your employee list.</div>
+                        <p className="text-xs text-muted-foreground mt-0.5">Imported employees appear instantly without photos. You can upload photos later in Edit Employee.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="bg-card text-xs h-8"
+                        onClick={() => {
+                          downloadEmployeeTemplate(company.name);
+                          toast.success("Excel template downloaded with sample employee headers.");
+                        }}
+                      >
+                        <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-primary text-white text-xs h-8 shadow-sm"
+                        onClick={() => {
+                          onDone();
+                          setTimeout(() => {
+                            const btn = document.getElementById("trigger-bulk-upload-btn");
+                            if (btn) btn.click();
+                          }, 100);
+                        }}
+                      >
+                        <Upload className="mr-1.5 h-3.5 w-3.5" /> Bulk Upload Excel
+                      </Button>
+                    </div>
+                  </div>
+
                   <div className="rounded-2xl border border-border bg-card p-5">
                     <PhotoCapture value={form.photoDataUrl} onChange={(u) => setForm({ ...form, photoDataUrl: u, faceRegistered: !!u })} name={form.name} size="lg" />
                   </div>
@@ -629,14 +708,43 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
 
               {current?.kind === "form" && current.key === "employment" && (
                 <div className="space-y-4">
-                  <StepHead icon={Briefcase} title="Employment & Salary" subtitle="Role, joining date, salary and bank details." />
+                  <StepHead icon={Briefcase} title="Employment, Fixed Salary & Compliance" subtitle="Fixed salary, statutory deductions, eligibility dates, and role assignment." />
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Department *" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
                     <Field label="Designation *" value={form.designation} onChange={(v) => setForm({ ...form, designation: v })} />
                     <Field label="Date of Joining *" type="date" value={form.doj} onChange={(v) => setForm({ ...form, doj: v })} />
-                    <Field label="Basic Salary (Monthly ₹)" type="number" value={String(form.basic)} onChange={(v) => setForm({ ...form, basic: +v || 0 })} />
+                    <Field
+                      label="Fixed Salary (Monthly ₹) *"
+                      type="number"
+                      value={String(form.fixedSalary ?? form.basic)}
+                      onChange={(v) => setForm({ ...form, fixedSalary: +v || 0, basic: +v || 0 })}
+                    />
                     <Field label="Bank Account" value={form.bankAcc || ""} onChange={(v) => setForm({ ...form, bankAcc: v })} />
                     <Field label="IFSC" value={form.bankIfsc || ""} onChange={(v) => setForm({ ...form, bankIfsc: v.toUpperCase() })} />
+                    <div>
+                      <Label>Assigned Role</Label>
+                      <Select
+                        value={form.roleId || "__none"}
+                        onValueChange={(v) => {
+                          const selected = (roles || []).find((r: PredefinedRole) => r.id === v);
+                          setForm({
+                            ...form,
+                            roleId: v === "__none" ? undefined : v,
+                            roleName: selected ? selected.name : undefined,
+                          });
+                        }}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Select Predefined Role" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">— Standard / Default —</SelectItem>
+                          {(roles || []).map((r: PredefinedRole) => (
+                            <SelectItem key={r.id} value={r.id}>
+                              {r.name} {r.isSystemDefault ? "(Default)" : "(Custom)"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div>
                       <Label>Shift</Label>
                       <Select value={form.shiftId} onValueChange={(v) => setForm({ ...form, shiftId: v })}>
@@ -648,6 +756,78 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                         </SelectContent>
                       </Select>
                     </div>
+                    <Field
+                      label="Benefits Eligible Date"
+                      type="date"
+                      value={form.eligibleDate || form.doj}
+                      onChange={(v) => setForm({ ...form, eligibleDate: v })}
+                    />
+                    <Field
+                      label="Probation End Date"
+                      type="date"
+                      value={form.probationDate || ""}
+                      onChange={(v) => setForm({ ...form, probationDate: v })}
+                    />
+                  </div>
+
+                  {/* Statutory & Tax Deduction Checkboxes */}
+                  <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Statutory Deductions & Tax Eligibility
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <label className="flex items-center gap-2.5 text-xs font-medium cursor-pointer p-2.5 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                        <Checkbox
+                          checked={form.pfEligible ?? true}
+                          onCheckedChange={(c) => setForm({ ...form, pfEligible: !!c })}
+                        />
+                        <span>PF (Provident Fund)</span>
+                      </label>
+
+                      <label className="flex items-center gap-2.5 text-xs font-medium cursor-pointer p-2.5 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                        <Checkbox
+                          checked={form.esiEligible ?? false}
+                          onCheckedChange={(c) => setForm({ ...form, esiEligible: !!c })}
+                        />
+                        <span>ESI (Medical Scheme)</span>
+                      </label>
+
+                      <label className="flex items-center gap-2.5 text-xs font-medium cursor-pointer p-2.5 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                        <Checkbox
+                          checked={form.ptEligible ?? true}
+                          onCheckedChange={(c) => setForm({ ...form, ptEligible: !!c })}
+                        />
+                        <span>Professional Tax (PT)</span>
+                      </label>
+
+                      <label className="flex items-center gap-2.5 text-xs font-medium cursor-pointer p-2.5 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                        <Checkbox
+                          checked={form.tdsEligible ?? false}
+                          onCheckedChange={(c) => setForm({ ...form, tdsEligible: !!c })}
+                        />
+                        <span>TDS (Income Tax)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Leave Apply Eligibility Checkbox */}
+                  <div className="rounded-xl border border-border bg-card p-4 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-semibold flex items-center gap-2">
+                        <span>Leave Apply Eligible</span>
+                        <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary">
+                          Employee App Feature Gate
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        When disabled, the Leave & Permission application action will be locked in the employee mobile app.
+                      </p>
+                    </div>
+                    <Checkbox
+                      checked={form.leaveApplyEligible ?? true}
+                      onCheckedChange={(c) => setForm({ ...form, leaveApplyEligible: !!c })}
+                      className="h-5 w-5"
+                    />
                   </div>
                 </div>
               )}
@@ -984,7 +1164,7 @@ function RepeatingList<T extends Record<string, unknown>>({
 }
 
 function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | null; open: boolean; onClose: () => void }) {
-  const { updateEmployee, company } = useStore();
+  const { updateEmployee, company, roles } = useStore();
   const [form, setForm] = useState<Partial<Employee>>({});
 
   useEffect(() => {
@@ -1065,12 +1245,44 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                 <Input value={form.designation || ""} onChange={(e) => setForm({ ...form, designation: e.target.value })} />
               </div>
               <div>
+                <Label>Assigned Role</Label>
+                <Select
+                  value={form.roleId || "__none"}
+                  onValueChange={(v) => {
+                    const selected = (roles || []).find((r: PredefinedRole) => r.id === v);
+                    setForm({
+                      ...form,
+                      roleId: v === "__none" ? undefined : v,
+                      roleName: selected ? selected.name : undefined,
+                    });
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select Predefined Role" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Standard / Default —</SelectItem>
+                    {(roles || []).map((r: PredefinedRole) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name} {r.isSystemDefault ? "(Default)" : "(Custom)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label>Date of Joining</Label>
                 <Input type="date" value={form.doj || ""} onChange={(e) => setForm({ ...form, doj: e.target.value })} />
               </div>
               <div>
-                <Label>Basic Salary (₹)</Label>
-                <Input type="number" value={form.basic ?? 25000} onChange={(e) => setForm({ ...form, basic: +e.target.value })} />
+                <Label>Fixed Salary (Monthly ₹)</Label>
+                <Input type="number" value={form.fixedSalary ?? form.basic ?? 25000} onChange={(e) => setForm({ ...form, fixedSalary: +e.target.value, basic: +e.target.value })} />
+              </div>
+              <div>
+                <Label>Benefits Eligible Date</Label>
+                <Input type="date" value={form.eligibleDate || form.doj || ""} onChange={(e) => setForm({ ...form, eligibleDate: e.target.value })} />
+              </div>
+              <div>
+                <Label>Probation End Date</Label>
+                <Input type="date" value={form.probationDate || ""} onChange={(e) => setForm({ ...form, probationDate: e.target.value })} />
               </div>
               <div>
                 <Label>Branch</Label>
@@ -1095,12 +1307,279 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                 </Select>
               </div>
             </div>
+
+            {/* Statutory Deductions & Tax */}
+            <div className="pt-2">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Statutory Deductions & Tax Eligibility
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                  <Checkbox
+                    checked={form.pfEligible ?? true}
+                    onCheckedChange={(c) => setForm({ ...form, pfEligible: !!c })}
+                  />
+                  <span>PF (Provident Fund)</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                  <Checkbox
+                    checked={form.esiEligible ?? false}
+                    onCheckedChange={(c) => setForm({ ...form, esiEligible: !!c })}
+                  />
+                  <span>ESI (Medical)</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                  <Checkbox
+                    checked={form.ptEligible ?? true}
+                    onCheckedChange={(c) => setForm({ ...form, ptEligible: !!c })}
+                  />
+                  <span>Prof. Tax (PT)</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                  <Checkbox
+                    checked={form.tdsEligible ?? false}
+                    onCheckedChange={(c) => setForm({ ...form, tdsEligible: !!c })}
+                  />
+                  <span>TDS (Tax)</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Leave Apply Eligibility */}
+            <div className="rounded-xl border border-border bg-card p-3.5 flex items-center justify-between gap-4 mt-2">
+              <div>
+                <div className="text-xs font-semibold flex items-center gap-2">
+                  <span>Leave Apply Eligible</span>
+                  <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary">
+                    Employee App Control
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  When unchecked, leave & permission applications are locked in the employee mobile app.
+                </p>
+              </div>
+              <Checkbox
+                checked={form.leaveApplyEligible ?? true}
+                onCheckedChange={(c) => setForm({ ...form, leaveApplyEligible: !!c })}
+                className="h-5 w-5"
+              />
+            </div>
           </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSave} className="bg-gradient-brand text-white">Save Changes</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { addEmployee, company, employees, roles } = useStore();
+  const [file, setFile] = useState<File | null>(null);
+  const [parsed, setParsed] = useState<{
+    employees: Omit<Employee, "id">[];
+    duplicates: string[];
+    errors: string[];
+    totalParsed: number;
+  } | null>(null);
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = (event.target?.result as string) || "";
+      const result = parseEmployeeCsvText(text, employees, roles);
+      setParsed(result);
+    };
+    reader.readAsText(f);
+  };
+
+  const handleImport = async () => {
+    if (!parsed || parsed.employees.length === 0) {
+      return toast.error("No valid employees found in this file.");
+    }
+    setLoading(true);
+    let count = 0;
+    const toImport = parsed.employees.filter((emp) => {
+      const isDup = employees.some((e) => e.empCode?.toLowerCase() === emp.empCode?.toLowerCase());
+      if (isDup && skipDuplicates) return false;
+      return true;
+    });
+
+    for (const emp of toImport) {
+      addEmployee(emp);
+      count++;
+    }
+
+    setLoading(false);
+    aiNotify({
+      title: "✨ Bulk employee import completed",
+      body: `${count} employees registered without photos. Photos can be added anytime in Edit Employee.`,
+      kind: "success",
+    });
+    toast.success(`✨ Successfully imported ${count} employees in bulk!`);
+    onClose();
+    setFile(null);
+    setParsed(null);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-6 overflow-hidden">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display text-xl">
+            <FileSpreadsheet className="h-5 w-5 text-primary" /> Bulk Upload Employee List (Excel / CSV)
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 flex-1 overflow-y-auto pr-1 py-2">
+          {/* Download template banner */}
+          <div className="rounded-xl border border-border bg-muted/40 p-3.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                <FileDown className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold">Prefilled Template with Column Headers</div>
+                <div className="text-[11px] text-muted-foreground">Download the formatted template, fill in your employee records, and upload below.</div>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-8 border-primary/30 text-primary hover:bg-primary/5"
+              onClick={() => {
+                downloadEmployeeTemplate(company.name);
+                toast.success("Excel template downloaded.");
+              }}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
+            </Button>
+          </div>
+
+          {/* Drag and drop file area */}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-border hover:border-primary/60 hover:bg-primary/5 transition-all rounded-2xl p-6 text-center cursor-pointer flex flex-col items-center justify-center gap-2"
+          >
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".csv,.xlsx,.xls,.tsv,.txt"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+              <Upload className="h-6 w-6" />
+            </div>
+            <div className="font-semibold text-sm">
+              {file ? file.name : "Click to select or drag & drop Excel / CSV file"}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Supports .csv, .xlsx, .xls, .tsv with standard headers (Employee Code, Full Name, Fixed Salary, Role, etc.)
+            </p>
+          </div>
+
+          {/* Validation & Preview */}
+          {parsed && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                    <CheckCircle2 className="mr-1 h-3 w-3" /> {parsed.employees.length} valid rows
+                  </Badge>
+                  {parsed.duplicates.length > 0 && (
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                      <AlertTriangle className="mr-1 h-3 w-3" /> {parsed.duplicates.length} duplicate codes
+                    </Badge>
+                  )}
+                  {parsed.errors.length > 0 && (
+                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
+                      {parsed.errors.length} errors
+                    </Badge>
+                  )}
+                </div>
+
+                {parsed.duplicates.length > 0 && (
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                    <Checkbox checked={skipDuplicates} onCheckedChange={(c) => setSkipDuplicates(!!c)} />
+                    <span>Skip duplicate employee codes</span>
+                  </label>
+                )}
+              </div>
+
+              {/* Preview table */}
+              <div className="rounded-xl border border-border overflow-hidden max-h-56 overflow-y-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted text-muted-foreground sticky top-0">
+                    <tr>
+                      <th className="p-2 pl-3">Code</th>
+                      <th className="p-2">Name</th>
+                      <th className="p-2">Department</th>
+                      <th className="p-2">Designation</th>
+                      <th className="p-2">Fixed Salary</th>
+                      <th className="p-2">Role</th>
+                      <th className="p-2">Leave Eligible</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {parsed.employees.slice(0, 50).map((emp, i) => {
+                      const isDup = parsed.duplicates.includes(emp.empCode);
+                      return (
+                        <tr key={i} className={`hover:bg-muted/40 ${isDup ? "bg-amber-500/5" : ""}`}>
+                          <td className="p-2 pl-3 font-mono font-medium">{emp.empCode}</td>
+                          <td className="p-2 font-medium">{emp.name}</td>
+                          <td className="p-2 text-muted-foreground">{emp.department}</td>
+                          <td className="p-2 text-muted-foreground">{emp.designation}</td>
+                          <td className="p-2 font-mono">₹{(emp.fixedSalary ?? 0).toLocaleString()}</td>
+                          <td className="p-2">
+                            <Badge variant="secondary" className="text-[10px]">
+                              {emp.roleName || "Standard"}
+                            </Badge>
+                          </td>
+                          <td className="p-2">
+                            {emp.leaveApplyEligible ? (
+                              <span className="text-emerald-600 font-semibold">Yes</span>
+                            ) : (
+                              <span className="text-muted-foreground">Locked</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="text-[11px] text-muted-foreground italic flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Employees will be registered without photos. You can easily click &quot;Edit&quot; on any employee later to upload or capture their photo.
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-3 border-t border-border mt-auto">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={handleImport}
+            disabled={!parsed || parsed.employees.length === 0 || loading}
+            className="bg-gradient-brand text-white shadow-glow"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            {loading ? "Importing..." : `Import ${parsed?.employees?.length ?? 0} Employees`}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

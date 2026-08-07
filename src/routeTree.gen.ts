@@ -18,6 +18,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminSubscriptionRouteImport } from './routes/admin.subscription'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
 import { Route as AdminSalaryRevisionRouteImport } from './routes/admin.salary-revision'
+import { Route as AdminRolesRouteImport } from './routes/admin.roles'
 import { Route as AdminReportsRouteImport } from './routes/admin.reports'
 import { Route as AdminRenewalsRouteImport } from './routes/admin.renewals'
 import { Route as AdminPayrollRouteImport } from './routes/admin.payroll'
@@ -77,6 +78,11 @@ const AdminSettingsRoute = AdminSettingsRouteImport.update({
 const AdminSalaryRevisionRoute = AdminSalaryRevisionRouteImport.update({
   id: '/salary-revision',
   path: '/salary-revision',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminRolesRoute = AdminRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminReportsRoute = AdminReportsRouteImport.update({
@@ -176,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/admin/payroll': typeof AdminPayrollRoute
   '/admin/renewals': typeof AdminRenewalsRoute
   '/admin/reports': typeof AdminReportsRoute
+  '/admin/roles': typeof AdminRolesRoute
   '/admin/salary-revision': typeof AdminSalaryRevisionRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/subscription': typeof AdminSubscriptionRoute
@@ -201,6 +208,7 @@ export interface FileRoutesByTo {
   '/admin/payroll': typeof AdminPayrollRoute
   '/admin/renewals': typeof AdminRenewalsRoute
   '/admin/reports': typeof AdminReportsRoute
+  '/admin/roles': typeof AdminRolesRoute
   '/admin/salary-revision': typeof AdminSalaryRevisionRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/subscription': typeof AdminSubscriptionRoute
@@ -228,6 +236,7 @@ export interface FileRoutesById {
   '/admin/payroll': typeof AdminPayrollRoute
   '/admin/renewals': typeof AdminRenewalsRoute
   '/admin/reports': typeof AdminReportsRoute
+  '/admin/roles': typeof AdminRolesRoute
   '/admin/salary-revision': typeof AdminSalaryRevisionRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/subscription': typeof AdminSubscriptionRoute
@@ -256,6 +265,7 @@ export interface FileRouteTypes {
     | '/admin/payroll'
     | '/admin/renewals'
     | '/admin/reports'
+    | '/admin/roles'
     | '/admin/salary-revision'
     | '/admin/settings'
     | '/admin/subscription'
@@ -281,6 +291,7 @@ export interface FileRouteTypes {
     | '/admin/payroll'
     | '/admin/renewals'
     | '/admin/reports'
+    | '/admin/roles'
     | '/admin/salary-revision'
     | '/admin/settings'
     | '/admin/subscription'
@@ -307,6 +318,7 @@ export interface FileRouteTypes {
     | '/admin/payroll'
     | '/admin/renewals'
     | '/admin/reports'
+    | '/admin/roles'
     | '/admin/salary-revision'
     | '/admin/settings'
     | '/admin/subscription'
@@ -384,6 +396,13 @@ declare module '@tanstack/react-router' {
       path: '/salary-revision'
       fullPath: '/admin/salary-revision'
       preLoaderRoute: typeof AdminSalaryRevisionRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/roles': {
+      id: '/admin/roles'
+      path: '/roles'
+      fullPath: '/admin/roles'
+      preLoaderRoute: typeof AdminRolesRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/reports': {
@@ -510,6 +529,7 @@ interface AdminRouteChildren {
   AdminPayrollRoute: typeof AdminPayrollRoute
   AdminRenewalsRoute: typeof AdminRenewalsRoute
   AdminReportsRoute: typeof AdminReportsRoute
+  AdminRolesRoute: typeof AdminRolesRoute
   AdminSalaryRevisionRoute: typeof AdminSalaryRevisionRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminSubscriptionRoute: typeof AdminSubscriptionRoute
@@ -532,6 +552,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminPayrollRoute: AdminPayrollRoute,
   AdminRenewalsRoute: AdminRenewalsRoute,
   AdminReportsRoute: AdminReportsRoute,
+  AdminRolesRoute: AdminRolesRoute,
   AdminSalaryRevisionRoute: AdminSalaryRevisionRoute,
   AdminSettingsRoute: AdminSettingsRoute,
   AdminSubscriptionRoute: AdminSubscriptionRoute,
