@@ -5,28 +5,32 @@ import { Button } from "@/components/ui/button";
 import { Megaphone, Pin, AlertTriangle, Info, CheckCircle2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export function noticesFor(all: Notice[], viewer: { role: "admin" | "employee"; emp?: Employee }): Notice[] {
+export function noticesFor(all: Notice[] | undefined, viewer: { role: "admin" | "employee"; emp?: Employee }): Notice[] {
   const now = Date.now();
-  return all
+  return (all || [])
     .filter((n) => !n.expiresAt || new Date(n.expiresAt).getTime() > now)
     .filter((n) => {
       if (viewer.role === "admin") return true;
       const emp = viewer.emp;
-      if (!emp) return n.audience.scope === "company";
-      const a = n.audience;
+      const a = n.audience || { scope: "company", values: [] };
+      const vals = Array.isArray(a.values) ? a.values : [];
+      if (!emp) return a.scope === "company";
       switch (a.scope) {
         case "company": return true;
-        case "branch": return !!emp.branchId && a.values.includes(emp.branchId);
-        case "department": return a.values.includes(emp.department);
-        case "role": return a.values.some((v) => v.toLowerCase() === emp.designation.toLowerCase());
-        case "employees": return a.values.includes(emp.id);
+        case "branch": return !!emp.branchId && vals.includes(emp.branchId);
+        case "department": return !!emp.department && vals.includes(emp.department);
+        case "role": return !!emp.designation && vals.some((v) => v?.toLowerCase() === emp.designation?.toLowerCase());
+        case "employees": return !!emp.id && vals.includes(emp.id);
+        default: return true;
       }
     })
     .sort((a, b) => {
       if (!!b.pinned !== !!a.pinned) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
       const rank = { urgent: 3, important: 2, info: 1 } as const;
-      if (rank[b.priority] !== rank[a.priority]) return rank[b.priority] - rank[a.priority];
-      return b.createdAt.localeCompare(a.createdAt);
+      const rankB = (b.priority && rank[b.priority]) || 1;
+      const rankA = (a.priority && rank[a.priority]) || 1;
+      if (rankB !== rankA) return rankB - rankA;
+      return (b.createdAt || "").localeCompare(a.createdAt || "");
     });
 }
 
@@ -52,15 +56,17 @@ export function NoticeBoard({
 }) {
   const { notices, markNoticeRead, company } = useStore();
   const list = useMemo(() => noticesFor(notices, viewer), [notices, viewer]);
-  const unread = list.filter((n) => !n.readBy.includes(userKey)).length;
+  const unread = list.filter((n) => !(n.readBy || []).includes(userKey)).length;
 
   const audienceLabel = (n: Notice) => {
-    if (n.audience.scope === "company") return "Entire company";
-    if (n.audience.scope === "branch")
-      return "Branch: " + n.audience.values.map((id) => company.branches?.find((b) => b.id === id)?.name || id).join(", ");
-    if (n.audience.scope === "department") return "Dept: " + n.audience.values.join(", ");
-    if (n.audience.scope === "role") return "Role: " + n.audience.values.join(", ");
-    return `${n.audience.values.length} employee(s)`;
+    const aud = n.audience || { scope: "company", values: [] };
+    const vals = Array.isArray(aud.values) ? aud.values : [];
+    if (aud.scope === "company") return "Entire company";
+    if (aud.scope === "branch")
+      return "Branch: " + vals.map((id) => company.branches?.find((b) => b.id === id)?.name || id).join(", ");
+    if (aud.scope === "department") return "Dept: " + vals.join(", ");
+    if (aud.scope === "role") return "Role: " + vals.join(", ");
+    return `${vals.length} employee(s)`;
   };
 
   return (
@@ -87,8 +93,9 @@ export function NoticeBoard({
         <div className={`space-y-2 ${compact ? "max-h-64 overflow-y-auto pr-1" : ""}`}>
           <AnimatePresence initial={false}>
             {list.map((n, idx) => {
-              const Icon = priIcon[n.priority];
-              const isRead = n.readBy.includes(userKey);
+              const priority = n.priority || "info";
+              const Icon = priIcon[priority] || Info;
+              const isRead = (n.readBy || []).includes(userKey);
               return (
                 <motion.div
                   key={n.id}
@@ -98,14 +105,14 @@ export function NoticeBoard({
                   exit={{ opacity: 0, x: 12, scale: 0.98 }}
                   transition={{ type: "spring", stiffness: 300, damping: 24, delay: Math.min(idx * 0.04, 0.3) }}
                   whileHover={{ x: 2 }}
-                  className={`relative overflow-hidden rounded-xl border p-3 ${priTone[n.priority]} ${isRead ? "opacity-70" : ""} ${!isRead && n.priority === "urgent" ? "animate-swift-glow" : ""}`}
+                  className={`relative overflow-hidden rounded-xl border p-3 ${priTone[priority] || priTone.info} ${isRead ? "opacity-70" : ""} ${!isRead && priority === "urgent" ? "animate-swift-glow" : ""}`}
                 >
                   {!isRead && (
                     <span className="absolute left-0 top-0 bottom-0 w-1 bg-current opacity-70" />
                   )}
                   <div className="flex items-start gap-2">
                     <motion.div
-                      animate={n.priority === "urgent" && !isRead ? { rotate: [0, 12, -10, 8, -4, 0] } : {}}
+                      animate={priority === "urgent" && !isRead ? { rotate: [0, 12, -10, 8, -4, 0] } : {}}
                       transition={{ duration: 2.2, repeat: Infinity }}
                     >
                       <Icon className="h-4 w-4 mt-0.5 shrink-0" />
@@ -114,7 +121,7 @@ export function NoticeBoard({
                       <div className="flex flex-wrap items-center gap-1.5">
                         {n.pinned && <Pin className="h-3 w-3" />}
                         <span className="font-semibold text-sm">{n.title}</span>
-                        <Badge variant="outline" className="text-[10px] uppercase py-0 px-1.5">{n.priority}</Badge>
+                        <Badge variant="outline" className="text-[10px] uppercase py-0 px-1.5">{priority}</Badge>
                         <span className="text-[10px] text-muted-foreground">· {audienceLabel(n)}</span>
                       </div>
                       <p className="text-xs mt-1 whitespace-pre-wrap text-foreground/80">{n.body}</p>
@@ -141,7 +148,7 @@ export function NoticeBoard({
 export function NoticeBell({ viewer, userKey, onOpen }: { viewer: { role: "admin" | "employee"; emp?: Employee }; userKey: string; onOpen?: () => void }) {
   const { notices } = useStore();
   const list = useMemo(() => noticesFor(notices, viewer), [notices, viewer]);
-  const unread = list.filter((n) => !n.readBy.includes(userKey)).length;
+  const unread = list.filter((n) => !(n.readBy || []).includes(userKey)).length;
   if (unread === 0) return null;
   return (
     <Button variant="ghost" size="sm" onClick={onOpen} className="relative">

@@ -1499,9 +1499,11 @@ export const useStore = create<State>()(
         }),
       markNoticeRead: (id, userKey) =>
         set((s) => {
-          const nextNotices = s.notices.map((n) =>
-            n.id === id && !n.readBy.includes(userKey) ? { ...n, readBy: [...n.readBy, userKey] } : n
-          );
+          const nextNotices = s.notices.map((n) => {
+            if (n.id !== id) return n;
+            const readBy = Array.isArray(n.readBy) ? n.readBy : [];
+            return !readBy.includes(userKey) ? { ...n, readBy: [...readBy, userKey] } : n;
+          });
           const tenantId = useAuth.getState().activeTenantId;
           const item = nextNotices.find((n) => n.id === id);
           if (tenantId && item && !tenantId.startsWith("demo-tenant-")) {
@@ -1608,7 +1610,11 @@ export const useStore = create<State>()(
               assetAssignments: data.assignments || [],
               docLibrary: data.docLibrary || [],
               journeys: data.journeys || [],
-              notices: data.notices || [],
+              notices: (data.notices || []).map((n: any) => ({
+                ...n,
+                readBy: Array.isArray(n.readBy) ? n.readBy : [],
+                audience: n.audience ? { ...n.audience, values: Array.isArray(n.audience.values) ? n.audience.values : [] } : { scope: "company", values: [] },
+              })),
               roles: data.roles && data.roles.length ? data.roles : get().roles,
               docRequests: data.docRequests || [],
               holidays: data.holidays && data.holidays.length ? data.holidays : (get().holidays?.length ? get().holidays : defaultCompanyHolidaysList),

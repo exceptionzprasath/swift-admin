@@ -187,7 +187,7 @@ function NoticeAdminRow({ n, onDelete, onPin }: { n: Notice; onDelete: () => voi
           </div>
           <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{n.body}</p>
           <div className="text-[10px] text-muted-foreground mt-1 flex items-center gap-2">
-            <Eye className="h-3 w-3" /> {n.readBy.length} read · {new Date(n.createdAt).toLocaleDateString()}
+            <Eye className="h-3 w-3" /> {(n.readBy || []).length} read · {new Date(n.createdAt).toLocaleDateString()}
           </div>
         </div>
         <div className="flex gap-1">
