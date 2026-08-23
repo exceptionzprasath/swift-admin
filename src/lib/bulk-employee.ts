@@ -191,6 +191,18 @@ export function parseEmployeeCsvText(
   errors: string[];
   totalParsed: number;
 } {
+  if (text.startsWith("PK") || text.includes("\u0000") || text.includes("\ufffd")) {
+    return {
+      employees: [],
+      duplicates: [],
+      errors: [
+        "Binary Excel (.xlsx / .xls) file detected.",
+        "Please open your file in Excel and click 'File > Save As' -> 'CSV (Comma delimited) (*.csv)', then upload the .csv file.",
+      ],
+      totalParsed: 0,
+    };
+  }
+
   const lines = text
     .split(/\r\n|\n|\r/)
     .map((l) => l.trim())
@@ -227,13 +239,13 @@ export function parseEmployeeCsvText(
       return "";
     };
 
-    const empCode = getVal(["employeecode", "empcode", "code"]) || `EMP-${1000 + i}`;
-    const name = getVal(["fullname", "name", "employeename"]);
-    const email = getVal(["workemail", "email", "mail"]) || `${empCode.toLowerCase()}@company.com`;
+    const empCode = getVal(["employeecode", "empcode", "code", "empid", "id"]) || `EMP-${1000 + i}`;
+    const name = getVal(["fullname", "name", "employeename", "empname", "staffname", "firstname", "firstlast", "employee", "staff"]);
+    const email = getVal(["workemail", "email", "mail", "officialemail"]) || `${empCode.toLowerCase().replace(/[^a-z0-9]/g, "")}@company.com`;
     const password = getVal(["password", "pass"]) || "Swift@2026";
-    const phone = getVal(["phone", "mobile", "contact"]) || "9876543210";
-    const department = getVal(["department", "dept"]) || "Engineering";
-    const designation = getVal(["designation", "role", "title", "position"]) || "Software Engineer";
+    const phone = getVal(["phone", "mobile", "contact", "phonenumber", "contactnumber"]) || "9876543210";
+    const department = getVal(["department", "dept", "division"]) || "Engineering";
+    const designation = getVal(["designation", "role", "title", "position", "jobtitle"]) || "Software Engineer";
     const salaryRaw = getVal(["fixedsalary", "salary", "basic", "basicsalary"]);
     const fixedSalary = parseFloat(salaryRaw) || 25000;
     const doj = getVal(["dateofjoining", "doj", "joiningdate"]) || new Date().toISOString().slice(0, 10);
