@@ -15,7 +15,9 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminVaultRouteImport } from './routes/admin.vault'
 import { Route as AdminSubscriptionRouteImport } from './routes/admin.subscription'
+import { Route as AdminShiftRosterRouteImport } from './routes/admin.shift-roster'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
 import { Route as AdminSalaryRevisionRouteImport } from './routes/admin.salary-revision'
 import { Route as AdminRolesRouteImport } from './routes/admin.roles'
@@ -25,6 +27,7 @@ import { Route as AdminPayrollRouteImport } from './routes/admin.payroll'
 import { Route as AdminOrgRouteImport } from './routes/admin.org'
 import { Route as AdminNoticesRouteImport } from './routes/admin.notices'
 import { Route as AdminLifecycleRouteImport } from './routes/admin.lifecycle'
+import { Route as AdminLeaveCalendarRouteImport } from './routes/admin.leave-calendar'
 import { Route as AdminEmployeesRouteImport } from './routes/admin.employees'
 import { Route as AdminDocumentsRouteImport } from './routes/admin.documents'
 import { Route as AdminComplianceDocsRouteImport } from './routes/admin.compliance-docs'
@@ -65,9 +68,19 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminVaultRoute = AdminVaultRouteImport.update({
+  id: '/vault',
+  path: '/vault',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminSubscriptionRoute = AdminSubscriptionRouteImport.update({
   id: '/subscription',
   path: '/subscription',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminShiftRosterRoute = AdminShiftRosterRouteImport.update({
+  id: '/shift-roster',
+  path: '/shift-roster',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminSettingsRoute = AdminSettingsRouteImport.update({
@@ -113,6 +126,11 @@ const AdminNoticesRoute = AdminNoticesRouteImport.update({
 const AdminLifecycleRoute = AdminLifecycleRouteImport.update({
   id: '/lifecycle',
   path: '/lifecycle',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminLeaveCalendarRoute = AdminLeaveCalendarRouteImport.update({
+  id: '/leave-calendar',
+  path: '/leave-calendar',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminEmployeesRoute = AdminEmployeesRouteImport.update({
@@ -176,6 +194,7 @@ export interface FileRoutesByFullPath {
   '/admin/compliance-docs': typeof AdminComplianceDocsRoute
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
+  '/admin/leave-calendar': typeof AdminLeaveCalendarRoute
   '/admin/lifecycle': typeof AdminLifecycleRoute
   '/admin/notices': typeof AdminNoticesRoute
   '/admin/org': typeof AdminOrgRoute
@@ -185,7 +204,9 @@ export interface FileRoutesByFullPath {
   '/admin/roles': typeof AdminRolesRoute
   '/admin/salary-revision': typeof AdminSalaryRevisionRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/shift-roster': typeof AdminShiftRosterRoute
   '/admin/subscription': typeof AdminSubscriptionRoute
+  '/admin/vault': typeof AdminVaultRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
@@ -202,6 +223,7 @@ export interface FileRoutesByTo {
   '/admin/compliance-docs': typeof AdminComplianceDocsRoute
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
+  '/admin/leave-calendar': typeof AdminLeaveCalendarRoute
   '/admin/lifecycle': typeof AdminLifecycleRoute
   '/admin/notices': typeof AdminNoticesRoute
   '/admin/org': typeof AdminOrgRoute
@@ -211,7 +233,9 @@ export interface FileRoutesByTo {
   '/admin/roles': typeof AdminRolesRoute
   '/admin/salary-revision': typeof AdminSalaryRevisionRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/shift-roster': typeof AdminShiftRosterRoute
   '/admin/subscription': typeof AdminSubscriptionRoute
+  '/admin/vault': typeof AdminVaultRoute
   '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
@@ -230,6 +254,7 @@ export interface FileRoutesById {
   '/admin/compliance-docs': typeof AdminComplianceDocsRoute
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
+  '/admin/leave-calendar': typeof AdminLeaveCalendarRoute
   '/admin/lifecycle': typeof AdminLifecycleRoute
   '/admin/notices': typeof AdminNoticesRoute
   '/admin/org': typeof AdminOrgRoute
@@ -239,7 +264,9 @@ export interface FileRoutesById {
   '/admin/roles': typeof AdminRolesRoute
   '/admin/salary-revision': typeof AdminSalaryRevisionRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/shift-roster': typeof AdminShiftRosterRoute
   '/admin/subscription': typeof AdminSubscriptionRoute
+  '/admin/vault': typeof AdminVaultRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -259,6 +286,7 @@ export interface FileRouteTypes {
     | '/admin/compliance-docs'
     | '/admin/documents'
     | '/admin/employees'
+    | '/admin/leave-calendar'
     | '/admin/lifecycle'
     | '/admin/notices'
     | '/admin/org'
@@ -268,7 +296,9 @@ export interface FileRouteTypes {
     | '/admin/roles'
     | '/admin/salary-revision'
     | '/admin/settings'
+    | '/admin/shift-roster'
     | '/admin/subscription'
+    | '/admin/vault'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -285,6 +315,7 @@ export interface FileRouteTypes {
     | '/admin/compliance-docs'
     | '/admin/documents'
     | '/admin/employees'
+    | '/admin/leave-calendar'
     | '/admin/lifecycle'
     | '/admin/notices'
     | '/admin/org'
@@ -294,7 +325,9 @@ export interface FileRouteTypes {
     | '/admin/roles'
     | '/admin/salary-revision'
     | '/admin/settings'
+    | '/admin/shift-roster'
     | '/admin/subscription'
+    | '/admin/vault'
     | '/admin'
   id:
     | '__root__'
@@ -312,6 +345,7 @@ export interface FileRouteTypes {
     | '/admin/compliance-docs'
     | '/admin/documents'
     | '/admin/employees'
+    | '/admin/leave-calendar'
     | '/admin/lifecycle'
     | '/admin/notices'
     | '/admin/org'
@@ -321,7 +355,9 @@ export interface FileRouteTypes {
     | '/admin/roles'
     | '/admin/salary-revision'
     | '/admin/settings'
+    | '/admin/shift-roster'
     | '/admin/subscription'
+    | '/admin/vault'
     | '/admin/'
   fileRoutesById: FileRoutesById
 }
@@ -377,11 +413,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/vault': {
+      id: '/admin/vault'
+      path: '/vault'
+      fullPath: '/admin/vault'
+      preLoaderRoute: typeof AdminVaultRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/subscription': {
       id: '/admin/subscription'
       path: '/subscription'
       fullPath: '/admin/subscription'
       preLoaderRoute: typeof AdminSubscriptionRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/shift-roster': {
+      id: '/admin/shift-roster'
+      path: '/shift-roster'
+      fullPath: '/admin/shift-roster'
+      preLoaderRoute: typeof AdminShiftRosterRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/settings': {
@@ -445,6 +495,13 @@ declare module '@tanstack/react-router' {
       path: '/lifecycle'
       fullPath: '/admin/lifecycle'
       preLoaderRoute: typeof AdminLifecycleRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/leave-calendar': {
+      id: '/admin/leave-calendar'
+      path: '/leave-calendar'
+      fullPath: '/admin/leave-calendar'
+      preLoaderRoute: typeof AdminLeaveCalendarRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/employees': {
@@ -523,6 +580,7 @@ interface AdminRouteChildren {
   AdminComplianceDocsRoute: typeof AdminComplianceDocsRoute
   AdminDocumentsRoute: typeof AdminDocumentsRoute
   AdminEmployeesRoute: typeof AdminEmployeesRoute
+  AdminLeaveCalendarRoute: typeof AdminLeaveCalendarRoute
   AdminLifecycleRoute: typeof AdminLifecycleRoute
   AdminNoticesRoute: typeof AdminNoticesRoute
   AdminOrgRoute: typeof AdminOrgRoute
@@ -532,7 +590,9 @@ interface AdminRouteChildren {
   AdminRolesRoute: typeof AdminRolesRoute
   AdminSalaryRevisionRoute: typeof AdminSalaryRevisionRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminShiftRosterRoute: typeof AdminShiftRosterRoute
   AdminSubscriptionRoute: typeof AdminSubscriptionRoute
+  AdminVaultRoute: typeof AdminVaultRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -546,6 +606,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminComplianceDocsRoute: AdminComplianceDocsRoute,
   AdminDocumentsRoute: AdminDocumentsRoute,
   AdminEmployeesRoute: AdminEmployeesRoute,
+  AdminLeaveCalendarRoute: AdminLeaveCalendarRoute,
   AdminLifecycleRoute: AdminLifecycleRoute,
   AdminNoticesRoute: AdminNoticesRoute,
   AdminOrgRoute: AdminOrgRoute,
@@ -555,7 +616,9 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminRolesRoute: AdminRolesRoute,
   AdminSalaryRevisionRoute: AdminSalaryRevisionRoute,
   AdminSettingsRoute: AdminSettingsRoute,
+  AdminShiftRosterRoute: AdminShiftRosterRoute,
   AdminSubscriptionRoute: AdminSubscriptionRoute,
+  AdminVaultRoute: AdminVaultRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

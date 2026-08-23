@@ -154,120 +154,307 @@ export function computePayroll(opts: {
 } & PayrollInputs) {
   const { company: c, employee: e, ...inputs } = opts;
   const wd = c.workingDaysPerMonth || 26;
-  const proratedBasic = (e.basic * inputs.daysWorked) / wd;
-  const hourly = e.basic / (wd * (c.workingHoursPerDay || 8));
+  const paidDays = Math.max(0, inputs.daysWorked !== undefined ? inputs.daysWorked : wd);
+  const prorateFactor = wd > 0 ? paidDays / wd : 1;
 
-  // Resolve applicable salary structure (per branch/dept/designation/category)
-  const structure = resolveSalaryStructure(c, e);
-  const effectiveEarnings = structure?.earnings ?? c.earnings ?? [];
-  const effectiveDeductions = structure?.deductions ?? c.deductions ?? [];
+  // The employee's monthly fixed gross salary (e.g. ₹25,000 or ₹30,000)
+  const fixedGross = e.basic || 30000;
+  const hourly = fixedGross / (wd * (c.workingHoursPerDay || 8));
+
+  // 1. Resolve Salary Structure Components according to Company Master & Toggles
+  const basicPct = c.basicPct ?? 20;
+  const monthlyBasic = Math.round(fixedGross * (basicPct / 100));
+  const earnedBasic = Math.round(monthlyBasic * prorateFactor);
 
   const earningsList: { id: string; name: string; amount: number; c: EarningComponent }[] = [];
+
+  // 1. Basic (Always active)
   earningsList.push({
     id: "basic",
-    name: "Basic",
-    amount: proratedBasic,
-    c: { id: "basic", name: "Basic", formula: "pctOfBasic", value: 100, prorate: true, taxable: true, includeInPf: true, includeInEsi: true, includeInGratuity: true },
+    name: "Basic Pay",
+    amount: earnedBasic,
+    c: { id: "basic", name: "Basic Pay", formula: "pctOfBasic", value: 100, prorate: true, taxable: true, includeInPf: true, includeInEsi: true, includeInGratuity: true },
   });
 
-  for (const comp of effectiveEarnings) {
-    const amt = evalEarning(comp, { company: c, employee: e, proratedBasic, inputs, hourly });
-    earningsList.push({ id: comp.id, name: comp.name, amount: amt, c: comp });
-  }
-
-  // Auto-append inputs that don't already exist as components — so Night/Variable/Other never get silently dropped
-  const ensure = (id: string, name: string, amount: number, opts?: Partial<EarningComponent>) => {
-    if (amount <= 0) return;
-    if (earningsList.some((x) => x.id === id)) return;
+  // 2. DA (Dearness Allowance - if enabled)
+  let earnedDA = 0;
+  if (c.daEnabled !== false) {
+    const daPct = c.daPct ?? 13.33;
+    const monthlyDA = Math.round(fixedGross * (daPct / 100));
+    earnedDA = Math.round(monthlyDA * prorateFactor);
     earningsList.push({
-      id, name, amount,
-      c: { id, name, formula: "input", value: 0, prorate: false, taxable: opts?.taxable ?? true, includeInPf: opts?.includeInPf ?? false, includeInEsi: opts?.includeInEsi ?? true, includeInGratuity: false, inputKey: id },
-    });
-  };
-  ensure("variablePay", "Variable Pay", inputs.variablePay || 0);
-  ensure("otherEarnings", "Other Earnings", inputs.otherEarnings || 0);
-  ensure("reimbursement", "Reimbursements", inputs.reimbursement || 0, { taxable: false, includeInEsi: false });
-  // Night allowance auto-fallback if no explicit component: 15% of hourly per night hour
-  if ((inputs.nightHours || 0) > 0 && !earningsList.some((x) => /night/i.test(x.name))) {
-    const nightAmt = hourly * (inputs.nightHours || 0) * 1.15;
-    earningsList.push({
-      id: "night", name: "Night Allowance", amount: nightAmt,
-      c: { id: "night", name: "Night Allowance", formula: "perNightHour", value: 1.15, prorate: false, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+      id: "da",
+      name: "Dearness Allowance (DA)",
+      amount: earnedDA,
+      c: { id: "da", name: "Dearness Allowance (DA)", formula: "pctOfBasic", value: daPct, prorate: true, taxable: true, includeInPf: true, includeInEsi: true, includeInGratuity: true },
     });
   }
 
-  const gross = earningsList.reduce((a, b) => a + b.amount, 0);
+  // 3. HRA (House Rent Allowance - if enabled)
+  let earnedHRA = 0;
+  if (c.hraEnabled !== false) {
+    const hraPct = c.hraPct ?? 16.67;
+    const monthlyHRA = Math.round(fixedGross * (hraPct / 100));
+    earnedHRA = Math.round(monthlyHRA * prorateFactor);
+    earningsList.push({
+      id: "hra",
+      name: "House Rent Allowance (HRA)",
+      amount: earnedHRA,
+      c: { id: "hra", name: "House Rent Allowance (HRA)", formula: "pctOfBasic", value: hraPct, prorate: true, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
 
-  // PF (EPF Act 1952) — EPF + EPS + EDLI + Admin split
+  // 4. OA (Other Allowance - if enabled)
+  let earnedOA = 0;
+  if (c.oaEnabled !== false) {
+    const oaPct = c.oaPct ?? 16.67;
+    const monthlyOA = Math.round(fixedGross * (oaPct / 100));
+    earnedOA = Math.round(monthlyOA * prorateFactor);
+    earningsList.push({
+      id: "oa",
+      name: "Other Allowance (OA)",
+      amount: earnedOA,
+      c: { id: "oa", name: "Other Allowance (OA)", formula: "pctOfBasic", value: oaPct, prorate: true, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
+
+  // 5. CA (Conveyance Allowance - if enabled)
+  let earnedCA = 0;
+  if (c.caEnabled !== false) {
+    const caPct = c.caPct ?? 16.67;
+    const monthlyCA = Math.round(fixedGross * (caPct / 100));
+    earnedCA = Math.round(monthlyCA * prorateFactor);
+    earningsList.push({
+      id: "ca",
+      name: "Conveyance Allowance (CA)",
+      amount: earnedCA,
+      c: { id: "ca", name: "Conveyance Allowance (CA)", formula: "pctOfBasic", value: caPct, prorate: true, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
+
+  // 6. LTA (Leave Travel Allowance - if enabled)
+  let earnedLTA = 0;
+  if (c.ltaEnabled !== false) {
+    const ltaPct = c.ltaPct ?? 16.67;
+    const monthlyLTA = Math.round(fixedGross * (ltaPct / 100));
+    earnedLTA = Math.round(monthlyLTA * prorateFactor);
+    earningsList.push({
+      id: "lta",
+      name: "Leave Travel Allowance (LTA)",
+      amount: earnedLTA,
+      c: { id: "lta", name: "Leave Travel Allowance (LTA)", formula: "pctOfBasic", value: ltaPct, prorate: true, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
+
+  // 7. Custom Configurable Allowances
+  const customEarnings = (c.earnings || []).filter(
+    (item) => !["basic", "da", "hra", "oa", "ca", "lta", "ot", "shift", "incentive", "bonus", "arrears"].includes(item.id)
+  );
+
+  for (const comp of customEarnings) {
+    if ((comp as any).enabled === false) continue;
+    let monthlyVal = 0;
+    if (comp.formula === "pctOfBasic") {
+      monthlyVal = Math.round(monthlyBasic * (comp.value / 100));
+    } else if ((comp as any).formula === "pctOfGross") {
+      monthlyVal = Math.round(fixedGross * (comp.value / 100));
+    } else {
+      monthlyVal = comp.value || 0;
+    }
+    const earnedVal = comp.prorate ? Math.round(monthlyVal * prorateFactor) : monthlyVal;
+    if (earnedVal > 0) {
+      earningsList.push({
+        id: comp.id,
+        name: comp.name,
+        amount: earnedVal,
+        c: comp,
+      });
+    }
+  }
+
+  // 8. Overtime Pay
+  const otHours = inputs.otHours || 0;
+  const otMultiplier = c.otMultiplier || 2;
+  const otPay = otHours > 0 ? Math.round(hourly * otHours * otMultiplier) : 0;
+  if (otPay > 0) {
+    earningsList.push({
+      id: "overtime",
+      name: "Overtime Pay (OT)",
+      amount: otPay,
+      c: { id: "overtime", name: "Overtime Pay (OT)", formula: "perOtHour", value: otMultiplier, prorate: false, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
+
+  // 9. Shift / Night Allowance
+  if ((inputs.nightHours || 0) > 0) {
+    const nightAmt = Math.round(hourly * (inputs.nightHours || 0) * 1.15);
+    earningsList.push({
+      id: "night",
+      name: "Night Shift Allowance",
+      amount: nightAmt,
+      c: { id: "night", name: "Night Shift Allowance", formula: "perNightHour", value: 1.15, prorate: false, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
+
+  // 10. Performance Incentive & Variable Pay
+  if ((inputs.incentive || 0) > 0) {
+    earningsList.push({
+      id: "incentive",
+      name: "Performance Incentive",
+      amount: inputs.incentive || 0,
+      c: { id: "incentive", name: "Performance Incentive", formula: "input", value: 0, prorate: false, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
+  if ((inputs.variablePay || 0) > 0) {
+    earningsList.push({
+      id: "variablePay",
+      name: "Variable Pay / Commission",
+      amount: inputs.variablePay || 0,
+      c: { id: "variablePay", name: "Variable Pay", formula: "input", value: 0, prorate: false, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
+  if ((inputs.otherEarnings || 0) > 0) {
+    earningsList.push({
+      id: "otherEarnings",
+      name: "Other Earnings",
+      amount: inputs.otherEarnings || 0,
+      c: { id: "otherEarnings", name: "Other Earnings", formula: "input", value: 0, prorate: false, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
+
+  // 11. Attendance & Yearly Bonuses
+  if ((inputs.bonus || 0) > 0) {
+    earningsList.push({
+      id: "bonus",
+      name: "Attendance & Performance Bonus",
+      amount: inputs.bonus || 0,
+      c: { id: "bonus", name: "Bonus", formula: "input", value: 0, prorate: false, taxable: true, includeInPf: false, includeInEsi: true, includeInGratuity: false },
+    });
+  }
+
+  // TOTAL GROSS EARNINGS (Earned for this month based on days present)
+  const gross = earningsList.reduce((sum, item) => sum + item.amount, 0);
+
+  // =========================================================================
+  // STATUTORY DEDUCTIONS
+  // =========================================================================
+
+  // 1. Provident Fund (EPF Act 1952)
+  // PF Wage = Earned Basic + Earned DA
   const pfRules = c.pfRules;
-  let pfBaseRaw = earningsList.filter((x) => x.c.includeInPf).reduce((a, b) => a + b.amount, 0);
+  const pfEnabled = pfRules?.enabled !== false;
+  let employeePF = 0;
+  let employerPF = 0;
+  let eps = 0;
+  let epfEmployer = 0;
+  let edli = 0;
+  let pfAdmin = 0;
+
+  const pfBaseRaw = earnedBasic + earnedDA;
   const PF_CEILING = pfRules?.ceiling && pfRules.ceiling > 0 ? pfRules.ceiling : 15000;
-  let pfBase = pfBaseRaw;
-  if (pfRules?.ceiling && pfRules.ceiling > 0) pfBase = Math.min(pfBase, pfRules.ceiling);
-  const employeePF = pfRules?.enabled ? pfBase * ((pfRules.employeePct ?? c.employeePfPct) / 100) : 0;
-  const employerPFTotal = pfRules?.enabled ? pfBase * ((pfRules.employerPct ?? c.employerPfPct) / 100) : 0;
+  const proratedCeiling = Math.round(PF_CEILING * prorateFactor);
+  const pfBase = Math.min(pfBaseRaw, proratedCeiling > 0 ? proratedCeiling : PF_CEILING);
 
-  // EPS diversion: 8.33% of PF wage capped at ₹15,000 → max ₹1,250. Stops after age 58 (EPFO rule).
-  const age = e.dob ? Math.floor((Date.now() - new Date(e.dob).getTime()) / (365.25 * 24 * 3600 * 1000)) : undefined;
-  const epsEligible = pfRules?.enabled && (age === undefined || age < 58);
-  const epsWage = Math.min(pfBase, 15000);
-  const eps = epsEligible ? epsWage * 0.0833 : 0;
-  const epfEmployer = Math.max(0, employerPFTotal - eps);
-  // EDLI (Employees Deposit Linked Insurance): 0.5% of PF wage capped at ₹15,000
-  const edli = pfRules?.enabled ? Math.min(pfBase, 15000) * 0.005 : 0;
-  // Admin charges (EPFO): 0.5% of PF wages (min ₹500/mo per establishment, ignored per-employee)
-  const pfAdmin = pfRules?.enabled ? pfBase * 0.005 : 0;
-  const employerPF = employerPFTotal; // preserved for existing UI
+  if (pfEnabled && pfBase > 0) {
+    const empPct = pfRules?.employeePct ?? c.employeePfPct ?? 12;
+    const emplyrPct = pfRules?.employerPct ?? c.employerPfPct ?? 13;
 
-  // ESI (ESI Act 1948) — gross wage ceiling ₹21,000 (₹25,000 for PwD)
+    employeePF = Math.round(pfBase * (empPct / 100));
+    employerPF = Math.round(pfBase * (emplyrPct / 100));
+
+    // EPS diversion: 8.33%
+    eps = Math.round(pfBase * 0.0833);
+    epfEmployer = Math.max(0, employerPF - eps);
+    edli = Math.round(pfBase * 0.005);
+    pfAdmin = Math.round(pfBase * 0.005);
+  }
+
+  // 2. Employee State Insurance (ESI Act 1948)
+  // ESI Wage = Gross Earned (ceiling ₹21,000 monthly gross)
   const esiRules = c.esiRules;
-  const esiBase = earningsList.filter((x) => x.c.includeInEsi).reduce((a, b) => a + b.amount, 0);
-  const esiEligible = !!(esiRules?.enabled && gross <= (esiRules.threshold ?? c.esiThreshold));
-  const employeeESI = esiEligible ? esiBase * ((esiRules!.employeePct ?? c.employeeEsiPct) / 100) : 0;
-  const employerESI = esiEligible ? esiBase * ((esiRules!.employerPct ?? c.employerEsiPct) / 100) : 0;
+  const esiEnabled = esiRules?.enabled !== false;
+  let employeeESI = 0;
+  let employerESI = 0;
+  let esiEligible = false;
 
-  // Professional Tax (slabs or flat)
-  const pt = c.ptSlabs && c.ptSlabs.length > 0 ? ptFromSlabs(gross, c.ptSlabs) : c.ptAmount;
+  if (esiEnabled && gross > 0) {
+    const esiThreshold = esiRules?.threshold ?? c.esiThreshold ?? 21000;
+    esiEligible = fixedGross <= esiThreshold || (esiRules as any)?.applyToAll;
 
-  // TDS (monthly ≈ annual/12 based on annualized taxable)
-  const taxableAnnual = earningsList.filter((x) => x.c.taxable).reduce((a, b) => a + b.amount, 0) * 12;
-  const tdsMonthly = c.tdsRules?.enabled ? tdsFromSlabs(taxableAnnual, c.tdsSlabs || []) / 12 : 0;
+    if (esiEligible) {
+      const empEsiPct = esiRules?.employeePct ?? c.employeeEsiPct ?? 0.75;
+      const emplyrEsiPct = esiRules?.employerPct ?? c.employerEsiPct ?? 3.25;
 
-  // LWF (state-aware)
+      employeeESI = Math.round(gross * (empEsiPct / 100));
+      employerESI = Math.round(gross * (emplyrEsiPct / 100));
+    }
+  }
+
+  // 3. Professional Tax (PT)
+  let professionalTax = 0;
+  if (c.ptEnabled !== false && gross > 0) {
+    if (c.ptSlabs && c.ptSlabs.length > 0) {
+      professionalTax = ptFromSlabs(gross, c.ptSlabs);
+    } else {
+      professionalTax = c.ptAmount ?? 208;
+    }
+  }
+
+  // 4. Labour Welfare Fund (LWF)
   const lwfInfo = resolveLwf(c, e);
-  const lwf = lwfInfo.employee;
-  const employerLwf = lwfInfo.employer;
+  const lwf = (lwfInfo.enabled && gross > 0) ? lwfInfo.employee : 0;
+  const employerLwf = (lwfInfo.enabled && gross > 0) ? lwfInfo.employer : 0;
 
-  // Configurable extra deductions
+  // 5. TDS (Tax Deducted at Source)
+  const taxableAnnual = gross * 12;
+  const tds = c.tdsRules?.enabled ? Math.round(tdsFromSlabs(taxableAnnual, c.tdsSlabs || []) / 12) : 0;
+
+  // 6. Loans, Advance & Other Ad-hoc Deductions
+  const loan = inputs.loan || 0;
+  const advance = inputs.advance || 0;
+  const otherDeductions = inputs.otherDeductions || 0;
+
   const extraDeductionsList: { id: string; name: string; amount: number }[] = [];
-  for (const d of effectiveDeductions) {
-    const amt = evalDeduction(d, { gross, basic: proratedBasic, inputs, pfBase, net: 0 });
-    extraDeductionsList.push({ id: d.id, name: d.name, amount: amt });
-  }
-  // Ensure otherDeductions input reaches the payslip if no component uses it
-  if ((inputs.otherDeductions || 0) > 0 && !extraDeductionsList.some((x) => x.id === "otherDeductions")) {
-    extraDeductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: inputs.otherDeductions || 0 });
+  if (otherDeductions > 0) {
+    extraDeductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: otherDeductions });
   }
 
-  const baseDeductions = {
+  // Configured extra deductions
+  const effectiveDeductions = c.deductions || [];
+  for (const d of effectiveDeductions) {
+    const amt = evalDeduction(d, { gross, basic: earnedBasic, inputs, pfBase, net: 0 });
+    if (amt > 0) {
+      extraDeductionsList.push({ id: d.id, name: d.name, amount: amt });
+    }
+  }
+
+  const deductions = {
     employeePF,
     employeeESI,
-    professionalTax: pt,
-    tds: tdsMonthly,
+    professionalTax,
+    tds,
     lwf,
-    loan: inputs.loan,
-    advance: inputs.advance,
+    loan,
+    advance,
   };
-  const totalExtras = extraDeductionsList.reduce((a, b) => a + b.amount, 0);
-  const totalDeductions = Object.values(baseDeductions).reduce((a, b) => a + b, 0) + totalExtras;
-  const net = gross - totalDeductions;
 
-  // Gratuity
-  const gRules = c.gratuityRules;
-  const gratuityBase = gRules?.enabled
-    ? earningsList.filter((x) => x.c.includeInGratuity).reduce((a, b) => a + b.amount, 0)
+  const totalDeductions =
+    employeePF +
+    employeeESI +
+    professionalTax +
+    tds +
+    lwf +
+    loan +
+    advance +
+    extraDeductionsList.reduce((sum, item) => sum + item.amount, 0);
+
+  // NET SALARY PAYABLE IN-HAND
+  const net = Math.max(0, gross - totalDeductions);
+
+  // Gratuity & Cost to Company (CTC)
+  const gratuity = c.gratuityRules?.enabled
+    ? Math.round((earnedBasic + earnedDA) * ((c.gratuityRules.numerator || 15) / (c.gratuityRules.denominator || 26)) / 12)
     : 0;
-  const gratuity = gRules?.enabled ? gratuityBase * ((gRules.numerator || 15) / (gRules.denominator || 26)) / 12 : 0;
 
   const employerContrib = { employerPF, employerESI, employerLwf, gratuity, eps, epfEmployer, edli, pfAdmin };
   const totalEmployer = employerPF + employerESI + employerLwf + gratuity + edli + pfAdmin;
@@ -275,23 +462,25 @@ export function computePayroll(opts: {
   const annualCTC = monthlyCTC * 12;
 
   // Legacy earnings map for old UI compatibility
-  const findAmt = (name: RegExp) => earningsList.find((x) => name.test(x.name))?.amount || 0;
   const earnings = {
-    basic: proratedBasic,
-    hra: findAmt(/^HRA/i),
-    special: findAmt(/^Special/i),
-    medical: findAmt(/^Medical/i),
-    conveyance: findAmt(/^Conveyance/i),
-    washing: findAmt(/^Washing/i),
-    other: findAmt(/^Other/i),
-    bonus: findAmt(/^Bonus/i) || inputs.bonus,
-    incentive: findAmt(/^Incentive/i) || inputs.incentive,
-    overtime: findAmt(/Overtime|OT/i),
-    shiftAllowance: findAmt(/Shift/i),
-    night: findAmt(/Night/i),
-    variablePay: findAmt(/Variable/i) || inputs.variablePay || 0,
+    basic: earnedBasic,
+    hra: earnedHRA,
+    special: earnedOA,
+    medical: 0,
+    conveyance: earnedCA,
+    washing: 0,
+    other: earnedLTA,
+    bonus: inputs.bonus || 0,
+    incentive: inputs.incentive || 0,
+    overtime: otPay,
+    shiftAllowance: 0,
+    night: 0,
+    variablePay: inputs.variablePay || 0,
   };
-  const deductions = baseDeductions;
+
+  // Resolve structure & age
+  const structure = resolveSalaryStructure(c, e);
+  const age = e.dob ? Math.floor((Date.now() - new Date(e.dob).getTime()) / (365.25 * 24 * 3600 * 1000)) : undefined;
 
   return {
     earnings,
@@ -304,18 +493,21 @@ export function computePayroll(opts: {
     pfBase,
     pfBaseRaw,
     pfCeiling: PF_CEILING,
-    esiBase,
+    esiBase: gross,
     esiEligible,
     totalDeductions,
     net,
     totalEmployer,
     monthlyCTC,
     annualCTC,
+    daysWorked: paidDays,
+    prorateFactor,
+    fixedGross,
     structureId: structure?.id,
     structureName: structure?.name,
     lwfSource: lwfInfo.source,
     age,
-    epsEligible,
+    epsEligible: eps > 0,
   };
 }
 

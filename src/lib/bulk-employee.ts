@@ -27,6 +27,10 @@ export const BULK_TEMPLATE_HEADERS = [
   "Benefits Eligible Date (YYYY-MM-DD)",
   "Probation End Date (YYYY-MM-DD)",
   "Leave Apply Eligible (TRUE/FALSE)",
+  "Geofencing Required (TRUE/FALSE)",
+  "Grace Time (always/10/15/20/25/30 mins)",
+  "Allow Half Day Login (TRUE/FALSE)",
+  "Half Day Login Time (HH:MM)",
   "Marital Status (single/married/divorced/widowed)",
   "Address Line 1",
   "City",
@@ -256,6 +260,19 @@ export function parseEmployeeCsvText(
     const ptEligible = parseBool(getVal(["pteligible", "pt", "professionaltaxeligible"]), true);
     const tdsEligible = parseBool(getVal(["tdseligible", "tds"]), false);
     const leaveApplyEligible = parseBool(getVal(["leaveapplyeligible", "leaveeligible", "leaveapply"]), true);
+    const geofencingEnabled = parseBool(getVal(["geofencingrequired", "geofencingenabled", "geofence", "geofencing"]), true);
+
+    const graceTimeRaw = getVal(["gracetime", "grace", "graceperiod"]).toLowerCase();
+    let graceTime: Employee["graceTime"] = "15";
+    if (graceTimeRaw.includes("always") || graceTimeRaw.includes("none") || graceTimeRaw.includes("0")) graceTime = "always";
+    else if (graceTimeRaw.includes("10")) graceTime = "10";
+    else if (graceTimeRaw.includes("15")) graceTime = "15";
+    else if (graceTimeRaw.includes("20")) graceTime = "20";
+    else if (graceTimeRaw.includes("25")) graceTime = "25";
+    else if (graceTimeRaw.includes("30")) graceTime = "30";
+
+    const allowHalfDayLogin = parseBool(getVal(["allowhalfdaylogin", "halfdaylogin", "allowafternoonlogin"]), true);
+    const halfDayLoginTime = getVal(["halfdaylogintime", "afternoonlogintime", "halfdaytime"]) || "12:00";
 
     const eligibleDate = getVal(["benefitseligibledate", "eligibledate"]) || doj;
     const probationDate =
@@ -316,6 +333,10 @@ export function parseEmployeeCsvText(
       eligibleDate,
       probationDate,
       leaveApplyEligible,
+      geofencingEnabled,
+      graceTime,
+      allowHalfDayLogin,
+      halfDayLoginTime,
       maritalStatus,
       addressLine1,
       city,

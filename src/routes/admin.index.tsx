@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useStore } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { motion } from "framer-motion";
-import { Users, CalendarCheck, IndianRupee, TrendingUp, ArrowUpRight } from "lucide-react";
+import { Users, CalendarCheck, IndianRupee, TrendingUp, ArrowUpRight, Clock, FileText, CheckCircle2 } from "lucide-react";
 import { NoticeBoard } from "@/components/notice-board";
 import {
   ResponsiveContainer,
@@ -25,10 +25,18 @@ export const Route = createFileRoute("/admin/")({
 });
 
 function Dashboard() {
-  const { employees, attendance, company, payrolls, currentUser } = useStore();
+  const { employees, attendance, company, payrolls, currentUser, leaves, docRequests } = useStore();
   const today = new Date().toISOString().slice(0, 10);
   const todaysAtt = attendance.filter((a) => a.date === today);
   const present = todaysAtt.filter((a) => a.status === "present" || a.status === "half-day").length;
+
+  const pendingLeavesCount = (leaves || []).filter(
+    (l) => (l.status || "pending").toLowerCase() === "pending"
+  ).length;
+
+  const pendingDocsCount = (docRequests || []).filter(
+    (d) => d.status === "pending"
+  ).length;
 
   const totalMonthlyCTC = employees.reduce((sum, e) => {
     const p = computePayroll({
@@ -53,8 +61,14 @@ function Dashboard() {
       icon: CalendarCheck,
       tint: "from-primary to-teal",
     },
+    {
+      label: "Pending Approvals",
+      value: `${pendingLeavesCount} Leaves · ${pendingDocsCount} Docs`,
+      icon: Clock,
+      tint: "from-amber-500 to-orange-500",
+      link: "/admin/leave-calendar",
+    },
     { label: "Monthly Payroll", value: inr(totalMonthlyCTC), icon: IndianRupee, tint: "from-coral to-primary" },
-    { label: "Payrolls Processed", value: payrolls.length.toString(), icon: TrendingUp, tint: "from-primary to-coral" },
   ];
 
   const attByDay = Array.from({ length: 7 }).map((_, i) => {
@@ -91,14 +105,8 @@ function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {cards.map((c, i) => (
-          <motion.div
-            key={c.label}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="rounded-2xl border border-border bg-card p-5"
-          >
+        {cards.map((c, i) => {
+          const CardInner = (
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-xs text-muted-foreground">{c.label}</div>
@@ -108,8 +116,26 @@ function Dashboard() {
                 <c.icon className="h-5 w-5" />
               </div>
             </div>
-          </motion.div>
-        ))}
+          );
+
+          return (
+            <motion.div
+              key={c.label}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+              className="rounded-2xl border border-border bg-card p-5 hover:border-primary/50 transition-colors"
+            >
+              {c.link ? (
+                <Link to={c.link} className="block cursor-pointer">
+                  {CardInner}
+                </Link>
+              ) : (
+                CardInner
+              )}
+            </motion.div>
+          );
+        })}
       </div>
 
       <NoticeBoard viewer={{ role: "admin" }} userKey={"admin:" + (currentUser?.name || "admin")} compact />

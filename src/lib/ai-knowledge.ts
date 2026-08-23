@@ -226,8 +226,8 @@ export function buildEnterpriseSnapshot(opts: {
     .sort((a, b) => b[1] - a[1]).slice(0, 5)
     .map(([id, count]) => ({ name: empName(id), count }));
   const leavesSummary = {
-    pendingApprovals: scopedLeaves.filter((l) => l.status === "pending").length,
-    approvedThisMonth: scopedLeaves.filter((l) => l.status === "approved" && l.from.startsWith(month)).length,
+    pendingApprovals: scopedLeaves.filter((l) => (l.status || "").toLowerCase() === "pending").length,
+    approvedThisMonth: scopedLeaves.filter((l) => (l.status || "").toLowerCase() === "approved" && (l.from || l.startDate || "").startsWith(month)).length,
     topRequesters,
   };
 

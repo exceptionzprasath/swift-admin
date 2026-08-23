@@ -1,17 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStore, resolveAttendanceProfile, type Employee, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole } from "@/lib/store";
+import { useStore, resolveAttendanceProfile, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { generateAppointmentPDF } from "@/lib/pdf";
 import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, type LetterKey } from "@/lib/documents";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -22,7 +23,7 @@ import {
   Plus, FileDown, Trash2, ChevronLeft, ChevronRight, User, Briefcase, Building2,
   FileSignature, CheckCircle2, Sparkles, Wand2, Camera, Home, Users as UsersIcon,
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
-  FileSpreadsheet, Upload, Download, AlertTriangle, FileText,
+  FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
 } from "lucide-react";
 import { downloadEmployeeTemplate, parseEmployeeCsvText } from "@/lib/bulk-employee";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
@@ -53,6 +54,10 @@ const empty: Omit<Employee, "id"> = {
   eligibleDate: new Date().toISOString().slice(0, 10),
   probationDate: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
   leaveApplyEligible: true,
+  geofencingEnabled: true,
+  graceTime: "15",
+  allowHalfDayLogin: true,
+  halfDayLoginTime: "12:00",
   pan: "",
   aadhaar: "",
   bankAcc: "",
@@ -97,9 +102,7 @@ const DOC_INSERT_AFTER: Record<string, FormStepKey> = {
   IND: "branch", TRN: "branch",
 };
 
-type FlowStep =
-  | { kind: "form"; key: FormStepKey; title: string; icon: typeof User }
-  | { kind: "doc"; key: string; title: string; icon: typeof User; docCode: string; docId: string };
+type FlowStep = { key: FormStepKey; title: string; icon: typeof User };
 
 function EmployeesPage() {
   const { employees, addEmployee, deleteEmployee, company, docAssets, ensureJourney, docLibrary, advanceJourneyStep, registrationDrafts, saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, roles } = useStore();
@@ -108,13 +111,14 @@ function EmployeesPage() {
   const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
   const [actionEmp, setActionEmp] = useState<Employee | null>(null);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
+  const [docsEmp, setDocsEmp] = useState<Employee | null>(null);
   const [actionKind, setActionKind] = useState<"exit" | "transfer" | "manual">("exit");
 
   const openWizard = (draftId?: string) => {
     setResumeDraftId(draftId ?? null);
     setOpen(true);
     setAiGuideMode({ active: true, scope: "employee-registration" });
-    aiNotify({ title: "SWIFT AI is guiding onboarding", body: "I'll walk you through every doc in order. Progress auto-saves.", kind: "info" });
+    aiNotify({ title: "SWIFT AI is guiding employee onboarding", body: "Step-by-step registration wizard. Progress auto-saves.", kind: "info" });
   };
 
   return (
@@ -222,10 +226,13 @@ function EmployeesPage() {
                     <td className="p-3 text-right text-primary font-medium">{inr(p.monthlyCTC)}</td>
                     <td className="p-3 text-right">
                       <div className="inline-flex gap-1">
+                        <Button size="sm" variant="ghost" title="Documents & App Signatures" onClick={() => setDocsEmp(e)} className="text-sky-600 hover:bg-sky-500/10">
+                          <FileText className="h-4 w-4" />
+                        </Button>
                         <Button size="sm" variant="ghost" title="Edit Employee" onClick={() => setEditingEmp(e)}>
                           <Pencil className="h-4 w-4 text-primary" />
                         </Button>
-                        <Button size="sm" variant="ghost" title="Appointment letter" onClick={() => generateAppointmentPDF(company, e, p)}>
+                        <Button size="sm" variant="ghost" title="Appointment letter" onClick={() => void generateAppointmentPDF(company, e, p, docAssets)}>
                           <FileDown className="h-4 w-4" />
                         </Button>
                         <Button size="sm" variant="ghost" title="Transfer" onClick={() => { setActionEmp(e); setActionKind("transfer"); }}>
@@ -260,6 +267,11 @@ function EmployeesPage() {
         open={!!editingEmp}
         onClose={() => setEditingEmp(null)}
       />
+      <EmployeeDocumentsDialog
+        employee={docsEmp}
+        open={!!docsEmp}
+        onClose={() => setDocsEmp(null)}
+      />
       <BulkUploadDialog
         open={bulkOpen}
         onClose={() => setBulkOpen(false)}
@@ -270,7 +282,7 @@ function EmployeesPage() {
 
 function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?: string | null }) {
   const {
-    addEmployee, company, docAssets, ensureJourney, docLibrary, advanceJourneyStep,
+    addEmployee, company, ensureJourney,
     saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, employees, roles,
   } = useStore();
   // Read initial draft ONCE without subscribing to registrationDrafts — otherwise every
@@ -278,157 +290,109 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
   const [initialDraft] = useState(() => (draftId ? useStore.getState().registrationDrafts.find((d) => d.id === draftId) : undefined));
   const [step, setStep] = useState(initialDraft?.currentStep ?? 0);
   const [form, setForm] = useState<Omit<Employee, "id">>({ ...empty, ...(initialDraft?.data ?? {}) } as Omit<Employee, "id">);
-  const [signatures, setSignatures] = useState<Record<string, SignatureRec>>({});
-  const [readAck, setReadAck] = useState<Record<string, boolean>>({});
   const draftIdRef = useRef<string>(initialDraft?.id ?? crypto.randomUUID());
   const [savedAt, setSavedAt] = useState<string | null>(initialDraft?.updatedAt ?? null);
-    // Autosave with debounce
-    useEffect(() => {
-      const t = setTimeout(() => {
-        if (!form.name && !form.empCode && step === 0) return;
-        saveRegistrationDraft({ id: draftIdRef.current, data: form, currentStep: step, createdBy: currentUser?.name ?? "HR" });
-        setSavedAt(new Date().toISOString());
-      }, 800);
-      return () => clearTimeout(t);
-    }, [form, step]);
 
-    const onboardingDocs = useMemo(
-      () => [...docLibrary].filter((d) => d.active && d.trigger === "on_registration").sort((a, b) => a.sequence - b.sequence),
-      [],
-    );
+  // Autosave with debounce
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!form.name && !form.empCode && step === 0) return;
+      saveRegistrationDraft({ id: draftIdRef.current, data: form, currentStep: step, createdBy: currentUser?.name ?? "HR" });
+      setSavedAt(new Date().toISOString());
+    }, 800);
+    return () => clearTimeout(t);
+  }, [form, step]);
 
-    // Interleave docs between the fixed form steps in professional order.
-    const flow = useMemo<FlowStep[]>(() => {
-      const out: FlowStep[] = [];
-      for (const fs of FORM_STEPS) {
-        out.push({ kind: "form", key: fs.key, title: fs.title, icon: fs.icon });
-        if (fs.key === "review") continue;
-        const docsHere = onboardingDocs.filter((d) => (DOC_INSERT_AFTER[d.code] ?? "branch") === fs.key);
-        docsHere.forEach((d) =>
-          out.push({ kind: "doc", key: `doc-${d.code}`, title: d.title, icon: FileSignature, docCode: d.code, docId: d.id }),
-        );
-      }
-      return out;
-    }, [onboardingDocs]);
+  const flow = FORM_STEPS;
+  const current = flow[step];
 
-    const current = flow[step];
+  const canNext = () => {
+    if (!current) return false;
+    if (current.key === "photo") return !!form.photoDataUrl && !!form.name && !!form.empCode && !!form.password;
+    if (current.key === "personal") return !!form.name && !!form.email && !!form.phone;
+    if (current.key === "employment") return !!form.designation && !!form.department && !!form.doj;
+    return true;
+  };
 
-    const canNext = () => {
-      if (!current) return false;
-      if (current.kind === "form") {
-        if (current.key === "photo") return !!form.photoDataUrl && !!form.name && !!form.empCode && !!form.password;
-        if (current.key === "personal") return !!form.name && !!form.email && !!form.phone;
-        if (current.key === "employment") return !!form.designation && !!form.department && !!form.doj;
-      }
-      return true;
-    };
+  const finish = () => {
+    if (!form.empCode || !form.name) return toast.error("Employee code and name required");
+    const emp = addEmployee({ ...form, faceRegistered: !!form.photoDataUrl || form.faceRegistered });
+    ensureJourney(emp.id);
+    const p = computePayroll({ company, employee: emp, daysWorked: company.workingDaysPerMonth, otHours: 0, incentive: 0, shiftDays: 0, loan: 0, advance: 0, bonus: 0 });
+    generateAppointmentPDF(company, emp, p);
+    addAudit({
+      actorName: currentUser?.name ?? "HR",
+      entity: "employee",
+      entityId: emp.id,
+      action: "onboard-complete",
+      device: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 80) : undefined,
+      newValue: { empCode: emp.empCode, name: emp.name },
+    });
+    deleteRegistrationDraft(draftIdRef.current);
+    aiNotify({ title: "✨ Employee onboarded", body: `${emp.name} created. Onboarding documents are ready for signature in employee app.`, kind: "success" });
+    toast.success(`${emp.name} onboarded! Documents ready for employee app signing.`);
+    onDone();
+  };
 
-    const finish = () => {
-      if (!form.empCode || !form.name) return toast.error("Employee code and name required");
-      const emp = addEmployee({ ...form, faceRegistered: !!form.photoDataUrl || form.faceRegistered });
-      const journey = ensureJourney(emp.id);
-      Object.values(signatures).forEach((s) => {
-        const meta = docLibrary.find((d) => d.code === s.docCode);
-        if (!meta) return;
-        const jstep = journey.steps.find((st) => st.docId === meta.id);
-        if (!jstep) return;
-        advanceJourneyStep(emp.id, jstep.id, "signed", s.signedBy || "HR");
-      });
-      const p = computePayroll({ company, employee: emp, daysWorked: company.workingDaysPerMonth, otHours: 0, incentive: 0, shiftDays: 0, loan: 0, advance: 0, bonus: 0 });
-      generateAppointmentPDF(company, emp, p);
-      addAudit({
-        actorName: currentUser?.name ?? "HR",
-        entity: "employee",
-        entityId: emp.id,
-        action: "onboard-complete",
-        device: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 80) : undefined,
-        newValue: { docsSigned: Object.keys(signatures).length, empCode: emp.empCode },
-      });
-      deleteRegistrationDraft(draftIdRef.current);
-      aiNotify({ title: "✨ Employee onboarded", body: `${emp.name} · ${Object.keys(signatures).length} documents signed`, kind: "success" });
-      toast.success(`${emp.name} onboarded — ${Object.keys(signatures).length} documents signed`);
-      onDone();
-    };
+  return (
+    <div className="grid grid-cols-[260px_1fr] h-full max-h-full overflow-hidden">
+      {/* Rail */}
+      <aside className="border-r border-border bg-muted/30 p-3 flex flex-col overflow-hidden h-full max-h-full">
+        <DialogHeader className="mb-3 px-1">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Sparkles className="h-4 w-4 text-primary" /> Guided Registration
+          </DialogTitle>
+        </DialogHeader>
+        <Progress value={((step + 1) / flow.length) * 100} className="h-1.5 mb-1" />
+        <div className="text-[10px] text-muted-foreground mb-3 flex items-center gap-1">
+          <Save className="h-3 w-3" />
+          {savedAt ? `Autosaved ${new Date(savedAt).toLocaleTimeString()}` : "Draft not saved yet"}
+        </div>
+        <ol className="space-y-0.5 text-sm overflow-y-auto pr-1 flex-1">
+          {flow.map((s, i) => {
+            const Icon = s.icon;
+            const done = i < step;
+            const active = i === step;
+            return (
+              <li key={s.key}>
+                <button
+                  onClick={() => setStep(i)}
+                  className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
+                    active ? "bg-gradient-brand text-white shadow-soft" : done ? "text-emerald-600 hover:bg-muted" : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <div className={`h-5 w-5 rounded-full grid place-items-center text-[10px] font-semibold shrink-0 ${
+                    active ? "bg-white/20 text-white" : done ? "bg-emerald-500 text-white" : "bg-muted-foreground/15"
+                  }`}>
+                    {done ? "✓" : i + 1}
+                  </div>
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate text-[12px]">{s.title}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        <div className="mt-3 pt-3 text-[11px] text-muted-foreground border-t border-border">
+          <div className="flex items-center gap-1"><Sparkles className="h-3 w-3 text-primary" /> SWIFT AI Onboarding</div>
+          <div className="mt-1">Documents and signatures are moved to the employee app.</div>
+        </div>
+      </aside>
 
-    const applyCompanySignatoryAll = () => {
-      const pad = document.createElement("canvas");
-      pad.width = 320; pad.height = 90;
-      const ctx = pad.getContext("2d")!;
-      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, pad.width, pad.height);
-      ctx.fillStyle = "#0f172a";
-      ctx.font = "italic 34px 'Brush Script MT', cursive";
-      ctx.fillText("HR Department", 12, 55);
-      const url = pad.toDataURL();
-      const bulk: Record<string, SignatureRec> = { ...signatures };
-      onboardingDocs.forEach((d) => {
-        if (!bulk[d.code]) bulk[d.code] = { docCode: d.code, docTitle: d.title, letterKey: d.letterKey, signatureDataUrl: url, signedBy: "HR Department" };
-      });
-      setSignatures(bulk);
-      aiNotify({ title: "✨ Company signatory applied", body: `${onboardingDocs.length - Object.keys(signatures).length} documents auto-signed`, kind: "success" });
-    };
+      {/* Body */}
+      <div className="flex flex-col h-full min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
 
-    return (
-      <div className="grid grid-cols-[260px_1fr] h-full max-h-full overflow-hidden">
-        {/* Rail */}
-        <aside className="border-r border-border bg-muted/30 p-3 flex flex-col overflow-hidden h-full max-h-full">
-          <DialogHeader className="mb-3 px-1">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="h-4 w-4 text-primary" /> Guided Registration
-            </DialogTitle>
-          </DialogHeader>
-          <Progress value={((step + 1) / flow.length) * 100} className="h-1.5 mb-1" />
-          <div className="text-[10px] text-muted-foreground mb-3 flex items-center gap-1">
-            <Save className="h-3 w-3" />
-            {savedAt ? `Autosaved ${new Date(savedAt).toLocaleTimeString()}` : "Draft not saved yet"}
-          </div>
-          <ol className="space-y-0.5 text-sm overflow-y-auto pr-1 flex-1">
-            {flow.map((s, i) => {
-              const Icon = s.icon;
-              const done = i < step;
-              const active = i === step;
-              const signed = s.kind === "doc" && !!signatures[s.docCode];
-              return (
-                <li key={s.key}>
-                  <button
-                    onClick={() => setStep(i)}
-                    className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
-                      active ? "bg-gradient-brand text-white shadow-soft" : done || signed ? "text-emerald-600 hover:bg-muted" : "text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    <div className={`h-5 w-5 rounded-full grid place-items-center text-[10px] font-semibold shrink-0 ${
-                      active ? "bg-white/20 text-white" : done || signed ? "bg-emerald-500 text-white" : "bg-muted-foreground/15"
-                    }`}>
-                      {done || signed ? "✓" : i + 1}
-                    </div>
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate text-[12px]">
-                      {s.kind === "doc" ? <><span className="font-mono text-[10px] opacity-70 mr-1">{s.docCode}</span>{s.title}</> : s.title}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-          <div className="mt-3 pt-3 text-[11px] text-muted-foreground border-t border-border">
-            <div className="flex items-center gap-1"><Sparkles className="h-3 w-3 text-primary" /> SWIFT AI live-guiding</div>
-            <div className="mt-1">Documents inserted in professional joining order.</div>
-          </div>
-        </aside>
-
-        {/* Body */}
-        <div className="flex flex-col h-full min-h-0 overflow-hidden">
-          <div className="flex-1 min-h-0 overflow-y-auto p-6">
-
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={current?.key ?? step}
-              initial={{ opacity: 0, y: 8 }}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={current?.key ?? step}
+            initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
               className="space-y-5"
             >
-              {current?.kind === "form" && current.key === "photo" && (
+              {current?.key === "photo" && (
                 <div className="space-y-5">
                   <StepHead icon={Camera} title="Photo & Identity" subtitle="Photo is mandatory for single guided registration. Or use Bulk Upload below to import from Excel without photos." />
 
@@ -486,7 +450,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 </div>
               )}
 
-              {current?.kind === "form" && current.key === "personal" && (
+              {current?.key === "personal" && (
                 <div className="space-y-4">
                   <StepHead icon={User} title="Personal Details" subtitle="Contact and KYC. Fields you skip can be filled by the employee later." />
                   <div className="grid grid-cols-2 gap-4">
@@ -516,7 +480,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 </div>
               )}
 
-              {current?.kind === "form" && current.key === "address" && (
+              {current?.key === "address" && (
                 <div className="space-y-4">
                   <StepHead icon={Home} title="Address & Extended KYC" subtitle="Current and permanent address, statutory numbers." />
                   <div className="grid grid-cols-2 gap-4">
@@ -534,7 +498,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 </div>
               )}
 
-              {current?.kind === "form" && current.key === "family" && (
+              {current?.key === "family" && (
                 <div className="space-y-4">
                   <StepHead icon={UsersIcon} title="Family & Emergency" subtitle="Dependents, nominee, and emergency contact." />
                   <div className="grid grid-cols-2 gap-4">
@@ -572,7 +536,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 </div>
               )}
 
-              {current?.kind === "form" && current.key === "education" && (
+              {current?.key === "education" && (
                 <div className="space-y-4">
                   <StepHead icon={GraduationCap} title="Education" subtitle="Highest and prior qualifications." />
                   <RepeatingList<EducationEntry>
@@ -590,7 +554,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 </div>
               )}
 
-              {current?.kind === "form" && current.key === "experience" && (
+              {current?.key === "experience" && (
                 <div className="space-y-4">
                   <StepHead icon={Briefcase} title="Prior Experience" subtitle="Previous employers, roles, and last drawn CTC." />
                   <RepeatingList<ExperienceEntry>
@@ -609,7 +573,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 </div>
               )}
 
-              {current?.kind === "form" && current.key === "skills" && (
+              {current?.key === "skills" && (
                 <div className="space-y-4">
                   <StepHead icon={Award} title="Skills & Languages" subtitle="Comma-separated. AI will match to open requisitions." />
                   <div className="grid grid-cols-1 gap-4">
@@ -633,7 +597,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 </div>
               )}
 
-              {current?.kind === "form" && current.key === "compliance" && (
+              {current?.key === "compliance" && (
                 <div className="space-y-4">
                   <StepHead icon={ShieldCheck} title="Compliance & Background Verification" subtitle="Statutory declarations and BGV status." />
                   <div className="grid grid-cols-2 gap-4">
@@ -668,7 +632,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 </div>
               )}
 
-              {current?.kind === "form" && current.key === "verify" && (() => {
+              {current?.key === "verify" && (() => {
                 const issues: string[] = [];
                 if (form.pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(form.pan)) issues.push("PAN format looks invalid");
                 if (form.aadhaar && form.aadhaar.replace(/\s/g, "").length !== 12) issues.push("Aadhaar should be 12 digits");
@@ -706,7 +670,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
 
 
 
-              {current?.kind === "form" && current.key === "employment" && (
+              {current?.key === "employment" && (
                 <div className="space-y-4">
                   <StepHead icon={Briefcase} title="Employment, Fixed Salary & Compliance" subtitle="Fixed salary, statutory deductions, eligibility dates, and role assignment." />
                   <div className="grid grid-cols-2 gap-4">
@@ -832,7 +796,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 </div>
               )}
 
-              {current?.kind === "form" && current.key === "branch" && (
+              {current?.key === "branch" && (
                 <div className="space-y-4">
                   <StepHead icon={Building2} title="Branch & Reporting" subtitle="Assign to a branch (with its own geo-fence) and reporting manager." />
                   <div className="grid grid-cols-2 gap-4">
@@ -875,139 +839,125 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       </div>
                     );
                   })()}
+
+                  {/* Geofencing Verification Toggle */}
+                  <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-semibold flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-primary" />
+                          <span>Geofencing Attendance Verification</span>
+                          <Badge variant="outline" className={`text-[10px] ${form.geofencingEnabled !== false ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-amber-500/10 text-amber-700 border-amber-500/30"}`}>
+                            {form.geofencingEnabled !== false ? "Active (Geo-fence Required)" : "Bypassed (Face Attendance Only)"}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {form.geofencingEnabled !== false
+                            ? "Employee must be physically within the assigned branch geofence boundary radius to check-in / check-out."
+                            : "Geofence boundary check is bypassed for this employee. Facial verification attendance alone is sufficient for check-in & check-out (ideal for remote, field staff, or traveling employees)."}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="geofence-toggle-wizard" className="text-xs font-semibold cursor-pointer">
+                          {form.geofencingEnabled !== false ? "Enabled" : "Disabled"}
+                        </Label>
+                        <Switch
+                          id="geofence-toggle-wizard"
+                          checked={form.geofencingEnabled !== false}
+                          onCheckedChange={(checked) => setForm({ ...form, geofencingEnabled: checked })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Grace Time & Shift Attendance Policy */}
+                  <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-semibold flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-purple-600" />
+                          <span>Grace Time for Attendance</span>
+                          <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 border-purple-500/30">
+                            Morning Shift Punctuality
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Allowed late-arrival buffer window after scheduled shift start time.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Morning Grace Period</Label>
+                        <Select
+                          value={form.graceTime || "15"}
+                          onValueChange={(v: any) => setForm({ ...form, graceTime: v })}
+                        >
+                          <SelectTrigger className="w-full text-xs">
+                            <SelectValue placeholder="Select grace time" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="always">Always (No cutoff / Full flexibility)</SelectItem>
+                            <SelectItem value="10">Within 10 mins</SelectItem>
+                            <SelectItem value="15">Within 15 mins (Standard Default)</SelectItem>
+                            <SelectItem value="20">Within 20 mins</SelectItem>
+                            <SelectItem value="25">Within 25 mins</SelectItem>
+                            <SelectItem value="30">Within 30 mins</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[11px] text-muted-foreground">
+                          {form.graceTime === "always"
+                            ? "Employee can clock in at any time without auto-absent cutoff."
+                            : `If attendance is not marked within ${form.graceTime || "15"} mins of shift start, morning is marked Absent and check-in is disabled.`}
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Afternoon Login Window Start Time</Label>
+                        <Input
+                          type="time"
+                          value={form.halfDayLoginTime || "12:00"}
+                          onChange={(e) => setForm({ ...form, halfDayLoginTime: e.target.value })}
+                          disabled={form.allowHalfDayLogin === false || form.graceTime === "always"}
+                          className="text-xs"
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          Default 12:00 PM. Unlocks check-in for afternoon / half-day attendance.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Afternoon / Half-Day Login Toggle */}
+                    {form.graceTime !== "always" && (
+                      <div className="rounded-lg bg-muted/40 p-3 flex items-center justify-between gap-3 border border-border/70">
+                        <div className="space-y-0.5">
+                          <div className="text-xs font-semibold flex items-center gap-1.5">
+                            <Timer className="h-3.5 w-3.5 text-primary" />
+                            <span>Allow Afternoon / Half-Day Login</span>
+                            <Badge variant="outline" className={`text-[9px] ${form.allowHalfDayLogin !== false ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-rose-500/10 text-rose-700 border-rose-500/30"}`}>
+                              {form.allowHalfDayLogin !== false ? `Allowed after ${form.halfDayLoginTime || "12:00 PM"}` : "Locked for Full Day"}
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            {form.allowHalfDayLogin !== false
+                              ? `If morning grace period is missed, employee can mark attendance after ${form.halfDayLoginTime || "12:00 PM"} as a Half-Day.`
+                              : "If morning grace period is missed, employee is strictly prohibited from marking attendance for the entire day (Marked Full Day Absent)."}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={form.allowHalfDayLogin !== false}
+                          onCheckedChange={(checked) => setForm({ ...form, allowHalfDayLogin: checked })}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {current?.kind === "doc" && (() => {
-                const d = onboardingDocs.find((x) => x.code === current.docCode);
-                if (!d) return null;
-                const sig = signatures[d.code];
-                const seqIdx = onboardingDocs.findIndex((x) => x.code === d.code);
-                const previewEmp: Employee = { ...(form as Employee), id: "preview" };
-                const tpl = d.letterKey
-                  ? DEFAULT_TEMPLATES.find((t) => t.key === d.letterKey) ?? buildGenericTemplate(d.code, d.title, previewEmp)
-                  : buildGenericTemplate(d.code, d.title, previewEmp);
-                const rendered = renderTemplate(tpl.body, buildVars(company, previewEmp));
-                const hasRead = !!readAck[d.code];
-                return (
-                  <div className="space-y-4">
-                    <StepHead
-                      icon={FileSignature}
-                      title={`${d.title}`}
-                      subtitle={`Document ${seqIdx + 1} of ${onboardingDocs.length} · ${d.category} · Code ${d.code}`}
-                    />
-                    <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="outline" className="text-[10px]">{d.code}</Badge>
-                          {d.mandatory && <Badge className="text-[10px] bg-amber-500/15 text-amber-700 border-amber-500/30">Mandatory</Badge>}
-                          {d.autoGenerate && <Badge className="text-[10px] bg-primary/15 text-primary border-primary/30">AI Generated</Badge>}
-                          {d.sealRequired && <Badge variant="outline" className="text-[10px]">Seal</Badge>}
-                          {d.digitalSignatureRequired && <Badge variant="outline" className="text-[10px]">e-Sign</Badge>}
-                        </div>
-                        {sig && (
-                          <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30">
-                            <CheckCircle2 className="h-3 w-3 mr-1" /> Signed by {sig.signedBy}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Full letter body — readable, scrollable, on paper-like surface */}
-                      <div className="rounded-xl border border-border bg-white text-neutral-900 shadow-inner max-h-[420px] overflow-y-auto">
-                        <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
-                          <div className="text-[11px] uppercase tracking-wide text-neutral-500">Letter preview · read before you sign</div>
-                          <div className="text-[11px] text-neutral-500">{company.legalName}</div>
-                        </div>
-                        <pre className="px-6 py-5 whitespace-pre-wrap font-serif text-[13px] leading-relaxed">{rendered}</pre>
-                        {sig?.signatureDataUrl && (
-                          <div className="px-6 pb-6">
-                            <div className="text-[11px] text-neutral-500 mb-1">Employee signature</div>
-                            <img src={sig.signatureDataUrl} alt="signature" className="h-14 max-w-[240px] object-contain bg-white border border-neutral-200 rounded" />
-                            <div className="text-[11px] text-neutral-600 mt-1">{sig.signedBy} · {new Date().toLocaleString("en-IN")}</div>
-                          </div>
-                        )}
-                      </div>
-
-                      {!sig && (
-                        <label className="flex items-start gap-2.5 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm cursor-pointer">
-                          <Checkbox
-                            checked={hasRead}
-                            onCheckedChange={(v) => setReadAck((s) => ({ ...s, [d.code]: !!v }))}
-                            className="mt-0.5"
-                          />
-                          <span>
-                            <span className="font-medium">I have read and understood this document.</span>
-                            <span className="block text-xs text-muted-foreground">Signature pad unlocks after you acknowledge.</span>
-                          </span>
-                        </label>
-                      )}
-
-                      {sig?.signatureDataUrl ? (
-                        <div className="flex items-center gap-3 rounded-lg border border-border p-3 bg-muted/20">
-                          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                          <div className="text-xs">
-                            <div className="font-medium">Signed by {sig.signedBy}</div>
-                            <div className="text-muted-foreground">Download the signed copy for records — signature, seal and letterhead are embedded.</div>
-                          </div>
-                          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { setSignatures((s) => { const n = { ...s }; delete n[d.code]; return n; }); setReadAck((s) => ({ ...s, [d.code]: false })); }}>Re-sign</Button>
-                        </div>
-                      ) : hasRead ? (
-                        <ESignPad
-                          defaultName={form.name}
-                          onSign={(dataUrl, meta) => {
-                            setSignatures((s) => ({ ...s, [d.code]: { docCode: d.code, docTitle: d.title, letterKey: d.letterKey, signatureDataUrl: dataUrl, signedBy: meta.signedBy } }));
-                            aiNotify({ title: `✍️ ${d.code} signed`, body: `${d.title} by ${meta.signedBy}`, kind: "success" });
-                          }}
-                        />
-                      ) : (
-                        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-4 text-xs text-muted-foreground text-center">
-                          Please read the letter above and tick the acknowledgement to enable signing.
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={applyCompanySignatoryAll}>
-                        <Wand2 className="h-3.5 w-3.5 mr-1.5" /> Apply company signatory to all remaining
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!sig}
-                        onClick={async () => {
-                          if (!form.name || !form.empCode) { toast.error("Enter name and employee code first"); return; }
-                          await downloadLetter(company, previewEmp, tpl, "pdf", docAssets);
-                          toast.success(`${d.code} PDF downloaded — signature & seal embedded`);
-                        }}
-                      >
-                        <FileDown className="h-3.5 w-3.5 mr-1.5" /> Download signed PDF
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!sig}
-                        onClick={async () => {
-                          if (!form.name || !form.empCode) { toast.error("Enter name and employee code first"); return; }
-                          await downloadLetter(company, previewEmp, tpl, "docx", docAssets);
-                          toast.success(`${d.code} DOCX downloaded — editable`);
-                        }}
-                      >
-                        <FileDown className="h-3.5 w-3.5 mr-1.5" /> Download DOCX
-                      </Button>
-                      {sig && step < flow.length - 1 && (
-                        <Button size="sm" className="bg-gradient-brand text-white ml-auto" onClick={() => setStep(step + 1)}>
-                          Continue <ChevronRight className="h-3.5 w-3.5 ml-1" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-
-
-
-              {current?.kind === "form" && current.key === "review" && (
+              {current?.key === "review" && (
                 <div className="space-y-4">
-                  <StepHead icon={CheckCircle2} title="Review & Finish" subtitle="Confirm the details before creating the employee." />
+                  <StepHead icon={CheckCircle2} title="Review & Finish" subtitle="Confirm the details before creating the employee profile." />
                   <div className="rounded-2xl border border-border bg-card p-5 flex items-start gap-4">
                     <div className="h-20 w-20 rounded-full ring-2 ring-primary/30 overflow-hidden bg-primary/10 grid place-items-center text-primary text-xl font-semibold shrink-0">
                       {form.photoDataUrl ? <img src={form.photoDataUrl} className="h-full w-full object-cover" alt="" /> : form.name.split(" ").slice(0, 2).map((s) => s[0]).join("")}
@@ -1052,17 +1002,17 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       </div>
                     );
                   })()}
-                  <div className="rounded-2xl border border-border bg-card p-5">
-                    <div className="text-sm font-medium mb-2">Documents signed ({Object.keys(signatures).length}/{onboardingDocs.length})</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {onboardingDocs.map((d) => {
-                        const signed = !!signatures[d.code];
-                        return (
-                          <Badge key={d.id} variant={signed ? "default" : "outline"} className={signed ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30" : ""}>
-                            {signed && "✓ "}{d.code}
-                          </Badge>
-                        );
-                      })}
+                  <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 p-4 flex items-start gap-3">
+                    <div className="p-2 rounded-xl bg-sky-500/10 text-sky-600 shrink-0">
+                      <FileSignature className="h-5 w-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs font-semibold text-sky-900 dark:text-sky-200">
+                        Employee App Document Signing &amp; Acknowledgement
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Onboarding agreements (Appointment Letter, NDA, Code of Conduct &amp; Statutory Declarations) will be available in the employee&apos;s mobile app. The employee will sign and upload their documents directly from their app.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1092,6 +1042,318 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
     );
   }
 
+
+function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employee | null; open: boolean; onClose: () => void }) {
+  const { company, docAssets, updateEmployee } = useStore();
+  const [activeTab, setActiveTab] = useState<"signed" | "uploads">("signed");
+  const [uploadType, setUploadType] = useState("Aadhaar Card");
+  const [uploadName, setUploadName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  if (!employee) return null;
+
+  const signedDocs = employee.signedDocs || {};
+  const uploadedList = employee.documentsUploaded || [];
+
+  // Standard onboarding agreements to track employee app e-signing
+  const companyAgreements = [
+    { code: "APT", title: "Appointment Letter & Terms of Employment", key: "appointment" as LetterKey },
+    { code: "NDA", title: "Non-Disclosure & Confidentiality Agreement", key: "nda" as LetterKey },
+    { code: "COC", title: "Employee Code of Conduct & Workplace Ethics", key: "coc" as LetterKey },
+    { code: "POL", title: "Information Security & IT Usage Policy", key: "pol" as LetterKey },
+    { code: "PFR", title: "EPF / EPS Statutory Declaration (Form 11)", key: "pfr" as LetterKey },
+    { code: "ESI", title: "ESIC Medical Benefit Joining Declaration", key: "esi" as LetterKey },
+  ];
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const newDoc: EmployeeDocument = {
+        id: "edoc-" + crypto.randomUUID().slice(0, 8),
+        type: uploadType,
+        name: uploadName.trim() || file.name,
+        dataUrl: reader.result as string,
+        uploadedAt: new Date().toISOString(),
+        verified: true,
+      };
+      const updatedDocs = [...uploadedList, newDoc];
+      updateEmployee(employee.id, { documentsUploaded: updatedDocs });
+      toast.success(`Uploaded ${newDoc.name} for ${employee.name}`);
+      setUploadName("");
+    };
+    reader.readAsDataURL(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const toggleVerifyDoc = (docId: string) => {
+    const updated = uploadedList.map((d) => (d.id === docId ? { ...d, verified: !d.verified } : d));
+    updateEmployee(employee.id, { documentsUploaded: updated });
+    toast.success("Document verification status updated");
+  };
+
+  const deleteDoc = (docId: string) => {
+    const updated = uploadedList.filter((d) => d.id !== docId);
+    updateEmployee(employee.id, { documentsUploaded: updated });
+    toast.success("Document removed");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
+        <DialogHeader>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-full ring-2 ring-primary/30 overflow-hidden bg-primary/10 grid place-items-center text-primary font-bold text-sm">
+                {employee.photoDataUrl ? (
+                  <img src={employee.photoDataUrl} className="h-full w-full object-cover" alt="" />
+                ) : (
+                  employee.name.slice(0, 2).toUpperCase()
+                )}
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                  <span>{employee.name}</span>
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {employee.empCode}
+                  </Badge>
+                </DialogTitle>
+                <div className="text-xs text-muted-foreground">
+                  {employee.designation} · {employee.department}
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogHeader>
+
+        {/* Tab Selector */}
+        <div className="flex items-center gap-2 border-b border-border pb-2 pt-2">
+          <Button
+            size="sm"
+            variant={activeTab === "signed" ? "secondary" : "ghost"}
+            onClick={() => setActiveTab("signed")}
+            className="rounded-xl text-xs gap-1.5 font-semibold"
+          >
+            <FileSignature className="h-3.5 w-3.5 text-primary" />
+            <span>App Signed Documents</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant={activeTab === "uploads" ? "secondary" : "ghost"}
+            onClick={() => setActiveTab("uploads")}
+            className="rounded-xl text-xs gap-1.5 font-semibold"
+          >
+            <Upload className="h-3.5 w-3.5 text-sky-600" />
+            <span>Employee Uploads &amp; KYC ({uploadedList.length})</span>
+          </Button>
+        </div>
+
+        {/* Tab 1: App Signed Documents */}
+        {activeTab === "signed" && (
+          <div className="space-y-3 py-2">
+            <div className="text-xs text-muted-foreground">
+              These documents are signed and acknowledged by the employee directly from their <b>Employee App</b>.
+            </div>
+
+            <div className="space-y-2.5">
+              {companyAgreements.map((agr) => {
+                const isSigned = !!signedDocs[agr.code] || (agr.code === "APT" && employee.acceptance?.signed);
+                const sigInfo = signedDocs[agr.code];
+                const signedDate = sigInfo?.signedAt || employee.acceptance?.signedAt;
+                const sigImage = sigInfo?.signatureDataUrl || employee.acceptance?.signatureDataUrl;
+
+                return (
+                  <div
+                    key={agr.code}
+                    className="p-3.5 rounded-2xl border border-border/80 bg-card hover:bg-muted/30 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-xl shrink-0 ${isSigned ? "bg-emerald-500/10 text-emerald-600" : "bg-muted/60 text-muted-foreground"}`}>
+                        {isSigned ? <CheckCircle2 className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="font-bold text-xs text-foreground flex items-center gap-2">
+                          <span>{agr.title}</span>
+                          <Badge variant="outline" className="text-[9px] font-mono">
+                            {agr.code}
+                          </Badge>
+                        </div>
+
+                        {isSigned ? (
+                          <div className="flex items-center gap-2 text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+                            <span>✍️ Signed on Employee App</span>
+                            <span>•</span>
+                            <span className="text-muted-foreground">
+                              {signedDate ? new Date(signedDate).toLocaleString("en-IN") : "Signed"}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-amber-600 font-medium">
+                            ⏳ Awaiting Employee Signature in App
+                          </div>
+                        )}
+
+                        {sigImage && (
+                          <div className="pt-1">
+                            <img
+                              src={sigImage}
+                              alt="signature"
+                              className="h-9 max-w-[150px] object-contain bg-white rounded border border-border px-1"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          const p = computePayroll({ company, employee, daysWorked: company.workingDaysPerMonth, otHours: 0, incentive: 0, shiftDays: 0, loan: 0, advance: 0, bonus: 0 });
+                          if (agr.code === "APT") {
+                            await generateAppointmentPDF(company, employee, p, docAssets);
+                          } else {
+                            const tpl = DEFAULT_TEMPLATES.find((t) => t.key === agr.key || t.code === agr.code)
+                              || buildGenericTemplate(agr.code, agr.title, employee);
+                            await downloadLetter(company, employee, tpl, "pdf", docAssets);
+                          }
+                          toast.success(`${agr.title} PDF downloaded with signature & stamp`);
+                        }}
+                        className="h-8 text-xs rounded-xl gap-1"
+                      >
+                        <FileDown className="h-3.5 w-3.5 text-primary" />
+                        <span>Download PDF</span>
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Uploaded Files & KYC Proofs */}
+        {activeTab === "uploads" && (
+          <div className="space-y-4 py-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-2xl bg-muted/40 border border-border">
+              <div className="space-y-0.5">
+                <div className="text-xs font-semibold">Upload Additional Employee Document</div>
+                <div className="text-[11px] text-muted-foreground">Admin can also attach verification proofs directly.</div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Select value={uploadType} onValueChange={setUploadType}>
+                  <SelectTrigger className="h-8 text-xs w-36 rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Aadhaar Card">Aadhaar Card</SelectItem>
+                    <SelectItem value="PAN Card">PAN Card</SelectItem>
+                    <SelectItem value="Degree Certificate">Degree Certificate</SelectItem>
+                    <SelectItem value="Bank Passbook">Bank Passbook</SelectItem>
+                    <SelectItem value="Experience Letter">Experience Letter</SelectItem>
+                    <SelectItem value="Other">Other Document</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                <Button
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-8 text-xs rounded-xl gap-1 bg-primary text-primary-foreground font-semibold"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>Attach File</span>
+                </Button>
+              </div>
+            </div>
+
+            {uploadedList.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl border-2 border-dashed border-border bg-muted/10 space-y-2">
+                <FileText className="h-8 w-8 mx-auto text-muted-foreground" />
+                <div className="text-xs font-semibold">No Documents Uploaded Yet</div>
+                <div className="text-[11px] text-muted-foreground max-w-xs mx-auto">
+                  When the employee uploads their Aadhaar, PAN, degree, or certificates in the mobile app, they will appear here instantly.
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {uploadedList.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="p-3.5 rounded-2xl border border-border bg-card hover:bg-muted/30 transition-all flex flex-col justify-between gap-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-foreground truncate max-w-[180px]">{doc.name}</div>
+                          <div className="text-[10px] text-muted-foreground">{doc.type} · {new Date(doc.uploadedAt).toLocaleDateString()}</div>
+                        </div>
+                      </div>
+
+                      <Badge
+                        variant="outline"
+                        className={`text-[9px] cursor-pointer ${doc.verified ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : "bg-amber-500/10 text-amber-600 border-amber-500/30"}`}
+                        onClick={() => toggleVerifyDoc(doc.id)}
+                      >
+                        {doc.verified ? "✅ Verified" : "⏳ Review"}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-border/60">
+                      {doc.dataUrl ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            const w = window.open("");
+                            if (w) {
+                              w.document.write(`<iframe src="${doc.dataUrl}" style="width:100%;height:100%;border:none;"></iframe>`);
+                            }
+                          }}
+                          className="h-7 text-xs px-2 text-primary hover:bg-primary/10"
+                        >
+                          <Eye className="h-3 w-3 mr-1" /> Preview
+                        </Button>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground italic">No preview data</span>
+                      )}
+
+                      <div className="flex items-center gap-1">
+                        {doc.dataUrl && (
+                          <a href={doc.dataUrl} download={doc.name}>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-600 hover:bg-emerald-500/10">
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
+                          </a>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => deleteDoc(doc.id)} className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-500/10">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="pt-3 border-t border-border">
+          <Button onClick={onClose} className="rounded-xl text-xs h-9 bg-primary text-primary-foreground font-semibold">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function StepHead({ icon: Icon, title, subtitle }: { icon: typeof User; title: string; subtitle: string }) {
   return (
@@ -1297,6 +1559,17 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                 </Select>
               </div>
               <div>
+                <Label>Assigned Default Shift</Label>
+                <Select value={form.shiftId || "gen"} onValueChange={(v) => setForm({ ...form, shiftId: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select shift" /></SelectTrigger>
+                  <SelectContent>
+                    {(company.shifts || []).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name} ({s.start}–{s.end})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label>Status</Label>
                 <Select value={form.status || "active"} onValueChange={(v) => setForm({ ...form, status: v as "active" | "inactive" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1366,6 +1639,110 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                 onCheckedChange={(c) => setForm({ ...form, leaveApplyEligible: !!c })}
                 className="h-5 w-5"
               />
+            </div>
+
+            {/* Geofencing Verification Toggle */}
+            <div className="rounded-xl border border-border bg-card p-3.5 flex items-center justify-between gap-4 mt-2">
+              <div>
+                <div className="text-xs font-semibold flex items-center gap-2">
+                  <MapPin className="h-3.5 w-3.5 text-primary" />
+                  <span>Geofencing Attendance Verification</span>
+                  <Badge variant="outline" className={`text-[9px] ${form.geofencingEnabled !== false ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-amber-500/10 text-amber-700 border-amber-500/30"}`}>
+                    {form.geofencingEnabled !== false ? "Geo-fence Active" : "Face Only (Bypassed)"}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {form.geofencingEnabled !== false
+                    ? "Employee must be physically within branch geofence boundary to clock in/out."
+                    : "Geofence check bypassed. Facial attendance verification alone is sufficient for check-in/out."}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={form.geofencingEnabled !== false}
+                  onCheckedChange={(checked) => setForm({ ...form, geofencingEnabled: checked })}
+                />
+              </div>
+            </div>
+
+            {/* Grace Time & Shift Attendance Policy */}
+            <div className="rounded-xl border border-border bg-card p-3.5 space-y-3 mt-2">
+              <div className="space-y-0.5">
+                <div className="text-xs font-semibold flex items-center gap-2">
+                  <Clock className="h-3.5 w-3.5 text-purple-600" />
+                  <span>Grace Time for Attendance</span>
+                  <Badge variant="outline" className="text-[9px] bg-purple-500/10 text-purple-700 border-purple-500/30">
+                    Morning Shift Punctuality
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Allowed late-arrival buffer window after scheduled shift start time.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="space-y-1">
+                  <Label className="text-xs">Morning Grace Period</Label>
+                  <Select
+                    value={form.graceTime || "15"}
+                    onValueChange={(v: any) => setForm({ ...form, graceTime: v })}
+                  >
+                    <SelectTrigger className="w-full text-xs">
+                      <SelectValue placeholder="Select grace time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="always">Always (No cutoff / Full flexibility)</SelectItem>
+                      <SelectItem value="10">Within 10 mins</SelectItem>
+                      <SelectItem value="15">Within 15 mins (Standard Default)</SelectItem>
+                      <SelectItem value="20">Within 20 mins</SelectItem>
+                      <SelectItem value="25">Within 25 mins</SelectItem>
+                      <SelectItem value="30">Within 30 mins</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    {form.graceTime === "always"
+                      ? "Clock-in allowed at all times."
+                      : `Late check-in past ${form.graceTime || "15"} mins marks morning Absent.`}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Afternoon Login Window Start Time</Label>
+                  <Input
+                    type="time"
+                    value={form.halfDayLoginTime || "12:00"}
+                    onChange={(e) => setForm({ ...form, halfDayLoginTime: e.target.value })}
+                    disabled={form.allowHalfDayLogin === false || form.graceTime === "always"}
+                    className="text-xs"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Default 12:00 PM. Unlocks check-in for afternoon half-day.
+                  </p>
+                </div>
+              </div>
+
+              {form.graceTime !== "always" && (
+                <div className="rounded-lg bg-muted/40 p-2.5 flex items-center justify-between gap-3 border border-border/70">
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-semibold flex items-center gap-1.5">
+                      <Timer className="h-3 w-3 text-primary" />
+                      <span>Allow Afternoon / Half-Day Login</span>
+                      <Badge variant="outline" className={`text-[8px] ${form.allowHalfDayLogin !== false ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-rose-500/10 text-rose-700 border-rose-500/30"}`}>
+                        {form.allowHalfDayLogin !== false ? `After ${form.halfDayLoginTime || "12:00 PM"}` : "Locked for Full Day"}
+                      </Badge>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {form.allowHalfDayLogin !== false
+                        ? `If morning is missed, employee can mark afternoon attendance after ${form.halfDayLoginTime || "12:00 PM"}.`
+                        : "If morning grace period is missed, employee cannot mark attendance for the entire day."}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.allowHalfDayLogin !== false}
+                    onCheckedChange={(checked) => setForm({ ...form, allowHalfDayLogin: checked })}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1531,6 +1908,7 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
                       <th className="p-2">Fixed Salary</th>
                       <th className="p-2">Role</th>
                       <th className="p-2">Leave Eligible</th>
+                      <th className="p-2">Geofence</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -1549,10 +1927,17 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
                             </Badge>
                           </td>
                           <td className="p-2">
-                            {emp.leaveApplyEligible ? (
+                            {emp.leaveApplyEligible !== false ? (
                               <span className="text-emerald-600 font-semibold">Yes</span>
                             ) : (
                               <span className="text-muted-foreground">Locked</span>
+                            )}
+                          </td>
+                          <td className="p-2">
+                            {emp.geofencingEnabled !== false ? (
+                              <span className="text-emerald-600 font-medium">Required</span>
+                            ) : (
+                              <span className="text-amber-600 font-medium">Bypassed</span>
                             )}
                           </td>
                         </tr>

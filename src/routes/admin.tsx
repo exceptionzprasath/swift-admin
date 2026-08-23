@@ -6,8 +6,8 @@ import { useStore } from "@/lib/store";
 import { SwiftLogo } from "@/components/swift-logo";
 import { ThemeToggle } from "@/components/theme";
 import {
-  LayoutDashboard, Users, CalendarCheck, Calculator, FileText, Settings,
-  LogOut, Menu, Shield, Building2, ChevronDown, Network, Sparkles, BarChart3, Megaphone, Rocket, Package, ShieldCheck, CreditCard, BellRing, Scale,
+  LayoutDashboard, Users, CalendarCheck, CalendarDays, Calculator, FileText, Settings,
+  LogOut, Menu, Shield, Building2, ChevronDown, Network, Sparkles, BarChart3, Megaphone, Rocket, Package, ShieldCheck, CreditCard, BellRing, Scale, Clock, FolderLock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -35,9 +35,12 @@ const nav: NavItem[] = [
   { to: "/admin/org", label: "Organization", icon: Network },
   { to: "/admin/roles", label: "Role Creation", icon: ShieldCheck },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
-  { to: "/admin/payroll", label: "Payroll & AI Decisions", icon: Calculator },
+  { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays },
+  { to: "/admin/shift-roster", label: "Swift Roster", icon: Clock },
+  { to: "/admin/payroll", label: "Payroll", icon: Calculator },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/assets", label: "Assets", icon: Package },
+  { to: "/admin/vault", label: "Vault", icon: FolderLock },
   { to: "/admin/documents", label: "Documents", icon: FileText },
   { to: "/admin/compliance", label: "Compliance AI", icon: Scale },
   { to: "/admin/compliance-docs", label: "Compliance Docs", icon: ShieldCheck },

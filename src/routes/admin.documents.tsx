@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useStore, type DocRequest } from "@/lib/store";
+import { useStore, type DocRequest, canRoleApproveDocument } from "@/lib/store";
 import { inr } from "@/lib/payroll";
 import { generateSalarySlipPDF } from "@/lib/pdf";
 import {
@@ -22,7 +22,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   FileDown, FileText, Package, Eye, FileType, Send, MessageCircle, Search,
-  ShieldCheck, Check, X, Clock, GitBranch, Trash2,
+  ShieldCheck, Check, X, Clock, GitBranch, Trash2, Lock, ShieldAlert, Forward,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,12 +38,15 @@ const CATEGORIES: LetterCategory[] = [
 function DocumentsPage() {
   const {
     employees, company, payrolls,
-    approvalMatrix, docRequests, currentUser,
-    setApprovalChain, createDocRequest, actOnDocStep, deleteDocRequest,
+    approvalMatrix, docRequests, currentUser, roles,
+    setApprovalChain, createDocRequest, actOnDocStep, forwardDocStep, deleteDocRequest,
   } = useStore();
   const [templates, setTemplates] = useState<LetterTemplate[]>(DEFAULT_TEMPLATES);
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"letters" | "approvals" | "payslips">("letters");
+
+  const currentEmp = currentUser?.employeeId ? employees.find((e) => e.id === currentUser.employeeId) : null;
+  const currentRole = currentEmp ? (roles || []).find((r) => r.id === currentEmp.roleId || r.name === currentEmp.roleName) : null;
 
   // Request-approval dialog state
   const [reqOpen, setReqOpen] = useState(false);
@@ -73,7 +76,8 @@ function DocumentsPage() {
   // Act-on-step dialog
   const [actOpen, setActOpen] = useState(false);
   const [actReq, setActReq] = useState<DocRequest | null>(null);
-  const [actMode, setActMode] = useState<"approve" | "reject">("approve");
+  const [actMode, setActMode] = useState<"approve" | "forward" | "reject">("approve");
+  const [forwardToRole, setForwardToRole] = useState<string>("CEO / Super Admin");
   const [actComment, setActComment] = useState("");
 
   const filtered = useMemo(() => {
@@ -93,8 +97,18 @@ function DocumentsPage() {
     return map;
   }, [filtered]);
 
-  const pendingCount = docRequests.filter((d) => d.status === "pending").length;
-  const approvedCount = docRequests.filter((d) => d.status === "approved").length;
+  const visibleDocRequests = useMemo(() => {
+    if (currentUser?.role === "admin") return docRequests;
+    return docRequests.filter((req) => {
+      // 1. Employee's own requests
+      if (req.employeeId === currentUser?.employeeId) return true;
+      // 2. Requests where the employee's role has permission to approve
+      return canRoleApproveDocument(currentRole, req.letterKey);
+    });
+  }, [docRequests, currentUser, currentRole]);
+
+  const pendingCount = visibleDocRequests.filter((d) => d.status === "pending").length;
+  const approvedCount = visibleDocRequests.filter((d) => d.status === "approved").length;
 
   function chainFor(key: string): string[] {
     return approvalMatrix[key] ?? ["HR Manager"];
@@ -179,17 +193,29 @@ function DocumentsPage() {
     setActiveTab("approvals");
   }
 
-  function openAct(req: DocRequest, mode: "approve" | "reject") {
+  function openAct(req: DocRequest, mode: "approve" | "forward" | "reject") {
+    const isAuthorized = currentUser?.role === "admin" || canRoleApproveDocument(currentRole, req.letterKey);
+    if (!isAuthorized) {
+      return toast.error(
+        `Access Denied: Your assigned role (${currentRole?.name || "Employee"}) does not have permission to approve "${req.letterTitle}".`
+      );
+    }
     setActReq(req);
     setActMode(mode);
+    setForwardToRole("CEO / Super Admin");
     setActComment("");
     setActOpen(true);
   }
 
   function submitAct() {
     if (!actReq) return;
-    actOnDocStep(actReq.id, actMode, actComment, currentUser?.name ?? "Approver");
-    toast.success(actMode === "approve" ? "Step approved" : "Request rejected");
+    if (actMode === "forward") {
+      forwardDocStep(actReq.id, forwardToRole, actComment, currentUser?.name ?? "Approver");
+      toast.success(`Approved & forwarded to ${forwardToRole}`);
+    } else {
+      actOnDocStep(actReq.id, actMode, actComment, currentUser?.name ?? "Approver");
+      toast.success(actMode === "approve" ? "Step approved" : "Request rejected");
+    }
     setActOpen(false);
   }
 
@@ -316,18 +342,19 @@ function DocumentsPage() {
           <div className="flex flex-wrap gap-3 text-xs">
             <StatChip icon={<Clock className="h-3 w-3" />} label="Pending" value={pendingCount} tone="warn" />
             <StatChip icon={<Check className="h-3 w-3" />} label="Approved" value={approvedCount} tone="ok" />
-            <StatChip icon={<X className="h-3 w-3" />} label="Rejected" value={docRequests.filter((d) => d.status === "rejected").length} tone="bad" />
+            <StatChip icon={<X className="h-3 w-3" />} label="Rejected" value={visibleDocRequests.filter((d) => d.status === "rejected").length} tone="bad" />
           </div>
 
-          {docRequests.length === 0 ? (
+          {visibleDocRequests.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-              No document requests yet. Request approval for a letter from the Letters tab.
+              No document requests assigned to your role or issued to you yet.
             </div>
           ) : (
             <div className="space-y-2">
-              {docRequests.map((req) => {
+              {visibleDocRequests.map((req) => {
                 const emp = employees.find((e) => e.id === req.employeeId);
                 const step = req.steps[req.currentStep];
+                const isAuthorized = currentUser?.role === "admin" || canRoleApproveDocument(currentRole, req.letterKey);
                 return (
                   <div key={req.id} className="rounded-xl border border-border bg-card p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
@@ -342,15 +369,27 @@ function DocumentsPage() {
                         </div>
                         {req.note && <div className="text-xs mt-1 italic text-muted-foreground">Note: {req.note}</div>}
                       </div>
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
                         {req.status === "pending" && (
                           <>
-                            <Button size="sm" onClick={() => openAct(req, "approve")}>
-                              <Check className="h-3.5 w-3.5 mr-1" /> Approve
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => openAct(req, "reject")}>
-                              <X className="h-3.5 w-3.5 mr-1" /> Reject
-                            </Button>
+                            {isAuthorized ? (
+                              <>
+                                <Button size="sm" onClick={() => openAct(req, "approve")} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                                  <Check className="h-3.5 w-3.5 mr-1" /> Approve
+                                </Button>
+                                <Button size="sm" variant="secondary" onClick={() => openAct(req, "forward")} className="border border-border">
+                                  <Forward className="h-3.5 w-3.5 mr-1 text-primary" /> Approve & Forward
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => openAct(req, "reject")} className="text-red-600 border-red-200 hover:bg-red-50">
+                                  <X className="h-3.5 w-3.5 mr-1" /> Reject
+                                </Button>
+                              </>
+                            ) : (
+                              <div className="inline-flex items-center text-xs font-medium text-muted-foreground bg-muted/60 px-2.5 py-1 rounded-md border border-border">
+                                <Lock className="h-3 w-3 mr-1.5 text-muted-foreground" />
+                                <span>Approval Restricted</span>
+                              </div>
+                            )}
                           </>
                         )}
                         {req.status === "approved" && (
@@ -597,7 +636,9 @@ function DocumentsPage() {
       <Dialog open={actOpen} onOpenChange={setActOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{actMode === "approve" ? "Approve step" : "Reject request"}</DialogTitle>
+            <DialogTitle>
+              {actMode === "approve" ? "Approve Step" : actMode === "forward" ? "Approve & Forward to Next Position" : "Reject Request"}
+            </DialogTitle>
             <DialogDescription>
               {actReq && (
                 <>
@@ -607,9 +648,37 @@ function DocumentsPage() {
               )}
             </DialogDescription>
           </DialogHeader>
+
+          {actMode === "forward" && (
+            <div className="space-y-1.5 mb-3">
+              <Label className="text-xs font-semibold">Select Next Approver Position / Role</Label>
+              <Select value={forwardToRole} onValueChange={setForwardToRole}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Choose approver role" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CEO / Super Admin">👑 CEO / Super Admin (Executive Final Approval)</SelectItem>
+                  <SelectItem value="Director">Director / Board Member</SelectItem>
+                  <SelectItem value="General Manager">General Manager</SelectItem>
+                  {roles.map((r) => (
+                    <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Document will be marked as approved on your level and placed in the queue for the selected role.
+              </p>
+            </div>
+          )}
+
           <div>
-            <Label className="text-xs">Comment {actMode === "reject" ? "(required)" : "(optional)"}</Label>
-            <Textarea value={actComment} onChange={(e) => setActComment(e.target.value)} rows={3} />
+            <Label className="text-xs">
+              {actMode === "forward" ? "Forwarding Note / Remark (Optional)" : actMode === "reject" ? "Reason for Rejection (Required)" : "Approval Comment (Optional)"}
+            </Label>
+            <Textarea
+              value={actComment}
+              onChange={(e) => setActComment(e.target.value)}
+              rows={3}
+              placeholder={actMode === "forward" ? "e.g. Approved and verified. Forwarding to CEO for final signoff." : "Enter remarks..."}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActOpen(false)}>Cancel</Button>
@@ -617,8 +686,15 @@ function DocumentsPage() {
               onClick={submitAct}
               disabled={actMode === "reject" && actComment.trim().length === 0}
               variant={actMode === "reject" ? "destructive" : "default"}
+              className={actMode === "forward" ? "bg-primary text-primary-foreground" : actMode === "approve" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : undefined}
             >
-              {actMode === "approve" ? <><Check className="h-4 w-4 mr-1" /> Approve</> : <><X className="h-4 w-4 mr-1" /> Reject</>}
+              {actMode === "approve" ? (
+                <><Check className="h-4 w-4 mr-1" /> Approve</>
+              ) : actMode === "forward" ? (
+                <><Forward className="h-4 w-4 mr-1" /> Approve & Forward</>
+              ) : (
+                <><X className="h-4 w-4 mr-1" /> Reject</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

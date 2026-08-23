@@ -22,6 +22,7 @@ export type LetterCategory =
 
 export type LetterKey =
   | "offer" | "appointment" | "joining_report" | "internship" | "nda" | "contract"
+  | "coc" | "pol" | "pfr" | "esi"
   | "probation_extension" | "confirmation"
   | "increment" | "promotion" | "transfer"
   | "warning" | "show_cause" | "suspension"
@@ -31,6 +32,7 @@ export type LetterKey =
 
 export type LetterTemplate = {
   key: LetterKey;
+  code?: string;
   title: string;
   category: LetterCategory;
   description: string;
@@ -82,16 +84,53 @@ You will report to {{department}} leadership and be governed by our conduct and 
 
 For {{company}}` },
 
-  { key: "nda", title: "Non-Disclosure Agreement", category: "Onboarding", description: "Confidentiality undertaking.",
-    body: `NON-DISCLOSURE AGREEMENT
+  { key: "nda", code: "NDA", title: "Non-Disclosure & Confidentiality Agreement", category: "Onboarding", description: "Confidentiality and IP undertaking.",
+    body: `NON-DISCLOSURE & CONFIDENTIALITY AGREEMENT
 
-I, {{name}} (Employee Code {{empCode}}), engaged as {{designation}} with {{company}}, acknowledge that during the course of my employment I will have access to confidential and proprietary information belonging to {{company}}.
+I, {{name}} (Employee Code {{empCode}}), engaged as {{designation}} in {{department}} with {{company}}, acknowledge that during the course of my employment I will have access to confidential, proprietary, and sensitive information belonging to {{company}} and its clients.
 
-I agree not to disclose, reproduce, or use such information for any purpose other than the performance of my duties, both during and after my employment.
+1. Confidential Information: All software code, customer data, business plans, trade secrets, financial records, and proprietary materials.
+2. Non-Disclosure: I agree to hold all such information in strict confidence and not disclose, reproduce, or use it for unauthorized purposes.
+3. Return of Assets: Upon separation, I will return all devices, storage media, documents, and credentials immediately.
+4. Survival of Obligations: These confidentiality covenants shall survive termination of employment indefinitely.` },
 
-Signed at __________________ on {{today}}.
+  { key: "coc", code: "COC", title: "Employee Code of Conduct & Workplace Ethics", category: "Onboarding", description: "Workplace ethics, anti-harassment, and conduct standards.",
+    body: `EMPLOYEE CODE OF CONDUCT & WORKPLACE ETHICS
 
-Signature: __________________` },
+I, {{name}} (Employee Code {{empCode}}), appointed as {{designation}} with {{company}}, hereby acknowledge and undertake to uphold the highest standards of professional integrity, workplace ethics, and compliance.
+
+1. Professional Conduct: Treat colleagues, clients, and visitors with dignity, fairness, and mutual respect.
+2. POSH & Anti-Harassment: Maintain zero tolerance towards any form of sexual harassment, discrimination, or abusive conduct.
+3. Conflict of Interest: Avoid outside business engagements or personal financial interests that conflict with duties at {{company}}.
+4. Proper Asset Usage: Company hardware, software licenses, and accounts must be utilized solely for official business activities.` },
+
+  { key: "pol", code: "POL", title: "Information Security & IT Usage Policy", category: "Onboarding", description: "IT equipment, data protection, and cybersecurity rules.",
+    body: `INFORMATION SECURITY & ACCEPTABLE IT USE POLICY
+
+I, {{name}} (Employee Code {{empCode}}), employed as {{designation}} at {{company}}, hereby acknowledge and agree to comply with company IT Security and Data Protection policies.
+
+1. Credential Security: Passwords, OTPs, and access tokens are strictly confidential and must never be shared.
+2. Device & Data Protection: Company laptops, files, and customer records must be protected from unauthorized access, copying, or cloud uploading.
+3. Software Regulations: Downloading unauthorized software or connecting unapproved personal storage is strictly prohibited.
+4. Incident Reporting: Any suspected security breach, malware, or lost device must be reported immediately to the IT administrator.` },
+
+  { key: "pfr", code: "PFR", title: "EPF / EPS Statutory Declaration (Form 11)", category: "Compliance", description: "Declaration for EPF/EPS statutory registration.",
+    body: `DECLARATION BY A PERSON TAKING UP EMPLOYMENT IN AN ESTABLISHMENT (EPF FORM 11)
+
+I, {{name}} (Employee Code {{empCode}}), having joined {{company}} as {{designation}} on {{doj}}, hereby submit this statutory declaration under the Employees' Provident Funds & Miscellaneous Provisions Act, 1952.
+
+1. Statutory Deduction: I agree to contribute to the Employees' Provident Fund (EPF) and Pension Scheme (EPS) as applicable by statutory wage limits.
+2. Identification Details: The Aadhaar and PAN details submitted by me are authentic and authorized for UAN linking and KYC generation.
+3. Prior PF Declarations: All details regarding previous employment and Universal Account Number (UAN) provided during onboarding are accurate.` },
+
+  { key: "esi", code: "ESI", title: "ESIC Medical Benefit Joining Declaration", category: "Compliance", description: "Declaration for ESIC health insurance coverage.",
+    body: `EMPLOYEES' STATE INSURANCE CORPORATION (ESIC) JOINING DECLARATION
+
+I, {{name}} (Employee Code {{empCode}}), appointed as {{designation}} at {{company}}, hereby submit this declaration for statutory registration under the Employees' State Insurance Act, 1948.
+
+1. Benefit Eligibility: I agree to enroll under the ESI medical and health scheme in accordance with statutory wage eligibility thresholds.
+2. Dependent Family Details: Details of dependent family members provided during registration are accurate for biometric e-Pehchan card issuance.
+3. Address & Family Updates: I undertake to report any change in family dependents or residential address promptly to HR.` },
 
   { key: "contract", title: "Contract of Employment", category: "Onboarding", description: "Full contract with terms.",
     body: `CONTRACT OF EMPLOYMENT
@@ -342,6 +381,25 @@ export function renderTemplate(body: string, vars: Record<string, string>): stri
   return body.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
 }
 
+export function buildGenericTemplate(code: string, title: string, employee?: Employee, extra?: string): LetterTemplate {
+  return {
+    key: (code.toLowerCase() as LetterKey),
+    code: code.toUpperCase(),
+    title: title,
+    category: "Onboarding",
+    description: `Official ${title} document.`,
+    body: `${title.toUpperCase()}
+
+I, {{name}} (Employee Code {{empCode}}), engaged as {{designation}} with {{company}}, hereby acknowledge that I have reviewed, understood, and voluntarily agree to all terms, policies, and statutory conditions outlined in this ${title}.
+
+1. The terms stated herein shall govern my official employment with {{company}} with effect from {{doj}}.
+2. I undertake to adhere to all corporate guidelines, statutory requirements, and company policies throughout my tenure.
+3. This agreement has been acknowledged and executed via the SWIFT Employee Portal.${extra ? `\n\nAdditional Terms:\n${extra}` : ""}
+
+Signed and submitted for official employment records.`,
+  };
+}
+
 // ============================================================
 // PDF generation — branded letterhead
 // ============================================================
@@ -352,40 +410,203 @@ const RIGHT = A4_W - MR; // 196
 const CONTENT_W = A4_W - ML - MR; // 182
 const BOTTOM_SAFE = A4_H - 20; // 277
 
-function pdfHeader(doc: jsPDF, company: Company, title: string) {
-  doc.setFillColor(20, 160, 170);
-  doc.rect(0, 0, A4_W, 30, "F");
+const imageCache = new Map<string, string>();
+
+/** Converts URL / S3 / blob / relative path / DataURL into a base64 DataURL for jsPDF */
+export async function resolveImageToDataUrl(src?: string): Promise<string | undefined> {
+  if (!src || typeof src !== "string" || !src.trim()) return undefined;
+  if (src.startsWith("data:image/")) return src;
+  if (imageCache.has(src)) return imageCache.get(src);
+
+  try {
+    const res = await fetch(src, { mode: "cors" });
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        imageCache.set(src, dataUrl);
+        resolve(dataUrl);
+      };
+      reader.onerror = () => resolve(undefined);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL("image/png");
+            imageCache.set(src, dataUrl);
+            resolve(dataUrl);
+            return;
+          }
+        } catch {
+          // ignore
+        }
+        resolve(undefined);
+      };
+      img.onerror = () => resolve(undefined);
+      img.src = src;
+    });
+  }
+}
+
+export async function prepareDocAssets(
+  company: Company,
+  assets?: CompanyDocumentAssets
+): Promise<{ company: Company; assets?: CompanyDocumentAssets }> {
+  const companyLogo = await resolveImageToDataUrl(company.logoDataUrl);
+  const updatedCompany = companyLogo ? { ...company, logoDataUrl: companyLogo } : company;
+
+  if (!assets) return { company: updatedCompany, assets };
+
+  const [
+    logoDataUrl,
+    letterheadDataUrl,
+    footerDataUrl,
+    watermarkDataUrl,
+    companySealDataUrl,
+    departmentSealDataUrl,
+    mdSignatureDataUrl,
+    hrSignatureDataUrl,
+    authorisedSignatoryDataUrl,
+    qrCodeDataUrl,
+  ] = await Promise.all([
+    resolveImageToDataUrl(assets.logoDataUrl),
+    resolveImageToDataUrl(assets.letterheadDataUrl),
+    resolveImageToDataUrl(assets.footerDataUrl),
+    resolveImageToDataUrl(assets.watermarkDataUrl),
+    resolveImageToDataUrl(assets.companySealDataUrl),
+    resolveImageToDataUrl(assets.departmentSealDataUrl),
+    resolveImageToDataUrl(assets.mdSignatureDataUrl),
+    resolveImageToDataUrl(assets.hrSignatureDataUrl),
+    resolveImageToDataUrl(assets.authorisedSignatoryDataUrl),
+    resolveImageToDataUrl(assets.qrCodeDataUrl),
+  ]);
+
+  const updatedAssets: CompanyDocumentAssets = {
+    ...assets,
+    ...(logoDataUrl ? { logoDataUrl } : {}),
+    ...(letterheadDataUrl ? { letterheadDataUrl } : {}),
+    ...(footerDataUrl ? { footerDataUrl } : {}),
+    ...(watermarkDataUrl ? { watermarkDataUrl } : {}),
+    ...(companySealDataUrl ? { companySealDataUrl } : {}),
+    ...(departmentSealDataUrl ? { departmentSealDataUrl } : {}),
+    ...(mdSignatureDataUrl ? { mdSignatureDataUrl } : {}),
+    ...(hrSignatureDataUrl ? { hrSignatureDataUrl } : {}),
+    ...(authorisedSignatoryDataUrl ? { authorisedSignatoryDataUrl } : {}),
+    ...(qrCodeDataUrl ? { qrCodeDataUrl } : {}),
+  };
+
+  return { company: updatedCompany, assets: updatedAssets };
+}
+
+/** Safely renders base64 image (PNG, JPEG, WebP) or Image element in jsPDF without crashing */
+export function drawImageSafe(
+  doc: jsPDF,
+  imgSource: string | HTMLImageElement | HTMLCanvasElement | undefined | null,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+): boolean {
+  if (!imgSource) return false;
+  try {
+    if (typeof imgSource === "string") {
+      let format = "PNG";
+      if (/^data:image\/(jpe?g|jfif)/i.test(imgSource) || /\.(jpe?g|jfif)(\?.*)?$/i.test(imgSource)) format = "JPEG";
+      else if (/^data:image\/webp/i.test(imgSource) || /\.webp(\?.*)?$/i.test(imgSource)) format = "WEBP";
+      else if (/^data:image\/png/i.test(imgSource) || /\.png(\?.*)?$/i.test(imgSource)) format = "PNG";
+
+      doc.addImage(imgSource, format, x, y, w, h);
+      return true;
+    } else {
+      doc.addImage(imgSource, "PNG", x, y, w, h);
+      return true;
+    }
+  } catch {
+    try {
+      if (typeof imgSource === "string") {
+        doc.addImage(imgSource, x, y, w, h);
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+}
+
+function pdfHeader(doc: jsPDF, company: Company, title: string, logoDataUrl?: string) {
+  // Top deep navy brand bar matching payslip (#0F172A / [15, 23, 42])
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, A4_W, 32, "F");
+
+  const effectiveLogo = logoDataUrl || company.logoDataUrl;
+  let textLeft = ML; // 14
+
+  if (effectiveLogo) {
+    const ok = drawImageSafe(doc, effectiveLogo, ML, 5, 22, 22);
+    if (ok) {
+      textLeft = 40;
+    }
+  }
+
+  // Left Brand & Company Name
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.text("SWIFT", ML, 15);
-  doc.setFontSize(8);
+  doc.setFontSize(15);
+  doc.text((company.name || "SWIFT HRMS").toUpperCase(), textLeft, 13);
+
   doc.setFont("helvetica", "normal");
-  doc.text("People. Performance. Progress.", ML, 21);
-  doc.setFontSize(13);
+  doc.setFontSize(8.5);
+  doc.setTextColor(203, 213, 225); // #CBD5E1
+  doc.text(company.legalName || company.name || "Company Legal Name", textLeft, 19);
+
+  const addressLine = `${company.address || ""} ${company.gstin ? " · GSTIN: " + company.gstin : ""}`.trim();
+  if (addressLine) {
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184); // #94A3B8
+    const maxW = textLeft > ML ? 85 : 110;
+    doc.text(doc.splitTextToSize(addressLine, maxW)[0] || "", textLeft, 25);
+  }
+
+  // Right Title & Accent Subtitle
+  doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  // Title truncated so it never overlaps the logo slot at right edge
-  const safeTitle = doc.splitTextToSize(title, 110)[0] ?? title;
-  doc.text(safeTitle, RIGHT, 15, { align: "right" });
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(company.legalName.slice(0, 60), RIGHT, 21, { align: "right" });
-  doc.text((company.address ?? "").slice(0, 70), RIGHT, 26, { align: "right" });
-  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(13);
+  const safeTitle = doc.splitTextToSize(title.toUpperCase(), 85)[0] ?? title.toUpperCase();
+  doc.text(safeTitle, RIGHT, 14, { align: "right" });
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(56, 189, 248); // Cyan accent #38BDF8
+  doc.text("OFFICIAL COMPANY DOCUMENT", RIGHT, 21, { align: "right" });
+
+  // Reset text color to dark slate
+  doc.setTextColor(15, 23, 42);
 }
 
 function pdfFooter(doc: jsPDF, refId: string) {
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
-    doc.setFontSize(7);
-    doc.setTextColor(140, 140, 140);
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
     doc.text(
       `Generated by SWIFT AI HRMS · ${new Date().toLocaleString("en-IN")} · Ref: ${refId}`,
       ML, 289,
     );
     doc.text(`Page ${i} of ${pages}`, RIGHT, 289, { align: "right" });
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(15, 23, 42);
   }
 }
 
@@ -396,39 +617,40 @@ export function generateLetterPDF(
   assets?: CompanyDocumentAssets,
 ): { blob: Blob; filename: string } {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const refId = `SWIFT-${template.key.toUpperCase()}-${employee.empCode}-${Date.now().toString(36).toUpperCase()}`;
-  pdfHeader(doc, company, template.title);
+  const docKey = (template.code || template.key || "DOC").toUpperCase();
+  const refId = `SWIFT-${docKey}-${employee.empCode}-${Date.now().toString(36).toUpperCase()}`;
+  const effectiveLogo = assets?.logoDataUrl || company.logoDataUrl;
+  pdfHeader(doc, company, template.title, effectiveLogo);
 
-  // Company logo overlay in header if provided (fits inside the 30mm band)
-  if (assets?.logoDataUrl) {
-    try { doc.addImage(assets.logoDataUrl, "PNG", RIGHT - 26, 4, 22, 22); } catch { /* ignore */ }
-  }
-
-  // Watermark (behind body) — centred within content area
-  if (assets?.watermarkDataUrl) {
+  // Watermark (behind body) — ONLY if watermark is provided and handle state properly
+  if (assets?.watermarkDataUrl && typeof (doc as any).saveGraphicsState === "function") {
     try {
+      (doc as any).saveGraphicsState();
       const gs = (doc as unknown as { GState: new (o: { opacity: number }) => unknown; setGState: (g: unknown) => void });
-      if (gs.GState && gs.setGState) gs.setGState(new gs.GState({ opacity: 0.08 }));
-      doc.addImage(assets.watermarkDataUrl, "PNG", (A4_W - 130) / 2, 90, 130, 130);
-      if (gs.GState && gs.setGState) gs.setGState(new gs.GState({ opacity: 1 }));
-    } catch { /* ignore */ }
+      if (gs.GState && gs.setGState) gs.setGState(new gs.GState({ opacity: 0.05 }));
+      drawImageSafe(doc, assets.watermarkDataUrl, (A4_W - 130) / 2, 90, 130, 130);
+      (doc as any).restoreGraphicsState();
+    } catch {
+      // ignore
+    }
   }
 
   const vars = buildVars(company, employee);
   const body = renderTemplate(template.body, vars);
 
   doc.setFontSize(9);
-  doc.setTextColor(90, 90, 90);
+  doc.setTextColor(51, 65, 85); // Slate-700
+  doc.setFont("helvetica", "normal");
   doc.text(`Date: ${vars.today}`, ML, 40);
-  doc.text(`Ref: SWIFT/${template.key.toUpperCase()}/${employee.empCode}`, RIGHT, 40, { align: "right" });
-  doc.setTextColor(0, 0, 0);
+  doc.text(`Ref: SWIFT/${docKey}/${employee.empCode}`, RIGHT, 40, { align: "right" });
 
-  doc.setFontSize(11);
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42); // Slate-900 (crisp high contrast)
   doc.setFont("helvetica", "normal");
   const lines = doc.splitTextToSize(body, CONTENT_W);
-  doc.text(lines, ML, 52);
+  doc.text(lines, ML, 48);
 
-  let y = 52 + lines.length * 6 + 8;
+  let y = 48 + lines.length * 5.2 + 8;
 
   // Attach salary breakup for salary-related letters
   if (["offer", "appointment", "increment", "salary_certificate"].includes(template.key)) {
@@ -441,7 +663,7 @@ export function generateLetterPDF(
       startY: y,
       margin: { left: ML, right: MR },
       theme: "striped",
-      styles: { fontSize: 9, overflow: "linebreak" },
+      styles: { fontSize: 8.5, overflow: "linebreak", cellPadding: 2.2, font: "helvetica", textColor: [30, 41, 59] },
       head: [["Salary Component", "Monthly (INR)", "Annual (INR)"]],
       body: [
         ["Basic", inr(p.earnings.basic), inr(p.earnings.basic * 12)],
@@ -458,9 +680,9 @@ export function generateLetterPDF(
         ],
         ["Employer PF + ESI + Gratuity", inr(p.totalEmployer), inr(p.totalEmployer * 12)],
         [
-          { content: "Total CTC", styles: { fontStyle: "bold", fillColor: [230, 245, 246] } },
-          { content: inr(p.monthlyCTC), styles: { fontStyle: "bold", fillColor: [230, 245, 246] } },
-          { content: inr(p.annualCTC), styles: { fontStyle: "bold", fillColor: [230, 245, 246] } },
+          { content: "Total CTC", styles: { fontStyle: "bold", fillColor: [241, 245, 249] } },
+          { content: inr(p.monthlyCTC), styles: { fontStyle: "bold", fillColor: [241, 245, 249] } },
+          { content: inr(p.annualCTC), styles: { fontStyle: "bold", fillColor: [241, 245, 249] } },
         ],
       ],
       columnStyles: {
@@ -468,51 +690,105 @@ export function generateLetterPDF(
         1: { cellWidth: 40, halign: "right" },
         2: { cellWidth: 40, halign: "right" },
       },
-      headStyles: { fillColor: [20, 160, 170], textColor: 255 },
+      headStyles: { fillColor: [15, 23, 42], textColor: 255 },
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
   }
 
-  // Signature block — reserve ~40mm; move to new page if not enough
-  if (y > BOTTOM_SAFE - 40) { doc.addPage(); y = 40; }
-  doc.setFontSize(10);
-  doc.text(`For ${company.legalName}`, ML, y);
+  // Signature block — reserve ~45mm; move to new page if not enough
+  if (y > BOTTOM_SAFE - 45) { doc.addPage(); y = 40; }
+
+  // Left: Company Authorised Signatory
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "bold");
+  doc.text(`For ${company.legalName || company.name}`, ML, y);
+
   const sigImg = assets?.authorisedSignatoryDataUrl
     ?? assets?.hrSignatureDataUrl
     ?? assets?.mdSignatureDataUrl;
   if (sigImg) {
-    try { doc.addImage(sigImg, "PNG", ML, y + 4, 55, 18); } catch { /* ignore */ }
+    drawImageSafe(doc, sigImg, ML, y + 3, 45, 14);
   }
-  doc.text("_____________________", ML, y + 24);
-  doc.text("Authorised Signatory", ML, y + 29);
+  doc.setFont("helvetica", "normal");
+  doc.text("_____________________", ML, y + 20);
+  doc.text("Authorised Signatory", ML, y + 25);
   if (assets?.digitalCertificateName) {
-    doc.setFontSize(8);
-    doc.setTextColor(120, 120, 120);
-    doc.text(`Digitally signed: ${assets.digitalCertificateName}`, ML, y + 34);
-    doc.setFontSize(10);
-    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Digitally signed: ${assets.digitalCertificateName}`, ML, y + 29);
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
   }
 
   // Company seal overlaid between the two signature blocks
   const seal = assets?.companySealDataUrl ?? assets?.departmentSealDataUrl;
   if (seal) {
-    try { doc.addImage(seal, "PNG", (A4_W - 30) / 2, y + 2, 30, 30); } catch { /* ignore */ }
+    drawImageSafe(doc, seal, (A4_W - 28) / 2, y + 1, 28, 28);
   }
 
-  // Employee acknowledgement — anchored to right column
-  const ACK_X = RIGHT - 60;
-  doc.text("Employee Acknowledgement", ACK_X, y);
-  doc.text("_____________________", ACK_X, y + 24);
-  doc.text(employee.name, ACK_X, y + 29);
+  // Right: Employee Acknowledgement & E-Signature
+  const ACK_X = 130;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Employee Acceptance & E-Signature", ACK_X, y);
 
-  // QR verification — placed right below signature block so it never overlaps
+  // Check all signature keys for this document
+  const sigInfo = employee.signedDocs?.[docKey]
+    || employee.signedDocs?.[template.key]
+    || (docKey === "APT" || docKey === "APPOINTMENT" ? employee.acceptance : undefined)
+    || Object.values(employee.signedDocs || {}).find(
+      (s) => s.docCode.toUpperCase() === docKey || s.docTitle.toLowerCase() === template.title.toLowerCase()
+    );
+
+  const isEmpSigned = !!sigInfo || (docKey === "APT" && employee.acceptance?.signed);
+  const empSigImg = (sigInfo as any)?.signatureDataUrl || (docKey === "APT" ? employee.acceptance?.signatureDataUrl : undefined);
+  const empSigText = (sigInfo as any)?.signatureText || (employee.acceptance?.signed && docKey === "APT" ? employee.name : "") || employee.name;
+  const empSignedAt = (sigInfo as any)?.signedAt || (docKey === "APT" ? employee.acceptance?.signedAt : undefined);
+
+  if (isEmpSigned) {
+    if (empSigImg) {
+      drawImageSafe(doc, empSigImg, ACK_X, y + 3, 45, 14);
+    } else if (empSigText) {
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(13);
+      doc.setTextColor(15, 23, 42);
+      doc.text(empSigText, ACK_X, y + 12);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+    }
+    doc.setFontSize(7.5);
+    doc.setTextColor(16, 185, 129); // emerald
+    doc.setFont("helvetica", "bold");
+    doc.text("DIGITALLY SIGNED & ACCEPTED (App)", ACK_X, y + 19);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Signed: " + (empSignedAt ? new Date(empSignedAt).toLocaleString("en-IN") : "Recorded on App"), ACK_X, y + 23);
+  } else {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("Awaiting digital signature in app", ACK_X, y + 14);
+  }
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(9.5);
+  doc.text("_____________________", ACK_X, y + 26);
+  doc.setFont("helvetica", "bold");
+  doc.text(`${employee.name} (${employee.empCode})`, ACK_X, y + 31);
+
+  // QR verification — placed right below signature block
   if (assets?.qrCodeDataUrl) {
-    try { doc.addImage(assets.qrCodeDataUrl, "PNG", RIGHT - 18, y + 34, 18, 18); } catch { /* ignore */ }
+    drawImageSafe(doc, assets.qrCodeDataUrl, RIGHT - 16, y + 34, 16, 16);
   }
 
   pdfFooter(doc, refId);
 
-  const filename = `${template.title.replace(/\s+/g, "_")}_${employee.empCode}.pdf`;
+  const cleanTitle = (template.title || "Document").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const filename = `${cleanTitle}_${employee.empCode}.pdf`;
   return { blob: doc.output("blob"), filename };
 }
 
@@ -697,7 +973,8 @@ export async function downloadLetter(
   assets?: CompanyDocumentAssets,
 ) {
   if (format === "pdf") {
-    const { blob, filename } = generateLetterPDF(company, employee, template, assets);
+    const { company: prepCompany, assets: prepAssets } = await prepareDocAssets(company, assets);
+    const { blob, filename } = generateLetterPDF(prepCompany, employee, template, prepAssets);
     saveAs(blob, filename);
   } else {
     const { blob, filename } = await generateLetterDOCX(company, employee, template);
@@ -712,36 +989,22 @@ export async function bulkZipLetters(
   format: "pdf" | "docx" | "both",
   assets?: CompanyDocumentAssets,
 ) {
+  const { company: prepCompany, assets: prepAssets } = await prepareDocAssets(company, assets);
   const zip = new JSZip();
   const folder = zip.folder(template.title.replace(/\s+/g, "_"))!;
   for (const e of employees) {
     if (format === "pdf" || format === "both") {
-      const { blob, filename } = generateLetterPDF(company, e, template, assets);
+      const { blob, filename } = generateLetterPDF(prepCompany, e, template, prepAssets);
       folder.file(filename, blob);
     }
     if (format === "docx" || format === "both") {
-      const { blob, filename } = await generateLetterDOCX(company, e, template);
+      const { blob, filename } = await generateLetterDOCX(prepCompany, e, template);
       folder.file(filename, blob);
     }
   }
   const zipBlob = await zip.generateAsync({ type: "blob" });
   const stamp = new Date().toISOString().slice(0, 10);
   saveAs(zipBlob, `${template.title.replace(/\s+/g, "_")}_${stamp}.zip`);
-}
-
-// ============================================================
-// Generic template builder — for onboarding docs without a bundled letter
-// (e.g. AST, IDC, PFR, ESI). Renders a proper branded PDF/DOCX with the
-// standard signature/seal block so every doc in the wizard is downloadable.
-// ============================================================
-export function buildGenericTemplate(code: string, title: string, employee: Employee, extra?: string): LetterTemplate {
-  const body = `This document (${code} — ${title}) is issued to {{name}} (Employee Code: {{empCode}}) at {{company}}, in the capacity of {{designation}}, {{department}} department, dated {{today}}.
-
-${extra ?? "The employee acknowledges receipt of this document and agrees to comply with the terms recorded herein."}
-
-Ref: SWIFT/${code}/{{empCode}}
-Employee: ${employee.name}`;
-  return { key: "custom", title, category: "Onboarding", description: `${code} document`, body };
 }
 
 // Asset handover / return letter helper. Uses the branded PDF pipeline so

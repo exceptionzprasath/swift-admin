@@ -91,7 +91,39 @@ async function uploadToS3(tenantId: string, path: string, fileDataUrl: string) {
 }
 
 export type LeaveType = { id: string; name: string; days: number; paid?: boolean };
-export type ShiftType = { id: string; name: string; start: string; end: string; allowancePerDay: number };
+export type ShiftType = {
+  id: string;
+  name: string;
+  code?: string;
+  start: string;
+  end: string;
+  allowancePerDay: number;
+  graceTime?: "always" | "10" | "15" | "20" | "25" | "30";
+  allowHalfDayLogin?: boolean;
+  halfDayLoginTime?: string;
+  color?: string;
+  description?: string;
+};
+
+export type ShiftAssignment = {
+  id: string;
+  tenantId?: string;
+  employeeId: string;
+  employeeName?: string;
+  empCode?: string;
+  department?: string;
+  date: string; // YYYY-MM-DD
+  shiftId: string; // shift id or "off"
+  shiftName?: string;
+  shiftStart?: string;
+  shiftEnd?: string;
+  graceTime?: "always" | "10" | "15" | "20" | "25" | "30";
+  allowHalfDayLogin?: boolean;
+  halfDayLoginTime?: string;
+  note?: string;
+  assignedBy?: string;
+  updatedAt?: string;
+};
 
 export type EarningFormula =
   | "pctOfBasic"
@@ -179,12 +211,26 @@ export type Company = {
   employerPfPct: number;
   employeeEsiPct: number;
   employerEsiPct: number;
+  basicPct?: number;
+  hraEnabled?: boolean;
   hraPct: number;
   specialPct: number;
   medicalPct: number;
   conveyancePct: number;
   washingPct: number;
   otherPct: number;
+  daEnabled?: boolean;
+  daPct?: number;
+  oaEnabled?: boolean;
+  oaPct?: number;
+  caEnabled?: boolean;
+  caPct?: number;
+  ltaEnabled?: boolean;
+  ltaPct?: number;
+  attendanceBonusRules?: { enabled: boolean; type: "flat" | "pct"; value: number; requireFullAttendance?: boolean };
+  yearlyBonusRules?: { enabled: boolean; type: "flat" | "pct"; value: number };
+  payrollLockedMonths?: Record<string, boolean>;
+  ptEnabled?: boolean;
   ptAmount: number;
   geofence: { lat: number; lng: number; radiusM: number };
   leaveTypes: LeaveType[];
@@ -208,6 +254,8 @@ export type Company = {
   salaryStructures?: SalaryStructure[];
   /** Optional minimum wage floor (monthly basic + DA) used by the AI audit. */
   minimumWageMonthly?: number;
+  /** Whether to include and credit weekly offs from Swift Roster into attendance and salary computation */
+  includeWeekOff?: boolean;
 };
 
 export type SalaryStructure = {
@@ -322,6 +370,14 @@ export type Employee = {
     signedAt?: string;
     ip?: string;
   };
+  signedDocs?: Record<string, {
+    docCode: string;
+    docTitle: string;
+    signedAt: string;
+    signatureText: string;
+    signatureDataUrl?: string;
+    acknowledged: boolean;
+  }>;
   finalApproval?: {
     approvedBy?: string;
     approvedAt?: string;
@@ -340,7 +396,13 @@ export type Employee = {
   eligibleDate?: string;
   probationDate?: string;
   leaveApplyEligible?: boolean;
+  geofencingEnabled?: boolean;
+  graceTime?: "always" | "10" | "15" | "20" | "25" | "30";
+  allowHalfDayLogin?: boolean;
+  halfDayLoginTime?: string;
 };
+
+export type GraceTimeOption = "always" | "10" | "15" | "20" | "25" | "30";
 
 export type DocumentPermissionTypes = {
   offerLetter: boolean;
@@ -379,6 +441,30 @@ export type PredefinedRole = {
   isSystemDefault?: boolean;
   createdAt: string;
 };
+
+export function canRoleApproveDocument(
+  role: PredefinedRole | null | undefined,
+  letterKey: string
+): boolean {
+  if (!role || !role.permissions) return false;
+  if (!role.permissions.documentsApproval) return false;
+
+  const docTypes = role.permissions.documentTypes;
+  if (!docTypes) return true;
+
+  const key = (letterKey || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (key.includes("offer")) return !!docTypes.offerLetter;
+  if (key.includes("appoint")) return !!docTypes.appointmentLetter;
+  if (key.includes("increment")) return !!docTypes.incrementLetter;
+  if (key.includes("promot")) return !!docTypes.promotionLetter;
+  if (key.includes("reliev")) return !!docTypes.relievingLetter;
+  if (key.includes("experien")) return !!docTypes.experienceLetter;
+  if (key.includes("salary") || key.includes("certif")) return !!docTypes.salaryCertificate;
+  if (key.includes("warn")) return !!docTypes.warningLetter;
+  if (key.includes("show") || key.includes("cause")) return !!docTypes.showCauseNotice;
+
+  return true;
+}
 
 export type FamilyMember = { name: string; relation: string; dob?: string; dependent?: boolean };
 export type EducationEntry = { level: string; institute: string; year?: string; grade?: string };
@@ -423,16 +509,43 @@ export type DemoTenant = {
 
 export type AttendanceRecord = {
   id: string;
+  tenantId?: string;
   employeeId: string;
+  employeeName?: string;
+  empCode?: string;
+  department?: string;
   date: string; // YYYY-MM-DD
   checkIn?: string;
   checkOut?: string;
+  clockIn?: string;
+  clockOut?: string;
   hoursWorked?: number;
   otHours?: number;
+  otPay?: number;
   lat?: number;
   lng?: number;
   withinGeofence?: boolean;
-  status: "present" | "absent" | "leave" | "half-day";
+  geofenceVerified?: boolean;
+  faceVerified?: boolean;
+  similarity?: number;
+  photoDataUrl?: string;
+  checkInPhoto?: string;
+  checkOutPhoto?: string;
+  branchId?: string;
+  branchName?: string;
+  shiftId?: string;
+  shiftName?: string;
+  shiftStart?: string;
+  shiftEnd?: string;
+  graceTime?: string;
+  punctuality?: "on-time" | "within-grace" | "late" | "half-day" | "absent" | "flexible";
+  isAfternoonHalfDay?: boolean;
+  status: "present" | "absent" | "leave" | "half-day" | "late" | "holiday" | "weekly-off";
+  note?: string;
+  regularized?: boolean;
+  regularizedBy?: string;
+  regularizedReason?: string;
+  updatedAt?: string;
 };
 
 export type PayrollInput = {
@@ -455,12 +568,37 @@ export type PayrollRun = PayrollInput & {
 
 export type LeaveRequest = {
   id: string;
+  tenantId?: string;
   employeeId: string;
+  employeeName?: string;
   type: string;
-  from: string;
-  to: string;
+  from?: string;
+  to?: string;
+  startDate?: string;
+  endDate?: string;
+  days?: number | string;
   reason: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "Pending" | "Approved" | "Rejected";
+  appliedAt?: string;
+  approvedBy?: string;
+  rejectedReason?: string;
+  actedBy?: string;
+  approverComment?: string;
+};
+
+export type HolidayType = "National Holiday" | "Public Holiday" | "Festival Holiday" | "Optional Holiday" | "Company Off";
+
+export type CompanyHoliday = {
+  id: string;
+  tenantId?: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  toDate?: string; // YYYY-MM-DD
+  type: HolidayType;
+  branchIds?: string[];
+  description?: string;
+  isMandatory?: boolean;
+  createdAt?: string;
 };
 
 type User = { role: "admin" | "employee"; employeeId?: string; name: string };
@@ -476,6 +614,7 @@ export type ApprovalStep = {
 };
 export type DocRequest = {
   id: string;
+  tenantId?: string;
   letterKey: string;
   letterTitle: string;
   employeeId: string;
@@ -487,6 +626,9 @@ export type DocRequest = {
   currentStep: number;
   status: ApprovalStepStatus;
   note?: string;
+  employeeAccepted?: boolean;
+  employeeAcceptedAt?: string;
+  employeeSignature?: string;
 };
 
 type State = {
@@ -555,8 +697,23 @@ type State = {
   deleteEmployee: (id: string) => void;
   upsertAttendance: (r: AttendanceRecord) => void;
   addPayroll: (p: PayrollRun) => void;
-  addLeave: (l: Omit<LeaveRequest, "id" | "status">) => void;
-  updateLeave: (id: string, status: LeaveRequest["status"]) => void;
+  lockPayrollMonth: (month: string, locked: boolean) => void;
+  addLeave: (l: Omit<LeaveRequest, "id" | "status"> & { id?: string; status?: LeaveRequest["status"] }) => LeaveRequest;
+  updateLeave: (id: string, status: LeaveRequest["status"], note?: string) => void;
+  deleteLeave: (id: string) => void;
+  bulkAddLeaves: (newLeaves: Array<Omit<LeaveRequest, "id"> & { id?: string }>) => Promise<number>;
+  holidays: CompanyHoliday[];
+  addHoliday: (h: Omit<CompanyHoliday, "id"> & { id?: string }) => CompanyHoliday;
+  updateHoliday: (id: string, patch: Partial<CompanyHoliday>) => void;
+  deleteHoliday: (id: string) => void;
+  bulkAddHolidays: (items: Array<Omit<CompanyHoliday, "id"> & { id?: string }>) => Promise<number>;
+  addShift: (s: Omit<ShiftType, "id"> & { id?: string }) => ShiftType;
+  updateShift: (id: string, patch: Partial<ShiftType>) => void;
+  deleteShift: (id: string) => void;
+  roster: ShiftAssignment[];
+  assignRoster: (r: Omit<ShiftAssignment, "id"> & { id?: string }) => ShiftAssignment;
+  bulkAssignRoster: (items: Array<Omit<ShiftAssignment, "id"> & { id?: string }>) => Promise<number>;
+  deleteRosterAssignment: (id: string) => void;
   login: (u: User) => void;
   logout: () => void;
   seedDemo: (asRole: "admin" | "employee") => void;
@@ -572,8 +729,108 @@ type State = {
   deleteDocRequest: (id: string) => void;
   applySalaryRevision: (draft: SalaryRevisionDraft, actor: string) => SalaryRevision | null;
   rollbackSalaryRevision: (id: string) => void;
+  // Vault Documents & Folder System
+  vaultFolders: VaultFolder[];
+  vaultFiles: VaultFile[];
+  addVaultFolder: (f: Omit<VaultFolder, "id" | "createdAt">) => VaultFolder;
+  updateVaultFolder: (id: string, patch: Partial<VaultFolder>) => void;
+  deleteVaultFolder: (id: string) => void;
+  addVaultFile: (f: Omit<VaultFile, "id" | "uploadedAt">) => VaultFile;
+  updateVaultFile: (id: string, patch: Partial<VaultFile>) => void;
+  deleteVaultFile: (id: string) => void;
+  moveVaultFile: (fileId: string, targetFolderId: string | null) => void;
 };
 
+export interface VaultFolder {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  color?: string;
+  description?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface VaultFile {
+  id: string;
+  name: string;
+  folderId?: string | null;
+  fileType: string;
+  fileSize: number;
+  fileSizeFormatted: string;
+  dataUrl?: string;
+  category: "Legal" | "Tax & GST" | "Finance & Banking" | "Incorporation" | "Agreements & Contracts" | "HR Policies" | "Certificates & Licenses" | "Audit & Board" | "Other";
+  confidentiality: "Public" | "Internal" | "Restricted" | "Strictly Confidential";
+  tags?: string[];
+  notes?: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  expiryDate?: string;
+}
+
+export const DEFAULT_VAULT_FOLDERS: VaultFolder[] = [
+  {
+    id: "folder-incorporation",
+    name: "01. Company Incorporation & MoA",
+    color: "#4f46e5",
+    description: "Certificate of Incorporation, MoA, AoA, PAN, TAN & DIN filings",
+    createdAt: "2026-01-10T10:00:00.000Z",
+  },
+  {
+    id: "folder-gst-tax",
+    name: "02. GST & Tax Registrations",
+    color: "#0284c7",
+    description: "GST Certificates, Annual Returns, TDS & Form 16 master documents",
+    createdAt: "2026-01-12T11:30:00.000Z",
+  },
+  {
+    id: "folder-contracts",
+    name: "03. Vendor & Client Contracts",
+    color: "#059669",
+    description: "Master Service Agreements, NDAs, Vendor SLAs & Client Contracts",
+    createdAt: "2026-01-15T09:15:00.000Z",
+  },
+  {
+    id: "folder-policies",
+    name: "04. Corporate Policies & Handbooks",
+    color: "#d97706",
+    description: "Code of Conduct, POSH Policy, Information Security & Leave Handbook",
+    createdAt: "2026-01-20T14:00:00.000Z",
+  },
+  {
+    id: "folder-licenses",
+    name: "05. Certificates & IP Trademark",
+    color: "#7c3aed",
+    description: "ISO 27001 Certification, Trademark Registrations & Brand Assets",
+    createdAt: "2026-01-22T16:45:00.000Z",
+  },
+  {
+    id: "folder-audits",
+    name: "06. Board Resolutions & Audit Reports",
+    color: "#dc2626",
+    description: "Audited Balance Sheets, Annual Financial Filings & Board Minutes",
+    createdAt: "2026-02-01T12:00:00.000Z",
+  },
+];
+
+export const DEFAULT_VAULT_FILES: VaultFile[] = [];
+
+export const defaultCompanyHolidaysList: CompanyHoliday[] = [
+  { id: "hol-1", name: "Republic Day", date: "2026-01-26", type: "National Holiday", branchIds: ["all"], isMandatory: true, description: "National Republic Day Celebration" },
+  { id: "hol-2", name: "Holi", date: "2026-03-25", type: "Festival Holiday", branchIds: ["all"], isMandatory: true, description: "Festival of Colors" },
+  { id: "hol-3", name: "Good Friday", date: "2026-04-10", type: "Public Holiday", branchIds: ["all"], isMandatory: true, description: "Christian Public Holiday" },
+  { id: "hol-4", name: "Tamil New Year / Ambedkar Jayanti", date: "2026-04-14", type: "Public Holiday", branchIds: ["all"], isMandatory: true, description: "State & National Holiday" },
+  { id: "hol-5", name: "Labor Day / May Day", date: "2026-05-01", type: "Public Holiday", branchIds: ["all"], isMandatory: true, description: "International Workers' Day" },
+  { id: "hol-6", name: "Bakrid / Eid al-Adha", date: "2026-06-17", type: "Festival Holiday", branchIds: ["all"], isMandatory: true, description: "Islamic Festival of Sacrifice" },
+  { id: "hol-7", name: "Independence Day", date: "2026-08-15", type: "National Holiday", branchIds: ["all"], isMandatory: true, description: "National Independence Day celebration" },
+  { id: "hol-8", name: "Ganesh Chaturthi", date: "2026-09-04", type: "Festival Holiday", branchIds: ["all"], isMandatory: true, description: "Vinayaka Chaturthi Festival" },
+  { id: "hol-9", name: "Gandhi Jayanti", date: "2026-10-02", type: "National Holiday", branchIds: ["all"], isMandatory: true, description: "Mahatma Gandhi's Birthday" },
+  { id: "hol-10", name: "Ayudha Pooja / Vijaya Dashami", date: "2026-10-20", type: "Festival Holiday", branchIds: ["all"], isMandatory: true, description: "Dussehra Celebrations" },
+  { id: "hol-11", name: "Diwali (Deepavali)", date: "2026-11-01", type: "Festival Holiday", branchIds: ["all"], isMandatory: true, description: "Festival of Lights" },
+  { id: "hol-12", name: "Christmas Day", date: "2026-12-25", type: "Festival Holiday", branchIds: ["all"], isMandatory: true, description: "Christmas Day Celebration" },
+  { id: "hol-13", name: "New Year's Day", date: "2027-01-01", type: "Optional Holiday", branchIds: ["all"], isMandatory: false, description: "New Year Day (Floating / Optional Holiday)" },
+  { id: "hol-14", name: "Pongal / Makar Sankranti", date: "2027-01-14", type: "Festival Holiday", branchIds: ["all"], isMandatory: true, description: "Traditional Harvest Festival" },
+];
 
 const defaultCompany: Company = {
   name: "SWIFT Demo Pvt Ltd",
@@ -863,6 +1120,83 @@ export const useStore = create<State>()(
       auditLog: [],
       registrationDrafts: [],
       roles: DEFAULT_PREDEFINED_ROLES,
+      vaultFolders: DEFAULT_VAULT_FOLDERS,
+      vaultFiles: DEFAULT_VAULT_FILES,
+      addVaultFolder: (f) => {
+        const folder: VaultFolder = {
+          ...f,
+          id: "vfld-" + crypto.randomUUID().slice(0, 8),
+          createdAt: new Date().toISOString(),
+        };
+        set((s) => ({ vaultFolders: [...(s.vaultFolders || []), folder] }));
+        const tenantId = useAuth.getState().activeTenantId;
+        if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+          syncItem("vault_folders", { tenantId, ...folder });
+        }
+        return folder;
+      },
+      updateVaultFolder: (id, patch) =>
+        set((s) => {
+          const next = (s.vaultFolders || []).map((f) => (f.id === id ? { ...f, ...patch, updatedAt: new Date().toISOString() } : f));
+          const tenantId = useAuth.getState().activeTenantId;
+          const item = next.find((f) => f.id === id);
+          if (tenantId && item && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("vault_folders", { tenantId, ...item });
+          }
+          return { vaultFolders: next };
+        }),
+      deleteVaultFolder: (id) =>
+        set((s) => {
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncDelete("vault_folders", tenantId, id);
+          }
+          return {
+            vaultFolders: (s.vaultFolders || []).filter((f) => f.id !== id),
+            vaultFiles: (s.vaultFiles || []).filter((file) => file.folderId !== id),
+          };
+        }),
+      addVaultFile: (f) => {
+        const file: VaultFile = {
+          ...f,
+          id: "vfil-" + crypto.randomUUID().slice(0, 8),
+          uploadedAt: new Date().toISOString(),
+        };
+        set((s) => ({ vaultFiles: [file, ...(s.vaultFiles || [])] }));
+        const tenantId = useAuth.getState().activeTenantId;
+        if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+          syncItem("vault_files", { tenantId, ...file });
+        }
+        return file;
+      },
+      updateVaultFile: (id, patch) =>
+        set((s) => {
+          const next = (s.vaultFiles || []).map((f) => (f.id === id ? { ...f, ...patch } : f));
+          const tenantId = useAuth.getState().activeTenantId;
+          const item = next.find((f) => f.id === id);
+          if (tenantId && item && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("vault_files", { tenantId, ...item });
+          }
+          return { vaultFiles: next };
+        }),
+      deleteVaultFile: (id) =>
+        set((s) => {
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncDelete("vault_files", tenantId, id);
+          }
+          return { vaultFiles: (s.vaultFiles || []).filter((f) => f.id !== id) };
+        }),
+      moveVaultFile: (fileId, targetFolderId) =>
+        set((s) => {
+          const next = (s.vaultFiles || []).map((f) => (f.id === fileId ? { ...f, folderId: targetFolderId } : f));
+          const tenantId = useAuth.getState().activeTenantId;
+          const item = next.find((f) => f.id === fileId);
+          if (tenantId && item && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("vault_files", { tenantId, ...item });
+          }
+          return { vaultFiles: next };
+        }),
       addRole: (r) => {
         const role: PredefinedRole = {
           ...r,
@@ -1276,6 +1610,11 @@ export const useStore = create<State>()(
               journeys: data.journeys || [],
               notices: data.notices || [],
               roles: data.roles && data.roles.length ? data.roles : get().roles,
+              docRequests: data.docRequests || [],
+              holidays: data.holidays && data.holidays.length ? data.holidays : (get().holidays?.length ? get().holidays : defaultCompanyHolidaysList),
+              roster: data.roster || [],
+              vaultFolders: data.vaultFolders && data.vaultFolders.length ? data.vaultFolders : (get().vaultFolders?.length ? get().vaultFolders : DEFAULT_VAULT_FOLDERS),
+              vaultFiles: data.vaultFiles && data.vaultFiles.length ? data.vaultFiles : (get().vaultFiles?.length ? get().vaultFiles : DEFAULT_VAULT_FILES),
               demoMode: false,
             });
           } catch (_err) {}
@@ -1290,6 +1629,8 @@ export const useStore = create<State>()(
           assets: [],
           assetAssignments: [],
           docRequests: [],
+          vaultFolders: DEFAULT_VAULT_FOLDERS,
+          vaultFiles: DEFAULT_VAULT_FILES,
           salaryRevisions: [],
           auditLog: [],
           roles: DEFAULT_PREDEFINED_ROLES,
@@ -1494,17 +1835,43 @@ export const useStore = create<State>()(
           syncItem("payrolls", { tenantId, ...p });
         }
       },
+      lockPayrollMonth: (month, locked) => {
+        set((s) => {
+          const lockedMonths = { ...(s.company.payrollLockedMonths || {}), [month]: locked };
+          const nextComp = { ...s.company, payrollLockedMonths: lockedMonths };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !get().demoMode) {
+            syncItem("config", { tenantId, id: "config", ...nextComp });
+          }
+          return { company: nextComp };
+        });
+      },
       addLeave: (l) => {
-        const item = { ...l, id: crypto.randomUUID(), status: "pending" as const };
-        set((s) => ({ leaves: [...s.leaves, item] }));
+        const item: LeaveRequest = {
+          ...l,
+          id: l.id || crypto.randomUUID(),
+          status: l.status || "pending",
+          appliedAt: l.appliedAt || new Date().toISOString(),
+        };
+        set((s) => ({ leaves: [item, ...s.leaves] }));
         const tenantId = useAuth.getState().activeTenantId;
         if (tenantId && !get().demoMode) {
           syncItem("leaves", { tenantId, ...item });
         }
+        return item;
       },
-      updateLeave: (id, status) =>
+      updateLeave: (id, status, note) =>
         set((s) => {
-          const nextLeaves = s.leaves.map((l) => (l.id === id ? { ...l, status } : l));
+          const nextLeaves = s.leaves.map((l) =>
+            l.id === id
+              ? {
+                  ...l,
+                  status,
+                  approvedBy: status === "approved" ? s.currentUser?.name ?? "Admin" : l.approvedBy,
+                  rejectedReason: status === "rejected" ? note : l.rejectedReason,
+                }
+              : l
+          );
           const tenantId = useAuth.getState().activeTenantId;
           const item = nextLeaves.find((l) => l.id === id);
           if (tenantId && item && !s.demoMode) {
@@ -1512,6 +1879,172 @@ export const useStore = create<State>()(
           }
           return { leaves: nextLeaves };
         }),
+      deleteLeave: (id) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        set((s) => ({ leaves: s.leaves.filter((l) => l.id !== id) }));
+        if (tenantId && !get().demoMode) {
+          syncDelete("leaves", tenantId, id);
+        }
+      },
+      bulkAddLeaves: async (newLeaves) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        const formatted: LeaveRequest[] = newLeaves.map((l) => ({
+          ...l,
+          id: l.id || crypto.randomUUID(),
+          status: l.status || "approved",
+          appliedAt: l.appliedAt || new Date().toISOString(),
+        }));
+
+        set((s) => ({ leaves: [...formatted, ...s.leaves] }));
+
+        if (tenantId && !get().demoMode) {
+          await Promise.all(
+            formatted.map((item) => syncItem("leaves", { tenantId, ...item }))
+          );
+        }
+        return formatted.length;
+      },
+      holidays: defaultCompanyHolidaysList,
+      addHoliday: (h) => {
+        const item: CompanyHoliday = {
+          ...h,
+          id: h.id || crypto.randomUUID(),
+          createdAt: h.createdAt || new Date().toISOString(),
+        };
+        set((s) => ({ holidays: [item, ...s.holidays] }));
+        const tenantId = useAuth.getState().activeTenantId;
+        if (tenantId && !get().demoMode) {
+          syncItem("holidays", { tenantId, ...item });
+        }
+        return item;
+      },
+      updateHoliday: (id, patch) =>
+        set((s) => {
+          const nextHolidays = s.holidays.map((h) => (h.id === id ? { ...h, ...patch } : h));
+          const tenantId = useAuth.getState().activeTenantId;
+          const item = nextHolidays.find((h) => h.id === id);
+          if (tenantId && item && !s.demoMode) {
+            syncItem("holidays", { tenantId, ...item });
+          }
+          return { holidays: nextHolidays };
+        }),
+      deleteHoliday: (id) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        set((s) => ({ holidays: s.holidays.filter((h) => h.id !== id) }));
+        if (tenantId && !get().demoMode) {
+          syncDelete("holidays", tenantId, id);
+        }
+      },
+      bulkAddHolidays: async (newHolidays) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        const formatted: CompanyHoliday[] = newHolidays.map((h) => ({
+          ...h,
+          id: h.id || crypto.randomUUID(),
+          createdAt: h.createdAt || new Date().toISOString(),
+        }));
+
+        set((s) => ({ holidays: [...formatted, ...s.holidays] }));
+
+        if (tenantId && !get().demoMode) {
+          await Promise.all(
+            formatted.map((item) => syncItem("holidays", { tenantId, ...item }))
+          );
+        }
+        return formatted.length;
+      },
+      addShift: (s) => {
+        const shift: ShiftType = {
+          ...s,
+          id: s.id || `shift-${crypto.randomUUID().slice(0, 8)}`,
+        };
+        set((st) => {
+          const nextShifts = [...(st.company.shifts ?? []), shift];
+          const nextCompany = { ...st.company, shifts: nextShifts };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+        return shift;
+      },
+      updateShift: (id, patch) => {
+        set((st) => {
+          const nextShifts = (st.company.shifts ?? []).map((sh) => (sh.id === id ? { ...sh, ...patch } : sh));
+          const nextCompany = { ...st.company, shifts: nextShifts };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+      },
+      deleteShift: (id) => {
+        set((st) => {
+          const nextShifts = (st.company.shifts ?? []).filter((sh) => sh.id !== id);
+          const nextCompany = { ...st.company, shifts: nextShifts };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+      },
+      roster: [],
+      assignRoster: (r) => {
+        const assignment: ShiftAssignment = {
+          ...r,
+          id: r.id || `ros-${r.employeeId}-${r.date}`,
+          updatedAt: new Date().toISOString(),
+        };
+        set((st) => {
+          const filtered = st.roster.filter((item) => !(item.employeeId === r.employeeId && item.date === r.date));
+          const nextRoster = [assignment, ...filtered];
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("roster", { tenantId, ...assignment });
+          }
+          return { roster: nextRoster };
+        });
+        return assignment;
+      },
+      bulkAssignRoster: async (items) => {
+        if (!items || items.length === 0) return 0;
+        const tenantId = useAuth.getState().activeTenantId;
+        const mapped: ShiftAssignment[] = items.map((r) => ({
+          ...r,
+          id: r.id || `ros-${r.employeeId}-${r.date}`,
+          updatedAt: new Date().toISOString(),
+        }));
+
+        set((st) => {
+          const keySet = new Set(mapped.map((m) => `${m.employeeId}_${m.date}`));
+          const remaining = st.roster.filter((item) => !keySet.has(`${item.employeeId}_${item.date}`));
+          return { roster: [...mapped, ...remaining] };
+        });
+
+        if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+          try {
+            await safeFetch("/api/roster/bulk-assign", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tenantId, assignments: mapped }),
+            });
+          } catch (err) {
+            console.warn("[Store] Failed to bulk sync roster:", err);
+          }
+        }
+        return mapped.length;
+      },
+      deleteRosterAssignment: (id) => {
+        set((st) => {
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncDelete("roster", tenantId, id);
+          }
+          return { roster: st.roster.filter((r) => r.id !== id) };
+        });
+      },
       login: (u) => set({ currentUser: u }),
       logout: () => set({ currentUser: null }),
       approvalMatrix: {
@@ -1574,18 +2107,25 @@ export const useStore = create<State>()(
       createDocRequest: (r) => {
         const chain = get().approvalMatrix[r.letterKey] ?? ["HR Manager"];
         const steps: ApprovalStep[] = (chain.length ? chain : ["HR Manager"]).map((a) => ({ approver: a, status: "pending" as const }));
+        const tenantId = useAuth.getState().activeTenantId || "demo-tenant-1";
         const req: DocRequest = {
           ...r,
           id: crypto.randomUUID(),
+          tenantId,
           steps,
           currentStep: 0,
           status: "pending",
           requestedAt: new Date().toISOString(),
         };
         set((s) => ({ docRequests: [req, ...s.docRequests] }));
+        if (tenantId && !get().demoMode) {
+          syncItem("docRequests", req);
+        }
         return req;
       },
-      actOnDocStep: (id, action, comment, actedBy) =>
+      actOnDocStep: (id, action, comment, actedBy) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        let updatedReq: DocRequest | null = null;
         set((s) => ({
           docRequests: s.docRequests.map((d) => {
             if (d.id !== id || d.status !== "pending") return d;
@@ -1593,13 +2133,24 @@ export const useStore = create<State>()(
             const idx = d.currentStep;
             if (idx >= steps.length) return d;
             steps[idx] = { ...steps[idx], status: action === "approve" ? "approved" : "rejected", comment, actedAt: new Date().toISOString(), actedBy };
-            if (action === "reject") return { ...d, steps, status: "rejected" };
+            if (action === "reject") {
+              updatedReq = { ...d, steps, status: "rejected" };
+              return updatedReq;
+            }
             const nextIdx = idx + 1;
             const done = nextIdx >= steps.length;
-            return { ...d, steps, currentStep: done ? idx : nextIdx, status: done ? "approved" : "pending" };
+            updatedReq = { ...d, steps, currentStep: done ? idx : nextIdx, status: done ? "approved" : "pending" };
+            return updatedReq;
           }),
-        })),
-      forwardDocStep: (id, toApprover, comment, actedBy) =>
+        }));
+        if (tenantId && updatedReq !== null && !get().demoMode) {
+          const itemToSync: DocRequest = updatedReq;
+          syncItem("docRequests", { tenantId, ...itemToSync });
+        }
+      },
+      forwardDocStep: (id, toApprover, comment, actedBy) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        let updatedReq: DocRequest | null = null;
         set((s) => ({
           docRequests: s.docRequests.map((d) => {
             if (d.id !== id || d.status !== "pending") return d;
@@ -1609,10 +2160,22 @@ export const useStore = create<State>()(
             const original = steps[idx];
             steps[idx] = { ...original, status: "approved", comment: `Forwarded to ${toApprover}${comment ? " · " + comment : ""}`, actedAt: new Date().toISOString(), actedBy };
             steps.splice(idx + 1, 0, { approver: toApprover, status: "pending", forwardedFrom: actedBy });
-            return { ...d, steps, currentStep: idx + 1 };
+            updatedReq = { ...d, steps, currentStep: idx + 1 };
+            return updatedReq;
           }),
-        })),
-      deleteDocRequest: (id) => set((s) => ({ docRequests: s.docRequests.filter((d) => d.id !== id) })),
+        }));
+        if (tenantId && updatedReq !== null && !get().demoMode) {
+          const itemToSync: DocRequest = updatedReq;
+          syncItem("docRequests", { tenantId, ...itemToSync });
+        }
+      },
+      deleteDocRequest: (id) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        set((s) => ({ docRequests: s.docRequests.filter((d) => d.id !== id) }));
+        if (tenantId && !get().demoMode) {
+          syncDelete("docRequests", tenantId, id);
+        }
+      },
       seedDemo: (asRole) => {
         const { employees, attendance, leaves } = buildDemoData();
         const company = get().company;

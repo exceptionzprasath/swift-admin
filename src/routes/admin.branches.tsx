@@ -45,8 +45,8 @@ function BranchesPage() {
 
     const rawLat = form.lat;
     const rawLng = form.lng;
-    const parsedLat = rawLat !== "" && rawLat != null ? parseFloat(String(rawLat)) : undefined;
-    const parsedLng = rawLng !== "" && rawLng != null ? parseFloat(String(rawLng)) : undefined;
+    const parsedLat = rawLat != null && String(rawLat).trim() !== "" ? parseFloat(String(rawLat)) : undefined;
+    const parsedLng = rawLng != null && String(rawLng).trim() !== "" ? parseFloat(String(rawLng)) : undefined;
 
     const finalForm: Omit<Branch, "id"> = {
       ...form,
@@ -210,8 +210,8 @@ function BranchesPage() {
                 Employees checking in must be inside this fence. Use the button to auto-fill from device location.
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <div><Label>Latitude</Label><Input type="text" placeholder="e.g. 11.305639" value={form.lat ?? ""} onChange={(e) => setForm((prev) => ({ ...prev, lat: e.target.value }))} /></div>
-                <div><Label>Longitude</Label><Input type="text" placeholder="e.g. 77.703474" value={form.lng ?? ""} onChange={(e) => setForm((prev) => ({ ...prev, lng: e.target.value }))} /></div>
+                <div><Label>Latitude</Label><Input type="text" placeholder="e.g. 11.305639" value={form.lat ?? ""} onChange={(e) => setForm((prev) => ({ ...prev, lat: e.target.value ? parseFloat(e.target.value) || 0 : undefined }))} /></div>
+                <div><Label>Longitude</Label><Input type="text" placeholder="e.g. 77.703474" value={form.lng ?? ""} onChange={(e) => setForm((prev) => ({ ...prev, lng: e.target.value ? parseFloat(e.target.value) || 0 : undefined }))} /></div>
                 <div><Label>Radius (m)</Label><Input type="number" value={form.radiusMeters ?? 150} onChange={(e) => setForm((prev) => ({ ...prev, radiusMeters: +e.target.value || 0 }))} /></div>
               </div>
               <Button variant="outline" size="sm" type="button" onClick={useMyLocation}>
@@ -389,9 +389,9 @@ function BranchGoogleMap({ lat, lng, radius, onChange }: BranchGoogleMapProps) {
 
   useEffect(() => {
     if (googleMapInstance.current && markerInstance.current && circleInstance.current) {
-      const numLat = lat != null && lat !== "" ? parseFloat(String(lat)) : undefined;
-      const numLng = lng != null && lng !== "" ? parseFloat(String(lng)) : undefined;
-      if (numLat != null && !isNaN(numLat) && numLng != null && !isNaN(numLng)) {
+      const numLat = lat != null && !isNaN(Number(lat)) ? Number(lat) : undefined;
+      const numLng = lng != null && !isNaN(Number(lng)) ? Number(lng) : undefined;
+      if (numLat != null && numLng != null) {
         const pos = { lat: numLat, lng: numLng };
         markerInstance.current.setPosition(pos);
         circleInstance.current.setCenter(pos);
