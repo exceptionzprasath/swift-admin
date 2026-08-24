@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
-import { useStore, type Branch } from "@/lib/store";
+import { useStore, getEmployeeBranchIds, type Branch } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Building2, Plus, Trash2, Pencil, MapPin, Users, LocateFixed, Wifi, Shield, Clock } from "lucide-react";
+import { Building2, Plus, Trash2, Pencil, MapPin, Users, LocateFixed, Wifi, Shield, Clock, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/branches")({
@@ -59,7 +59,24 @@ function BranchesPage() {
     setOpen(false);
   };
 
-  const empCount = (id: string) => employees.filter((e) => e.branchId === id).length;
+  const empCount = (id: string) => employees.filter((e) => getEmployeeBranchIds(e).includes(id)).length;
+
+  const toggleEmployeeBranch = (empId: string, branchId: string) => {
+    const emp = employees.find((e) => e.id === empId);
+    if (!emp) return;
+    const currentBIds = getEmployeeBranchIds(emp);
+    let nextBIds: string[];
+    if (currentBIds.includes(branchId)) {
+      nextBIds = currentBIds.filter((id) => id !== branchId);
+    } else {
+      nextBIds = [...currentBIds, branchId];
+    }
+    const nextPrimary = emp.branchId === branchId && !nextBIds.includes(branchId)
+      ? (nextBIds[0] || undefined)
+      : (emp.branchId || nextBIds[0] || undefined);
+    updateEmployee(empId, { branchIds: nextBIds, branchId: nextPrimary });
+    toast.success(`Updated branch assignments for ${emp.name}`);
+  };
 
   const useMyLocation = () => {
     if (!navigator.geolocation) return toast.error("Geolocation not available");
@@ -148,34 +165,68 @@ function BranchesPage() {
 
       {employees.length > 0 && branches.length > 0 && (
         <div className="rounded-2xl border border-border bg-card p-5">
-          <h3 className="font-display font-semibold mb-3">Assign employees to branches</h3>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="font-display font-semibold">Assign Employees to Multiple Branches</h3>
+              <p className="text-xs text-muted-foreground">Click branch badges to toggle access. Employees can check-in & check-out at any assigned branch.</p>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left"><tr>
-                <th className="p-2">Employee</th><th className="p-2">Dept</th><th className="p-2">Branch</th>
-              </tr></thead>
+              <thead className="bg-muted/50 text-left">
+                <tr>
+                  <th className="p-2.5">Employee</th>
+                  <th className="p-2.5">Dept</th>
+                  <th className="p-2.5">Assigned Branches (Click to Toggle)</th>
+                </tr>
+              </thead>
               <tbody>
-                {employees.map((e) => (
-                  <tr key={e.id} className="border-t border-border">
-                    <td className="p-2 flex items-center gap-2">
-                      <div className="h-6 w-6 rounded-full ring-1 ring-primary/25 overflow-hidden bg-primary/10 text-primary grid place-items-center text-[10px] font-semibold shrink-0">
-                        {e.photoDataUrl ? <img src={e.photoDataUrl} className="h-full w-full object-cover" alt="" /> : e.name.split(" ").slice(0, 2).map((s) => s[0]).join("")}
-                      </div>
-                      {e.name} <span className="text-xs text-muted-foreground">· {e.empCode}</span>
-                    </td>
-                    <td className="p-2">{e.department}</td>
-                    <td className="p-2">
-                      <select
-                        className="rounded-md border border-border bg-background px-2 py-1 text-xs"
-                        value={e.branchId || "__none"}
-                        onChange={(ev) => updateEmployee(e.id, { branchId: ev.target.value === "__none" ? undefined : ev.target.value })}
-                      >
-                        <option value="__none">— unassigned —</option>
-                        {branches.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
+                {employees.map((e) => {
+                  const assignedBIds = getEmployeeBranchIds(e);
+                  return (
+                    <tr key={e.id} className="border-t border-border">
+                      <td className="p-2.5 flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-full ring-1 ring-primary/25 overflow-hidden bg-primary/10 text-primary grid place-items-center text-[10px] font-semibold shrink-0">
+                          {e.photoDataUrl ? <img src={e.photoDataUrl} className="h-full w-full object-cover" alt="" /> : e.name.split(" ").slice(0, 2).map((s) => s[0]).join("")}
+                        </div>
+                        <div>
+                          <div className="font-medium text-xs">{e.name}</div>
+                          <div className="text-[10px] text-muted-foreground font-mono">{e.empCode}</div>
+                        </div>
+                      </td>
+                      <td className="p-2.5 text-xs text-muted-foreground">{e.department}</td>
+                      <td className="p-2.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {branches.map((b) => {
+                            const isAssigned = assignedBIds.includes(b.id);
+                            const isPrimary = e.branchId === b.id;
+                            return (
+                              <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => toggleEmployeeBranch(e.id, b.id)}
+                                className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 font-medium ${
+                                  isAssigned
+                                    ? "bg-primary text-primary-foreground border-primary shadow-sm hover:opacity-90"
+                                    : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
+                                }`}
+                                title={isAssigned ? `Assigned to ${b.name}. Click to remove.` : `Click to assign to ${b.name}.`}
+                              >
+                                <span>{b.code}</span>
+                                {isAssigned && isPrimary && <span className="text-[9px] opacity-80">★</span>}
+                                {isAssigned ? (
+                                  <Check className="h-3 w-3 ml-0.5 opacity-90" />
+                                ) : (
+                                  <Plus className="h-3 w-3 ml-0.5 opacity-60" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

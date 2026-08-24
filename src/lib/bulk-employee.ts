@@ -259,7 +259,10 @@ export function parseEmployeeCsvText(
     const bankIfsc = getVal(["bankifsccode", "ifsc", "bankifsc"]).toUpperCase() || undefined;
     const roleName = getVal(["assignedrole", "role", "rolename"]);
     const shiftId = getVal(["shift", "shiftid"]) || "gen";
-    const branchId = getVal(["branchcode", "branch", "branchid"]) || undefined;
+    const branchRaw = getVal(["branchcode", "branch", "branchid"]) || "";
+    const branchParts = branchRaw ? branchRaw.split(/[,;/|]+/).map((b) => b.trim()).filter(Boolean) : [];
+    const branchId = branchParts[0] || undefined;
+    const branchIds = branchParts.length > 0 ? branchParts : undefined;
 
     const parseBool = (str: string, def = true): boolean => {
       if (!str) return def;
@@ -338,6 +341,7 @@ export function parseEmployeeCsvText(
       roleName: matchedRole ? matchedRole.name : roleName || undefined,
       shiftId,
       branchId,
+      branchIds,
       pfEligible,
       esiEligible,
       ptEligible,

@@ -314,6 +314,7 @@ export type Employee = {
   managerId?: string;
   about?: string;
   branchId?: string;
+  branchIds?: string[];
   photoDataUrl?: string;
   gender?: "male" | "female" | "other";
   dob?: string;
@@ -1564,14 +1565,23 @@ export const useStore = create<State>()(
           if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });
             s.employees.forEach((e) => {
-              if (e.branchId === id) {
-                syncItem("employees", { tenantId, ...e, branchId: undefined });
+              if (e.branchId === id || e.branchIds?.includes(id)) {
+                const nextBranchIds = e.branchIds ? e.branchIds.filter((bid) => bid !== id) : undefined;
+                const nextBranchId = e.branchId === id ? (nextBranchIds && nextBranchIds.length > 0 ? nextBranchIds[0] : undefined) : e.branchId;
+                syncItem("employees", { tenantId, ...e, branchId: nextBranchId, branchIds: nextBranchIds });
               }
             });
           }
           return {
             company: nextCompany,
-            employees: s.employees.map((e) => (e.branchId === id ? { ...e, branchId: undefined } : e)),
+            employees: s.employees.map((e) => {
+              if (e.branchId === id || e.branchIds?.includes(id)) {
+                const nextBranchIds = e.branchIds ? e.branchIds.filter((bid) => bid !== id) : undefined;
+                const nextBranchId = e.branchId === id ? (nextBranchIds && nextBranchIds.length > 0 ? nextBranchIds[0] : undefined) : e.branchId;
+                return { ...e, branchId: nextBranchId, branchIds: nextBranchIds };
+              }
+              return e;
+            }),
           };
         }),
       loadCompanyState: async (tenantId) => {
@@ -1658,10 +1668,16 @@ export const useStore = create<State>()(
       addEmployee: (e) => {
         const st = get();
         const company = st.company;
-        const resolved = resolveAttendanceProfile(e, company);
+        const normalizedBranchIds = Array.isArray(e.branchIds) && e.branchIds.length > 0
+          ? e.branchIds
+          : (e.branchId ? [e.branchId] : []);
+        const primaryBranchId = e.branchId || normalizedBranchIds[0] || undefined;
+        const resolved = resolveAttendanceProfile({ ...e, branchId: primaryBranchId, branchIds: normalizedBranchIds }, company);
         const emp: Employee = {
           ...e,
           id: crypto.randomUUID(),
+          branchId: primaryBranchId,
+          branchIds: normalizedBranchIds.length > 0 ? normalizedBranchIds : undefined,
           shiftId: e.shiftId || resolved.shiftId,
           attendanceProfile: resolved,
         };
@@ -1704,7 +1720,7 @@ export const useStore = create<State>()(
         emitCompliance("employee_joined", {
           subject: `${emp.name} (${emp.empCode})`,
           by: st.currentUser?.name ?? "System",
-          meta: { employeeId: emp.id, gender: (emp as { gender?: string }).gender, branchId: emp.branchId },
+          meta: { employeeId: emp.id, gender: (emp as { gender?: string }).gender, branchId: emp.branchId, branchIds: emp.branchIds },
         });
         if (String((emp as { gender?: string }).gender ?? "").toLowerCase().startsWith("f")) {
           emitCompliance("women_employee_added", { subject: emp.name, by: st.currentUser?.name ?? "System", meta: { employeeId: emp.id } });
@@ -1714,20 +1730,36 @@ export const useStore = create<State>()(
       updateEmployee: (id, patch) => {
         const st = get();
         const before = st.employees.find((e) => e.id === id);
-        set((s) => ({ employees: s.employees.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
+
+        // Normalize patch branchIds / branchId if present
+        let normalizedPatch: Partial<Employee> = { ...patch };
+        if ("branchIds" in patch && patch.branchIds !== undefined) {
+          const bIds = Array.isArray(patch.branchIds) ? patch.branchIds : [];
+          normalizedPatch.branchIds = bIds;
+          if (!("branchId" in patch)) {
+            normalizedPatch.branchId = bIds[0] || undefined;
+          }
+        } else if ("branchId" in patch && patch.branchId !== undefined) {
+          const bId = patch.branchId;
+          if (bId && !before?.branchIds?.includes(bId)) {
+            normalizedPatch.branchIds = [bId];
+          }
+        }
+
+        set((s) => ({ employees: s.employees.map((e) => (e.id === id ? { ...e, ...normalizedPatch } : e)) }));
         if (before) {
           const tenantId = useAuth.getState().activeTenantId;
           if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             const runUpdateAndSync = async () => {
-              let finalPhotoUrl = patch.photoDataUrl ?? before.photoDataUrl;
-              let isFaceRegistered = patch.faceRegistered ?? before.faceRegistered;
+              let finalPhotoUrl = normalizedPatch.photoDataUrl ?? before.photoDataUrl;
+              let isFaceRegistered = normalizedPatch.faceRegistered ?? before.faceRegistered;
 
-              if (patch.photoDataUrl && patch.photoDataUrl.startsWith("data:")) {
+              if (normalizedPatch.photoDataUrl && normalizedPatch.photoDataUrl.startsWith("data:")) {
                 try {
                   const res = await fetch(`${getBackendUrl()}/api/companies/face-register`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ tenantId, employeeId: id, photoDataUrl: patch.photoDataUrl }),
+                    body: JSON.stringify({ tenantId, employeeId: id, photoDataUrl: normalizedPatch.photoDataUrl }),
                   });
                   if (res.ok) {
                     const data = await res.json();
@@ -1742,10 +1774,10 @@ export const useStore = create<State>()(
                 }
               }
 
-              let docs = patch.documentsUploaded ?? before.documentsUploaded ?? [];
-              if (patch.documentsUploaded) {
+              let docs = normalizedPatch.documentsUploaded ?? before.documentsUploaded ?? [];
+              if (normalizedPatch.documentsUploaded) {
                 const uploadedDocs = await Promise.all(
-                  patch.documentsUploaded.map(async (doc) => {
+                  normalizedPatch.documentsUploaded.map(async (doc) => {
                     if (doc.dataUrl && doc.dataUrl.startsWith("data:")) {
                       const s3Url = await uploadToS3(tenantId, `employee-documents/${id}/${doc.id}.pdf`, doc.dataUrl);
                       const { dataUrl: _, ...restDoc } = doc; void _;
@@ -1763,7 +1795,7 @@ export const useStore = create<State>()(
               syncItem("employees", {
                 tenantId,
                 ...before,
-                ...patch,
+                ...normalizedPatch,
                 photoDataUrl: finalPhotoUrl,
                 faceRegistered: isFaceRegistered,
                 documentsUploaded: docs
@@ -1773,10 +1805,10 @@ export const useStore = create<State>()(
           }
 
           const changed: Record<string, { from: unknown; to: unknown }> = {};
-          Object.keys(patch).forEach((k) => {
+          Object.keys(normalizedPatch).forEach((k) => {
             const key = k as keyof Employee;
-            if ((before as Record<string, unknown>)[k] !== (patch as Record<string, unknown>)[k]) {
-              changed[k] = { from: before[key], to: (patch as Record<string, unknown>)[k] };
+            if ((before as Record<string, unknown>)[k] !== (normalizedPatch as Record<string, unknown>)[k]) {
+              changed[k] = { from: before[key], to: (normalizedPatch as Record<string, unknown>)[k] };
             }
           });
           if (Object.keys(changed).length) {
@@ -1789,7 +1821,7 @@ export const useStore = create<State>()(
               newValue: Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v.to])),
             });
           }
-          const p = patch as Record<string, unknown>;
+          const p = normalizedPatch as Record<string, unknown>;
           if ("ctc" in p || "basicSalary" in p || "grossSalary" in p) {
             emitCompliance("salary_revised", { subject: `${before.name} (${before.empCode})`, by: st.currentUser?.name ?? "System", meta: { employeeId: id } });
           }
@@ -2263,14 +2295,26 @@ export const useStore = create<State>()(
   )
 );
 
+export function getEmployeeBranchIds(emp?: { branchId?: string; branchIds?: string[] } | null): string[] {
+  if (!emp) return [];
+  if (Array.isArray(emp.branchIds) && emp.branchIds.length > 0) {
+    return emp.branchIds;
+  }
+  if (emp.branchId) {
+    return [emp.branchId];
+  }
+  return [];
+}
+
 export function resolveAttendanceProfile(
-  emp: Pick<Employee, "branchId" | "department" | "designation">,
+  emp: Pick<Employee, "branchId" | "department" | "designation"> & { branchIds?: string[] },
   company: Company,
 ): ResolvedAttendanceProfile {
   const rules = (company.attendanceDefaults ?? []).slice().sort((a, b) => b.priority - a.priority);
+  const empBranchIds = getEmployeeBranchIds(emp);
   const matches = (r: AttendanceProfileRule) => {
     const m = r.match || {};
-    if (m.branchId && m.branchId !== emp.branchId) return false;
+    if (m.branchId && !empBranchIds.includes(m.branchId) && m.branchId !== emp.branchId) return false;
     if (m.department && m.department.toLowerCase() !== (emp.department || "").toLowerCase()) return false;
     if (m.designation && m.designation.toLowerCase() !== (emp.designation || "").toLowerCase()) return false;
     return true;

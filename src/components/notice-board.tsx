@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useStore, type Notice, type Employee } from "@/lib/store";
+import { useStore, getEmployeeBranchIds, type Notice, type Employee } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Megaphone, Pin, AlertTriangle, Info, CheckCircle2, X } from "lucide-react";
@@ -17,7 +17,7 @@ export function noticesFor(all: Notice[] | undefined, viewer: { role: "admin" | 
       if (!emp) return a.scope === "company";
       switch (a.scope) {
         case "company": return true;
-        case "branch": return !!emp.branchId && vals.includes(emp.branchId);
+        case "branch": return getEmployeeBranchIds(emp).some((bId) => vals.includes(bId));
         case "department": return !!emp.department && vals.includes(emp.department);
         case "role": return !!emp.designation && vals.some((v) => v?.toLowerCase() === emp.designation?.toLowerCase());
         case "employees": return !!emp.id && vals.includes(emp.id);

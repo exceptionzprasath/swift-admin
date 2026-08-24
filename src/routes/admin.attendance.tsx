@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { useStore, type AttendanceRecord, type Employee, type ShiftType } from "@/lib/store";
+import { useStore, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import {
   CheckCircle2,
   XCircle,
@@ -38,26 +38,25 @@ import {
   AlertTriangle,
   Award,
   ArrowUpRight,
-  HelpCircle,
-  FileSpreadsheet,
-  SlidersHorizontal,
-  Phone,
-  Mail,
-  Building2,
-  CalendarCheck,
-  CalendarX,
+  Sparkle,
+  Flame,
+  FileCheck,
+  CalendarDays,
+  Percent,
   Timer,
+  Building2,
   Check,
-  X
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import { inr } from "@/lib/payroll";
 
 export const Route = createFileRoute("/admin/attendance")({
-  head: () => ({ meta: [{ title: "Real-Time Attendance & Dossiers · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Attendance & Dossier · SWIFT" }] }),
   component: AttendancePage,
 });
 
-export function AttendancePage() {
+function AttendancePage() {
   const {
     employees,
     attendance,
@@ -81,8 +80,6 @@ export function AttendancePage() {
   const [lastSyncedTime, setLastSyncedTime] = useState<string>(
     new Date().toLocaleTimeString()
   );
-
-  // Main Search & Filter State (Daily View)
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDept, setSelectedDept] = useState("all");
   const [selectedBranch, setSelectedBranch] = useState("all");
@@ -316,7 +313,8 @@ export function AttendancePage() {
       );
       const scheduled = getScheduledShiftForDate(emp, selectedDate);
       const punctuality = evaluatePunctuality(rec, scheduled, emp, selectedDate);
-      const branch = branches.find((b) => b.id === emp.branchId) || branches[0];
+      const empBranchIds = getEmployeeBranchIds(emp);
+      const branch = branches.find((b) => empBranchIds.includes(b.id)) || branches.find((b) => b.id === emp.branchId) || branches[0];
 
       return {
         emp,
@@ -345,7 +343,7 @@ export function AttendancePage() {
       if (selectedDept !== "all" && emp.department !== selectedDept) return false;
 
       // Branch
-      if (selectedBranch !== "all" && emp.branchId !== selectedBranch) return false;
+      if (selectedBranch !== "all" && !getEmployeeBranchIds(emp).includes(selectedBranch) && emp.branchId !== selectedBranch) return false;
 
       // Shift
       if (selectedShift !== "all" && emp.shiftId !== selectedShift) return false;
@@ -1885,7 +1883,9 @@ function EmployeeAttendanceDossierModal({
     };
   }, [employeeHistory]);
 
-  const assignedBranch = branches.find((b) => b.id === employee.branchId) || branches[0];
+  const assignedBranchIds = getEmployeeBranchIds(employee);
+  const assignedBranches = (branches || []).filter((b) => assignedBranchIds.includes(b.id));
+  const assignedBranch = assignedBranches[0] || branches[0];
   const assignedShift = shifts.find((s) => s.id === employee.shiftId) || shifts[0];
 
   // Export Single Employee Statement
@@ -1911,7 +1911,7 @@ function EmployeeAttendanceDossierModal({
       const row = [
         `"${dateStr}"`,
         `"${dayName}"`,
-        `"${scheduled.shift.name || "General"}"`,
+        `"${scheduled?.shift?.name || "General"}"`,
         `"${rec?.checkIn || rec?.clockIn || "—"}"`,
         `"${rec?.checkOut || rec?.clockOut || "—"}"`,
         rec?.hoursWorked ?? 0,
@@ -1972,7 +1972,9 @@ function EmployeeAttendanceDossierModal({
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mt-1.5">
                 <span className="flex items-center gap-1">
                   <Building2 className="h-3.5 w-3.5 text-primary" />
-                  {assignedBranch?.name || "Head Office"}
+                  {assignedBranches.length > 0
+                    ? assignedBranches.map((b) => b.name).join(", ")
+                    : (assignedBranch?.name || "Head Office")}
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">

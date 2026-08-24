@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStore, resolveAttendanceProfile, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole } from "@/lib/store";
+import { useStore, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { generateAppointmentPDF } from "@/lib/pdf";
 import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, type LetterKey } from "@/lib/documents";
@@ -66,6 +66,7 @@ const empty: Omit<Employee, "id"> = {
   faceRegistered: false,
   status: "active",
   branchId: undefined,
+  branchIds: [],
   photoDataUrl: undefined,
 };
 
@@ -206,7 +207,8 @@ function EmployeesPage() {
             ) : (
               employees.map((e) => {
                 const p = computePayroll({ company, employee: e, daysWorked: company.workingDaysPerMonth, otHours: 0, incentive: 0, shiftDays: 0, loan: 0, advance: 0, bonus: 0 });
-                const branch = company.branches?.find((b) => b.id === e.branchId);
+                const assignedBranchIds = getEmployeeBranchIds(e);
+                const assignedBranches = (company.branches ?? []).filter((b) => assignedBranchIds.includes(b.id));
                 return (
                   <tr key={e.id} className="border-t border-border">
                     <td className="p-3">
@@ -221,7 +223,25 @@ function EmployeesPage() {
                       </div>
                     </td>
                     <td className="p-3">{e.department}</td>
-                    <td className="p-3">{branch ? <Badge variant="outline">{branch.code}</Badge> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                    <td className="p-3">
+                      {assignedBranches.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {assignedBranches.map((b) => (
+                            <Badge
+                              key={b.id}
+                              variant={b.id === e.branchId ? "default" : "outline"}
+                              className={`text-[10px] px-1.5 py-0.5 ${b.id === e.branchId ? "bg-primary/90 text-primary-foreground font-medium" : "text-muted-foreground"}`}
+                              title={`${b.name} (${b.city || b.state})${b.id === e.branchId ? " — Primary Branch" : ""}`}
+                            >
+                              {b.code}
+                              {b.id === e.branchId && assignedBranches.length > 1 && <span className="ml-1 opacity-75">★</span>}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </td>
                     <td className="p-3 text-right">{inr(e.basic)}</td>
                     <td className="p-3 text-right text-primary font-medium">{inr(p.monthlyCTC)}</td>
                     <td className="p-3 text-right">
@@ -798,21 +818,135 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
 
               {current?.key === "branch" && (
                 <div className="space-y-4">
-                  <StepHead icon={Building2} title="Branch & Reporting" subtitle="Assign to a branch (with its own geo-fence) and reporting manager." />
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Branch</Label>
-                      <Select value={form.branchId || "__none"} onValueChange={(v) => setForm({ ...form, branchId: v === "__none" ? undefined : v })}>
-                        <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none">— Unassigned —</SelectItem>
-                          {(company.branches ?? []).map((b) => (
-                            <SelectItem key={b.id} value={b.id}>{b.name} · {b.code}{b.isHead ? " · HQ" : ""}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                  <StepHead icon={Building2} title="Branch & Reporting" subtitle="Assign to single or multiple branches (authorizing punch within each branch's geo-fence) and reporting manager." />
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm font-medium">Assigned Branches</Label>
+                        <p className="text-xs text-muted-foreground">Select all branches where this employee is authorized to check-in / check-out.</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px]"
+                          onClick={() => {
+                            const allIds = (company.branches ?? []).map((b) => b.id);
+                            setForm({ ...form, branchIds: allIds, branchId: form.branchId || allIds[0] });
+                          }}
+                        >
+                          Select All
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-[11px]"
+                          onClick={() => setForm({ ...form, branchIds: [], branchId: undefined })}
+                        >
+                          Clear
+                        </Button>
+                      </div>
                     </div>
-                    <div>
+
+                    {(company.branches ?? []).length === 0 ? (
+                      <div className="p-4 rounded-xl border border-dashed text-xs text-muted-foreground text-center">
+                        No branches configured yet. You can create branches under <b>Branches</b> menu.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {(company.branches ?? []).map((b) => {
+                          const currentSelectedIds = getEmployeeBranchIds(form);
+                          const isSelected = currentSelectedIds.includes(b.id);
+                          const isPrimary = (form.branchId || currentSelectedIds[0]) === b.id;
+                          return (
+                            <div
+                              key={b.id}
+                              onClick={() => {
+                                let nextIds: string[];
+                                if (isSelected) {
+                                  nextIds = currentSelectedIds.filter((id) => id !== b.id);
+                                } else {
+                                  nextIds = [...currentSelectedIds, b.id];
+                                }
+                                const nextPrimary = isPrimary
+                                  ? (nextIds[0] || undefined)
+                                  : (form.branchId || nextIds[0] || undefined);
+                                setForm({ ...form, branchIds: nextIds, branchId: nextPrimary });
+                              }}
+                              className={`cursor-pointer rounded-xl border p-3 transition-all flex flex-col justify-between gap-2 ${
+                                isSelected
+                                  ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
+                                  : "border-border bg-card hover:bg-muted/40 opacity-75"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={() => {}}
+                                    className="pointer-events-none"
+                                  />
+                                  <div className="font-medium text-xs flex items-center gap-1.5">
+                                    <Building2 className="h-3.5 w-3.5 text-primary" />
+                                    <span>{b.name}</span>
+                                    {b.isHead && <Badge className="bg-primary text-primary-foreground text-[9px] px-1 py-0">HQ</Badge>}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {isPrimary && isSelected && (
+                                    <Badge className="bg-primary/20 text-primary border-primary/30 text-[9px] px-1 py-0">Primary</Badge>
+                                  )}
+                                  <Badge variant="outline" className="text-[10px] font-mono">{b.code}</Badge>
+                                </div>
+                              </div>
+                              <div className="text-[11px] text-muted-foreground flex items-center justify-between gap-1 pt-1 border-t border-border/40">
+                                <span className="truncate">{b.city ? `${b.city}, ${b.state}` : b.address}</span>
+                                {b.lat != null && b.lng != null ? (
+                                  <span className="text-emerald-600 font-mono text-[10px] flex items-center gap-0.5 shrink-0">
+                                    <MapPin className="h-2.5 w-2.5" /> {b.radiusMeters ?? 150}m
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-600 text-[10px] shrink-0">No GPS</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Primary Branch Selector if multiple selected */}
+                    {getEmployeeBranchIds(form).length > 1 && (
+                      <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-primary/20 bg-primary/5 text-xs">
+                        <div className="flex items-center gap-2 font-medium">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          <span>Primary Branch (for Payroll & Tax jurisdiction):</span>
+                        </div>
+                        <Select
+                          value={form.branchId || getEmployeeBranchIds(form)[0] || "__none"}
+                          onValueChange={(v) => setForm({ ...form, branchId: v === "__none" ? undefined : v })}
+                        >
+                          <SelectTrigger className="h-8 w-48 text-xs bg-background">
+                            <SelectValue placeholder="Select primary" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(company.branches ?? [])
+                              .filter((b) => getEmployeeBranchIds(form).includes(b.id))
+                              .map((b) => (
+                                <SelectItem key={b.id} value={b.id}>
+                                  {b.name} ({b.code})
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="col-span-2">
                       <Label>Reports to</Label>
                       <Select value={form.managerId || "__none"} onValueChange={(v) => setForm({ ...form, managerId: v === "__none" ? undefined : v })}>
                         <SelectTrigger><SelectValue placeholder="No manager" /></SelectTrigger>
@@ -825,20 +959,6 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       </Select>
                     </div>
                   </div>
-                  {form.branchId && (() => {
-                    const b = company.branches?.find((x) => x.id === form.branchId);
-                    if (!b) return null;
-                    return (
-                      <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm space-y-1">
-                        <div className="font-medium flex items-center gap-1.5"><Building2 className="h-4 w-4 text-primary" /> {b.name}</div>
-                        <div className="text-xs text-muted-foreground">{b.address}, {b.city}, {b.state}</div>
-                        {b.lat != null && b.lng != null && (
-                          <div className="text-xs">Geo-fence: {b.radiusMeters ?? 150}m of {b.lat.toFixed(4)}, {b.lng.toFixed(4)}</div>
-                        )}
-                        {b.shiftStart && b.shiftEnd && <div className="text-xs">Shift: {b.shiftStart} – {b.shiftEnd}</div>}
-                      </div>
-                    );
-                  })()}
 
                   {/* Geofencing Verification Toggle */}
                   <div className="rounded-xl border border-border bg-card p-4 space-y-2">
@@ -970,7 +1090,15 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                         <div>📞 {form.phone || "—"}</div>
                         <div>💰 Basic {inr(form.basic)}</div>
                         <div>📅 DOJ {form.doj}</div>
-                        <div>🏢 Branch: {company.branches?.find((b) => b.id === form.branchId)?.name || "—"}</div>
+                        <div>
+                          🏢 Branches:{" "}
+                          {(() => {
+                            const bIds = getEmployeeBranchIds(form);
+                            const assigned = (company.branches ?? []).filter((b) => bIds.includes(b.id));
+                            if (assigned.length === 0) return "—";
+                            return assigned.map((b) => `${b.name} (${b.code})`).join(", ");
+                          })()}
+                        </div>
                         <div>👤 Reports to: {employees.find((e) => e.id === form.managerId)?.name || "Top of company"}</div>
                       </div>
                     </div>
@@ -1546,17 +1674,124 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                 <Label>Probation End Date</Label>
                 <Input type="date" value={form.probationDate || ""} onChange={(e) => setForm({ ...form, probationDate: e.target.value })} />
               </div>
-              <div>
-                <Label>Branch</Label>
-                <Select value={form.branchId || "__none"} onValueChange={(v) => setForm({ ...form, branchId: v === "__none" ? undefined : v })}>
-                  <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">— Unassigned —</SelectItem>
-                    {(company.branches ?? []).map((b) => (
-                      <SelectItem key={b.id} value={b.id}>{b.name} · {b.code}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="col-span-2 space-y-2 pt-1 border-t border-border/50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Assigned Branches & Geofences
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Select all company branches where this employee can verify geofence and check-in / check-out.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => {
+                        const allIds = (company.branches ?? []).map((b) => b.id);
+                        setForm({ ...form, branchIds: allIds, branchId: form.branchId || allIds[0] });
+                      }}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => setForm({ ...form, branchIds: [], branchId: undefined })}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(company.branches ?? []).map((b) => {
+                    const currentSelectedIds = getEmployeeBranchIds(form);
+                    const isSelected = currentSelectedIds.includes(b.id);
+                    const isPrimary = (form.branchId || currentSelectedIds[0]) === b.id;
+                    return (
+                      <div
+                        key={b.id}
+                        onClick={() => {
+                          let nextIds: string[];
+                          if (isSelected) {
+                            nextIds = currentSelectedIds.filter((id) => id !== b.id);
+                          } else {
+                            nextIds = [...currentSelectedIds, b.id];
+                          }
+                          const nextPrimary = isPrimary
+                            ? (nextIds[0] || undefined)
+                            : (form.branchId || nextIds[0] || undefined);
+                          setForm({ ...form, branchIds: nextIds, branchId: nextPrimary });
+                        }}
+                        className={`cursor-pointer rounded-lg border p-2.5 transition-all flex items-center justify-between gap-2 ${
+                          isSelected
+                            ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
+                            : "border-border bg-card hover:bg-muted/30 opacity-70"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => {}}
+                            className="pointer-events-none"
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium flex items-center gap-1.5 truncate">
+                              <Building2 className="h-3 w-3 text-primary shrink-0" />
+                              <span className="truncate">{b.name}</span>
+                              {b.isHead && <Badge className="bg-primary text-primary-foreground text-[8px] px-1 py-0">HQ</Badge>}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground truncate">
+                              {b.city || b.state || b.address}
+                              {b.lat != null && b.lng != null && (
+                                <span className="text-emerald-600 ml-1.5 font-mono">
+                                  ({b.radiusMeters ?? 150}m geo)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isPrimary && isSelected && (
+                            <Badge className="bg-primary/20 text-primary border-primary/30 text-[9px] px-1 py-0">Primary</Badge>
+                          )}
+                          <Badge variant="outline" className="text-[9px] font-mono">{b.code}</Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {getEmployeeBranchIds(form).length > 1 && (
+                  <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-primary/20 bg-primary/5 text-xs">
+                    <span className="font-medium text-xs flex items-center gap-1.5">
+                      <Sparkles className="h-3 w-3 text-primary" /> Primary Branch:
+                    </span>
+                    <Select
+                      value={form.branchId || getEmployeeBranchIds(form)[0] || "__none"}
+                      onValueChange={(v) => setForm({ ...form, branchId: v === "__none" ? undefined : v })}
+                    >
+                      <SelectTrigger className="h-7 w-44 text-xs bg-background">
+                        <SelectValue placeholder="Select primary" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(company.branches ?? [])
+                          .filter((b) => getEmployeeBranchIds(form).includes(b.id))
+                          .map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name} ({b.code})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Assigned Default Shift</Label>
