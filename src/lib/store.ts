@@ -1700,12 +1700,27 @@ export const useStore = create<State>()(
                   set((s) => ({
                     employees: s.employees.map((x) => x.id === emp.id ? { ...x, photoDataUrl: finalPhotoUrl, faceRegistered: true } : x)
                   }));
+                } else {
+                  // Upload failed — remove base64 from local/persisted state so a page
+                  // refresh doesn't show a broken cached blob or a mismatch vs DynamoDB.
+                  finalPhotoUrl = undefined;
+                  set((s) => ({
+                    employees: s.employees.map((x) => x.id === emp.id ? { ...x, photoDataUrl: undefined, faceRegistered: false } : x)
+                  }));
                 }
               } catch (err) {
                 console.error("Face registration failed:", err);
+                // Clear base64 from local state — same reason as the res.ok === false path.
+                finalPhotoUrl = undefined;
+                set((s) => ({
+                  employees: s.employees.map((x) => x.id === emp.id ? { ...x, photoDataUrl: undefined, faceRegistered: false } : x)
+                }));
               }
             }
-            syncItem("employees", { tenantId, ...emp, photoDataUrl: finalPhotoUrl, faceRegistered: !!finalPhotoUrl && finalPhotoUrl.startsWith("http") });
+            // Never write a raw base64 blob to DynamoDB — it exceeds the 400 KB item limit
+            // and causes a silent write failure. Strip the photo if S3 upload did not succeed.
+            const safePhotoUrl = finalPhotoUrl && finalPhotoUrl.startsWith("http") ? finalPhotoUrl : undefined;
+            syncItem("employees", { tenantId, ...emp, photoDataUrl: safePhotoUrl, faceRegistered: !!safePhotoUrl });
           };
           runRegisterAndSync();
         }
@@ -1792,12 +1807,19 @@ export const useStore = create<State>()(
                 }));
               }
 
+              // Never write a raw base64 blob to DynamoDB — strip if S3 upload did not succeed.
+              const safePhotoUrl = finalPhotoUrl && finalPhotoUrl.startsWith("http") ? finalPhotoUrl : undefined;
+              // Preserve the existing faceRegistered flag when the new photo upload failed —
+              // a failed upload should not retroactively de-register a previously enrolled face.
+              const faceRegisteredToSave = safePhotoUrl
+                ? isFaceRegistered
+                : (before.faceRegistered ?? false);
               syncItem("employees", {
                 tenantId,
                 ...before,
                 ...normalizedPatch,
-                photoDataUrl: finalPhotoUrl,
-                faceRegistered: isFaceRegistered,
+                photoDataUrl: safePhotoUrl,
+                faceRegistered: faceRegisteredToSave,
                 documentsUploaded: docs
               });
             };

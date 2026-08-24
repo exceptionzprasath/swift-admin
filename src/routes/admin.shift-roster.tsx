@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useStore, ShiftType, ShiftAssignment, Employee } from "@/lib/store";
 import {
   Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus,
   Search, Building2, CheckCircle2, Users, CalendarDays,
   Trash2, Edit2, Sparkles, Filter, Check, ArrowRight,
-  Sun, Moon, Sunrise, Sunset, Layers, RefreshCw
+  Sun, Moon, Sunrise, Sunset, Layers, RefreshCw,
+  FileSpreadsheet, Upload, Download, FileDown, AlertTriangle, FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,8 +22,11 @@ import {
   SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { downloadRosterTemplate, parseRosterCsvText, type RosterParseResult } from "@/lib/bulk-roster";
+import { aiNotify } from "@/lib/ai-guide-bus";
 
 export const Route = createFileRoute("/admin/shift-roster")({
   head: () => ({ meta: [{ title: "Swift Roster & Shifts · SWIFT HRMS" }] }),
@@ -101,6 +105,9 @@ export function ShiftRosterPage() {
     graceTime: "always" | "10" | "15" | "20" | "25" | "30";
     note?: string;
   } | null>(null);
+
+  // Bulk Upload Excel/CSV Modal
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   // Bulk Assign Range Dialog
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
@@ -397,19 +404,30 @@ export function ShiftRosterPage() {
           </Button>
 
           {activeTab === "planner" && (
-            <Button
-              onClick={() => {
-                setBulkForm((prev) => ({
-                  ...prev,
-                  employeeId: employees[0]?.id || "",
-                }));
-                setBulkAssignOpen(true);
-              }}
-              className="gap-2 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 text-white shadow-sm"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>+ Bulk Assign Month Shifts</span>
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setBulkUploadOpen(true)}
+                className="gap-2 border-primary/30 text-primary hover:bg-primary/5 shadow-xs"
+              >
+                <Upload className="h-4 w-4" />
+                <span>Bulk Upload Roster (Excel / CSV)</span>
+              </Button>
+
+              <Button
+                onClick={() => {
+                  setBulkForm((prev) => ({
+                    ...prev,
+                    employeeId: employees[0]?.id || "",
+                  }));
+                  setBulkAssignOpen(true);
+                }}
+                className="gap-2 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 text-white shadow-sm"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span>+ Bulk Assign Month Shifts</span>
+              </Button>
+            </>
           )}
 
           {activeTab === "shifts" && (
@@ -1204,6 +1222,273 @@ export function ShiftRosterPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* DIALOG 4: BULK UPLOAD EXCEL / CSV ROSTER */}
+      <BulkRosterUploadDialog
+        open={bulkUploadOpen}
+        onClose={() => setBulkUploadOpen(false)}
+        companyName={company.name || "SWIFT"}
+        shifts={shifts}
+        employees={employees}
+        onBulkAssign={bulkAssignRoster}
+      />
     </div>
+  );
+}
+
+interface BulkRosterUploadDialogProps {
+  open: boolean;
+  onClose: () => void;
+  companyName: string;
+  shifts: ShiftType[];
+  employees: Employee[];
+  onBulkAssign: (items: Array<Omit<ShiftAssignment, "id"> & { id?: string }>) => Promise<number>;
+}
+
+function BulkRosterUploadDialog({
+  open,
+  onClose,
+  companyName,
+  shifts,
+  employees,
+  onBulkAssign,
+}: BulkRosterUploadDialogProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [parsed, setParsed] = useState<RosterParseResult | null>(null);
+  const [overwriteExisting, setOverwriteExisting] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = (event.target?.result as string) || "";
+      const result = parseRosterCsvText(text, employees, shifts);
+      setParsed(result);
+    };
+    reader.readAsText(f);
+  };
+
+  const handleImport = async () => {
+    if (!parsed || parsed.assignments.length === 0) {
+      return toast.error("No valid shift assignments found in this file.");
+    }
+    setLoading(true);
+    try {
+      const count = await onBulkAssign(parsed.assignments);
+      toast.success(`✨ Successfully imported ${count} shift roster assignments!`);
+      aiNotify({
+        title: "✨ Bulk Shift Roster Imported",
+        body: `Imported ${count} shift assignments covering ${parsed.uniqueEmployees} employees.`,
+        kind: "success",
+      });
+      onClose();
+      setFile(null);
+      setParsed(null);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to bulk upload shift roster");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[88vh] flex flex-col p-6 overflow-hidden">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display text-xl">
+            <FileSpreadsheet className="h-5 w-5 text-primary" /> Bulk Upload Shift Roster (Excel / CSV)
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            Import monthly shifts for multiple employees using Excel or CSV templates with automated range expansion and shift matching.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 flex-1 overflow-y-auto pr-1 py-2">
+          {/* Download template banner */}
+          <div className="rounded-xl border border-border bg-muted/40 p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <FileDown className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold">Prefilled Template with Active Employees & Shifts</div>
+                <div className="text-[11px] text-muted-foreground">
+                  Supports single dates or date ranges (e.g., 2026-09-01 to 2026-09-30) with automatic weekend skipping.
+                </div>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-8 border-primary/30 text-primary hover:bg-primary/5 shrink-0"
+              onClick={() => {
+                downloadRosterTemplate(companyName, shifts, employees);
+                toast.success("Shift Roster Excel template downloaded.");
+              }}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
+            </Button>
+          </div>
+
+          {/* Shift Legend helper pills */}
+          <div className="p-3 bg-muted/20 border border-border/60 rounded-xl space-y-1.5">
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Available Shift Codes for this Company:
+            </div>
+            <div className="flex flex-wrap gap-1.5 items-center">
+              {shifts.map((s) => (
+                <Badge key={s.id} variant="outline" className="text-[11px] bg-background">
+                  <span className="font-mono font-bold mr-1 text-primary">{s.code || s.name}</span>: {s.start} - {s.end}
+                </Badge>
+              ))}
+              <Badge variant="outline" className="text-[11px] bg-background border-dashed text-muted-foreground">
+                <span className="font-mono font-bold mr-1 text-foreground">OFF</span>: Weekly Off / Holiday
+              </Badge>
+            </div>
+          </div>
+
+          {/* Drag & drop upload area */}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-border hover:border-primary/60 hover:bg-primary/5 transition-all rounded-2xl p-6 text-center cursor-pointer flex flex-col items-center justify-center gap-2"
+          >
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".csv,.xlsx,.xls,.tsv,.txt"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+              <Upload className="h-6 w-6" />
+            </div>
+            <div className="font-semibold text-sm">
+              {file ? file.name : "Click to select or drag & drop Roster Excel / CSV file"}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Supports .csv, .xlsx, .xls, .tsv with standard headers (Employee Code, Date, To Date, Shift Code, Grace Time, etc.)
+            </p>
+          </div>
+
+          {/* Validation & Live Preview */}
+          {parsed && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                    <CheckCircle2 className="mr-1 h-3 w-3" /> {parsed.validCount} shifts generated
+                  </Badge>
+                  <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 border-indigo-500/20">
+                    <Users className="mr-1 h-3 w-3" /> {parsed.uniqueEmployees} employees
+                  </Badge>
+                  {parsed.warnings.length > 0 && (
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                      <AlertTriangle className="mr-1 h-3 w-3" /> {parsed.warnings.length} notices
+                    </Badge>
+                  )}
+                  {parsed.errors.length > 0 && (
+                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
+                      {parsed.errors.length} errors
+                    </Badge>
+                  )}
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <Checkbox checked={overwriteExisting} onCheckedChange={(c) => setOverwriteExisting(!!c)} />
+                  <span>Overwrite overlapping existing dates</span>
+                </label>
+              </div>
+
+              {/* Warnings / Errors Details */}
+              {parsed.errors.length > 0 && (
+                <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3 space-y-1 text-xs text-destructive">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <AlertTriangle className="h-4 w-4" /> Errors found ({parsed.errors.length}):
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 max-h-24 overflow-y-auto">
+                    {parsed.errors.map((err, idx) => (
+                      <li key={idx}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Preview table */}
+              <div className="rounded-xl border border-border overflow-hidden max-h-60 overflow-y-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted text-muted-foreground sticky top-0">
+                    <tr>
+                      <th className="p-2 pl-3">Employee</th>
+                      <th className="p-2">Date / Range</th>
+                      <th className="p-2">Assigned Shift</th>
+                      <th className="p-2">Grace Period</th>
+                      <th className="p-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {parsed.previewRows.slice(0, 60).map((row, i) => (
+                      <tr key={i} className={`hover:bg-muted/40 ${row.status === "error" ? "bg-destructive/5" : ""}`}>
+                        <td className="p-2 pl-3">
+                          <div className="font-medium text-foreground">{row.employeeName}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">{row.empCode}</div>
+                        </td>
+                        <td className="p-2 font-mono text-[11px] text-muted-foreground">{row.date}</td>
+                        <td className="p-2">
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${
+                              row.shiftCode.toLowerCase() === "off" || row.shiftName.toLowerCase().includes("off")
+                                ? "bg-muted text-muted-foreground"
+                                : "bg-primary/10 text-primary border-primary/30"
+                            }`}
+                          >
+                            {row.shiftName}
+                          </Badge>
+                        </td>
+                        <td className="p-2 text-muted-foreground">{row.graceTime}</td>
+                        <td className="p-2">
+                          {row.status === "valid" ? (
+                            <span className="text-emerald-600 font-medium inline-flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> Ready
+                            </span>
+                          ) : (
+                            <span className="text-destructive font-medium inline-flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" /> {row.message || "Error"}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="text-[11px] text-muted-foreground italic flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Shifts will be saved directly into the company roster master and immediately reflected in attendance regularizations, payroll hours calculation, and live check-in validation.
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-3 border-t border-border mt-auto">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleImport}
+            disabled={!parsed || parsed.assignments.length === 0 || loading}
+            className="bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 text-white shadow-sm"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            {loading ? "Importing Roster..." : `Import ${parsed?.assignments?.length ?? 0} Shift Assignments`}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
