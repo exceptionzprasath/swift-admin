@@ -433,7 +433,36 @@ export function PayrollPage() {
       const daysHalf = monthAtt.filter((a) => a.status === "half-day").length;
       const daysLeave = monthAtt.filter((a) => a.status === "leave").length;
       const rawPresentDays = daysPresent + daysHalf * 0.5;
-      const otHours = monthAtt.reduce((sum, a) => sum + (a.otHours || 0), 0);
+
+      // Compute OT from actual check-in/check-out timestamps for each day
+      const otHours = monthAtt.reduce((sum, a) => {
+        if (a.otHours && a.otHours > 0) return sum + a.otHours;
+        // Derive from timestamps if no stored OT
+        const inTime = a.checkIn || a.clockIn;
+        const outTime = a.checkOut || a.clockOut;
+        if (!inTime || !outTime) return sum;
+        try {
+          const parseT = (s: string): number => {
+            const cleaned = s.trim().toLowerCase();
+            const m = cleaned.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
+            if (!m) return -1;
+            let h = parseInt(m[1], 10);
+            const mins = parseInt(m[2], 10);
+            const mer = m[3]?.toLowerCase();
+            if (mer === 'pm' && h < 12) h += 12;
+            if (mer === 'am' && h === 12) h = 0;
+            return h * 60 + mins;
+          };
+          const inM = parseT(inTime);
+          const outM = parseT(outTime);
+          if (inM < 0 || outM < 0) return sum;
+          let diffM = outM - inM;
+          if (diffM <= 0) diffM += 24 * 60;
+          const worked = diffM / 60;
+          const stdH = company.workingHoursPerDay || 9;
+          return sum + (worked > stdH ? Math.round((worked - stdH) * 10) / 10 : 0);
+        } catch { return sum; }
+      }, 0);
 
       // Check for employee-specific monthly override
       const overrideKey = `${selectedMonth}_${emp.id}`;
@@ -1378,7 +1407,6 @@ export function PayrollPage() {
                     <p className="text-[11px] text-muted-foreground truncate max-w-[210px]">
                       {company.legalName || "SWIFT Demo Pvt Ltd"}
                     </p>
-                    <p className="text-[10px] text-muted-foreground/80">GSTIN: {company.gstin || "29ABCDE1234F1Z5"}</p>
                   </div>
 
                   <div className="text-right space-y-0.5">
@@ -1995,9 +2023,7 @@ export function PayrollPage() {
                     </h3>
                   </div>
                   <p className="text-xs text-muted-foreground">{company.legalName || "SWIFT Demo Pvt Ltd"}</p>
-                  <p className="text-[11px] text-muted-foreground/80">
-                    {company.address} {company.gstin ? `· GSTIN: ${company.gstin}` : ""}
-                  </p>
+                  {company.address ? <p className="text-[11px] text-muted-foreground/80">{company.address}</p> : null}
                 </div>
                 <div className="text-right space-y-1">
                   <span className="inline-block px-3 py-1 rounded-full text-xs font-extrabold bg-primary/10 text-primary uppercase tracking-wider">
@@ -2034,6 +2060,10 @@ export function PayrollPage() {
                 <div>
                   <span className="text-muted-foreground block text-[10px] uppercase font-semibold">PAN Number</span>
                   <span className="font-medium text-foreground">{previewTarget.emp.pan || "-"}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">PF UAN No</span>
+                  <span className="font-medium text-foreground">{previewTarget.emp.uan || "—"}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Bank A/C</span>

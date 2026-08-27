@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -24,8 +24,9 @@ import {
   FileSignature, CheckCircle2, Sparkles, Wand2, Camera, Home, Users as UsersIcon,
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
+  KeyRound, RefreshCw, Copy, Check,
 } from "lucide-react";
-import { downloadEmployeeTemplate, parseEmployeeCsvText } from "@/lib/bulk-employee";
+import { downloadEmployeeTemplate, parseEmployeeCsvText, generateEmployeePassword } from "@/lib/bulk-employee";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
 import { toast } from "sonner";
 import { aiNotify, setAiGuideMode } from "@/lib/ai-guide-bus";
@@ -38,7 +39,7 @@ export const Route = createFileRoute("/admin/employees")({
 
 const empty: Omit<Employee, "id"> = {
   empCode: "",
-  password: "",
+  password: generateEmployeePassword(),
   name: "",
   email: "",
   phone: "",
@@ -217,7 +218,18 @@ function EmployeesPage() {
                           {e.photoDataUrl ? <img src={e.photoDataUrl} className="h-full w-full object-cover" alt={e.name} /> : e.name.split(" ").slice(0, 2).map((s) => s[0]).join("")}
                         </div>
                         <div>
-                          <div className="font-medium">{e.name}</div>
+                          <div className="font-medium flex items-center gap-1.5">
+                            <span>{e.name}</span>
+                            {(e.faceRegistered || (e.photoDataUrl && e.photoDataUrl.startsWith("http"))) && (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] px-1 py-0 bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-medium"
+                                title="Biometric Face Enrolled (Rekognition & Mobile Verified)"
+                              >
+                                ✓ Face Enrolled
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-[11px] text-muted-foreground font-mono">{e.empCode} · {e.designation}</div>
                         </div>
                       </div>
@@ -328,7 +340,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
 
   const canNext = () => {
     if (!current) return false;
-    if (current.key === "photo") return !!form.photoDataUrl && !!form.name && !!form.empCode && !!form.password;
+    if (current.key === "photo") return !!form.name && !!form.empCode;
     if (current.key === "personal") return !!form.name && !!form.email && !!form.phone;
     if (current.key === "employment") return !!form.designation && !!form.department && !!form.doj;
     return true;
@@ -377,13 +389,11 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
               <li key={s.key}>
                 <button
                   onClick={() => setStep(i)}
-                  className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
-                    active ? "bg-gradient-brand text-white shadow-soft" : done ? "text-emerald-600 hover:bg-muted" : "text-muted-foreground hover:bg-muted"
-                  }`}
+                  className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${active ? "bg-gradient-brand text-white shadow-soft" : done ? "text-emerald-600 hover:bg-muted" : "text-muted-foreground hover:bg-muted"
+                    }`}
                 >
-                  <div className={`h-5 w-5 rounded-full grid place-items-center text-[10px] font-semibold shrink-0 ${
-                    active ? "bg-white/20 text-white" : done ? "bg-emerald-500 text-white" : "bg-muted-foreground/15"
-                  }`}>
+                  <div className={`h-5 w-5 rounded-full grid place-items-center text-[10px] font-semibold shrink-0 ${active ? "bg-white/20 text-white" : done ? "bg-emerald-500 text-white" : "bg-muted-foreground/15"
+                    }`}>
                     {done ? "✓" : i + 1}
                   </div>
                   <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -403,10 +413,10 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
       <div className="flex flex-col h-full min-h-0 overflow-hidden">
         <div className="flex-1 min-h-0 overflow-y-auto p-6">
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={current?.key ?? step}
-            initial={{ opacity: 0, y: 8 }}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={current?.key ?? step}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
@@ -414,7 +424,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
             >
               {current?.key === "photo" && (
                 <div className="space-y-5">
-                  <StepHead icon={Camera} title="Photo & Identity" subtitle="Photo is mandatory for single guided registration. Or use Bulk Upload below to import from Excel without photos." />
+                  <StepHead icon={Camera} title="Photo & Identity" subtitle="Photo upload is optional. Employees will register their face for fast AI attendance on first-time login via the SwiftHR Mobile App." />
 
                   {/* Bulk Upload Banner */}
                   <div className="rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -425,7 +435,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       <div>
                         <div className="text-xs font-semibold uppercase tracking-wider text-primary">Need to register multiple employees?</div>
                         <div className="text-sm font-medium">Download the Excel template or Bulk Upload your employee list.</div>
-                        <p className="text-xs text-muted-foreground mt-0.5">Imported employees appear instantly without photos. You can upload photos later in Edit Employee.</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Imported employees are created with auto-generated secure passwords. Employees register faces on first mobile app login.</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -435,7 +445,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                         className="bg-card text-xs h-8"
                         onClick={() => {
                           downloadEmployeeTemplate(company.name);
-                          toast.success("Excel template downloaded with sample employee headers.");
+                          toast.success("Excel template downloaded.");
                         }}
                       >
                         <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
@@ -457,14 +467,69 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                   </div>
 
                   <div className="rounded-2xl border border-border bg-card p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Profile Photo (Optional)</span>
+                      <span className="text-[11px] text-primary font-medium bg-primary/10 px-2.5 py-0.5 rounded-full">
+                        Employee will register face in mobile app
+                      </span>
+                    </div>
                     <PhotoCapture value={form.photoDataUrl} onChange={(u) => setForm({ ...form, photoDataUrl: u, faceRegistered: !!u })} name={form.name} size="lg" />
                   </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Full Name *" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
                     <Field label="Employee Code *" value={form.empCode} onChange={(v) => setForm({ ...form, empCode: v })} placeholder="SW0001" />
-                    <div className="col-span-2">
-                      <Field label="Password *" type="password" value={form.password || ""} onChange={(v) => setForm({ ...form, password: v })} placeholder="••••••••" />
-                      <p className="text-[11px] text-muted-foreground mt-1">This password will be used by the employee to log into the Employee Portal.</p>
+
+                    {/* Auto Generated Password Card */}
+                    <div className="col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <KeyRound className="h-4 w-4 text-primary" />
+                          <span className="text-xs font-semibold text-foreground">Auto-Generated Login Password</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2.5 text-[11px] bg-card border-border hover:bg-muted"
+                            onClick={() => {
+                              const newP = generateEmployeePassword();
+                              setForm({ ...form, password: newP });
+                              toast.info(`Generated new password: ${newP}`);
+                            }}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1 text-primary" /> Regenerate
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2.5 text-[11px] bg-card border-border hover:bg-muted"
+                            onClick={() => {
+                              if (form.password) {
+                                navigator.clipboard.writeText(form.password);
+                                toast.success("Password copied to clipboard!");
+                              }
+                            }}
+                          >
+                            <Copy className="h-3 w-3 mr-1 text-primary" /> Copy
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="text"
+                          value={form.password || ""}
+                          onChange={(e) => setForm({ ...form, password: e.target.value })}
+                          placeholder="Auto-generated password"
+                          className="font-mono text-sm font-semibold bg-card border-border h-9"
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                        <span>✨</span>
+                        <span>This Employee Code and auto-generated password will be emailed to the employee along with mobile app login instructions.</span>
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -703,6 +768,12 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       value={String(form.fixedSalary ?? form.basic)}
                       onChange={(v) => setForm({ ...form, fixedSalary: +v || 0, basic: +v || 0 })}
                     />
+                    <Field
+                      label="PF UAN No"
+                      placeholder="12-digit UAN (e.g. 100987654321)"
+                      value={form.uan || ""}
+                      onChange={(v) => setForm({ ...form, uan: v.replace(/\D/g, "").slice(0, 12) })}
+                    />
                     <Field label="Bank Account" value={form.bankAcc || ""} onChange={(v) => setForm({ ...form, bankAcc: v })} />
                     <Field label="IFSC" value={form.bankIfsc || ""} onChange={(v) => setForm({ ...form, bankIfsc: v.toUpperCase() })} />
                     <div>
@@ -875,17 +946,16 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                                   : (form.branchId || nextIds[0] || undefined);
                                 setForm({ ...form, branchIds: nextIds, branchId: nextPrimary });
                               }}
-                              className={`cursor-pointer rounded-xl border p-3 transition-all flex flex-col justify-between gap-2 ${
-                                isSelected
+                              className={`cursor-pointer rounded-xl border p-3 transition-all flex flex-col justify-between gap-2 ${isSelected
                                   ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
                                   : "border-border bg-card hover:bg-muted/40 opacity-75"
-                              }`}
+                                }`}
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <Checkbox
                                     checked={isSelected}
-                                    onCheckedChange={() => {}}
+                                    onCheckedChange={() => { }}
                                     className="pointer-events-none"
                                   />
                                   <div className="font-medium text-xs flex items-center gap-1.5">
@@ -1007,7 +1077,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Morning Grace Period</Label>
                         <Select
@@ -1028,13 +1098,13 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                         </Select>
                         <p className="text-[11px] text-muted-foreground">
                           {form.graceTime === "always"
-                            ? "Employee can clock in at any time without auto-absent cutoff."
-                            : `If attendance is not marked within ${form.graceTime || "15"} mins of shift start, morning is marked Absent and check-in is disabled.`}
+                            ? "Employee can clock in at any time in morning without cutoff."
+                            : `If not marked within ${form.graceTime || "15"} mins of shift start, morning is marked Absent.`}
                         </p>
                       </div>
 
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">Afternoon Login Window Start Time</Label>
+                        <Label className="text-xs font-semibold">Afternoon Login Start Time</Label>
                         <Input
                           type="time"
                           value={form.halfDayLoginTime || "12:00"}
@@ -1044,6 +1114,32 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                         />
                         <p className="text-[11px] text-muted-foreground">
                           Default 12:00 PM. Unlocks check-in for afternoon / half-day attendance.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Afternoon Grace Period</Label>
+                        <Select
+                          value={form.afternoonGraceTime || "15"}
+                          onValueChange={(v: any) => setForm({ ...form, afternoonGraceTime: v })}
+                          disabled={form.allowHalfDayLogin === false || form.graceTime === "always"}
+                        >
+                          <SelectTrigger className="w-full text-xs">
+                            <SelectValue placeholder="Select afternoon grace" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="always">Always (No cutoff / Flexible)</SelectItem>
+                            <SelectItem value="10">Within 10 mins</SelectItem>
+                            <SelectItem value="15">Within 15 mins (Standard Default)</SelectItem>
+                            <SelectItem value="20">Within 20 mins</SelectItem>
+                            <SelectItem value="25">Within 25 mins</SelectItem>
+                            <SelectItem value="30">Within 30 mins</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[11px] text-muted-foreground">
+                          {form.afternoonGraceTime === "always"
+                            ? "Afternoon check-in allowed at all times after afternoon window."
+                            : `Late check-in past ${form.afternoonGraceTime || "15"} mins of afternoon window locks attendance.`}
                         </p>
                       </div>
                     </div>
@@ -1147,28 +1243,28 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
               )}
             </motion.div>
           </AnimatePresence>
-          </div>
-
-          <div className="shrink-0 flex items-center justify-between border-t border-border bg-card/95 backdrop-blur px-6 py-3">
-            <Button variant="ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>
-              <ChevronLeft className="h-4 w-4 mr-1" /> Back
-            </Button>
-            <div className="text-xs text-muted-foreground">Step {step + 1} of {flow.length}</div>
-            {step < flow.length - 1 ? (
-              <Button className="bg-gradient-brand text-white" disabled={!canNext()} onClick={() => setStep(step + 1)}>
-                Continue <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            ) : (
-              <Button className="bg-gradient-brand text-white shadow-glow" onClick={finish}>
-                <CheckCircle2 className="h-4 w-4 mr-1" /> Create Employee
-              </Button>
-            )}
-          </div>
         </div>
 
+        <div className="shrink-0 flex items-center justify-between border-t border-border bg-card/95 backdrop-blur px-6 py-3">
+          <Button variant="ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>
+            <ChevronLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <div className="text-xs text-muted-foreground">Step {step + 1} of {flow.length}</div>
+          {step < flow.length - 1 ? (
+            <Button className="bg-gradient-brand text-white" disabled={!canNext()} onClick={() => setStep(step + 1)}>
+              Continue <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          ) : (
+            <Button className="bg-gradient-brand text-white shadow-glow" onClick={finish}>
+              <CheckCircle2 className="h-4 w-4 mr-1" /> Create Employee
+            </Button>
+          )}
+        </div>
       </div>
-    );
-  }
+
+    </div>
+  );
+}
 
 
 function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employee | null; open: boolean; onClose: () => void }) {
@@ -1176,6 +1272,8 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
   const [activeTab, setActiveTab] = useState<"signed" | "uploads">("signed");
   const [uploadType, setUploadType] = useState("Aadhaar Card");
   const [uploadName, setUploadName] = useState("");
+  const [previewDocModal, setPreviewDocModal] = useState<EmployeeDocument | null>(null);
+  const [adminPreviewPageIndex, setAdminPreviewPageIndex] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!employee) return null;
@@ -1440,14 +1538,12 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
                           size="sm"
                           variant="ghost"
                           onClick={() => {
-                            const w = window.open("");
-                            if (w) {
-                              w.document.write(`<iframe src="${doc.dataUrl}" style="width:100%;height:100%;border:none;"></iframe>`);
-                            }
+                            setAdminPreviewPageIndex(0);
+                            setPreviewDocModal(doc);
                           }}
                           className="h-7 text-xs px-2 text-primary hover:bg-primary/10"
                         >
-                          <Eye className="h-3 w-3 mr-1" /> Preview
+                          <Eye className="h-3 w-3 mr-1" /> Preview {doc.files && doc.files.length > 1 ? `(${doc.files.length}p)` : ""}
                         </Button>
                       ) : (
                         <span className="text-[10px] text-muted-foreground italic">No preview data</span>
@@ -1455,7 +1551,7 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
 
                       <div className="flex items-center gap-1">
                         {doc.dataUrl && (
-                          <a href={doc.dataUrl} download={doc.name}>
+                          <a href={doc.dataUrl} download={doc.name} target="_blank" rel="noreferrer">
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-600 hover:bg-emerald-500/10">
                               <Download className="h-3.5 w-3.5" />
                             </Button>
@@ -1479,6 +1575,130 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Sub-Dialog: Full In-App Document Preview (Supports Multi-Page) */}
+      {previewDocModal && (
+        <Dialog open={!!previewDocModal} onOpenChange={() => setPreviewDocModal(null)}>
+          <DialogContent className="max-w-2xl p-6 rounded-3xl border border-border shadow-2xl">
+            {(() => {
+              const allPages = (previewDocModal.files && previewDocModal.files.length > 0)
+                ? previewDocModal.files
+                : (previewDocModal.dataUrl ? [previewDocModal.dataUrl] : []);
+              const activePageUrl = allPages[adminPreviewPageIndex] || allPages[0] || "";
+
+              return (
+                <>
+                  <DialogHeader>
+                    <div className="flex items-center justify-between">
+                      <DialogTitle className="flex items-center gap-2 text-base font-bold">
+                        <FileText className="h-5 w-5 text-primary" />
+                        <span>{previewDocModal.name}</span>
+                      </DialogTitle>
+                      {allPages.length > 1 && (
+                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                          Page {adminPreviewPageIndex + 1} of {allPages.length}
+                        </Badge>
+                      )}
+                    </div>
+                    <DialogDescription className="text-xs">
+                      {previewDocModal.type} · Uploaded on {new Date(previewDocModal.uploadedAt).toLocaleString()}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="my-3 rounded-2xl overflow-hidden bg-muted/40 border border-border flex flex-col items-center justify-center min-h-[280px] max-h-[60vh] p-2">
+                    {activePageUrl && (activePageUrl.startsWith("http") || activePageUrl.startsWith("data:image")) ? (
+                      <img
+                        src={activePageUrl}
+                        alt={`${previewDocModal.name} - Page ${adminPreviewPageIndex + 1}`}
+                        className="max-h-[50vh] max-w-full object-contain rounded-lg shadow-xs"
+                      />
+                    ) : activePageUrl ? (
+                      <iframe
+                        src={activePageUrl}
+                        title={previewDocModal.name}
+                        className="w-full h-[50vh] border-none rounded-lg"
+                      />
+                    ) : (
+                      <div className="p-8 text-center text-muted-foreground text-xs">
+                        No preview available
+                      </div>
+                    )}
+
+                    {/* Multi-page Thumbnail & Navigation Strip */}
+                    {allPages.length > 1 && (
+                      <div className="flex items-center justify-between w-full px-3 py-2 mt-2 border-t border-border bg-background/80 rounded-xl text-xs">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={adminPreviewPageIndex === 0}
+                          onClick={() => setAdminPreviewPageIndex((p) => Math.max(0, p - 1))}
+                          className="h-7 text-xs px-2"
+                        >
+                          ◀ Prev
+                        </Button>
+
+                        <div className="flex items-center gap-1">
+                          {allPages.map((_, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setAdminPreviewPageIndex(idx)}
+                              className={`h-6 px-2 rounded-md text-[11px] font-bold transition-all ${
+                                adminPreviewPageIndex === idx
+                                  ? "bg-primary text-primary-foreground shadow-xs"
+                                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                              }`}
+                            >
+                              Page {idx + 1}
+                            </button>
+                          ))}
+                        </div>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={adminPreviewPageIndex === allPages.length - 1}
+                          onClick={() => setAdminPreviewPageIndex((p) => Math.min(allPages.length - 1, p + 1))}
+                          className="h-7 text-xs px-2"
+                        >
+                          Next ▶
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 pt-2 border-t border-border">
+                    <Button
+                      size="sm"
+                      variant={previewDocModal.verified ? "default" : "outline"}
+                      onClick={() => {
+                        toggleVerifyDoc(previewDocModal.id);
+                        setPreviewDocModal({ ...previewDocModal, verified: !previewDocModal.verified });
+                      }}
+                      className="gap-1.5 text-xs h-8"
+                    >
+                      {previewDocModal.verified ? "✅ Verified" : "⏳ Mark as Verified"}
+                    </Button>
+
+                    <div className="flex items-center gap-2">
+                      {activePageUrl && (
+                        <a href={activePageUrl} download={`${previewDocModal.name}_page${adminPreviewPageIndex + 1}`} target="_blank" rel="noreferrer">
+                          <Button size="sm" variant="secondary" className="gap-1.5 text-xs h-8">
+                            <Download className="h-3.5 w-3.5" /> Download Current Page
+                          </Button>
+                        </a>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => setPreviewDocModal(null)} className="text-xs h-8">
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   );
 }
@@ -1554,8 +1774,9 @@ function RepeatingList<T extends Record<string, unknown>>({
 }
 
 function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | null; open: boolean; onClose: () => void }) {
-  const { updateEmployee, company, roles } = useStore();
+  const { updateEmployee, company, roles, employees } = useStore();
   const [form, setForm] = useState<Partial<Employee>>({});
+  const [activeTab, setActiveTab] = useState<"identity" | "employment" | "address_kyc" | "branches_policy" | "family_edu" | "experience_skills" | "compliance">("identity");
 
   useEffect(() => {
     if (employee) {
@@ -1574,114 +1795,442 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
     onClose();
   };
 
+  const tabs = [
+    { id: "identity", label: "Profile & Identity", icon: User },
+    { id: "employment", label: "Employment & Salary", icon: Briefcase },
+    { id: "address_kyc", label: "Address & KYC", icon: Home },
+    { id: "branches_policy", label: "Branches & Policy", icon: Building2 },
+    { id: "family_edu", label: "Family & Education", icon: GraduationCap },
+    { id: "experience_skills", label: "Experience & Skills", icon: Award },
+    { id: "compliance", label: "Compliance & BGV", icon: ShieldCheck },
+  ] as const;
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 font-display text-xl">
-            <Pencil className="h-5 w-5 text-primary" /> Edit Employee Details
-          </DialogTitle>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
+        <DialogHeader className="pb-2 border-b border-border">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2 font-display text-lg font-bold">
+              <Pencil className="h-5 w-5 text-primary" /> Edit Employee: {employee.name} ({employee.empCode})
+            </DialogTitle>
+            <Badge variant="outline" className={`text-xs ${form.status === "active" ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-rose-500/10 text-rose-700 border-rose-500/30"}`}>
+              {form.status === "active" ? "Active Employee" : "Inactive / On Notice"}
+            </Badge>
+          </div>
+          <DialogDescription className="text-xs">
+            Modify any employee profile information, statutory numbers, compensation, geofencing, or background verification.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
-          <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Photo & Credentials</div>
-            <PhotoCapture
-              value={form.photoDataUrl}
-              onChange={(u) => setForm({ ...form, photoDataUrl: u, faceRegistered: !!u })}
-              name={form.name}
-              size="lg"
-            />
-            <div className="grid grid-cols-2 gap-4 pt-2">
-              <div>
-                <Label>Full Name *</Label>
-                <Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        {/* Tab Strip */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 pt-1 border-b border-border/60">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                  active
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="space-y-4 py-2 min-h-[380px]">
+          {/* TAB 1: PROFILE & IDENTITY */}
+          {activeTab === "identity" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Photo & System Credentials</div>
+                  <span className="text-[11px] text-primary font-medium bg-primary/10 px-2.5 py-0.5 rounded-full">
+                    Face registration is optional here (completed on mobile app)
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  <PhotoCapture
+                    value={form.photoDataUrl}
+                    onChange={(u) => setForm({ ...form, photoDataUrl: u, faceRegistered: !!u })}
+                    name={form.name}
+                    size="lg"
+                  />
+                  <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Full Name *</Label>
+                      <Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Employee Code *</Label>
+                      <Input value={form.empCode || ""} onChange={(e) => setForm({ ...form, empCode: e.target.value })} />
+                    </div>
+                    <div className="sm:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <KeyRound className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-xs font-semibold">Auto-Generated Password</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px] bg-card border-border"
+                            onClick={() => {
+                              const newP = generateEmployeePassword();
+                              setForm({ ...form, password: newP });
+                              toast.info(`Generated: ${newP}`);
+                            }}
+                          >
+                            <RefreshCw className="h-2.5 w-2.5 mr-1 text-primary" /> Regenerate
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px] bg-card border-border"
+                            onClick={() => {
+                              if (form.password) {
+                                navigator.clipboard.writeText(form.password);
+                                toast.success("Password copied!");
+                              }
+                            }}
+                          >
+                            <Copy className="h-2.5 w-2.5 mr-1 text-primary" /> Copy
+                          </Button>
+                        </div>
+                      </div>
+                      <Input
+                        type="text"
+                        value={form.password || ""}
+                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                        placeholder="Auto-generated password"
+                        className="font-mono text-xs font-semibold bg-card border-border h-8"
+                      />
+                      <p className="text-[10.5px] text-muted-foreground">Credentials and mobile login steps will be automatically sent to the employee's email.</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Employee Status</Label>
+                      <Select value={form.status || "active"} onValueChange={(v) => setForm({ ...form, status: v as "active" | "inactive" })}>
+                        <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>Employee Code *</Label>
-                <Input value={form.empCode || ""} onChange={(e) => setForm({ ...form, empCode: e.target.value })} />
-              </div>
-              <div className="col-span-2">
-                <Label>Password * (for Employee Portal login)</Label>
-                <Input type="text" value={form.password || ""} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Enter password" />
+
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Personal Demographics</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Gender</Label>
+                    <Select value={form.gender || "male"} onValueChange={(v) => setForm({ ...form, gender: v as any })}>
+                      <SelectTrigger className="text-xs"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Date of Birth</Label>
+                    <Input type="date" value={form.dob || ""} onChange={(e) => setForm({ ...form, dob: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Blood Group</Label>
+                    <Input placeholder="e.g. O+, A+, B+" value={form.bloodGroup || ""} onChange={(e) => setForm({ ...form, bloodGroup: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Marital Status</Label>
+                    <Select value={form.maritalStatus || "single"} onValueChange={(v) => setForm({ ...form, maritalStatus: v as any })}>
+                      <SelectTrigger className="text-xs"><SelectValue placeholder="Select status" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="single">Single</SelectItem>
+                        <SelectItem value="married">Married</SelectItem>
+                        <SelectItem value="divorced">Divorced</SelectItem>
+                        <SelectItem value="widowed">Widowed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Nationality</Label>
+                    <Input value={form.nationality || "Indian"} onChange={(e) => setForm({ ...form, nationality: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Spouse Name (if married)</Label>
+                    <Input value={form.spouseName || ""} onChange={(e) => setForm({ ...form, spouseName: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Father's Name</Label>
+                    <Input value={form.fatherName || ""} onChange={(e) => setForm({ ...form, fatherName: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Mother's Name</Label>
+                    <Input value={form.motherName || ""} onChange={(e) => setForm({ ...form, motherName: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Personal Email (Alt)</Label>
+                    <Input type="email" value={form.about || ""} onChange={(e) => setForm({ ...form, about: e.target.value })} placeholder="personal@gmail.com" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Emergency Contact Person</Label>
+                    <Input value={form.emergencyName || form.emergencyContact || ""} onChange={(e) => setForm({ ...form, emergencyName: e.target.value, emergencyContact: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Emergency Relation</Label>
+                    <Input placeholder="Father / Spouse / Sibling" value={form.emergencyRelation || ""} onChange={(e) => setForm({ ...form, emergencyRelation: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Emergency Contact Number</Label>
+                    <Input type="tel" value={form.emergencyPhone2 || ""} onChange={(e) => setForm({ ...form, emergencyPhone2: e.target.value })} />
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Employment Information</div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Work Email</Label>
-                <Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          {/* TAB 2: EMPLOYMENT & SALARY */}
+          {activeTab === "employment" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Work Assignment & Role</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Work Email</Label>
+                    <Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Phone Number</Label>
+                    <Input type="tel" value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Department</Label>
+                    <Select value={form.department || "Engineering"} onValueChange={(v) => setForm({ ...form, department: v })}>
+                      <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {["Engineering", "HR", "Sales", "Operations", "Finance", "Marketing", "Legal", "Executive", "Design"].map((d) => (
+                          <SelectItem key={d} value={d}>{d}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Designation</Label>
+                    <Input value={form.designation || ""} onChange={(e) => setForm({ ...form, designation: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Assigned Predefined Role</Label>
+                    <Select
+                      value={form.roleId || "__none"}
+                      onValueChange={(v) => {
+                        const selected = (roles || []).find((r: PredefinedRole) => r.id === v);
+                        setForm({
+                          ...form,
+                          roleId: v === "__none" ? undefined : v,
+                          roleName: selected ? selected.name : undefined,
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="text-xs"><SelectValue placeholder="Select Role" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Standard / Default —</SelectItem>
+                        {(roles || []).map((r: PredefinedRole) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.name} {r.isSystemDefault ? "(Default)" : "(Custom)"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Reporting Manager</Label>
+                    <Select
+                      value={form.managerId || form.reportingManager || "__none"}
+                      onValueChange={(v) => {
+                        const m = (employees || []).find((e) => e.id === v || e.name === v);
+                        setForm({
+                          ...form,
+                          managerId: v === "__none" ? undefined : (m?.id || v),
+                          reportingManager: v === "__none" ? undefined : (m?.name || v),
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="text-xs"><SelectValue placeholder="Select Manager" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— None (Top Level) —</SelectItem>
+                        {(employees || [])
+                          .filter((e) => e.id !== employee.id)
+                          .map((e) => (
+                            <SelectItem key={e.id} value={e.id}>
+                              {e.name} ({e.empCode} · {e.designation})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Date of Joining</Label>
+                    <Input type="date" value={form.doj || ""} onChange={(e) => setForm({ ...form, doj: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Benefits Eligible Date</Label>
+                    <Input type="date" value={form.eligibleDate || form.doj || ""} onChange={(e) => setForm({ ...form, eligibleDate: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Probation End Date</Label>
+                    <Input type="date" value={form.probationDate || ""} onChange={(e) => setForm({ ...form, probationDate: e.target.value })} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>Phone</Label>
-                <Input value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Salary & Compensation</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs font-semibold text-primary">Fixed Salary (Monthly ₹) *</Label>
+                    <Input
+                      type="number"
+                      value={form.fixedSalary ?? form.basic ?? 25000}
+                      onChange={(e) => setForm({ ...form, fixedSalary: +e.target.value, basic: +e.target.value })}
+                      className="font-bold"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">PF UAN No</Label>
+                    <Input
+                      placeholder="12-digit UAN"
+                      value={form.uan || ""}
+                      onChange={(e) => setForm({ ...form, uan: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">PF Number / Member ID</Label>
+                    <Input value={form.pfNumber || ""} onChange={(e) => setForm({ ...form, pfNumber: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">ESIC Insurance Number</Label>
+                    <Input value={form.esic || ""} onChange={(e) => setForm({ ...form, esic: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Professional Tax (PT) Reg No</Label>
+                    <Input value={form.ptNumber || ""} onChange={(e) => setForm({ ...form, ptNumber: e.target.value })} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>Department</Label>
-                <Select value={form.department || "Engineering"} onValueChange={(v) => setForm({ ...form, department: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {["Engineering", "HR", "Sales", "Operations", "Finance", "Marketing", "Legal", "Executive", "Design"].map((d) => (
-                      <SelectItem key={d} value={d}>{d}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            </div>
+          )}
+
+          {/* TAB 3: ADDRESS, KYC & BANK */}
+          {activeTab === "address_kyc" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Address Information</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <Label className="text-xs">Address Line 1</Label>
+                    <Input value={form.addressLine1 || form.address || ""} onChange={(e) => setForm({ ...form, addressLine1: e.target.value, address: e.target.value })} placeholder="House/Flat No, Street" />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">Address Line 2</Label>
+                    <Input value={form.addressLine2 || ""} onChange={(e) => setForm({ ...form, addressLine2: e.target.value })} placeholder="Apartment, Landmark" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">City</Label>
+                    <Input value={form.city || ""} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">State</Label>
+                    <Input value={form.state || ""} onChange={(e) => setForm({ ...form, state: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Country</Label>
+                    <Input value={form.country || "India"} onChange={(e) => setForm({ ...form, country: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Pincode</Label>
+                    <Input value={form.pincode || ""} onChange={(e) => setForm({ ...form, pincode: e.target.value })} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>Designation</Label>
-                <Input value={form.designation || ""} onChange={(e) => setForm({ ...form, designation: e.target.value })} />
+
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Statutory KYC & Government IDs</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Aadhaar Card Number</Label>
+                    <Input
+                      placeholder="12-digit Aadhaar Number"
+                      value={form.aadhaar || ""}
+                      onChange={(e) => setForm({ ...form, aadhaar: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">PAN Card Number</Label>
+                    <Input
+                      placeholder="10-digit PAN (e.g. ABCDE1234F)"
+                      value={form.pan || ""}
+                      onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Passport Number</Label>
+                    <Input value={form.passportNumber || ""} onChange={(e) => setForm({ ...form, passportNumber: e.target.value.toUpperCase() })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Driving License Number</Label>
+                    <Input value={form.drivingLicense || ""} onChange={(e) => setForm({ ...form, drivingLicense: e.target.value.toUpperCase() })} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>Assigned Role</Label>
-                <Select
-                  value={form.roleId || "__none"}
-                  onValueChange={(v) => {
-                    const selected = (roles || []).find((r: PredefinedRole) => r.id === v);
-                    setForm({
-                      ...form,
-                      roleId: v === "__none" ? undefined : v,
-                      roleName: selected ? selected.name : undefined,
-                    });
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="Select Predefined Role" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">— Standard / Default —</SelectItem>
-                    {(roles || []).map((r: PredefinedRole) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.name} {r.isSystemDefault ? "(Default)" : "(Custom)"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Bank Account Details (for Direct Deposit)</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Bank Account Number</Label>
+                    <Input value={form.bankAcc || ""} onChange={(e) => setForm({ ...form, bankAcc: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">IFSC Code</Label>
+                    <Input value={form.bankIfsc || ""} onChange={(e) => setForm({ ...form, bankIfsc: e.target.value.toUpperCase() })} placeholder="e.g. HDFC0001234" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Bank Name</Label>
+                    <Input value={form.bankName || ""} onChange={(e) => setForm({ ...form, bankName: e.target.value })} placeholder="e.g. HDFC Bank, SBI" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Branch Name</Label>
+                    <Input value={form.bankBranch || ""} onChange={(e) => setForm({ ...form, bankBranch: e.target.value })} placeholder="e.g. Koramangala Branch" />
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>Date of Joining</Label>
-                <Input type="date" value={form.doj || ""} onChange={(e) => setForm({ ...form, doj: e.target.value })} />
-              </div>
-              <div>
-                <Label>Fixed Salary (Monthly ₹)</Label>
-                <Input type="number" value={form.fixedSalary ?? form.basic ?? 25000} onChange={(e) => setForm({ ...form, fixedSalary: +e.target.value, basic: +e.target.value })} />
-              </div>
-              <div>
-                <Label>Benefits Eligible Date</Label>
-                <Input type="date" value={form.eligibleDate || form.doj || ""} onChange={(e) => setForm({ ...form, eligibleDate: e.target.value })} />
-              </div>
-              <div>
-                <Label>Probation End Date</Label>
-                <Input type="date" value={form.probationDate || ""} onChange={(e) => setForm({ ...form, probationDate: e.target.value })} />
-              </div>
-              <div className="col-span-2 space-y-2 pt-1 border-t border-border/50">
+            </div>
+          )}
+
+          {/* TAB 4: BRANCHES & ATTENDANCE POLICIES */}
+          {activeTab === "branches_policy" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Assigned Branches & Geofences
-                    </Label>
+                    </div>
                     <p className="text-xs text-muted-foreground">
-                      Select all company branches where this employee can verify geofence and check-in / check-out.
+                      Select branches where this employee is authorized to mark attendance.
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
@@ -1729,7 +2278,7 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                             : (form.branchId || nextIds[0] || undefined);
                           setForm({ ...form, branchIds: nextIds, branchId: nextPrimary });
                         }}
-                        className={`cursor-pointer rounded-lg border p-2.5 transition-all flex items-center justify-between gap-2 ${
+                        className={`cursor-pointer rounded-xl border p-2.5 transition-all flex items-center justify-between gap-2 ${
                           isSelected
                             ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
                             : "border-border bg-card hover:bg-muted/30 opacity-70"
@@ -1750,7 +2299,7 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                             <div className="text-[10px] text-muted-foreground truncate">
                               {b.city || b.state || b.address}
                               {b.lat != null && b.lng != null && (
-                                <span className="text-emerald-600 ml-1.5 font-mono">
+                                <span className="text-emerald-600 ml-1 font-mono">
                                   ({b.radiusMeters ?? 150}m geo)
                                 </span>
                               )}
@@ -1793,198 +2342,304 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                   </div>
                 )}
               </div>
-              <div>
-                <Label>Assigned Default Shift</Label>
-                <Select value={form.shiftId || "gen"} onValueChange={(v) => setForm({ ...form, shiftId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select shift" /></SelectTrigger>
-                  <SelectContent>
-                    {(company.shifts || []).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name} ({s.start}–{s.end})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Status</Label>
-                <Select value={form.status || "active"} onValueChange={(v) => setForm({ ...form, status: v as "active" | "inactive" })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
 
-            {/* Statutory Deductions & Tax */}
-            <div className="pt-2">
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Statutory Deductions & Tax Eligibility
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
-                  <Checkbox
-                    checked={form.pfEligible ?? true}
-                    onCheckedChange={(c) => setForm({ ...form, pfEligible: !!c })}
-                  />
-                  <span>PF (Provident Fund)</span>
-                </label>
-
-                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
-                  <Checkbox
-                    checked={form.esiEligible ?? false}
-                    onCheckedChange={(c) => setForm({ ...form, esiEligible: !!c })}
-                  />
-                  <span>ESI (Medical)</span>
-                </label>
-
-                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
-                  <Checkbox
-                    checked={form.ptEligible ?? true}
-                    onCheckedChange={(c) => setForm({ ...form, ptEligible: !!c })}
-                  />
-                  <span>Prof. Tax (PT)</span>
-                </label>
-
-                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
-                  <Checkbox
-                    checked={form.tdsEligible ?? false}
-                    onCheckedChange={(c) => setForm({ ...form, tdsEligible: !!c })}
-                  />
-                  <span>TDS (Tax)</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Leave Apply Eligibility */}
-            <div className="rounded-xl border border-border bg-card p-3.5 flex items-center justify-between gap-4 mt-2">
-              <div>
-                <div className="text-xs font-semibold flex items-center gap-2">
-                  <span>Leave Apply Eligible</span>
-                  <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary">
-                    Employee App Control
-                  </Badge>
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Attendance Shift & Timing Policy</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Assigned Shift</Label>
+                    <Select value={form.shiftId || "gen"} onValueChange={(v) => setForm({ ...form, shiftId: v })}>
+                      <SelectTrigger className="text-xs"><SelectValue placeholder="Select shift" /></SelectTrigger>
+                      <SelectContent>
+                        {(company.shifts || []).map((s) => (
+                          <SelectItem key={s.id} value={s.id}>{s.name} ({s.start}–{s.end})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  When unchecked, leave & permission applications are locked in the employee mobile app.
-                </p>
-              </div>
-              <Checkbox
-                checked={form.leaveApplyEligible ?? true}
-                onCheckedChange={(c) => setForm({ ...form, leaveApplyEligible: !!c })}
-                className="h-5 w-5"
-              />
-            </div>
 
-            {/* Geofencing Verification Toggle */}
-            <div className="rounded-xl border border-border bg-card p-3.5 flex items-center justify-between gap-4 mt-2">
-              <div>
-                <div className="text-xs font-semibold flex items-center gap-2">
-                  <MapPin className="h-3.5 w-3.5 text-primary" />
-                  <span>Geofencing Attendance Verification</span>
-                  <Badge variant="outline" className={`text-[9px] ${form.geofencingEnabled !== false ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-amber-500/10 text-amber-700 border-amber-500/30"}`}>
-                    {form.geofencingEnabled !== false ? "Geo-fence Active" : "Face Only (Bypassed)"}
-                  </Badge>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div>
+                    <Label className="text-xs">Morning Grace Period</Label>
+                    <Select
+                      value={form.graceTime || "15"}
+                      onValueChange={(v: any) => setForm({ ...form, graceTime: v })}
+                    >
+                      <SelectTrigger className="w-full text-xs">
+                        <SelectValue placeholder="Select grace time" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="always">Always (Flexible)</SelectItem>
+                        <SelectItem value="10">10 mins</SelectItem>
+                        <SelectItem value="15">15 mins (Default)</SelectItem>
+                        <SelectItem value="20">20 mins</SelectItem>
+                        <SelectItem value="25">25 mins</SelectItem>
+                        <SelectItem value="30">30 mins</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Afternoon Login Time</Label>
+                    <Input
+                      type="time"
+                      value={form.halfDayLoginTime || "12:00"}
+                      onChange={(e) => setForm({ ...form, halfDayLoginTime: e.target.value })}
+                      disabled={form.allowHalfDayLogin === false || form.graceTime === "always"}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Afternoon Grace Period</Label>
+                    <Select
+                      value={form.afternoonGraceTime || "15"}
+                      onValueChange={(v: any) => setForm({ ...form, afternoonGraceTime: v })}
+                      disabled={form.allowHalfDayLogin === false || form.graceTime === "always"}
+                    >
+                      <SelectTrigger className="w-full text-xs">
+                        <SelectValue placeholder="Afternoon grace" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="always">Always (Flexible)</SelectItem>
+                        <SelectItem value="10">10 mins</SelectItem>
+                        <SelectItem value="15">15 mins (Default)</SelectItem>
+                        <SelectItem value="20">20 mins</SelectItem>
+                        <SelectItem value="25">25 mins</SelectItem>
+                        <SelectItem value="30">30 mins</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {form.geofencingEnabled !== false
-                    ? "Employee must be physically within branch geofence boundary to clock in/out."
-                    : "Geofence check bypassed. Facial attendance verification alone is sufficient for check-in/out."}
-                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-primary" /> Geofencing Verification
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {form.geofencingEnabled !== false ? "Strict geofence radius check active." : "Bypassed (Facial recognition only)."}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={form.geofencingEnabled !== false}
+                      onCheckedChange={(checked) => setForm({ ...form, geofencingEnabled: checked })}
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold flex items-center gap-1.5">
+                        <Timer className="h-3.5 w-3.5 text-purple-600" /> Allow Afternoon / Half-Day Login
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {form.allowHalfDayLogin !== false ? "Can login for afternoon session if morning is missed." : "Locked for full day."}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={form.allowHalfDayLogin !== false}
+                      onCheckedChange={(checked) => setForm({ ...form, allowHalfDayLogin: checked })}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={form.geofencingEnabled !== false}
-                  onCheckedChange={(checked) => setForm({ ...form, geofencingEnabled: checked })}
+
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Statutory Deductions & Employee App Eligibility</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                    <Checkbox
+                      checked={form.pfEligible ?? true}
+                      onCheckedChange={(c) => setForm({ ...form, pfEligible: !!c })}
+                    />
+                    <span>PF (Provident Fund)</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                    <Checkbox
+                      checked={form.esiEligible ?? false}
+                      onCheckedChange={(c) => setForm({ ...form, esiEligible: !!c })}
+                    />
+                    <span>ESI (Medical)</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                    <Checkbox
+                      checked={form.ptEligible ?? true}
+                      onCheckedChange={(c) => setForm({ ...form, ptEligible: !!c })}
+                    />
+                    <span>Prof. Tax (PT)</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
+                    <Checkbox
+                      checked={form.tdsEligible ?? false}
+                      onCheckedChange={(c) => setForm({ ...form, tdsEligible: !!c })}
+                    />
+                    <span>TDS (Tax)</span>
+                  </label>
+                </div>
+
+                <div className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-4 mt-2">
+                  <div>
+                    <div className="text-xs font-semibold flex items-center gap-2">
+                      <span>Leave Apply Eligibility in Mobile App</span>
+                      <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary">Mobile App Control</Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      When unchecked, leave application submission is disabled on the employee's mobile device.
+                    </p>
+                  </div>
+                  <Checkbox
+                    checked={form.leaveApplyEligible ?? true}
+                    onCheckedChange={(c) => setForm({ ...form, leaveApplyEligible: !!c })}
+                    className="h-5 w-5"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: FAMILY & EDUCATION */}
+          {activeTab === "family_edu" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <RepeatingList<FamilyMember>
+                  label="Family Members & Nominees"
+                  items={form.family || []}
+                  empty={{ name: "", relation: "" }}
+                  onChange={(family) => setForm({ ...form, family })}
+                  columns={[
+                    { key: "name", label: "Name", placeholder: "Full Name" },
+                    { key: "relation", label: "Relation", placeholder: "Spouse / Child / Father" },
+                    { key: "dob", label: "Date of Birth", type: "date" },
+                  ]}
+                />
+              </div>
+
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <RepeatingList<EducationEntry>
+                  label="Educational Qualifications"
+                  items={form.education || []}
+                  empty={{ level: "", institute: "" }}
+                  onChange={(education) => setForm({ ...form, education })}
+                  columns={[
+                    { key: "level", label: "Degree / Level", placeholder: "B.E. / MBA / B.Com / Diploma" },
+                    { key: "institute", label: "University / Institute" },
+                    { key: "year", label: "Year of Passing", placeholder: "2022" },
+                    { key: "grade", label: "Grade / Percentage / CGPA", placeholder: "8.5 CGPA / First Class" },
+                  ]}
                 />
               </div>
             </div>
+          )}
 
-            {/* Grace Time & Shift Attendance Policy */}
-            <div className="rounded-xl border border-border bg-card p-3.5 space-y-3 mt-2">
-              <div className="space-y-0.5">
-                <div className="text-xs font-semibold flex items-center gap-2">
-                  <Clock className="h-3.5 w-3.5 text-purple-600" />
-                  <span>Grace Time for Attendance</span>
-                  <Badge variant="outline" className="text-[9px] bg-purple-500/10 text-purple-700 border-purple-500/30">
-                    Morning Shift Punctuality
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Allowed late-arrival buffer window after scheduled shift start time.
-                </p>
+          {/* TAB 6: EXPERIENCE & SKILLS */}
+          {activeTab === "experience_skills" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <RepeatingList<ExperienceEntry>
+                  label="Prior Employment History"
+                  items={form.experience || []}
+                  empty={{ company: "", role: "" }}
+                  onChange={(experience) => setForm({ ...form, experience })}
+                  columns={[
+                    { key: "company", label: "Company Name" },
+                    { key: "role", label: "Designation / Role" },
+                    { key: "from", label: "From Date", type: "date" },
+                    { key: "to", label: "To Date", type: "date" },
+                    { key: "ctc", label: "Last CTC (₹)", type: "number" },
+                  ]}
+                />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div className="space-y-1">
-                  <Label className="text-xs">Morning Grace Period</Label>
-                  <Select
-                    value={form.graceTime || "15"}
-                    onValueChange={(v: any) => setForm({ ...form, graceTime: v })}
-                  >
-                    <SelectTrigger className="w-full text-xs">
-                      <SelectValue placeholder="Select grace time" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="always">Always (No cutoff / Full flexibility)</SelectItem>
-                      <SelectItem value="10">Within 10 mins</SelectItem>
-                      <SelectItem value="15">Within 15 mins (Standard Default)</SelectItem>
-                      <SelectItem value="20">Within 20 mins</SelectItem>
-                      <SelectItem value="25">Within 25 mins</SelectItem>
-                      <SelectItem value="30">Within 30 mins</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground">
-                    {form.graceTime === "always"
-                      ? "Clock-in allowed at all times."
-                      : `Late check-in past ${form.graceTime || "15"} mins marks morning Absent.`}
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs">Afternoon Login Window Start Time</Label>
-                  <Input
-                    type="time"
-                    value={form.halfDayLoginTime || "12:00"}
-                    onChange={(e) => setForm({ ...form, halfDayLoginTime: e.target.value })}
-                    disabled={form.allowHalfDayLogin === false || form.graceTime === "always"}
-                    className="text-xs"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    Default 12:00 PM. Unlocks check-in for afternoon half-day.
-                  </p>
-                </div>
-              </div>
-
-              {form.graceTime !== "always" && (
-                <div className="rounded-lg bg-muted/40 p-2.5 flex items-center justify-between gap-3 border border-border/70">
-                  <div className="space-y-0.5">
-                    <div className="text-xs font-semibold flex items-center gap-1.5">
-                      <Timer className="h-3 w-3 text-primary" />
-                      <span>Allow Afternoon / Half-Day Login</span>
-                      <Badge variant="outline" className={`text-[8px] ${form.allowHalfDayLogin !== false ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-rose-500/10 text-rose-700 border-rose-500/30"}`}>
-                        {form.allowHalfDayLogin !== false ? `After ${form.halfDayLoginTime || "12:00 PM"}` : "Locked for Full Day"}
-                      </Badge>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">
-                      {form.allowHalfDayLogin !== false
-                        ? `If morning is missed, employee can mark afternoon attendance after ${form.halfDayLoginTime || "12:00 PM"}.`
-                        : "If morning grace period is missed, employee cannot mark attendance for the entire day."}
-                    </p>
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Skills & Language Proficiencies</div>
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-xs">Technical / Job Skills (Comma-separated)</Label>
+                    <Input
+                      value={(form.skills || []).join(", ")}
+                      onChange={(e) => setForm({ ...form, skills: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
+                      placeholder="e.g. React, Node.js, Payroll Accounting, Sales, Customer Support"
+                    />
                   </div>
-                  <Switch
-                    checked={form.allowHalfDayLogin !== false}
-                    onCheckedChange={(checked) => setForm({ ...form, allowHalfDayLogin: checked })}
-                  />
+                  <div>
+                    <Label className="text-xs">Languages Known (Comma-separated)</Label>
+                    <Input
+                      value={(form.languagesKnown || []).join(", ")}
+                      onChange={(e) => setForm({ ...form, languagesKnown: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
+                      placeholder="e.g. English, Hindi, Tamil, Telugu, Kannada"
+                    />
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* TAB 7: COMPLIANCE & BGV */}
+          {activeTab === "compliance" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Background Verification & Clearances</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs">Background Check Status</Label>
+                    <Select value={form.backgroundCheckStatus || "pending"} onValueChange={(v) => setForm({ ...form, backgroundCheckStatus: v as any })}>
+                      <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">⏳ Pending Verification</SelectItem>
+                        <SelectItem value="clear">✅ Verified & Clear</SelectItem>
+                        <SelectItem value="flagged">⚠️ Discrepancy / Flagged</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2 pt-2">
+                    <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                      <Checkbox
+                        checked={!!form.policeVerification}
+                        onCheckedChange={(c) => setForm({ ...form, policeVerification: !!c })}
+                      />
+                      <span>Police Verification Submitted</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                      <Checkbox
+                        checked={!!form.medicalFitness}
+                        onCheckedChange={(c) => setForm({ ...form, medicalFitness: !!c })}
+                      />
+                      <span>Medical Fitness Certificate Cleared</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                      <Checkbox
+                        checked={!!form.ndaSigned}
+                        onCheckedChange={(c) => setForm({ ...form, ndaSigned: !!c })}
+                      />
+                      <span>NDA & Confidentiality Signed</span>
+                    </label>
+                  </div>
+
+                  <div className="col-span-2">
+                    <Label className="text-xs">Compliance & HR Special Notes</Label>
+                    <Input
+                      value={form.complianceNotes || ""}
+                      onChange={(e) => setForm({ ...form, complianceNotes: e.target.value })}
+                      placeholder="Enter any waivers, verification notes, or audit trail remarks"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} className="bg-gradient-brand text-white">Save Changes</Button>
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 pt-3 border-t border-border mt-2">
+          <Button variant="outline" onClick={onClose} className="rounded-xl text-xs h-9">
+            Cancel
+          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleSave} className="rounded-xl text-xs h-9 bg-primary text-primary-foreground font-bold shadow-xs">
+              <Save className="h-3.5 w-3.5 mr-1.5" /> Save Changes
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -2037,10 +2692,10 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
     setLoading(false);
     aiNotify({
       title: "✨ Bulk employee import completed",
-      body: `${count} employees registered without photos. Photos can be added anytime in Edit Employee.`,
+      body: `${count} employees registered with auto-generated secure credentials. Welcome emails sent to employee addresses. Face registration will be completed by employees upon first mobile app login.`,
       kind: "success",
     });
-    toast.success(`✨ Successfully imported ${count} employees in bulk!`);
+    toast.success(`✨ Successfully imported ${count} employees in bulk! Welcome emails sent.`);
     onClose();
     setFile(null);
     setParsed(null);

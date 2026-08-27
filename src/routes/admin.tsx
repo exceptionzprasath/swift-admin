@@ -7,7 +7,8 @@ import { SwiftLogo } from "@/components/swift-logo";
 import { ThemeToggle } from "@/components/theme";
 import {
   LayoutDashboard, Users, CalendarCheck, CalendarDays, Calculator, FileText, Settings,
-  LogOut, Menu, Shield, Building2, ChevronDown, Network, Sparkles, BarChart3, Megaphone, Rocket, Package, ShieldCheck, CreditCard, BellRing, Scale, Clock, FolderLock,
+  LogOut, Menu, Shield, Building2, ChevronDown, Network, Sparkles, BarChart3, Megaphone, Rocket, Package, ShieldCheck, CreditCard, BellRing, Scale, Clock, FolderLock, MessageSquareHeart,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -33,6 +34,8 @@ const nav: NavItem[] = [
   { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket },
   { to: "/admin/branches", label: "Branches", icon: Building2 },
   { to: "/admin/org", label: "Organization", icon: Network },
+  { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal },
+  { to: "/admin/grievances", label: "Grievances", icon: MessageSquareHeart },
   { to: "/admin/roles", label: "Role Creation", icon: ShieldCheck },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays },

@@ -28,6 +28,7 @@ import { Route as AdminOrgRouteImport } from './routes/admin.org'
 import { Route as AdminNoticesRouteImport } from './routes/admin.notices'
 import { Route as AdminLifecycleRouteImport } from './routes/admin.lifecycle'
 import { Route as AdminLeaveCalendarRouteImport } from './routes/admin.leave-calendar'
+import { Route as AdminGrievancesRouteImport } from './routes/admin.grievances'
 import { Route as AdminEmployeesRouteImport } from './routes/admin.employees'
 import { Route as AdminDocumentsRouteImport } from './routes/admin.documents'
 import { Route as AdminComplianceDocsRouteImport } from './routes/admin.compliance-docs'
@@ -36,6 +37,7 @@ import { Route as AdminBranchesRouteImport } from './routes/admin.branches'
 import { Route as AdminAuditRouteImport } from './routes/admin.audit'
 import { Route as AdminAttendanceRouteImport } from './routes/admin.attendance'
 import { Route as AdminAssetsRouteImport } from './routes/admin.assets'
+import { Route as AdminApprovalSettingsRouteImport } from './routes/admin.approval-settings'
 import { Route as AdminAiRouteImport } from './routes/admin.ai'
 
 const SuperAdminRoute = SuperAdminRouteImport.update({
@@ -133,6 +135,11 @@ const AdminLeaveCalendarRoute = AdminLeaveCalendarRouteImport.update({
   path: '/leave-calendar',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminGrievancesRoute = AdminGrievancesRouteImport.update({
+  id: '/grievances',
+  path: '/grievances',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminEmployeesRoute = AdminEmployeesRouteImport.update({
   id: '/employees',
   path: '/employees',
@@ -173,6 +180,11 @@ const AdminAssetsRoute = AdminAssetsRouteImport.update({
   path: '/assets',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminApprovalSettingsRoute = AdminApprovalSettingsRouteImport.update({
+  id: '/approval-settings',
+  path: '/approval-settings',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAiRoute = AdminAiRouteImport.update({
   id: '/ai',
   path: '/ai',
@@ -186,6 +198,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/super-admin': typeof SuperAdminRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/approval-settings': typeof AdminApprovalSettingsRoute
   '/admin/assets': typeof AdminAssetsRoute
   '/admin/attendance': typeof AdminAttendanceRoute
   '/admin/audit': typeof AdminAuditRoute
@@ -194,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/admin/compliance-docs': typeof AdminComplianceDocsRoute
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
+  '/admin/grievances': typeof AdminGrievancesRoute
   '/admin/leave-calendar': typeof AdminLeaveCalendarRoute
   '/admin/lifecycle': typeof AdminLifecycleRoute
   '/admin/notices': typeof AdminNoticesRoute
@@ -215,6 +229,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/super-admin': typeof SuperAdminRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/approval-settings': typeof AdminApprovalSettingsRoute
   '/admin/assets': typeof AdminAssetsRoute
   '/admin/attendance': typeof AdminAttendanceRoute
   '/admin/audit': typeof AdminAuditRoute
@@ -223,6 +238,7 @@ export interface FileRoutesByTo {
   '/admin/compliance-docs': typeof AdminComplianceDocsRoute
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
+  '/admin/grievances': typeof AdminGrievancesRoute
   '/admin/leave-calendar': typeof AdminLeaveCalendarRoute
   '/admin/lifecycle': typeof AdminLifecycleRoute
   '/admin/notices': typeof AdminNoticesRoute
@@ -246,6 +262,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/super-admin': typeof SuperAdminRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/approval-settings': typeof AdminApprovalSettingsRoute
   '/admin/assets': typeof AdminAssetsRoute
   '/admin/attendance': typeof AdminAttendanceRoute
   '/admin/audit': typeof AdminAuditRoute
@@ -254,6 +271,7 @@ export interface FileRoutesById {
   '/admin/compliance-docs': typeof AdminComplianceDocsRoute
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
+  '/admin/grievances': typeof AdminGrievancesRoute
   '/admin/leave-calendar': typeof AdminLeaveCalendarRoute
   '/admin/lifecycle': typeof AdminLifecycleRoute
   '/admin/notices': typeof AdminNoticesRoute
@@ -278,6 +296,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/super-admin'
     | '/admin/ai'
+    | '/admin/approval-settings'
     | '/admin/assets'
     | '/admin/attendance'
     | '/admin/audit'
@@ -286,6 +305,7 @@ export interface FileRouteTypes {
     | '/admin/compliance-docs'
     | '/admin/documents'
     | '/admin/employees'
+    | '/admin/grievances'
     | '/admin/leave-calendar'
     | '/admin/lifecycle'
     | '/admin/notices'
@@ -307,6 +327,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/super-admin'
     | '/admin/ai'
+    | '/admin/approval-settings'
     | '/admin/assets'
     | '/admin/attendance'
     | '/admin/audit'
@@ -315,6 +336,7 @@ export interface FileRouteTypes {
     | '/admin/compliance-docs'
     | '/admin/documents'
     | '/admin/employees'
+    | '/admin/grievances'
     | '/admin/leave-calendar'
     | '/admin/lifecycle'
     | '/admin/notices'
@@ -337,6 +359,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/super-admin'
     | '/admin/ai'
+    | '/admin/approval-settings'
     | '/admin/assets'
     | '/admin/attendance'
     | '/admin/audit'
@@ -345,6 +368,7 @@ export interface FileRouteTypes {
     | '/admin/compliance-docs'
     | '/admin/documents'
     | '/admin/employees'
+    | '/admin/grievances'
     | '/admin/leave-calendar'
     | '/admin/lifecycle'
     | '/admin/notices'
@@ -504,6 +528,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLeaveCalendarRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/grievances': {
+      id: '/admin/grievances'
+      path: '/grievances'
+      fullPath: '/admin/grievances'
+      preLoaderRoute: typeof AdminGrievancesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/employees': {
       id: '/admin/employees'
       path: '/employees'
@@ -560,6 +591,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAssetsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/approval-settings': {
+      id: '/admin/approval-settings'
+      path: '/approval-settings'
+      fullPath: '/admin/approval-settings'
+      preLoaderRoute: typeof AdminApprovalSettingsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/ai': {
       id: '/admin/ai'
       path: '/ai'
@@ -572,6 +610,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminAiRoute: typeof AdminAiRoute
+  AdminApprovalSettingsRoute: typeof AdminApprovalSettingsRoute
   AdminAssetsRoute: typeof AdminAssetsRoute
   AdminAttendanceRoute: typeof AdminAttendanceRoute
   AdminAuditRoute: typeof AdminAuditRoute
@@ -580,6 +619,7 @@ interface AdminRouteChildren {
   AdminComplianceDocsRoute: typeof AdminComplianceDocsRoute
   AdminDocumentsRoute: typeof AdminDocumentsRoute
   AdminEmployeesRoute: typeof AdminEmployeesRoute
+  AdminGrievancesRoute: typeof AdminGrievancesRoute
   AdminLeaveCalendarRoute: typeof AdminLeaveCalendarRoute
   AdminLifecycleRoute: typeof AdminLifecycleRoute
   AdminNoticesRoute: typeof AdminNoticesRoute
@@ -598,6 +638,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAiRoute: AdminAiRoute,
+  AdminApprovalSettingsRoute: AdminApprovalSettingsRoute,
   AdminAssetsRoute: AdminAssetsRoute,
   AdminAttendanceRoute: AdminAttendanceRoute,
   AdminAuditRoute: AdminAuditRoute,
@@ -606,6 +647,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminComplianceDocsRoute: AdminComplianceDocsRoute,
   AdminDocumentsRoute: AdminDocumentsRoute,
   AdminEmployeesRoute: AdminEmployeesRoute,
+  AdminGrievancesRoute: AdminGrievancesRoute,
   AdminLeaveCalendarRoute: AdminLeaveCalendarRoute,
   AdminLifecycleRoute: AdminLifecycleRoute,
   AdminNoticesRoute: AdminNoticesRoute,

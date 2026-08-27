@@ -89,6 +89,7 @@ function LeaveCalendarPage() {
     deleteLeave,
     employees,
     currentUser,
+    actOnLeaveApprovalStep,
   } = useStore();
 
   // Top-level View Tab: "requests" (Employee Leave Requests) vs "holidays" (Company Holidays)
@@ -157,11 +158,16 @@ function LeaveCalendarPage() {
   }, [leaves]);
 
   const handleOpenActionModal = (leave: LeaveRequest, action: "approved" | "rejected") => {
+    const currentLvl = leave.currentLevel || 1;
+    const totalLvls = leave.totalLevels || 3;
+    const isSequential = (leave.approvalSteps?.length ?? 0) > 0;
+    const nextRoleName = leave.approvalSteps?.find((s) => s.level === currentLvl)?.roleName || "HR Admin";
+
     setActionModal({
       open: true,
       leave,
       action,
-      comment: action === "approved" ? "Approved by HR Admin" : "",
+      comment: action === "approved" ? `Approved by ${nextRoleName}` : "",
     });
   };
 
@@ -174,7 +180,21 @@ function LeaveCalendarPage() {
       return;
     }
 
-    updateLeave(leave.id, action, comment.trim());
+    const actorName = currentUser?.name || "HR Admin";
+    const actorRole = currentUser?.role === "admin" ? "HR Admin" : "Reporting Manager";
+
+    if (leave.approvalSteps && leave.approvalSteps.length > 0) {
+      actOnLeaveApprovalStep(
+        leave.id,
+        action === "approved" ? "approve" : "reject",
+        comment.trim(),
+        actorName,
+        actorRole
+      );
+    } else {
+      updateLeave(leave.id, action, comment.trim());
+    }
+
     toast.success(
       `Leave request ${action === "approved" ? "Approved" : "Rejected"} successfully for ${leave.employeeName || "Employee"}`
     );
@@ -710,12 +730,22 @@ function LeaveCalendarPage() {
                             {/* Status */}
                             <td className="p-3">
                               {isPending ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 border border-amber-500/30 animate-pulse">
-                                  <Clock className="h-3 w-3" /> Pending Review
-                                </span>
+                                <div className="space-y-1">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                                    <Clock className="h-3 w-3" />
+                                    {l.approvalSteps && l.approvalSteps.length > 0
+                                      ? `Level ${l.currentLevel || 1}/${l.totalLevels || 3} Pending`
+                                      : "Pending Review"}
+                                  </span>
+                                  {l.approvalSteps && l.approvalSteps.length > 0 && (
+                                    <div className="text-[10px] text-muted-foreground">
+                                      Next: {l.approvalSteps.find((s) => s.level === (l.currentLevel || 1))?.roleName || "Manager"}
+                                    </div>
+                                  )}
+                                </div>
                               ) : isApproved ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 border border-emerald-500/30">
-                                  <CheckCircle2 className="h-3 w-3" /> Approved
+                                  <CheckCircle2 className="h-3 w-3" /> Fully Approved
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-700 border border-rose-500/30">
@@ -724,14 +754,34 @@ function LeaveCalendarPage() {
                               )}
                             </td>
 
-                            {/* Approver Notes */}
-                            <td className="p-3 max-w-[180px] text-muted-foreground text-[11px]">
-                              {l.approvedBy ? (
+                            {/* Approver Notes / Multi-Stage Steps */}
+                            <td className="p-3 max-w-[200px] text-muted-foreground text-[11px]">
+                              {l.approvalSteps && l.approvalSteps.length > 0 ? (
+                                <div className="flex items-center gap-1">
+                                  {l.approvalSteps.map((s, idx) => (
+                                    <div
+                                      key={s.level}
+                                      className={`h-5 px-1.5 rounded text-[9px] font-bold flex items-center gap-0.5 ${
+                                        s.status === "Approved"
+                                          ? "bg-emerald-500/15 text-emerald-700 border border-emerald-500/30"
+                                          : s.status === "Rejected"
+                                          ? "bg-rose-500/15 text-rose-700 border border-rose-500/30"
+                                          : s.level === (l.currentLevel || 1)
+                                          ? "bg-amber-500/20 text-amber-700 border border-amber-500/40 animate-pulse"
+                                          : "bg-muted text-muted-foreground"
+                                      }`}
+                                      title={`L${s.level} (${s.roleName}): ${s.status}${s.comment ? " - " + s.comment : ""}`}
+                                    >
+                                      L{s.level}: {s.status === "Approved" ? "✓" : s.status === "Rejected" ? "✗" : "..."}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : l.approvedBy ? (
                                 <span className="text-emerald-600 font-medium">
                                   by {l.approvedBy}
                                 </span>
                               ) : l.rejectedReason ? (
-                                <span className="text-rose-600 font-medium">
+                                <span className="text-rose-600 font-medium truncate block" title={l.rejectedReason}>
                                   Reason: {l.rejectedReason}
                                 </span>
                               ) : (

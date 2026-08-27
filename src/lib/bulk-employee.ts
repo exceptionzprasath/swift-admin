@@ -1,9 +1,25 @@
 import type { Employee, PredefinedRole } from "./store";
 
+export function generateEmployeePassword(): string {
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const smalls = "abcdefghjkmnpqrstuvwxyz";
+  const digits = "23456789";
+  const specials = "!@#$%";
+
+  let p = "";
+  p += letters[Math.floor(Math.random() * letters.length)];
+  p += smalls[Math.floor(Math.random() * smalls.length)];
+  p += smalls[Math.floor(Math.random() * smalls.length)];
+  p += specials[Math.floor(Math.random() * specials.length)];
+  for (let i = 0; i < 4; i++) {
+    p += digits[Math.floor(Math.random() * digits.length)];
+  }
+  return p;
+}
+
 export const BULK_TEMPLATE_HEADERS = [
   "Employee Code",
   "Full Name",
-  "Password",
   "Work Email",
   "Phone",
   "Department",
@@ -44,7 +60,6 @@ export const SAMPLE_EMPLOYEE_ROWS = [
   [
     "SW0101",
     "Aarav Patel",
-    "Swift@2026",
     "aarav.patel@company.com",
     "9876543210",
     "Engineering",
@@ -79,7 +94,6 @@ export const SAMPLE_EMPLOYEE_ROWS = [
   [
     "SW0102",
     "Pooja Sundaram",
-    "Swift@2026",
     "pooja.sundaram@company.com",
     "9876543220",
     "HR",
@@ -114,7 +128,6 @@ export const SAMPLE_EMPLOYEE_ROWS = [
   [
     "SW0103",
     "Vikram Malhotra",
-    "Swift@2026",
     "vikram.malhotra@company.com",
     "9876543230",
     "Finance",
@@ -242,7 +255,7 @@ export function parseEmployeeCsvText(
     const empCode = getVal(["employeecode", "empcode", "code", "empid", "id"]) || `EMP-${1000 + i}`;
     const name = getVal(["fullname", "name", "employeename", "empname", "staffname", "firstname", "firstlast", "employee", "staff"]);
     const email = getVal(["workemail", "email", "mail", "officialemail"]) || `${empCode.toLowerCase().replace(/[^a-z0-9]/g, "")}@company.com`;
-    const password = getVal(["password", "pass"]) || "Swift@2026";
+    const password = getVal(["password", "pass"]) || generateEmployeePassword();
     const phone = getVal(["phone", "mobile", "contact", "phonenumber", "contactnumber"]) || "9876543210";
     const department = getVal(["department", "dept", "division"]) || "Engineering";
     const designation = getVal(["designation", "role", "title", "position", "jobtitle"]) || "Software Engineer";

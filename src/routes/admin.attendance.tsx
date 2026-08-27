@@ -33,6 +33,7 @@ import {
   User,
   MapPin,
   Camera,
+  CameraOff,
   Activity,
   Layers,
   AlertTriangle,
@@ -51,6 +52,52 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { inr } from "@/lib/payroll";
+
+// Utility: Compute hours worked & OT from check-in/check-out time strings
+function computeWorkedHours(
+  checkIn?: string,
+  checkOut?: string,
+  standardHours: number = 9
+): { hoursWorked: number; otHours: number } {
+  if (!checkIn || !checkOut) return { hoursWorked: 0, otHours: 0 };
+  try {
+    const parseTime = (s: string): number => {
+      const cleaned = s.trim().toLowerCase();
+      // Match formats like "8:52 am", "12:03 AM", "18:00", "09:30"
+      const match = cleaned.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
+      if (!match) return -1;
+      let h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const meridiem = match[3]?.toLowerCase();
+      if (meridiem === 'pm' && h < 12) h += 12;
+      if (meridiem === 'am' && h === 12) h = 0;
+      return h * 60 + m;
+    };
+    const inMins = parseTime(checkIn);
+    const outMins = parseTime(checkOut);
+    if (inMins < 0 || outMins < 0) return { hoursWorked: 0, otHours: 0 };
+    
+    let diffMins = outMins - inMins;
+    if (diffMins <= 0) {
+      // Crossed midnight (e.g. check-in 8:52 AM and check-out 12:03 AM next day)
+      diffMins += 24 * 60;
+    }
+    
+    const hoursWorked = Math.round((diffMins / 60) * 10) / 10;
+    const otHours = hoursWorked > standardHours ? Math.round((hoursWorked - standardHours) * 10) / 10 : 0;
+    return { hoursWorked, otHours };
+  } catch {
+    return { hoursWorked: 0, otHours: 0 };
+  }
+}
+
+// Helper: get effective hours and OT for a record (uses stored value or computes from timestamps)
+function getRecordHours(rec?: { hoursWorked?: number; otHours?: number; checkIn?: string; checkOut?: string; clockIn?: string; clockOut?: string }, standardHours: number = 9) {
+  if (rec?.hoursWorked && rec.hoursWorked > 0) {
+    return { hoursWorked: rec.hoursWorked, otHours: rec.otHours || 0 };
+  }
+  return computeWorkedHours(rec?.checkIn || rec?.clockIn, rec?.checkOut || rec?.clockOut, standardHours);
+}
 
 export const Route = createFileRoute("/admin/attendance")({
   head: () => ({ meta: [{ title: "Attendance & Dossier · SWIFT" }] }),
@@ -97,6 +144,7 @@ function AttendancePage() {
     rec?: AttendanceRecord;
     date: string;
   } | null>(null);
+  const [inspectPhotoTab, setInspectPhotoTab] = useState<"checkIn" | "checkOut">("checkIn");
 
   // Manual Punch Regularization Dialog State
   const [regularizeDialog, setRegularizeDialog] = useState<{
@@ -397,8 +445,9 @@ function AttendancePage() {
         absentCount++;
       }
 
-      if (rec?.hoursWorked) totalWorkingHours += rec.hoursWorked;
-      if (rec?.otHours) totalOTHours += rec.otHours;
+      const recH = getRecordHours(rec, company.workingHoursPerDay || 9);
+      totalWorkingHours += recH.hoursWorked;
+      totalOTHours += recH.otHours;
     });
 
     const totalEmployees = employees.length || 1;
@@ -539,8 +588,8 @@ function AttendancePage() {
         `"${scheduled.shift.name || "General"}"`,
         `"${rec?.checkIn || rec?.clockIn || "—"}"`,
         `"${rec?.checkOut || rec?.clockOut || "—"}"`,
-        rec?.hoursWorked ?? 0,
-        rec?.otHours ?? 0,
+        getRecordHours(rec, company.workingHoursPerDay || 9).hoursWorked,
+        getRecordHours(rec, company.workingHoursPerDay || 9).otHours,
         `"${punctuality.status}"`,
         `"${punctuality.label}"`,
         rec?.faceVerified ? "Yes" : "No",
@@ -1065,6 +1114,23 @@ function AttendancePage() {
                                 <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                                 <span>{rec.checkOut || rec.clockOut}</span>
                               </div>
+
+                              {/* Biometric Check-Out Pill */}
+                              <div className="flex flex-wrap items-center gap-1">
+                                {(rec.faceVerified || rec.checkOutPhoto) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setInspectPhotoTab("checkOut");
+                                      setInspectRecord({ emp, rec, date: selectedDate });
+                                    }}
+                                    className="inline-flex items-center gap-1 text-[11px] bg-primary/10 text-primary hover:bg-primary/20 px-1.5 py-0.5 rounded border border-primary/20 transition-colors"
+                                  >
+                                    <Camera className="h-3 w-3" />
+                                    <span>Face Verified</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ) : rec?.checkIn || rec?.clockIn ? (
                             <Badge variant="outline" className="text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
@@ -1078,18 +1144,23 @@ function AttendancePage() {
 
                         {/* Work Hours & OT */}
                         <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
-                          <div className="space-y-0.5">
-                            <div className="font-medium text-xs text-foreground">
-                              {rec?.hoursWorked ? `${rec.hoursWorked} hrs` : "0.0 hrs"}
-                            </div>
-                            {rec?.otHours ? (
-                              <div className="text-[11px] text-emerald-600 font-semibold">
-                                +{rec.otHours}h OT
+                          {(() => {
+                            const hrs = getRecordHours(rec, company.workingHoursPerDay || 9);
+                            return (
+                              <div className="space-y-0.5">
+                                <div className="font-medium text-xs text-foreground">
+                                  {hrs.hoursWorked > 0 ? `${hrs.hoursWorked} hrs` : "0.0 hrs"}
+                                </div>
+                                {hrs.otHours > 0 ? (
+                                  <div className="text-[11px] text-emerald-600 font-semibold">
+                                    +{hrs.otHours}h OT
+                                  </div>
+                                ) : (
+                                  <div className="text-[11px] text-muted-foreground">0 OT</div>
+                                )}
                               </div>
-                            ) : (
-                              <div className="text-[11px] text-muted-foreground">0 OT</div>
-                            )}
-                          </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Punctuality Status Badge */}
@@ -1247,7 +1318,8 @@ function AttendancePage() {
                             empLate++;
                           }
                           if (punct.status === "absent") empAbsent++;
-                          if (rec?.hoursWorked) empTotalHours += rec.hoursWorked;
+                          const recHrs = getRecordHours(rec, company.workingHoursPerDay || 9);
+                          empTotalHours += recHrs.hoursWorked;
 
                           return (
                             <td key={d.dateStr} className="p-1 text-center">
@@ -1297,7 +1369,7 @@ function AttendancePage() {
                                       <div>Status: {punct.label}</div>
                                       {rec?.checkIn && <div>In: {rec.checkIn}</div>}
                                       {rec?.checkOut && <div>Out: {rec.checkOut}</div>}
-                                      {rec?.hoursWorked && <div>Hours: {rec.hoursWorked}h</div>}
+                                      {(() => { const h = getRecordHours(rec); return h.hoursWorked > 0 ? <div>Hours: {h.hoursWorked}h{h.otHours > 0 ? ` (+${h.otHours}h OT)` : ''}</div> : null; })()}
                                     </div>
                                   </TooltipContent>
                                 </Tooltip>
@@ -1460,53 +1532,94 @@ function AttendancePage() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-2">
-              {/* Photo Comparison */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-muted/40 border border-border text-center space-y-2">
-                  <span className="text-xs font-semibold text-muted-foreground">Registered Master Avatar</span>
-                  <div className="h-36 w-full rounded-lg overflow-hidden bg-background flex items-center justify-center border border-border">
-                    {inspectRecord.emp.photoDataUrl ? (
-                      <img
-                        src={inspectRecord.emp.photoDataUrl}
-                        alt="Master Profile"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="text-2xl font-bold text-muted-foreground">
-                        {inspectRecord.emp.name.slice(0, 2).toUpperCase()}
-                      </div>
-                    )}
-                  </div>
-                  <Badge variant="outline" className="text-[11px] bg-primary/10 text-primary">
-                    Profile Reference
-                  </Badge>
-                </div>
+            {(() => {
+              const checkInPhoto = inspectRecord.rec?.checkInPhoto || inspectRecord.rec?.photoDataUrl;
+              const checkOutPhoto = inspectRecord.rec?.checkOutPhoto;
+              const hasBothPhotos = !!checkInPhoto && !!checkOutPhoto;
+              const currentPhoto = inspectPhotoTab === "checkOut" && checkOutPhoto ? checkOutPhoto : (checkInPhoto || checkOutPhoto);
 
-                <div className="p-3 rounded-xl bg-muted/40 border border-border text-center space-y-2">
-                  <span className="text-xs font-semibold text-muted-foreground">Live Captured Punch Scan</span>
-                  <div className="h-36 w-full rounded-lg overflow-hidden bg-background flex items-center justify-center border border-border">
-                    {inspectRecord.rec?.photoDataUrl || inspectRecord.rec?.checkInPhoto ? (
-                      <img
-                        src={inspectRecord.rec?.photoDataUrl || inspectRecord.rec?.checkInPhoto}
-                        alt="Punch Face Scan"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : inspectRecord.emp.photoDataUrl ? (
-                      <img
-                        src={inspectRecord.emp.photoDataUrl}
-                        alt="Face Scan Fallback"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <Camera className="h-10 w-10 text-muted-foreground/50" />
-                    )}
+              return (
+                <div className="space-y-4 py-2">
+                  {/* Photo Comparison */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 rounded-xl bg-muted/40 border border-border text-center space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground">Registered Master Avatar</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">KYC Profile</span>
+                      </div>
+                      <div className="h-36 w-full rounded-lg overflow-hidden bg-background flex items-center justify-center border border-border">
+                        {inspectRecord.emp.photoDataUrl ? (
+                          <img
+                            src={inspectRecord.emp.photoDataUrl}
+                            alt="Master Profile"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-2xl font-bold text-muted-foreground">
+                            {inspectRecord.emp.name.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <Badge variant="outline" className="text-[11px] bg-primary/10 text-primary">
+                        Profile Reference
+                      </Badge>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-muted/40 border border-border text-center space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground">Live Captured Punch Scan</span>
+                        <div className="flex items-center gap-1 bg-background/80 p-0.5 rounded-lg border border-border text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setInspectPhotoTab("checkIn")}
+                            className={`px-2 py-0.5 rounded transition-colors ${inspectPhotoTab === "checkIn" ? "bg-primary text-primary-foreground font-bold shadow-xs" : "text-muted-foreground hover:text-foreground"}`}
+                          >
+                            In {checkInPhoto ? "📸" : ""}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInspectPhotoTab("checkOut")}
+                            className={`px-2 py-0.5 rounded transition-colors ${inspectPhotoTab === "checkOut" ? "bg-primary text-primary-foreground font-bold shadow-xs" : "text-muted-foreground hover:text-foreground"}`}
+                          >
+                            Out {checkOutPhoto ? "📸" : ""}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="h-36 w-full rounded-lg overflow-hidden bg-background flex items-center justify-center border border-border">
+                        {currentPhoto ? (
+                          <img
+                            src={currentPhoto}
+                            alt={`${inspectPhotoTab === "checkOut" ? "Check-Out" : "Check-In"} Face Scan`}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-center p-3 text-muted-foreground h-full">
+                            <CameraOff className="h-8 w-8 text-muted-foreground/40 mb-1.5" />
+                            <span className="text-xs font-semibold">
+                              {inspectPhotoTab === "checkOut" ? "No Check-Out Photo" : "No Check-In Photo"}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground/70 mt-0.5">
+                              {inspectPhotoTab === "checkOut" ? "No realtime camera frame recorded during clock-out" : "No realtime camera frame recorded during clock-in"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <Badge
+                        variant="outline"
+                        className={`text-[11px] ${
+                          currentPhoto
+                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                            : "bg-muted text-muted-foreground border-border"
+                        }`}
+                      >
+                        {currentPhoto
+                          ? `${inspectPhotoTab === "checkOut" ? "Check-Out Punch" : "Check-In Punch"} (${inspectRecord.rec?.similarity ? `${inspectRecord.rec.similarity}% Match` : "Live Verified"})`
+                          : `${inspectPhotoTab === "checkOut" ? "No Check-Out Photo" : "No Check-In Photo"}`}
+                      </Badge>
+                    </div>
                   </div>
-                  <Badge variant="outline" className="text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                    Rekognition {inspectRecord.rec?.similarity ? `${inspectRecord.rec.similarity}% Match` : "98.4% Verified"}
-                  </Badge>
-                </div>
-              </div>
 
               {/* GPS & Network Telemetry */}
               <div className="p-3 rounded-xl bg-muted/30 border border-border space-y-2 text-xs">
@@ -1528,17 +1641,19 @@ function AttendancePage() {
                     Inside HQ Perimeter (38m from epicenter)
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    Punch Timestamps:
-                  </span>
-                  <span>
-                    In: {inspectRecord.rec?.checkIn || inspectRecord.rec?.clockIn || "—"} | Out: {inspectRecord.rec?.checkOut || inspectRecord.rec?.clockOut || "—"}
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                      Punch Timestamps:
+                    </span>
+                    <span>
+                      In: {inspectRecord.rec?.checkIn || inspectRecord.rec?.clockIn || "—"} | Out: {inspectRecord.rec?.checkOut || inspectRecord.rec?.clockOut || "—"}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            );
+          })()}
 
             <DialogFooter>
               <Button variant="outline" onClick={() => setInspectRecord(null)}>
@@ -1863,8 +1978,9 @@ function EmployeeAttendanceDossierModal({
         absentDays++;
       }
 
-      if (rec?.hoursWorked) totalHours += rec.hoursWorked;
-      if (rec?.otHours) totalOT += rec.otHours;
+      const recH = getRecordHours(rec, company.workingHoursPerDay || 9);
+      totalHours += recH.hoursWorked;
+      totalOT += recH.otHours;
     });
 
     const rate = totalDays > 0 ? Math.round(((presentDays + halfDays * 0.5) / totalDays) * 100) : 0;
@@ -1915,8 +2031,8 @@ function EmployeeAttendanceDossierModal({
         `"${scheduled?.shift?.name || "General"}"`,
         `"${rec?.checkIn || rec?.clockIn || "—"}"`,
         `"${rec?.checkOut || rec?.clockOut || "—"}"`,
-        rec?.hoursWorked ?? 0,
-        rec?.otHours ?? 0,
+        (() => { const h = getRecordHours(rec); return h.hoursWorked; })(),
+        (() => { const h = getRecordHours(rec); return h.otHours; })(),
         `"${punctuality.status}"`,
         `"${punctuality.label}"`,
         rec?.faceVerified ? "Yes" : "No",
@@ -2222,8 +2338,15 @@ function EmployeeAttendanceDossierModal({
 
                       <td className="p-3">
                         {rec?.checkOut || rec?.clockOut ? (
-                          <div className="font-semibold text-sm text-foreground">
-                            {rec.checkOut || rec.clockOut}
+                          <div className="space-y-0.5">
+                            <div className="font-semibold text-sm text-foreground">
+                              {rec.checkOut || rec.clockOut}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {(rec.faceVerified || rec.checkOutPhoto) && (
+                                <span className="text-[10px] bg-primary/10 text-primary px-1 rounded">Face</span>
+                              )}
+                            </div>
                           </div>
                         ) : rec?.checkIn || rec?.clockIn ? (
                           <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600">
@@ -2235,10 +2358,17 @@ function EmployeeAttendanceDossierModal({
                       </td>
 
                       <td className="p-3">
-                        <div className="font-medium">{rec?.hoursWorked ? `${rec.hoursWorked}h` : "0h"}</div>
-                        {rec?.otHours ? (
-                          <div className="text-[11px] text-emerald-600 font-semibold">+{rec.otHours}h OT</div>
-                        ) : null}
+                        {(() => {
+                          const hrs = getRecordHours(rec, company.workingHoursPerDay || 9);
+                          return (
+                            <>
+                              <div className="font-medium">{hrs.hoursWorked > 0 ? `${hrs.hoursWorked}h` : "0h"}</div>
+                              {hrs.otHours > 0 ? (
+                                <div className="text-[11px] text-emerald-600 font-semibold">+{hrs.otHours}h OT</div>
+                              ) : null}
+                            </>
+                          );
+                        })()}
                       </td>
 
                       <td className="p-3">

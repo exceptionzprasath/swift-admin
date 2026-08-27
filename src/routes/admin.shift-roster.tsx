@@ -89,6 +89,7 @@ export function ShiftRosterPage() {
     end: "18:00",
     allowancePerDay: 0,
     graceTime: "15",
+    afternoonGraceTime: "15",
     allowHalfDayLogin: true,
     halfDayLoginTime: "12:00",
     color: "indigo",
@@ -103,6 +104,7 @@ export function ShiftRosterPage() {
     date: string;
     shiftId: string;
     graceTime: "always" | "10" | "15" | "20" | "25" | "30";
+    afternoonGraceTime: "always" | "10" | "15" | "20" | "25" | "30";
     note?: string;
   } | null>(null);
 
@@ -119,6 +121,7 @@ export function ShiftRosterPage() {
     toDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     shiftId: "gen",
     graceTime: "15" as "always" | "10" | "15" | "20" | "25" | "30",
+    afternoonGraceTime: "15" as "always" | "10" | "15" | "20" | "25" | "30",
     allowHalfDayLogin: true,
     halfDayLoginTime: "12:00",
     skipWeekends: true,
@@ -175,6 +178,7 @@ export function ShiftRosterPage() {
       end: "18:00",
       allowancePerDay: 0,
       graceTime: "15",
+      afternoonGraceTime: "15",
       allowHalfDayLogin: true,
       halfDayLoginTime: "12:00",
       color: "indigo",
@@ -192,6 +196,7 @@ export function ShiftRosterPage() {
       end: s.end,
       allowancePerDay: s.allowancePerDay || 0,
       graceTime: s.graceTime || "15",
+      afternoonGraceTime: s.afternoonGraceTime || "15",
       allowHalfDayLogin: s.allowHalfDayLogin !== false,
       halfDayLoginTime: s.halfDayLoginTime || "12:00",
       color: s.color || "indigo",
@@ -265,6 +270,7 @@ export function ShiftRosterPage() {
       date: dateStr,
       shiftId: existing ? existing.shiftId : emp.shiftId || "gen",
       graceTime: (existing?.graceTime || emp.graceTime || "15") as any,
+      afternoonGraceTime: (existing?.afternoonGraceTime || emp.afternoonGraceTime || "15") as any,
       note: existing?.note || "",
     });
     setQuickAssignOpen(true);
@@ -283,6 +289,7 @@ export function ShiftRosterPage() {
       shiftStart: selectedShift?.start,
       shiftEnd: selectedShift?.end,
       graceTime: quickAssignData.graceTime,
+      afternoonGraceTime: quickAssignData.afternoonGraceTime,
       note: quickAssignData.note,
     });
 
@@ -292,7 +299,7 @@ export function ShiftRosterPage() {
 
   // Bulk Range Assignment
   const handleApplyBulkRoster = async () => {
-    const { targetType, employeeId, department, fromDate, toDate, shiftId, graceTime, allowHalfDayLogin, halfDayLoginTime, skipWeekends } = bulkForm;
+    const { targetType, employeeId, department, fromDate, toDate, shiftId, graceTime, afternoonGraceTime, allowHalfDayLogin, halfDayLoginTime, skipWeekends } = bulkForm;
 
     if (!fromDate || !toDate) {
       toast.error("Please select a valid date range.");
@@ -321,27 +328,22 @@ export function ShiftRosterPage() {
       targetEmployees = employees;
     }
 
-    const selectedShift = shifts.find((s) => s.id === shiftId);
     const assignmentsToSave: ShiftAssignment[] = [];
-
-    const start = new Date(fromDate);
-    const end = new Date(toDate);
+    const selectedShift = shifts.find((s) => s.id === shiftId);
 
     for (const emp of targetEmployees) {
-      const curr = new Date(start);
+      const curr = new Date(fromDate);
+      const end = new Date(toDate);
+
       while (curr <= end) {
+        const dateStr = curr.toISOString().slice(0, 10);
         const dayOfWeek = curr.getDay(); // 0 is Sunday, 6 is Saturday
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-        let appliedShiftId = shiftId;
-        if (skipWeekends && isWeekend && shiftId !== "off") {
-          // Keep weekend as weekly off or skip
-          appliedShiftId = "off";
-        }
+        const appliedShiftId = skipWeekends && isWeekend ? "off" : shiftId;
 
-        const dateStr = curr.toISOString().slice(0, 10);
         assignmentsToSave.push({
-          id: `ros-${emp.id}-${dateStr}`,
+          id: `${emp.id}_${dateStr}`,
           employeeId: emp.id,
           employeeName: emp.name,
           empCode: emp.empCode,
@@ -352,6 +354,7 @@ export function ShiftRosterPage() {
           shiftStart: selectedShift?.start,
           shiftEnd: selectedShift?.end,
           graceTime,
+          afternoonGraceTime,
           allowHalfDayLogin,
           halfDayLoginTime,
         });
@@ -904,16 +907,16 @@ export function ShiftRosterPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Grace Time for Attendance</Label>
+                <Label className="text-xs">Morning Grace</Label>
                 <Select
                   value={shiftForm.graceTime || "15"}
                   onValueChange={(v: any) => setShiftForm({ ...shiftForm, graceTime: v })}
                 >
                   <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="always">Always (No cutoff)</SelectItem>
+                    <SelectItem value="always">Always (Flexible)</SelectItem>
                     <SelectItem value="10">Within 10 mins</SelectItem>
                     <SelectItem value="15">Within 15 mins (Standard)</SelectItem>
                     <SelectItem value="20">Within 20 mins</SelectItem>
@@ -924,7 +927,25 @@ export function ShiftRosterPage() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs">Shift Allowance (₹ per day)</Label>
+                <Label className="text-xs">Afternoon Grace</Label>
+                <Select
+                  value={shiftForm.afternoonGraceTime || "15"}
+                  onValueChange={(v: any) => setShiftForm({ ...shiftForm, afternoonGraceTime: v })}
+                >
+                  <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="always">Always (Flexible)</SelectItem>
+                    <SelectItem value="10">Within 10 mins</SelectItem>
+                    <SelectItem value="15">Within 15 mins (Standard)</SelectItem>
+                    <SelectItem value="20">Within 20 mins</SelectItem>
+                    <SelectItem value="25">Within 25 mins</SelectItem>
+                    <SelectItem value="30">Within 30 mins</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Allowance (₹/day)</Label>
                 <Input
                   type="number"
                   placeholder="0"
@@ -1012,22 +1033,42 @@ export function ShiftRosterPage() {
               </div>
 
               {quickAssignData.shiftId !== "off" && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Grace Time Override</Label>
-                  <Select
-                    value={quickAssignData.graceTime}
-                    onValueChange={(v: any) => setQuickAssignData({ ...quickAssignData, graceTime: v })}
-                  >
-                    <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="always">Always (No cutoff)</SelectItem>
-                      <SelectItem value="10">Within 10 mins</SelectItem>
-                      <SelectItem value="15">Within 15 mins (Standard)</SelectItem>
-                      <SelectItem value="20">Within 20 mins</SelectItem>
-                      <SelectItem value="25">Within 25 mins</SelectItem>
-                      <SelectItem value="30">Within 30 mins</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Morning Grace</Label>
+                    <Select
+                      value={quickAssignData.graceTime}
+                      onValueChange={(v: any) => setQuickAssignData({ ...quickAssignData, graceTime: v })}
+                    >
+                      <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="always">Always (No cutoff)</SelectItem>
+                        <SelectItem value="10">Within 10 mins</SelectItem>
+                        <SelectItem value="15">Within 15 mins (Standard)</SelectItem>
+                        <SelectItem value="20">Within 20 mins</SelectItem>
+                        <SelectItem value="25">Within 25 mins</SelectItem>
+                        <SelectItem value="30">Within 30 mins</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs">Afternoon Grace</Label>
+                    <Select
+                      value={quickAssignData.afternoonGraceTime}
+                      onValueChange={(v: any) => setQuickAssignData({ ...quickAssignData, afternoonGraceTime: v })}
+                    >
+                      <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="always">Always (Flexible)</SelectItem>
+                        <SelectItem value="10">Within 10 mins</SelectItem>
+                        <SelectItem value="15">Within 15 mins (Standard)</SelectItem>
+                        <SelectItem value="20">Within 20 mins</SelectItem>
+                        <SelectItem value="25">Within 25 mins</SelectItem>
+                        <SelectItem value="30">Within 30 mins</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               )}
 
@@ -1179,7 +1220,7 @@ export function ShiftRosterPage() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs">Grace Time Policy</Label>
+                <Label className="text-xs">Morning Grace</Label>
                 <Select
                   value={bulkForm.graceTime}
                   onValueChange={(v: any) => setBulkForm({ ...bulkForm, graceTime: v })}
@@ -1188,6 +1229,25 @@ export function ShiftRosterPage() {
                   <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="always">Always (No cutoff)</SelectItem>
+                    <SelectItem value="10">Within 10 mins</SelectItem>
+                    <SelectItem value="15">Within 15 mins (Standard)</SelectItem>
+                    <SelectItem value="20">Within 20 mins</SelectItem>
+                    <SelectItem value="25">Within 25 mins</SelectItem>
+                    <SelectItem value="30">Within 30 mins</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Afternoon Grace</Label>
+                <Select
+                  value={bulkForm.afternoonGraceTime}
+                  onValueChange={(v: any) => setBulkForm({ ...bulkForm, afternoonGraceTime: v })}
+                  disabled={bulkForm.shiftId === "off"}
+                >
+                  <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="always">Always (Flexible)</SelectItem>
                     <SelectItem value="10">Within 10 mins</SelectItem>
                     <SelectItem value="15">Within 15 mins (Standard)</SelectItem>
                     <SelectItem value="20">Within 20 mins</SelectItem>

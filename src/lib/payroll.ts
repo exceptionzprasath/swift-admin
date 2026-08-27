@@ -415,6 +415,21 @@ export function computePayroll(opts: {
   const otherDeductions = inputs.otherDeductions || 0;
 
   const extraDeductionsList: { id: string; name: string; amount: number }[] = [];
+
+  // Loss of Pay (LOP) — explicit deduction when employee has absent days.
+  // The prorateFactor already reduces gross; LOP shows the amount lost as a visible line item.
+  // lopBasis: "basic" → deduct only from basic+DA; "gross" → deduct from full gross.
+  const absentDays = Math.max(0, wd - paidDays);
+  let lopAmount = 0;
+  if (absentDays > 0) {
+    const dailyRate = c.lopBasis === "gross"
+      ? fixedGross / wd
+      : (monthlyBasic + (c.daEnabled !== false ? Math.round(fixedGross * ((c.daPct ?? 13.33) / 100)) : 0)) / wd;
+    lopAmount = Math.round(dailyRate * absentDays);
+    if (lopAmount > 0) {
+      extraDeductionsList.push({ id: "lop", name: `Loss of Pay (${absentDays} day${absentDays !== 1 ? "s" : ""} absent)`, amount: lopAmount });
+    }
+  }
   if (otherDeductions > 0) {
     extraDeductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: otherDeductions });
   }
@@ -555,6 +570,8 @@ export function explainPayroll(company: Company, employee: Employee, p: PayrollC
   if (p.deductions.lwf > 0 || p.employerContrib.employerLwf > 0) out.push({ id: "lwf", text: `${p.lwfSource} — state-specific Labour Welfare Fund. Employer contribution is typically 2×–3× employee.` });
   if (p.deductions.loan > 0) out.push({ id: "loan", text: `Loan EMI as per sanctioned repayment plan.` });
   if (p.deductions.advance > 0) out.push({ id: "advance", text: `Salary advance recovery this cycle.` });
+  const lopEntry = p.extraDeductions.find((d) => d.id === "lop");
+  if (lopEntry) out.push({ id: "lop", text: `Loss of Pay (LOP): ${lopEntry.name.match(/\d+/)?.[0] || ""} absent day(s) × daily rate. Computed on ${c.lopBasis === "gross" ? "gross salary" : "Basic + DA"} basis per company settings.` });
   if (c.gratuityRules?.enabled) out.push({ id: "gratuity", text: `Gratuity accrual = Basic × ${c.gratuityRules.numerator}/${c.gratuityRules.denominator} ÷ 12 (Payment of Gratuity Act 1972; payable on 5 yrs service).` });
 
   out.push({ id: "net", text: `Net Pay = Gross ₹${Math.round(p.gross).toLocaleString("en-IN")} − Total Deductions ₹${Math.round(p.totalDeductions).toLocaleString("en-IN")}. Employer cost adds ₹${Math.round(p.totalEmployer).toLocaleString("en-IN")}/mo making CTC ₹${Math.round(p.annualCTC).toLocaleString("en-IN")}/yr.` });

@@ -116,7 +116,7 @@ export function drawCorporateHeader(
   doc.setTextColor(203, 213, 225); // #CBD5E1
   doc.text(c.legalName || c.name || "Company Legal Name", textLeft, 19);
 
-  const addressLine = `${c.address || ""} ${c.gstin ? " · GSTIN: " + c.gstin : ""}`.trim();
+  const addressLine = (c.address || "").trim();
   if (addressLine) {
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184); // #94A3B8
@@ -170,8 +170,8 @@ export async function generateSalarySlipPDF(
     ["Employee Name", e.name || "-", "Employee Code", e.empCode || "-"],
     ["Designation", e.designation || "-", "Department", e.department || "-"],
     ["Date of Joining", e.doj || "-", "PAN Number", e.pan || "-"],
-    ["Bank Account", e.bankAcc ? `XXXX${e.bankAcc.slice(-4)}` : "-", "Bank IFSC", e.bankIfsc || "-"],
-    ["Working Days", `${totalWorkingDays} Days`, "Present Days", presentDaysDisplay],
+    ["PF UAN No", e.uan || "—", "Bank Account", e.bankAcc ? `XXXX${e.bankAcc.slice(-4)}` : "-"],
+    ["Bank IFSC", e.bankIfsc || "-", "Present Days", presentDaysDisplay],
   ];
 
   autoTable(doc, {

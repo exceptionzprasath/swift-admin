@@ -200,38 +200,236 @@ function SettingsPage() {
 
       {/* Leave Types */}
       <Card title="Leave Policy Types">
-        <div className="col-span-3 space-y-2">
+        <div className="col-span-3 space-y-3">
+          {/* Column header */}
+          <div className="grid grid-cols-[1fr_130px_100px_36px] gap-3 text-xs text-muted-foreground font-medium px-1">
+            <span>Leave Type Name</span>
+            <span>Days / Year</span>
+            <span className="text-center">Type</span>
+            <span />
+          </div>
           {company.leaveTypes.map((l, i) => (
-            <div key={l.id} className="grid grid-cols-3 gap-2">
+            <div key={l.id} className="grid grid-cols-[1fr_130px_100px_36px] gap-3 items-center">
+              {/* Name */}
               <Input
                 value={l.name}
+                placeholder="e.g. Casual Leave"
                 onChange={(e) => {
                   const copy = [...company.leaveTypes];
                   copy[i] = { ...l, name: e.target.value };
                   setCompany({ leaveTypes: copy });
                 }}
               />
-              <Input
-                type="number"
-                value={l.days}
-                onChange={(e) => {
+              {/* Annual days */}
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  value={l.days}
+                  min={0}
+                  placeholder="12"
+                  onChange={(e) => {
+                    const copy = [...company.leaveTypes];
+                    copy[i] = { ...l, days: +e.target.value || 0 };
+                    setCompany({ leaveTypes: copy });
+                  }}
+                />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">days</span>
+              </div>
+              {/* Paid / Unpaid toggle */}
+              <button
+                type="button"
+                onClick={() => {
                   const copy = [...company.leaveTypes];
-                  copy[i] = { ...l, days: +e.target.value || 0 };
+                  copy[i] = { ...l, paid: l.paid === false ? true : false };
                   setCompany({ leaveTypes: copy });
                 }}
-              />
-              <Button variant="ghost" onClick={() => setCompany({ leaveTypes: company.leaveTypes.filter((_, j) => j !== i) })}>Remove</Button>
+                className={`py-1.5 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+                  l.paid !== false
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                    : "bg-muted text-muted-foreground border-border"
+                }`}
+              >
+                {l.paid !== false ? "Paid" : "Unpaid"}
+              </button>
+              {/* Remove */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:text-destructive"
+                onClick={() => setCompany({ leaveTypes: company.leaveTypes.filter((_, j) => j !== i) })}
+              >
+                ×
+              </Button>
             </div>
           ))}
+          <p className="text-[11px] text-muted-foreground">
+            Define annual day-based leave quotas for employees. Employees can apply for full-day or half-day leaves against these entitlements.
+          </p>
           <Button
             variant="outline"
             onClick={() =>
               setCompany({
-                leaveTypes: [...company.leaveTypes, { id: crypto.randomUUID(), name: "New Leave", days: 6 }],
+                leaveTypes: [...company.leaveTypes, { id: crypto.randomUUID(), name: "New Leave", days: 6, paid: true }],
               })
             }
           >
-            Add Leave Type
+            + Add Leave Type
+          </Button>
+        </div>
+      </Card>
+
+      {/* Permission Policy Types (Separate Standalone Section) */}
+      <Card title="Permission Policy Types">
+        <div className="col-span-3 space-y-3">
+          {/* Column header */}
+          <div className="grid grid-cols-[1fr_130px_130px_140px_100px_36px] gap-3 text-xs text-muted-foreground font-medium px-1">
+            <span>Permission Type Name</span>
+            <span>Allowed Hours</span>
+            <span>Reset Frequency</span>
+            <span>Max Requests / Mo</span>
+            <span className="text-center">Type</span>
+            <span />
+          </div>
+          {(company.permissionTypes ?? [
+            { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true }
+          ]).map((p, i) => {
+            const currentList = company.permissionTypes ?? [
+              { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true }
+            ];
+            return (
+              <div key={p.id} className="grid grid-cols-[1fr_130px_130px_140px_100px_36px] gap-3 items-center">
+                {/* Name */}
+                <Input
+                  value={p.name}
+                  placeholder="e.g. Standard Permission"
+                  onChange={(e) => {
+                    const copy = [...currentList];
+                    copy[i] = { ...p, name: e.target.value };
+                    setCompany({ permissionTypes: copy });
+                  }}
+                />
+                {/* Allowed Hours */}
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    value={p.maxHours}
+                    min={0.5}
+                    step={0.5}
+                    placeholder="2"
+                    onChange={(e) => {
+                      const copy = [...currentList];
+                      copy[i] = { ...p, maxHours: +e.target.value || 0 };
+                      setCompany({ permissionTypes: copy });
+                    }}
+                  />
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">hrs</span>
+                </div>
+                {/* Reset Frequency / Period */}
+                <div className="flex items-center rounded-lg border border-border overflow-hidden text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const copy = [...currentList];
+                      copy[i] = { ...p, period: "month" };
+                      setCompany({ permissionTypes: copy });
+                    }}
+                    className={`flex-1 py-1.5 text-center transition-colors ${
+                      p.period === "month"
+                        ? "bg-primary text-primary-foreground font-semibold"
+                        : "text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    /Mo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const copy = [...currentList];
+                      copy[i] = { ...p, period: "year" };
+                      setCompany({ permissionTypes: copy });
+                    }}
+                    className={`flex-1 py-1.5 text-center transition-colors ${
+                      p.period === "year"
+                        ? "bg-primary text-primary-foreground font-semibold"
+                        : "text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    /Yr
+                  </button>
+                </div>
+                {/* Max Requests Per Month */}
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    value={p.maxRequestsPerMonth ?? ""}
+                    min={1}
+                    placeholder="e.g. 2"
+                    onChange={(e) => {
+                      const copy = [...currentList];
+                      const val = e.target.value === "" ? undefined : +e.target.value || 0;
+                      copy[i] = { ...p, maxRequestsPerMonth: val };
+                      setCompany({ permissionTypes: copy });
+                    }}
+                  />
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">times</span>
+                </div>
+                {/* Paid / Unpaid toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const copy = [...currentList];
+                    copy[i] = { ...p, paid: p.paid === false ? true : false };
+                    setCompany({ permissionTypes: copy });
+                  }}
+                  className={`py-1.5 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+                    p.paid !== false
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                      : "bg-muted text-muted-foreground border-border"
+                  }`}
+                >
+                  {p.paid !== false ? "Paid" : "Unpaid"}
+                </button>
+                {/* Remove */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:text-destructive"
+                  onClick={() =>
+                    setCompany({
+                      permissionTypes: currentList.filter((_, j) => j !== i),
+                    })
+                  }
+                >
+                  ×
+                </Button>
+              </div>
+            );
+          })}
+          <p className="text-[11px] text-muted-foreground">
+            Configure short-duration permission allowances (e.g. 2 hours per month). Employees apply in hours for late entry, early exit, or personal emergency. Quotas reset automatically based on the selected frequency (/Mo or /Yr).
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              const currentList = company.permissionTypes ?? [
+                { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true }
+              ];
+              setCompany({
+                permissionTypes: [
+                  ...currentList,
+                  {
+                    id: crypto.randomUUID(),
+                    name: "Personal Permission",
+                    maxHours: 2,
+                    period: "month",
+                    maxRequestsPerMonth: 2,
+                    paid: true,
+                  },
+                ],
+              });
+            }}
+          >
+            + Add Permission Type
           </Button>
         </div>
       </Card>

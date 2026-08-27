@@ -90,7 +90,112 @@ async function uploadToS3(tenantId: string, path: string, fileDataUrl: string) {
   return fileDataUrl;
 }
 
-export type LeaveType = { id: string; name: string; days: number; paid?: boolean };
+/**
+ * Compute used vs. remaining balance for a leave type for a given employee.
+ *
+ * - For permission-type leaves (permissionHours set): unit is hours.
+ *   `permissionPeriod` controls whether the window is "month" (current calendar month)
+ *   or "year" (current calendar year). Pending requests count against the balance.
+ * - For all other leave types: unit is days.
+ *   The full annual `days` entitlement is used (pending requests reserved too).
+ */
+export function getLeaveBalance(
+  leaveType: LeaveType,
+  leaves: LeaveRequest[],
+  employeeId: string,
+): { used: number; total: number; remaining: number; unit: "days" | "hours" } {
+  const isPermission = !!leaveType.permissionHours;
+  const now = new Date();
+
+  const relevant = leaves.filter((l) => {
+    if (l.employeeId !== employeeId) return false;
+    if (l.status === "rejected" || l.status === "Rejected") return false;
+    const nameMatch = l.type.toLowerCase().includes(leaveType.name.toLowerCase().split(" ")[0]);
+    if (!nameMatch) return false;
+    return true;
+  });
+
+  if (isPermission) {
+    const periodLeaves = relevant.filter((l) => {
+      const refDate = l.startDate || l.from || l.appliedAt;
+      if (!refDate) return true;
+      const d = new Date(refDate);
+      if (leaveType.permissionPeriod === "year") return d.getFullYear() === now.getFullYear();
+      // default: month
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+    const used = periodLeaves.reduce((sum, l) => {
+      const daysVal = typeof l.days === "string" ? parseFloat(l.days) : (l.days ?? 1);
+      return sum + (isNaN(daysVal) ? 1 : daysVal);
+    }, 0);
+    const total = leaveType.permissionHours!;
+    return { used, total, remaining: Math.max(0, total - used), unit: "hours" };
+  }
+
+  // Day-based leave
+  const used = relevant.reduce((sum, l) => {
+    const daysVal = typeof l.days === "string" ? parseFloat(l.days) : (l.days ?? 1);
+    return sum + (isNaN(daysVal) ? 1 : daysVal);
+  }, 0);
+  const total = leaveType.days || 0;
+  return { used, total, remaining: Math.max(0, total - used), unit: "days" };
+}
+
+export function getPermissionBalance(
+  permType: PermissionType,
+  leaves: LeaveRequest[],
+  employeeId: string,
+): { used: number; total: number; remaining: number; unit: "hours" } {
+  const now = new Date();
+  const relevant = leaves.filter((l) => {
+    if (l.employeeId !== employeeId) return false;
+    if (l.status === "rejected" || l.status === "Rejected") return false;
+    const isPerm = l.type.toLowerCase().includes("permission") ||
+      l.type.toLowerCase().includes(permType.name.toLowerCase().split(" ")[0]);
+    return isPerm;
+  });
+
+  const periodLeaves = relevant.filter((l) => {
+    const refDate = l.startDate || l.from || l.appliedAt;
+    if (!refDate) return true;
+    const d = new Date(refDate);
+    if (permType.period === "year") return d.getFullYear() === now.getFullYear();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  });
+
+  const used = periodLeaves.reduce((sum, l) => {
+    const daysVal = typeof l.days === "string" ? parseFloat(l.days) : (l.days ?? 1);
+    return sum + (isNaN(daysVal) ? 1 : daysVal);
+  }, 0);
+  const total = permType.maxHours || 0;
+  return { used, total, remaining: Math.max(0, total - used), unit: "hours" };
+}
+
+export type LeaveType = {
+  id: string;
+  name: string;
+  /** Annual leave days entitlement (used for day-based leave types) */
+  days: number;
+  paid?: boolean;
+  /**
+   * @deprecated Retained for legacy balance checks. New permission policies use PermissionType.
+   */
+  permissionHours?: number;
+  /** @deprecated Retained for legacy balance checks. */
+  permissionPeriod?: "month" | "year";
+};
+
+export type PermissionType = {
+  id: string;
+  name: string;
+  /** Max allowed hours for this permission window (e.g. 2 hrs) */
+  maxHours: number;
+  /** Reset frequency: "month" resets each calendar month, "year" resets annually */
+  period: "month" | "year";
+  /** Optional max allowed requests/occurrences per month (e.g. 2 times) */
+  maxRequestsPerMonth?: number;
+  paid?: boolean;
+};
 export type ShiftType = {
   id: string;
   name: string;
@@ -99,6 +204,7 @@ export type ShiftType = {
   end: string;
   allowancePerDay: number;
   graceTime?: "always" | "10" | "15" | "20" | "25" | "30";
+  afternoonGraceTime?: "always" | "10" | "15" | "20" | "25" | "30";
   allowHalfDayLogin?: boolean;
   halfDayLoginTime?: string;
   color?: string;
@@ -118,6 +224,7 @@ export type ShiftAssignment = {
   shiftStart?: string;
   shiftEnd?: string;
   graceTime?: "always" | "10" | "15" | "20" | "25" | "30";
+  afternoonGraceTime?: "always" | "10" | "15" | "20" | "25" | "30";
   allowHalfDayLogin?: boolean;
   halfDayLoginTime?: string;
   note?: string;
@@ -234,6 +341,7 @@ export type Company = {
   ptAmount: number;
   geofence: { lat: number; lng: number; radiusM: number };
   leaveTypes: LeaveType[];
+  permissionTypes?: PermissionType[];
   shifts: ShiftType[];
   appointmentTemplate: string;
   branches: Branch[];
@@ -256,6 +364,10 @@ export type Company = {
   minimumWageMonthly?: number;
   /** Whether to include and credit weekly offs from Swift Roster into attendance and salary computation */
   includeWeekOff?: boolean;
+  grievanceTypes?: GrievanceTypeItem[];
+  attendanceRequestCategories?: AttendanceRequestCategory[];
+  documentTypes?: DocumentTypeItem[];
+  approvalWorkflows?: any;
 };
 
 export type SalaryStructure = {
@@ -399,8 +511,11 @@ export type Employee = {
   leaveApplyEligible?: boolean;
   geofencingEnabled?: boolean;
   graceTime?: "always" | "10" | "15" | "20" | "25" | "30";
+  afternoonGraceTime?: "always" | "10" | "15" | "20" | "25" | "30";
   allowHalfDayLogin?: boolean;
   halfDayLoginTime?: string;
+  reportingManager?: string;
+  approvalSettings?: EmployeeApprovalSettings;
 };
 
 export type GraceTimeOption = "always" | "10" | "15" | "20" | "25" | "30";
@@ -470,7 +585,7 @@ export function canRoleApproveDocument(
 export type FamilyMember = { name: string; relation: string; dob?: string; dependent?: boolean };
 export type EducationEntry = { level: string; institute: string; year?: string; grade?: string };
 export type ExperienceEntry = { company: string; role: string; from?: string; to?: string; ctc?: number };
-export type EmployeeDocument = { id: string; type: string; name: string; dataUrl?: string; uploadedAt: string; verified?: boolean };
+export type EmployeeDocument = { id: string; type: string; name: string; dataUrl?: string; files?: string[]; uploadedAt: string; verified?: boolean };
 
 export type RegistrationDraft = {
   id: string;
@@ -567,6 +682,148 @@ export type PayrollRun = PayrollInput & {
   createdAt: string;
 };
 
+export type AttendanceRequestCategory = {
+  id: string;
+  name: string;
+  description: string;
+  requestBy: string;
+  approvalRequired: boolean;
+};
+
+export type ApprovalFlowLevel = {
+  level: number;
+  approverId?: string;
+  approverName?: string;
+  role: string;
+  roleId?: string;
+  enabled: boolean;
+  isMandatory?: boolean;
+};
+
+export type AutoEscalationRule = {
+  enabled: boolean;
+  days: number;
+  action: string; // e.g. "Move to next enabled approver"
+  lastApproverAction?: string; // e.g. "Send to Admin"
+  notifyAdmin?: boolean;
+};
+
+export type GrievanceTypeItem = {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+};
+
+export type DocumentTypeItem = {
+  id: string;
+  name: string;
+  description: string;
+  workflow: string;
+  active: boolean;
+};
+
+export type AttendanceApprovalConfig = {
+  categories: AttendanceRequestCategory[];
+  approvalSource: "hierarchy" | "custom";
+  levels: ApprovalFlowLevel[];
+  approvalType: "sequential" | "any" | "all";
+  autoEscalation: AutoEscalationRule;
+  additionalSettings: {
+    allowEmployeeCancel?: boolean;
+    allowViewStatus?: boolean;
+    sendEmailNotification?: boolean;
+    sendReminderBeforeEscalation?: boolean;
+    reminderHoursBeforeEscalation?: number;
+    mandatoryRejectionRemarks?: boolean;
+    allowManualForward?: boolean;
+  };
+};
+
+export type GrievanceApprovalConfig = {
+  approvalSource: "hierarchy" | "custom";
+  levels: ApprovalFlowLevel[];
+  approvalType: "sequential" | "any" | "all";
+  autoEscalation: AutoEscalationRule;
+  grievanceTypes: GrievanceTypeItem[];
+};
+
+export type DocumentRequestApprovalConfig = {
+  categories: { id: string; name: string; count: number }[];
+  documentTypes: DocumentTypeItem[];
+  approvalSource: "hierarchy" | "custom";
+  levels: ApprovalFlowLevel[];
+  approvalType: "sequential" | "any" | "all";
+  autoEscalation: AutoEscalationRule;
+  additionalSettings: {
+    allowEmployeeRaise?: boolean;
+    allowViewStatus?: boolean;
+    sendEmailNotification?: boolean;
+    sendReminderBeforeEscalation?: boolean;
+    reminderHoursBeforeEscalation?: number;
+    allowEmployeeCancel?: boolean;
+    allowApproverComments?: boolean;
+    allowApproverReject?: boolean;
+    allowApproverRequestReupload?: boolean;
+    autoCloseDaysAfterApproval?: number;
+    autoCloseEnabled?: boolean;
+  };
+};
+
+export type EmployeeApprovalSettings = {
+  attendance?: AttendanceApprovalConfig;
+  grievance?: GrievanceApprovalConfig;
+  documentRequest?: DocumentRequestApprovalConfig;
+};
+
+export type GrievanceMessage = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: string;
+  message: string;
+  attachments?: string[];
+  createdAt: string;
+};
+
+export type GrievanceTicket = {
+  id: string;
+  tenantId?: string;
+  ticketNumber: string;
+  employeeId: string;
+  employeeName: string;
+  empCode?: string;
+  department?: string;
+  category: string;
+  priority: "Low" | "Medium" | "High" | "Critical";
+  assignedRole: string;
+  assignedToId?: string;
+  assignedToName?: string;
+  subject: string;
+  description: string;
+  attachments?: string[];
+  status: "Open" | "In Progress" | "Resolved" | "Rejected";
+  resolutionNote?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  thread: GrievanceMessage[];
+  createdAt: string;
+  updatedAt: string;
+  currentLevel?: number;
+  approvalSteps?: ApprovalStep[];
+};
+
+export type LeaveApprovalStepAudit = {
+  level: number;
+  roleName: string;
+  roleId?: string;
+  approverId?: string;
+  approverName?: string;
+  status: "Pending" | "Approved" | "Rejected";
+  comment?: string;
+  actionAt?: string;
+};
+
 export type LeaveRequest = {
   id: string;
   tenantId?: string;
@@ -584,7 +841,12 @@ export type LeaveRequest = {
   approvedBy?: string;
   rejectedReason?: string;
   actedBy?: string;
+  actedById?: string;
+  actedByRole?: string;
   approverComment?: string;
+  currentLevel?: number;
+  totalLevels?: number;
+  approvalSteps?: LeaveApprovalStepAudit[];
 };
 
 export type HolidayType = "National Holiday" | "Public Holiday" | "Festival Holiday" | "Optional Holiday" | "Company Off";
@@ -740,6 +1002,14 @@ type State = {
   updateVaultFile: (id: string, patch: Partial<VaultFile>) => void;
   deleteVaultFile: (id: string) => void;
   moveVaultFile: (fileId: string, targetFolderId: string | null) => void;
+  // Grievance System & Approvals
+  grievances: GrievanceTicket[];
+  addGrievance: (g: Omit<GrievanceTicket, "id" | "createdAt" | "updatedAt">) => GrievanceTicket;
+  updateGrievance: (id: string, patch: Partial<GrievanceTicket>) => void;
+  deleteGrievance: (id: string) => void;
+  addGrievanceMessage: (ticketId: string, msg: Omit<GrievanceMessage, "id" | "createdAt">) => void;
+  updateEmployeeApprovalSettings: (employeeId: string, settings: Partial<EmployeeApprovalSettings>) => void;
+  actOnLeaveApprovalStep: (leaveId: string, action: "approve" | "approve_forward" | "approve_close" | "reject" | "escalate", comment: string, actorName: string, actorRole: string) => void;
 };
 
 export interface VaultFolder {
@@ -855,9 +1125,12 @@ const defaultCompany: Company = {
   ptAmount: 200,
   geofence: { lat: 11.30564, lng: 77.70347, radiusM: 50 },
   leaveTypes: [
-    { id: "cl", name: "Casual Leave", days: 12 },
-    { id: "sl", name: "Sick Leave", days: 12 },
-    { id: "el", name: "Earned Leave", days: 15 },
+    { id: "cl", name: "Casual Leave", days: 12, paid: true },
+    { id: "sl", name: "Sick Leave", days: 12, paid: true },
+    { id: "el", name: "Earned Leave", days: 15, paid: true },
+  ],
+  permissionTypes: [
+    { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true },
   ],
   shifts: [
     { id: "gen", name: "General", start: "09:00", end: "18:00", allowancePerDay: 0 },
@@ -1098,6 +1371,210 @@ export const DEFAULT_PREDEFINED_ROLES: PredefinedRole[] = [
   },
 ];
 
+export const DEFAULT_ATTENDANCE_REQUEST_CATEGORIES: AttendanceRequestCategory[] = [
+  { id: "cat-leave", name: "Leave Permission", description: "Regular leaves, sick leave, casual leave, etc.", requestBy: "Employee", approvalRequired: true },
+  { id: "cat-missing-punch", name: "Punch Correction (Missing Punch)", description: "Missing check-in or check-out punch", requestBy: "Employee", approvalRequired: false },
+  { id: "cat-early-late", name: "Early Check-in / Late Check-out", description: "Adjust early in or late out timings", requestBy: "Employee", approvalRequired: false },
+  { id: "cat-ot-compoff", name: "Overtime / Comp Off Request", description: "Request for overtime or compensatory off", requestBy: "Employee", approvalRequired: true },
+  { id: "cat-onduty", name: "On Duty / Official Work", description: "On duty, field work or official work", requestBy: "Employee", approvalRequired: true },
+  { id: "cat-shift-change", name: "Shift Change Request", description: "Request for shift change", requestBy: "Employee", approvalRequired: true },
+  { id: "cat-wfh", name: "Work From Home", description: "Request to work from home", requestBy: "Employee", approvalRequired: true },
+];
+
+export const DEFAULT_GRIEVANCE_TYPES: GrievanceTypeItem[] = [
+  { id: "grv-1", name: "Attendance Related", description: "Issues related to attendance, leaves", active: true },
+  { id: "grv-2", name: "Leave Permission", description: "Request for leave approval", active: true },
+  { id: "grv-3", name: "Salary / Payroll", description: "Salary, payroll and payment issues", active: true },
+  { id: "grv-4", name: "Manager Behavior", description: "Manager behavior or attitude issues", active: true },
+  { id: "grv-5", name: "Workplace Issues", description: "Work environment or facility issues", active: true },
+  { id: "grv-6", name: "Policy Violation", description: "Violations of company policies", active: true },
+  { id: "grv-7", name: "Benefits & Claims", description: "Insurance, reimbursement issues", active: true },
+  { id: "grv-8", name: "Others", description: "Any other grievance not listed above", active: true },
+];
+
+export const DEFAULT_DOCUMENT_CATEGORIES = [
+  { id: "doc-cat-letters", name: "Letters & Certificates", count: 8 },
+  { id: "doc-cat-confirm", name: "Confirmation", count: 2 },
+  { id: "doc-cat-move", name: "Movement", count: 3 },
+  { id: "doc-cat-disc", name: "Discipline", count: 4 },
+  { id: "doc-cat-exit", name: "Exit", count: 4 },
+  { id: "doc-cat-verif", name: "Verification", count: 5 },
+  { id: "doc-cat-comp", name: "Compliance", count: 3 },
+  { id: "doc-cat-custom", name: "Custom", count: 1 },
+];
+
+export const DEFAULT_DOCUMENT_TYPES: DocumentTypeItem[] = [
+  { id: "dt-1", name: "Offer Letter", description: "Pre-joining offer with CTC breakup.", workflow: "HR Manager → Director", active: true },
+  { id: "dt-2", name: "Appointment Letter", description: "Formal appointment with terms & salary breakup.", workflow: "HR Manager → Director", active: true },
+  { id: "dt-3", name: "Joining Report", description: "First-day joining acknowledgement.", workflow: "HR Manager", active: true },
+  { id: "dt-4", name: "Internship Letter", description: "Internship engagement letter.", workflow: "HR Manager", active: true },
+  { id: "dt-5", name: "Non-Disclosure & Confidentiality Agreement", description: "Confidentiality and IP undertaking.", workflow: "HR Manager", active: true },
+  { id: "dt-6", name: "Employee Code of Conduct & Workplace Ethics", description: "Workplace ethics, anti-harassment, and conduct standards.", workflow: "HR Manager", active: true },
+  { id: "dt-7", name: "Information Security & IT Usage Policy", description: "IT equipment, data protection, and cybersecurity rules.", workflow: "HR Manager", active: true },
+  { id: "dt-8", name: "Contract of Employment", description: "Full contract with terms.", workflow: "HR Manager", active: true },
+];
+
+export function getUpwardHierarchyChain(
+  targetEmployee: Employee,
+  employees: Employee[] = []
+): Employee[] {
+  const chain: Employee[] = [];
+  const visited = new Set<string>([targetEmployee.id]);
+  let currentManagerId: string | undefined = targetEmployee.managerId;
+
+  while (currentManagerId) {
+    if (visited.has(currentManagerId)) break; // Prevent cyclic loops
+    visited.add(currentManagerId);
+
+    const mgr = employees.find((e) => e.id === currentManagerId);
+    if (!mgr) break;
+    chain.push(mgr);
+    currentManagerId = mgr.managerId;
+  }
+
+  // If employee has a text reportingManager name but no managerId, try to match by name
+  if (chain.length === 0 && targetEmployee.reportingManager) {
+    const textMgr = employees.find(
+      (e) =>
+        e.id !== targetEmployee.id &&
+        targetEmployee.reportingManager &&
+        e.name.toLowerCase().includes(targetEmployee.reportingManager.toLowerCase().split("(")[0].trim())
+    );
+    if (textMgr) {
+      chain.push(textMgr);
+      // Try to traverse upward from textMgr
+      let curr = textMgr.managerId;
+      while (curr && !visited.has(curr)) {
+        visited.add(curr);
+        const nextM = employees.find((e) => e.id === curr);
+        if (!nextM) break;
+        chain.push(nextM);
+        curr = nextM.managerId;
+      }
+    }
+  }
+
+  // Fallback: If still empty (e.g. top CEO or isolated node), find default HR / Director
+  if (chain.length === 0) {
+    const defaultLead = employees.find(
+      (e) =>
+        e.id !== targetEmployee.id &&
+        (e.designation?.toLowerCase().includes("lead") ||
+          e.designation?.toLowerCase().includes("manager") ||
+          e.designation?.toLowerCase().includes("director") ||
+          e.department?.toLowerCase().includes("hr"))
+    );
+    if (defaultLead) chain.push(defaultLead);
+  }
+
+  return chain;
+}
+
+export function buildDefaultEmployeeApprovalSettings(
+  employee: Employee,
+  employees: Employee[] = []
+): EmployeeApprovalSettings {
+  const upwardChain = getUpwardHierarchyChain(employee, employees);
+
+  // Build upward hierarchy levels strictly from the upward chain above this employee
+  const hierarchyLevels: ApprovalFlowLevel[] = upwardChain.map((mgr, idx) => {
+    let roleLabel = "Reporting Manager (L1)";
+    if (idx === 1) roleLabel = "Department Head / Manager (L2)";
+    else if (idx === 2) roleLabel = "Director / VP (L3)";
+    else if (idx > 2) roleLabel = `${mgr.designation || "Executive"} (L${idx + 1})`;
+
+    return {
+      level: idx + 1,
+      approverId: mgr.id,
+      approverName: mgr.name,
+      role: mgr.designation || roleLabel,
+      roleId: `role-level-${idx + 1}`,
+      enabled: true,
+      isMandatory: true,
+    };
+  });
+
+  const defaultLevels: ApprovalFlowLevel[] =
+    hierarchyLevels.length > 0
+      ? hierarchyLevels
+      : [
+          {
+            level: 1,
+            approverId: undefined,
+            approverName: "Reporting Manager",
+            role: "Reporting Manager (L1)",
+            roleId: "role-team-lead",
+            enabled: true,
+            isMandatory: true,
+          },
+        ];
+
+  return {
+    attendance: {
+      categories: DEFAULT_ATTENDANCE_REQUEST_CATEGORIES,
+      approvalSource: "hierarchy",
+      levels: defaultLevels,
+      approvalType: "sequential",
+      autoEscalation: {
+        enabled: true,
+        days: 2,
+        action: "Move to next enabled approver",
+        lastApproverAction: "Send to Admin",
+        notifyAdmin: false,
+      },
+      additionalSettings: {
+        allowEmployeeCancel: true,
+        allowViewStatus: true,
+        sendEmailNotification: true,
+        sendReminderBeforeEscalation: true,
+        reminderHoursBeforeEscalation: 12,
+        mandatoryRejectionRemarks: false,
+        allowManualForward: true,
+      },
+    },
+    grievance: {
+      approvalSource: "hierarchy",
+      levels: defaultLevels,
+      approvalType: "sequential",
+      autoEscalation: {
+        enabled: true,
+        days: 2,
+        action: "Move to next enabled approver",
+        lastApproverAction: "Send to Admin",
+        notifyAdmin: false,
+      },
+      grievanceTypes: DEFAULT_GRIEVANCE_TYPES,
+    },
+    documentRequest: {
+      categories: DEFAULT_DOCUMENT_CATEGORIES,
+      documentTypes: DEFAULT_DOCUMENT_TYPES,
+      approvalSource: "hierarchy",
+      levels: defaultLevels,
+      approvalType: "sequential",
+      autoEscalation: {
+        enabled: true,
+        days: 2,
+        action: "Move to next enabled approver",
+        lastApproverAction: "Send to Admin",
+        notifyAdmin: false,
+      },
+      additionalSettings: {
+        allowEmployeeRaise: true,
+        allowViewStatus: true,
+        sendEmailNotification: true,
+        sendReminderBeforeEscalation: true,
+        reminderHoursBeforeEscalation: 12,
+        allowEmployeeCancel: true,
+        allowApproverComments: true,
+        allowApproverReject: true,
+        allowApproverRequestReupload: true,
+        autoCloseDaysAfterApproval: 30,
+        autoCloseEnabled: false,
+      },
+    },
+  };
+}
+
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
@@ -1123,6 +1600,7 @@ export const useStore = create<State>()(
       roles: DEFAULT_PREDEFINED_ROLES,
       vaultFolders: DEFAULT_VAULT_FOLDERS,
       vaultFiles: DEFAULT_VAULT_FILES,
+      grievances: [],
       addVaultFolder: (f) => {
         const folder: VaultFolder = {
           ...f,
@@ -1631,6 +2109,7 @@ export const useStore = create<State>()(
               roster: data.roster || [],
               vaultFolders: data.vaultFolders && data.vaultFolders.length ? data.vaultFolders : (get().vaultFolders?.length ? get().vaultFolders : DEFAULT_VAULT_FOLDERS),
               vaultFiles: data.vaultFiles && data.vaultFiles.length ? data.vaultFiles : (get().vaultFiles?.length ? get().vaultFiles : DEFAULT_VAULT_FILES),
+              grievances: data.grievances || [],
               demoMode: false,
             });
           } catch (_err) {}
@@ -1647,6 +2126,7 @@ export const useStore = create<State>()(
           docRequests: [],
           vaultFolders: DEFAULT_VAULT_FOLDERS,
           vaultFiles: DEFAULT_VAULT_FILES,
+          grievances: [],
           salaryRevisions: [],
           auditLog: [],
           roles: DEFAULT_PREDEFINED_ROLES,
@@ -1723,6 +2203,21 @@ export const useStore = create<State>()(
             syncItem("employees", { tenantId, ...emp, photoDataUrl: safePhotoUrl, faceRegistered: !!safePhotoUrl });
           };
           runRegisterAndSync();
+
+          // Send welcome email with Employee Code and auto-generated password
+          if (emp.email && emp.password) {
+            safeFetch("/api/employees/send-welcome-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: emp.email,
+                employeeName: emp.name,
+                empCode: emp.empCode,
+                password: emp.password,
+                companyName: company.name || "SwiftHR",
+              }),
+            }).catch((err) => console.warn("[WelcomeEmail] Error sending email:", err));
+          }
         }
 
         st.addAudit({
@@ -1907,6 +2402,27 @@ export const useStore = create<State>()(
         });
       },
       addLeave: (l) => {
+        const st = get();
+        // Balance guard: find matching leave type and check remaining entitlement.
+        // Pending + approved requests both count against the balance.
+        const matchedType = st.company.leaveTypes.find((lt) =>
+          l.type?.toLowerCase().includes(lt.name.toLowerCase().split(" ")[0])
+        );
+        if (matchedType) {
+          const bal = getLeaveBalance(matchedType, st.leaves, l.employeeId);
+          const requesting = typeof l.days === "string" ? parseFloat(l.days) : (l.days ?? 1);
+          const safeRequesting = isNaN(requesting) ? 1 : requesting;
+          if (bal.remaining < safeRequesting) {
+            // Return a rejected item — do NOT persist to DB or update state
+            return {
+              ...l,
+              id: l.id || crypto.randomUUID(),
+              status: "rejected" as const,
+              rejectedReason: `Insufficient leave balance. Remaining: ${bal.remaining} ${bal.unit}, requested: ${safeRequesting} ${bal.unit}.`,
+              appliedAt: l.appliedAt || new Date().toISOString(),
+            } as LeaveRequest;
+          }
+        }
         const item: LeaveRequest = {
           ...l,
           id: l.id || crypto.randomUUID(),
@@ -2274,6 +2790,223 @@ export const useStore = create<State>()(
       updateDemoTenant: (id, patch) =>
         set((s) => ({ demoTenants: s.demoTenants.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
       deleteDemoTenant: (id) => set((s) => ({ demoTenants: s.demoTenants.filter((t) => t.id !== id) })),
+      addGrievance: (g) => {
+        const tenantId = useAuth.getState().activeTenantId || "demo-tenant-1";
+        const ticket: GrievanceTicket = {
+          ...g,
+          id: crypto.randomUUID(),
+          tenantId,
+          ticketNumber: g.ticketNumber || `GRV-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`,
+          status: g.status || "Open",
+          thread: g.thread || [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        set((s) => ({ grievances: [ticket, ...s.grievances] }));
+        if (tenantId && !get().demoMode) {
+          syncItem("grievances", ticket);
+        }
+        return ticket;
+      },
+      updateGrievance: (id, patch) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        const nextGrievances = get().grievances.map((g) =>
+          g.id === id ? { ...g, ...patch, updatedAt: new Date().toISOString() } : g
+        );
+        set({ grievances: nextGrievances });
+        const updated = nextGrievances.find((g) => g.id === id);
+        if (tenantId && updated && !get().demoMode) {
+          syncItem("grievances", updated);
+        }
+      },
+      deleteGrievance: (id) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        set((s) => ({ grievances: s.grievances.filter((g) => g.id !== id) }));
+        if (tenantId && !get().demoMode) {
+          syncDelete("grievances", tenantId, id);
+        }
+      },
+      addGrievanceMessage: (ticketId, msg) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        const newMsg: GrievanceMessage = {
+          ...msg,
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+        };
+        const nextGrievances = get().grievances.map((g) => {
+          if (g.id !== ticketId) return g;
+          return {
+            ...g,
+            thread: [...(g.thread || []), newMsg],
+            updatedAt: new Date().toISOString(),
+          };
+        });
+        set({ grievances: nextGrievances });
+        const updated = nextGrievances.find((g) => g.id === ticketId);
+        if (tenantId && updated && !get().demoMode) {
+          syncItem("grievances", updated);
+        }
+      },
+      updateEmployeeApprovalSettings: (employeeId, settings) => {
+        const st = get();
+        const emp = st.employees.find((e) => e.id === employeeId);
+        if (!emp) return;
+        const nextSettings: EmployeeApprovalSettings = {
+          ...(emp.approvalSettings || {}),
+          ...settings,
+        };
+        st.updateEmployee(employeeId, { approvalSettings: nextSettings });
+      },
+      actOnLeaveApprovalStep: (leaveId, action, comment, actorName, actorRole) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        const targetLeave = get().leaves.find((l) => l.id === leaveId);
+        if (!targetLeave) return;
+
+        const currentLvl = targetLeave.currentLevel || 1;
+        const totalLvls = targetLeave.totalLevels || targetLeave.approvalSteps?.length || 3;
+        const now = new Date().toISOString();
+
+        if (action === "reject") {
+          const updatedSteps = (targetLeave.approvalSteps || []).map((step) => {
+            if (step.level === currentLvl) {
+              return {
+                ...step,
+                status: "Rejected" as const,
+                approverName: actorName,
+                comment: comment || `Rejected by ${actorRole || "Approver"}`,
+                actionAt: now,
+              };
+            }
+            return step;
+          });
+
+          const updatedLeave: LeaveRequest = {
+            ...targetLeave,
+            status: "rejected",
+            rejectedReason: comment || `Rejected by ${actorRole} (${actorName})`,
+            actedBy: actorName,
+            actedByRole: actorRole,
+            approverComment: comment,
+            approvalSteps: updatedSteps,
+          };
+          set((s) => ({
+            leaves: s.leaves.map((l) => (l.id === leaveId ? updatedLeave : l)),
+          }));
+          if (tenantId && !get().demoMode) {
+            syncItem("leaves", updatedLeave);
+          }
+          return;
+        }
+
+        if (action === "approve_close") {
+          // Immediately approve the entire request and complete all steps
+          const updatedSteps = (targetLeave.approvalSteps || []).map((step) => {
+            if (step.level <= currentLvl) {
+              return {
+                ...step,
+                status: "Approved" as const,
+                approverName: step.level === currentLvl ? actorName : step.approverName,
+                comment: step.level === currentLvl ? (comment || "Approved & Closed") : step.comment,
+                actionAt: step.level === currentLvl ? now : step.actionAt,
+              };
+            }
+            return {
+              ...step,
+              status: "Approved" as const,
+              approverName: `Auto-approved by ${actorName}`,
+              comment: "Closed by earlier stage authority",
+              actionAt: now,
+            };
+          });
+
+          const updatedLeave: LeaveRequest = {
+            ...targetLeave,
+            status: "approved",
+            currentLevel: totalLvls,
+            approvedBy: actorName,
+            actedBy: actorName,
+            actedByRole: actorRole,
+            approverComment: comment || "Approved & Closed directly",
+            approvalSteps: updatedSteps,
+          };
+
+          set((s) => ({
+            leaves: s.leaves.map((l) => (l.id === leaveId ? updatedLeave : l)),
+          }));
+          if (tenantId && !get().demoMode) {
+            syncItem("leaves", updatedLeave);
+          }
+          return;
+        }
+
+        if (action === "escalate") {
+          const isFinal = currentLvl >= totalLvls;
+          const nextLevel = isFinal ? currentLvl : currentLvl + 1;
+
+          const updatedSteps = (targetLeave.approvalSteps || []).map((step) => {
+            if (step.level === currentLvl) {
+              return {
+                ...step,
+                status: "Pending" as const,
+                comment: `Escalated to Level ${nextLevel}: ${comment || "No action within window"}`,
+                actionAt: now,
+              };
+            }
+            return step;
+          });
+
+          const updatedLeave: LeaveRequest = {
+            ...targetLeave,
+            currentLevel: nextLevel,
+            approverComment: `Escalated to Level ${nextLevel}`,
+            approvalSteps: updatedSteps,
+          };
+
+          set((s) => ({
+            leaves: s.leaves.map((l) => (l.id === leaveId ? updatedLeave : l)),
+          }));
+          if (tenantId && !get().demoMode) {
+            syncItem("leaves", updatedLeave);
+          }
+          return;
+        }
+
+        // Default: approve_forward / approve
+        const isFinalLevel = currentLvl >= totalLvls;
+        const nextLevel = isFinalLevel ? currentLvl : currentLvl + 1;
+        const finalStatus = isFinalLevel ? "approved" : "pending";
+
+        const updatedSteps = (targetLeave.approvalSteps || []).map((step) => {
+          if (step.level === currentLvl) {
+            return {
+              ...step,
+              status: "Approved" as const,
+              approverName: actorName,
+              comment: comment || "Approved & Forwarded",
+              actionAt: now,
+            };
+          }
+          return step;
+        });
+
+        const updatedLeave: LeaveRequest = {
+          ...targetLeave,
+          status: finalStatus as any,
+          currentLevel: nextLevel,
+          approvedBy: isFinalLevel ? actorName : targetLeave.approvedBy,
+          actedBy: actorName,
+          actedByRole: actorRole,
+          approverComment: comment,
+          approvalSteps: updatedSteps,
+        };
+
+        set((s) => ({
+          leaves: s.leaves.map((l) => (l.id === leaveId ? updatedLeave : l)),
+        }));
+        if (tenantId && !get().demoMode) {
+          syncItem("leaves", updatedLeave);
+        }
+      },
       exitDemo: () => set({ currentUser: null, demoMode: false, demoSuper: false }),
     }),
     {
