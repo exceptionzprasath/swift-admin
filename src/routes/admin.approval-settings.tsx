@@ -1,13 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
-import { useStore, type Employee, type PredefinedRole } from "@/lib/store";
+import { useState, useMemo, useEffect } from "react";
+import { useStore, getBackendUrl, getUpwardHierarchyChain, type Employee, type PredefinedRole } from "@/lib/store";
 import {
-  CalendarCheck, MessageSquareHeart, FileText, Banknote,
+  DEFAULT_DOCUMENT_TEMPLATES,
+  PLACEHOLDER_VARIABLES,
+  substitutePlaceholders,
+  type PlaceholderVariable,
+} from "@/lib/document-templates";
+import {
+  CalendarCheck, MessageSquareHeart, FileText, Banknote, Coffee,
   Plus, Check, ChevronRight, ChevronDown, SlidersHorizontal, Trash2, ArrowDown,
-  Sparkles, Save, UserCheck, ShieldCheck, Mail, Send, Eye,
+  Sparkles, Save, UserCheck, ShieldCheck, Mail, Send, Eye, Download,
   RefreshCw, CheckCircle2, XCircle, Zap, Clock, Info, GripVertical,
   HelpCircle, UserPlus, FileSignature, AlertCircle, Search, Edit3,
-  Users as UsersIcon, MoreVertical, Folder,
+  Users as UsersIcon, MoreVertical, Folder, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +33,7 @@ export const Route = createFileRoute("/admin/approval-settings")({
   component: CentralizedApprovalSettingsPage,
 });
 
-export type MainCategoryTab = "attendance" | "grievance" | "documents" | "loan";
+export type MainCategoryTab = "attendance" | "grievance" | "documents" | "loan" | "compoff";
 
 export type ApprovalTypeMode = "sequential" | "all" | "any";
 
@@ -61,6 +67,12 @@ export type WorkflowTypeItem = {
   manualSteps: ManualApprovalStep[];
   emailSubjectTemplate?: string;
   emailBodyTemplate?: string;
+  documentSubject?: string;
+  documentTemplate?: string;
+  signatoryName?: string;
+  signatoryRole?: string;
+  allowDownload?: boolean;
+  allowEmployeeRequest?: boolean;
 };
 
 // Initial default workflows for each category
@@ -99,7 +111,7 @@ const INITIAL_WORKFLOWS: Record<MainCategoryTab, WorkflowTypeItem[]> = {
       finalLevelAction: "approve_send",
       emailDelivery: true,
       manualSteps: [
-        { id: "step-1", name: "Arjun Verma", role: "HR Manager", department: "Human Resources", permission: "approve_edit", embedSignature: true },
+        { id: "step-1", name: "HR Manager", role: "HR Manager", department: "Human Resources", permission: "approve_edit", embedSignature: true },
         { id: "step-2", name: "Reporting Manager", role: "Reporting Manager", department: "Manager", permission: "approve_only", embedSignature: true },
         { id: "step-3", name: "Department Head", role: "Head of Department", department: "Operations", permission: "approve_only", embedSignature: true },
         { id: "step-4", name: "Finance Manager", role: "Finance Manager", department: "Finance Department", permission: "approve_only", embedSignature: true },
@@ -605,6 +617,53 @@ const INITIAL_WORKFLOWS: Record<MainCategoryTab, WorkflowTypeItem[]> = {
       manualSteps: [],
     },
   ],
+  compoff: [
+    {
+      id: "compoff-weekend",
+      name: "Weekend Duty Comp-Off",
+      category: "Comp-Off Request",
+      description: "Claim compensatory leave credit for working on scheduled weekly off days (Saturday/Sunday).",
+      active: true,
+      approvalType: "sequential",
+      escalationDays: 2,
+      escalationAction: "Move to next approver",
+      workflowMode: "manual",
+      finalLevelAction: "approve_only",
+      emailDelivery: true,
+      manualSteps: [
+        { id: "co-1", name: "Reporting Manager", role: "Direct Manager", department: "Management", permission: "approve_only", embedSignature: false },
+        { id: "co-2", name: "HR Manager", role: "HR Head", department: "Human Resources", permission: "final_approve", embedSignature: true },
+      ],
+    },
+    {
+      id: "compoff-holiday",
+      name: "Gazetted Holiday Comp-Off",
+      category: "Comp-Off Request",
+      description: "Permission and leave balance crediting for emergency support during national / company public holidays.",
+      active: true,
+      approvalType: "sequential",
+      escalationDays: 2,
+      escalationAction: "Move to next approver",
+      workflowMode: "auto",
+      finalLevelAction: "approve_only",
+      emailDelivery: true,
+      manualSteps: [],
+    },
+    {
+      id: "compoff-urgent-overtime",
+      name: "Urgent Project / Night Shift Comp-Off",
+      category: "Comp-Off Request",
+      description: "Compensatory time off awarded for critical production release duty or extended overnight shifts.",
+      active: true,
+      approvalType: "any",
+      escalationDays: 1,
+      escalationAction: "Move to next approver",
+      workflowMode: "auto",
+      finalLevelAction: "approve_only",
+      emailDelivery: true,
+      manualSteps: [],
+    },
+  ],
 };
 
 function CentralizedApprovalSettingsPage() {
@@ -615,8 +674,14 @@ function CentralizedApprovalSettingsPage() {
 
   // Workflows state by category
   const [workflows, setWorkflows] = useState<Record<MainCategoryTab, WorkflowTypeItem[]>>(() => {
-    // If company has stored workflows, restore them, else default to INITIAL_WORKFLOWS
-    return (company as any).approvalWorkflows || INITIAL_WORKFLOWS;
+    const stored = (company as any)?.approvalWorkflows;
+    return {
+      documents: (stored?.documents && stored.documents.length > 0) ? stored.documents : INITIAL_WORKFLOWS.documents,
+      attendance: (stored?.attendance && stored.attendance.length > 0) ? stored.attendance : INITIAL_WORKFLOWS.attendance,
+      grievance: (stored?.grievance && stored.grievance.length > 0) ? stored.grievance : INITIAL_WORKFLOWS.grievance,
+      loan: (stored?.loan && stored.loan.length > 0) ? stored.loan : INITIAL_WORKFLOWS.loan,
+      compoff: (stored?.compoff && stored.compoff.length > 0) ? stored.compoff : INITIAL_WORKFLOWS.compoff,
+    };
   });
 
   // Selected Type inside active Category
@@ -624,6 +689,30 @@ function CentralizedApprovalSettingsPage() {
     const list = workflows.documents || INITIAL_WORKFLOWS.documents;
     return list[0]?.id || "";
   });
+
+  // Keep workflows in sync with company store and backfill missing categories
+  useEffect(() => {
+    setWorkflows((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      (Object.keys(INITIAL_WORKFLOWS) as MainCategoryTab[]).forEach((cat) => {
+        if (!next[cat] || next[cat].length === 0) {
+          const storedCat = (company as any)?.approvalWorkflows?.[cat];
+          next[cat] = (storedCat && storedCat.length > 0) ? storedCat : INITIAL_WORKFLOWS[cat];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [company]);
+
+  // Ensure an item is always selected when changing tabs or loading items
+  useEffect(() => {
+    const list = (workflows[activeTab] && workflows[activeTab].length > 0) ? workflows[activeTab] : (INITIAL_WORKFLOWS[activeTab] || []);
+    if (list.length > 0 && (!selectedTypeId || !list.some((item) => item.id === selectedTypeId))) {
+      setSelectedTypeId(list[0].id);
+    }
+  }, [activeTab, workflows, selectedTypeId]);
 
   // Filter Search in Type list
   const [typeSearch, setTypeSearch] = useState("");
@@ -662,7 +751,7 @@ function CentralizedApprovalSettingsPage() {
   const [extRole, setExtRole] = useState("External Auditor / Consultant");
 
   // Get active items list for current tab
-  const currentCategoryList = workflows[activeTab] || [];
+  const currentCategoryList = (workflows[activeTab] && workflows[activeTab].length > 0) ? workflows[activeTab] : (INITIAL_WORKFLOWS[activeTab] || []);
 
   // Active selected workflow item
   const activeItem = useMemo(() => {
@@ -673,7 +762,7 @@ function CentralizedApprovalSettingsPage() {
   // Handler when switching main tab
   const handleTabChange = (tab: MainCategoryTab) => {
     setActiveTab(tab);
-    const list = workflows[tab] || [];
+    const list = (workflows[tab] && workflows[tab].length > 0) ? workflows[tab] : (INITIAL_WORKFLOWS[tab] || []);
     if (list.length > 0) {
       setSelectedTypeId(list[0].id);
     }
@@ -691,6 +780,47 @@ function CentralizedApprovalSettingsPage() {
       });
       return { ...prev, [activeTab]: list };
     });
+  };
+
+  // Helper to directly toggle show/hide (active) on any item and auto-sync
+  const toggleItemActive = (itemId: string, forceActive?: boolean) => {
+    setWorkflows((prev) => {
+      const list = prev[activeTab].map((item) => {
+        if (item.id === itemId) {
+          const nextActive = forceActive !== undefined ? forceActive : !item.active;
+          return { ...item, active: nextActive };
+        }
+        return item;
+      });
+
+      const nextWorkflows = { ...prev, [activeTab]: list };
+      setCompany({
+        ...company,
+        approvalWorkflows: nextWorkflows as any,
+        grievanceTypes: nextWorkflows.grievance.map((g) => ({
+          id: g.id,
+          name: g.name,
+          description: g.description,
+          active: g.active,
+        })),
+        documentTypes: nextWorkflows.documents.map((d) => ({
+          id: d.id,
+          name: d.name,
+          description: d.description,
+          workflow: d.workflowMode === "auto" ? "Hierarchical (Auto)" : "Custom Manual",
+          active: d.active,
+        })),
+      });
+
+      return nextWorkflows;
+    });
+
+    const isNowActive = forceActive !== undefined ? forceActive : true;
+    toast.success(
+      isNowActive
+        ? "Document set to Active (Visible in Employee App)!"
+        : "Document set to Hidden (Hidden from Employee App)!"
+    );
   };
 
   // Document Groups memo for Documents Accordion
@@ -835,18 +965,16 @@ function CentralizedApprovalSettingsPage() {
   };
 
   // Save Settings Globally to Company & DynamoDB
-  const handleSaveAllSettings = () => {
-    setCompany({
+  const handleSaveAllSettings = async () => {
+    const updatedCompany = {
       ...company,
       approvalWorkflows: workflows as any,
-      // Sync grievanceTypes if on grievance tab
       grievanceTypes: workflows.grievance.map((g) => ({
         id: g.id,
         name: g.name,
         description: g.description,
         active: g.active,
       })),
-      // Sync documentTypes if on documents tab
       documentTypes: workflows.documents.map((d) => ({
         id: d.id,
         name: d.name,
@@ -854,35 +982,201 @@ function CentralizedApprovalSettingsPage() {
         workflow: d.workflowMode === "auto" ? "Hierarchical (Auto)" : "Custom Manual",
         active: d.active,
       })),
-    });
+    };
+
+    setCompany(updatedCompany);
+
+    try {
+      const tenantId = (company as any)?.tenantId || "superadmin";
+      await fetch(`${getBackendUrl()}/api/companies/approval-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId, workflows }),
+      });
+    } catch (_err) {}
+
     toast.success("✨ Centralized Approval & Request Workflows saved successfully!");
   };
 
-  // Filtered available employees & authorities for right panel
+  // State for Document Template Editor Modal & AI Assistant
+  const [docTemplateModalOpen, setDocTemplateModalOpen] = useState(false);
+  const [editingDocSubject, setEditingDocSubject] = useState("");
+  const [editingDocContent, setEditingDocContent] = useState("");
+  const [editingDocSignatoryName, setEditingDocSignatoryName] = useState("Dr. K. Anand");
+  const [editingDocSignatoryRole, setEditingDocSignatoryRole] = useState("Head of Human Resources & Operations");
+  const [previewEmployeeId, setPreviewEmployeeId] = useState<string>("");
+  const [placeholderCategory, setPlaceholderCategory] = useState<string>("all");
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+
+  const previewEmployee = useMemo(() => {
+    if (previewEmployeeId) {
+      return employees.find((e) => e.id === previewEmployeeId) || employees[0] || null;
+    }
+    return employees[0] || null;
+  }, [employees, previewEmployeeId]);
+
+  const handleOpenDocTemplateModal = (item: WorkflowTypeItem) => {
+    const defaultTemplate = DEFAULT_DOCUMENT_TEMPLATES[item.id] || {
+      subject: `${item.name} — {{employee_name}}`,
+      content: `Date: {{current_date}}\n\nTo,\n{{employee_name}} ({{employee_code}})\n{{designation}} - {{department}}\n\nSubject: ${item.name}\n\nThis is an official document letter issued to {{employee_name}} from {{company_name}}.\n\nFor {{company_name}}\n\n{{authorized_signatory_name}}\n{{authorized_signatory_designation}}`,
+    };
+
+    setEditingDocSubject(item.documentSubject || defaultTemplate.subject);
+    setEditingDocContent(item.documentTemplate || defaultTemplate.content);
+    setEditingDocSignatoryName(item.signatoryName || "Dr. K. Anand");
+    setEditingDocSignatoryRole(item.signatoryRole || "Head of Human Resources & Operations");
+    setAiInstruction("");
+    setAiSummary(null);
+    setDocTemplateModalOpen(true);
+  };
+
+  const handleAiAutoTagDocument = async (customInstruction?: string) => {
+    if (!editingDocContent && !customInstruction) {
+      toast.error("Please enter or paste some letter content for AI to analyze.");
+      return;
+    }
+
+    setIsAiProcessing(true);
+    setAiSummary(null);
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/ai/auto-tag-document`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentName: activeItem?.name || "Official Document",
+          documentSubject: editingDocSubject,
+          rawContent: editingDocContent,
+          instruction: customInstruction || aiInstruction || "Analyze the text format and automatically place all appropriate SwiftHR dynamic placeholders in their exact locations.",
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "AI failed to process document template");
+      }
+
+      if (data.subject) setEditingDocSubject(data.subject);
+      if (data.content) setEditingDocContent(data.content);
+      if (data.signatoryName) setEditingDocSignatoryName(data.signatoryName);
+      if (data.signatoryRole) setEditingDocSignatoryRole(data.signatoryRole);
+
+      const count = data.detectedPlaceholders?.length || 0;
+      setAiSummary(data.summaryOfChanges || `Successfully analyzed format and injected ${count} dynamic placeholders.`);
+      toast.success(`✨ Swift AI auto-injected placeholders and polished the document!`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to process with AI");
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
+  const handleInsertPlaceholder = (placeholderKey: string) => {
+    setEditingDocContent((prev) => prev + " " + placeholderKey);
+    toast.success(`Inserted ${placeholderKey}`);
+  };
+
+  const handleResetToDefaultTemplate = () => {
+    if (!activeItem) return;
+    const defaultTemplate = DEFAULT_DOCUMENT_TEMPLATES[activeItem.id];
+    if (defaultTemplate) {
+      setEditingDocSubject(defaultTemplate.subject);
+      setEditingDocContent(defaultTemplate.content);
+      toast.info("Reset to default standard template.");
+    }
+  };
+
+  const handleSaveDocTemplate = () => {
+    if (!activeItem) return;
+    updateActiveItem({
+      documentSubject: editingDocSubject,
+      documentTemplate: editingDocContent,
+      signatoryName: editingDocSignatoryName,
+      signatoryRole: editingDocSignatoryRole,
+    });
+    setDocTemplateModalOpen(false);
+    toast.success("✨ Document Template saved! Click 'Save Settings' to sync globally.");
+  };
+
+  const handleDownloadTestPDF = async () => {
+    if (!activeItem) return;
+    setIsDownloadingPdf(true);
+    try {
+      const tenantId = (company as any)?.tenantId || "superadmin";
+      const targetEmp = previewEmployee || employees[0];
+      const res = await fetch(`${getBackendUrl()}/api/documents/generate-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-tenant-id": tenantId },
+        body: JSON.stringify({
+          tenantId,
+          employeeId: targetEmp?.id || targetEmp?.empCode,
+          docId: activeItem.id,
+          subject: editingDocSubject,
+          content: editingDocContent,
+          signatoryName: editingDocSignatoryName,
+          signatoryRole: editingDocSignatoryRole,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to generate PDF");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${activeItem.name.replace(/\s+/g, "_")}_${targetEmp?.name?.replace(/\s+/g, "_") || "Sample"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success("✨ Official PDF downloaded successfully with real employee data!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to download PDF");
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
+  // Selected sample employee for live hierarchy simulation in Auto Flow
+  const [selectedHierarchyEmpId, setSelectedHierarchyEmpId] = useState<string>("");
+
+  const sampleEmployee = useMemo(() => {
+    if (selectedHierarchyEmpId) {
+      return employees.find((e) => e.id === selectedHierarchyEmpId) || employees[0] || null;
+    }
+    // Prefer employee who has a manager to demonstrate real upward levels
+    return employees.find((e) => !!e.managerId) || employees[0] || null;
+  }, [employees, selectedHierarchyEmpId]);
+
+  const upwardChain = useMemo(() => {
+    if (!sampleEmployee) return [];
+    return getUpwardHierarchyChain(sampleEmployee, employees);
+  }, [sampleEmployee, employees]);
+
+  // Filtered available employees & authorities for right panel - strictly from real company database
   const filteredApprovers = useMemo(() => {
     const q = approverSearch.toLowerCase().trim();
-    const defaults = [
-      { name: "Arjun Verma", role: "HR Manager", department: "Human Resources" },
-      { name: "Pooja Iyer", role: "Finance Manager", department: "Finance" },
-      { name: "Karan Malhotra", role: "Department Head", department: "Operations" },
-      { name: "Neha Gupta", role: "Compliance Manager", department: "Compliance & Legal" },
-      { name: "Sanjay Rao", role: "Admin Manager", department: "General Administration" },
-      { name: "Vikram Mehta", role: "Director / VP", department: "Executive Board" },
-      { name: "MD / CEO", role: "Top Level Authority", department: "Executive Board" },
-    ];
 
+    // Pull from real registered employees
     const fromEmployees = (employees || []).map((e) => ({
       id: e.id,
       name: e.name,
-      role: e.designation || "Staff",
+      role: e.designation || "Employee",
       department: e.department || "General",
+      empCode: e.empCode,
+      photoDataUrl: e.photoDataUrl,
     }));
 
-    const merged = [...fromEmployees, ...defaults];
-    const unique = Array.from(new Map(merged.map((m) => [m.name, m])).values());
-
-    if (!q) return unique;
-    return unique.filter((a) => a.name.toLowerCase().includes(q) || a.role.toLowerCase().includes(q) || a.department.toLowerCase().includes(q));
+    if (!q) return fromEmployees;
+    return fromEmployees.filter(
+      (a) =>
+        a.name.toLowerCase().includes(q) ||
+        a.role.toLowerCase().includes(q) ||
+        a.department.toLowerCase().includes(q) ||
+        (a.empCode && a.empCode.toLowerCase().includes(q))
+    );
   }, [employees, approverSearch]);
 
   const filteredTypeList = useMemo(() => {
@@ -906,10 +1200,11 @@ function CentralizedApprovalSettingsPage() {
             {activeTab === "grievance" && <MessageSquareHeart className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />}
             {activeTab === "attendance" && <CalendarCheck className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />}
             {activeTab === "loan" && <Banknote className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />}
-            {activeTab === "loan" ? "Advance Loan Request" : activeTab} Approval Settings
+            {activeTab === "compoff" && <Coffee className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />}
+            {activeTab === "loan" ? "Advance Loan Request" : activeTab === "compoff" ? "Comp-Off" : activeTab} Approval Settings
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Configure approval workflow, escalation and final level action for {activeTab === "documents" ? "documents" : activeTab === "grievance" ? "grievance requests" : activeTab === "attendance" ? "attendance related requests" : "employee advance loan requests"}.
+            Configure approval workflow, escalation and final level action for {activeTab === "documents" ? "documents" : activeTab === "grievance" ? "grievance requests" : activeTab === "attendance" ? "attendance related requests" : activeTab === "loan" ? "employee advance loan requests" : "compensatory off leave credit requests"}.
           </p>
         </div>
 
@@ -932,7 +1227,7 @@ function CentralizedApprovalSettingsPage() {
         </div>
       </div>
 
-      {/* Top 4 Primary Category Tabs */}
+      {/* Top 5 Primary Category Tabs */}
       <div className="flex items-center gap-2 border-b border-border pb-2 overflow-x-auto">
         <button
           onClick={() => handleTabChange("attendance")}
@@ -974,6 +1269,16 @@ function CentralizedApprovalSettingsPage() {
         >
           <Banknote className="h-4 w-4" /> Advance Loan Request
         </button>
+        <button
+          onClick={() => handleTabChange("compoff")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+            activeTab === "compoff"
+              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shadow-xs"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Coffee className="h-4 w-4" /> Comp-Off
+        </button>
       </div>
 
       {/* Main 2-Panel / 3-Column Studio Grid */}
@@ -982,7 +1287,7 @@ function CentralizedApprovalSettingsPage() {
         <div className="lg:col-span-3 rounded-2xl border border-border bg-card p-4 space-y-4 shadow-soft">
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold text-foreground">
-              Select {activeTab === "documents" ? "Document" : activeTab === "grievance" ? "Grievance" : activeTab === "attendance" ? "Attendance Request" : "Loan Request"}
+              Select {activeTab === "documents" ? "Document" : activeTab === "grievance" ? "Grievance" : activeTab === "attendance" ? "Attendance Request" : activeTab === "loan" ? "Loan Request" : "Comp-Off Request"}
             </span>
             <Button
               size="sm"
@@ -1049,19 +1354,16 @@ function CentralizedApprovalSettingsPage() {
                                 <span className="text-[11.5px] truncate">{typeItem.name}</span>
                               </div>
 
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Active
+                              <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <span className={`text-[10px] font-bold ${typeItem.active !== false ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                                  {typeItem.active !== false ? "Shown" : "Hidden"}
                                 </span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toast.info(`Configuring ${typeItem.name}`);
-                                  }}
-                                  className="text-muted-foreground hover:text-foreground p-0.5"
-                                >
-                                  <MoreVertical className="h-3 w-3" />
-                                </button>
+                                <Switch
+                                  checked={typeItem.active !== false}
+                                  onCheckedChange={(checked) => toggleItemActive(typeItem.id, checked)}
+                                  className="scale-75 origin-right data-[state=checked]:bg-emerald-600"
+                                  title={typeItem.active !== false ? "Visible in Employee App (Click to hide)" : "Hidden in Employee App (Click to show)"}
+                                />
                               </div>
                             </div>
                           );
@@ -1076,7 +1378,7 @@ function CentralizedApprovalSettingsPage() {
             /* NON-DOCUMENTS TABS: Standard List */
             <div className="space-y-1.5 max-h-[640px] overflow-y-auto pr-1">
               <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground px-1 pb-1">
-                <span>All {activeTab === "grievance" ? "Grievance Types" : activeTab === "attendance" ? "Attendance Requests" : "Loan Request Types"}</span>
+                <span>All {activeTab === "grievance" ? "Grievance Types" : activeTab === "attendance" ? "Attendance Requests" : activeTab === "compoff" ? "Comp-Off Request Types" : "Loan Request Types"}</span>
                 <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-bold">
                   {currentCategoryList.length}
                 </Badge>
@@ -1099,10 +1401,16 @@ function CentralizedApprovalSettingsPage() {
                       <span className="text-xs truncate">{typeItem.name}</span>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Active
+                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <span className={`text-[10px] font-bold ${typeItem.active !== false ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                        {typeItem.active !== false ? "Shown" : "Hidden"}
                       </span>
+                      <Switch
+                        checked={typeItem.active !== false}
+                        onCheckedChange={(checked) => toggleItemActive(typeItem.id, checked)}
+                        className="scale-75 origin-right data-[state=checked]:bg-emerald-600"
+                        title={typeItem.active !== false ? "Visible in Employee App (Click to hide)" : "Hidden in Employee App (Click to show)"}
+                      />
                     </div>
                   </div>
                 );
@@ -1117,25 +1425,90 @@ function CentralizedApprovalSettingsPage() {
             {/* Header of selected type */}
             <div className="rounded-2xl border border-border bg-card p-5 shadow-soft flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-3">
                   <h2 className="text-xl font-bold font-display text-foreground">{activeItem.name}</h2>
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] font-bold">
-                    Active
-                  </Badge>
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-xl border border-border bg-muted/20 shadow-2xs">
+                    <span className={`text-xs font-bold ${activeItem.active !== false ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                      {activeItem.active !== false ? "👁️ Visible in App" : "🚫 Hidden from App"}
+                    </span>
+                    <Switch
+                      checked={activeItem.active !== false}
+                      onCheckedChange={(checked) => {
+                        updateActiveItem({ active: checked });
+                        toggleItemActive(activeItem.id, checked);
+                      }}
+                      className="data-[state=checked]:bg-emerald-600"
+                    />
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Category: <span className="font-semibold text-foreground">{activeItem.name}</span> · {activeItem.description}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {activeTab === "documents" && (
+                  <>
+                    {/* Can be downloaded? Toggle */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card shadow-2xs">
+                      <span className="text-xs font-semibold text-foreground whitespace-nowrap">Can be downloaded?</span>
+                      <Switch
+                        checked={activeItem.allowDownload !== false}
+                        onCheckedChange={(checked) => {
+                          updateActiveItem({ allowDownload: checked });
+                          const updatedDocs = ((company as any)?.approvalWorkflows?.documents || []).map((d: any) =>
+                            d.id === activeItem.id ? { ...d, allowDownload: checked } : d
+                          );
+                          setCompany({
+                            ...company,
+                            approvalWorkflows: { ...((company as any)?.approvalWorkflows || {}), documents: updatedDocs } as any,
+                          });
+                          toast.success(checked ? "Document download enabled for employees" : "Document download disabled");
+                        }}
+                        className="data-[state=checked]:bg-emerald-600 scale-90"
+                        title="Allow employee to download this document/letter directly in the app"
+                      />
+                    </div>
+
+                    {/* Request by employee Toggle */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card shadow-2xs">
+                      <span className="text-xs font-semibold text-foreground whitespace-nowrap">Request by employee</span>
+                      <Switch
+                        checked={activeItem.allowEmployeeRequest !== false}
+                        onCheckedChange={(checked) => {
+                          updateActiveItem({ allowEmployeeRequest: checked });
+                          const updatedDocs = ((company as any)?.approvalWorkflows?.documents || []).map((d: any) =>
+                            d.id === activeItem.id ? { ...d, allowEmployeeRequest: checked } : d
+                          );
+                          setCompany({
+                            ...company,
+                            approvalWorkflows: { ...((company as any)?.approvalWorkflows || {}), documents: updatedDocs } as any,
+                          });
+                          toast.success(checked ? "Employee requesting enabled for this document" : "Employee requesting disabled");
+                        }}
+                        className="data-[state=checked]:bg-emerald-600 scale-90"
+                        title="Allow employee to submit a formal request for this document in the app"
+                      />
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 rounded-xl text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-2xs"
+                      onClick={() => handleOpenDocTemplateModal(activeItem)}
+                    >
+                      <Edit3 className="h-3.5 w-3.5 mr-1.5" /> Edit Document Template 📝
+                    </Button>
+                  </>
+                )}
+
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-8 px-3 rounded-xl text-xs font-semibold bg-card border-border hover:bg-muted"
                   onClick={() => {
-                    setEmailSubject(`Notification: ${activeItem.name} Approved`);
-                    setEmailBody(`Hello {{employee_name}},\n\nYour request for "${activeItem.name}" has been officially approved and processed.\n\nBest regards,\nHR & Management Team`);
+                    setEmailSubject(activeItem.emailSubjectTemplate || `Notification: ${activeItem.name} Approved`);
+                    setEmailBody(activeItem.emailBodyTemplate || `Hello {{employee_name}},\n\nYour request for "${activeItem.name}" has been officially approved and processed.\n\nBest regards,\nHR & Management Team`);
                     setEmailTemplateOpen(true);
                   }}
                 >
@@ -1286,230 +1659,248 @@ function CentralizedApprovalSettingsPage() {
 
               {/* TAB 1 CONTENT: AUTO APPROVAL FLOW (HIERARCHICAL) */}
               {activeItem.workflowMode === "auto" && (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2">
-                  {/* Left Flow Stack (7 cols) */}
-                  <div className="lg:col-span-7 space-y-4">
-                    <div className="space-y-3">
-                      {/* Step 1 */}
-                      <div className="p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 grid place-items-center">
-                            <UserCheck className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-foreground">Reporting Manager (Level 1)</div>
-                            <div className="text-[11px] text-muted-foreground">Direct Manager</div>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20 text-[10px] font-bold">
-                          Auto
-                        </Badge>
+                <div className="space-y-4 pt-2">
+                  {/* Live Simulation Top Employee Selector */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-muted/20 border border-border">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-8 w-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 grid place-items-center shrink-0">
+                        <UsersIcon className="h-4 w-4" />
                       </div>
-
-                      <div className="grid place-items-center text-muted-foreground py-0.5">
-                        <ArrowDown className="h-4 w-4 text-emerald-600" />
-                      </div>
-
-                      {/* Step 2 */}
-                      <div className="p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 grid place-items-center">
-                            <UserCheck className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-foreground">Reporting Manager (Level 2)</div>
-                            <div className="text-[11px] text-muted-foreground">Manager's Manager</div>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20 text-[10px] font-bold">
-                          Auto
-                        </Badge>
-                      </div>
-
-                      <div className="grid place-items-center text-muted-foreground py-0.5">
-                        <ArrowDown className="h-4 w-4 text-emerald-600" />
-                      </div>
-
-                      {/* Step 3 */}
-                      <div className="p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 grid place-items-center">
-                            <UserCheck className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-foreground">Reporting Manager (Level 3)</div>
-                            <div className="text-[11px] text-muted-foreground">Next Level Manager</div>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20 text-[10px] font-bold">
-                          Auto
-                        </Badge>
-                      </div>
-
-                      <div className="grid place-items-center text-muted-foreground py-0.5">
-                        <ArrowDown className="h-4 w-4 text-emerald-600" />
-                      </div>
-
-                      {/* Step 4: Top Level */}
-                      <div className="p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 grid place-items-center">
-                            <ShieldCheck className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-foreground">Top Level Authority</div>
-                            <div className="text-[11px] text-muted-foreground">MD / CEO</div>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20 text-[10px] font-bold">
-                          Auto
-                        </Badge>
+                      <div>
+                        <div className="text-xs font-bold text-foreground">Live Organization Hierarchy Simulation</div>
+                        <div className="text-[11px] text-muted-foreground">Select any employee to view their real-time upward reporting hierarchy from Organization Structure.</div>
                       </div>
                     </div>
 
-                    {/* Final Level Action Radio selector */}
-                    <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
-                      <div className="space-y-0.5">
-                        <div className="text-xs font-bold text-foreground">Final Level Action (MD / CEO)</div>
-                        <div className="text-[11px] text-muted-foreground">Choose action at the final level.</div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2">
-                        {/* Approve Manually */}
-                        <div
-                          onClick={() => updateActiveItem({ finalLevelAction: "approve_send" })}
-                          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
-                            activeItem.finalLevelAction === "approve_send" || activeItem.finalLevelAction === "approve_only"
-                              ? "bg-emerald-500/15 border-emerald-500 text-foreground"
-                              : "bg-card hover:bg-muted/50 border-border text-muted-foreground"
-                          }`}
-                        >
-                          <div className="h-6 w-6 rounded-full bg-emerald-600 text-white mx-auto grid place-items-center mb-1.5">
-                            <Check className="h-3.5 w-3.5" />
-                          </div>
-                          <div className="text-xs font-bold">Approve Manually</div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">MD will review and approve manually</div>
-                        </div>
-
-                        {/* Auto Approve */}
-                        <div
-                          onClick={() => updateActiveItem({ finalLevelAction: "auto_approve" })}
-                          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
-                            activeItem.finalLevelAction === "auto_approve"
-                              ? "bg-blue-500/15 border-blue-500 text-foreground"
-                              : "bg-card hover:bg-muted/50 border-border text-muted-foreground"
-                          }`}
-                        >
-                          <div className="h-6 w-6 rounded-full bg-blue-600 text-white mx-auto grid place-items-center mb-1.5">
-                            <Zap className="h-3.5 w-3.5" />
-                          </div>
-                          <div className="text-xs font-bold">Auto Approve</div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">Automatically approves if MD is not available</div>
-                        </div>
-
-                        {/* Auto Decline */}
-                        <div
-                          onClick={() => updateActiveItem({ finalLevelAction: "auto_decline" })}
-                          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
-                            activeItem.finalLevelAction === "auto_decline"
-                              ? "bg-red-500/15 border-red-500 text-foreground"
-                              : "bg-card hover:bg-muted/50 border-border text-muted-foreground"
-                          }`}
-                        >
-                          <div className="h-6 w-6 rounded-full bg-red-600 text-white mx-auto grid place-items-center mb-1.5">
-                            <XCircle className="h-3.5 w-3.5" />
-                          </div>
-                          <div className="text-xs font-bold">Auto Decline</div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">Automatically declines if MD is not available</div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-3 flex items-start gap-2.5 text-[11px] text-blue-700 dark:text-blue-300">
-                        <Info className="h-4 w-4 shrink-0 mt-0.5" />
-                        <div>
-                          <strong>How Auto Flow Works?</strong> The request will move automatically through the reporting hierarchy based on employee registration data until it reaches the top level. At the final level, the selected action will be applied.
-                        </div>
-                      </div>
+                    <div className="w-full sm:w-80">
+                      <Select
+                        value={sampleEmployee?.id || ""}
+                        onValueChange={(val) => setSelectedHierarchyEmpId(val)}
+                      >
+                        <SelectTrigger className="h-9 text-xs font-semibold bg-card border-border">
+                          <SelectValue placeholder="Select employee to preview chain..." />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-72">
+                          {employees.map((e) => (
+                            <SelectItem key={e.id} value={e.id}>
+                              {e.name} ({e.empCode || "EMP"} · {e.designation})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
-                  {/* Right Preview & Email Delivery (5 cols) */}
-                  <div className="lg:col-span-5 space-y-4">
-                    {/* Live Preview Stepper */}
-                    <div className="rounded-2xl border border-border bg-card p-4 space-y-3.5 shadow-soft">
-                      <div className="space-y-0.5">
-                        <div className="text-xs font-bold text-foreground">Approval Flow Preview</div>
-                        <div className="text-[11px] text-muted-foreground">This is how the flow will work.</div>
-                      </div>
-
-                      <div className="space-y-3 pt-1">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className="h-5 w-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold grid place-items-center">1</span>
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    {/* Left Flow Stack (7 cols) */}
+                    <div className="lg:col-span-7 space-y-4">
+                      {/* Requesting Employee Card */}
+                      {sampleEmployee && (
+                        <div className="p-3.5 rounded-2xl border border-border bg-card flex items-center justify-between shadow-2xs">
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-full bg-primary/10 text-primary grid place-items-center font-bold text-xs shrink-0 overflow-hidden">
+                              {sampleEmployee.photoDataUrl ? (
+                                <img src={sampleEmployee.photoDataUrl} className="h-full w-full object-cover" alt="" />
+                              ) : (
+                                sampleEmployee.name.slice(0, 2).toUpperCase()
+                              )}
+                            </div>
                             <div>
-                              <div className="text-xs font-bold">Rohit Sharma</div>
-                              <div className="text-[10.5px] text-muted-foreground">Reporting Manager (Level 1)</div>
+                              <div className="text-xs font-bold text-foreground flex items-center gap-2">
+                                <span>{sampleEmployee.name}</span>
+                                <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground">
+                                  {sampleEmployee.empCode}
+                                </Badge>
+                              </div>
+                              <div className="text-[11px] text-muted-foreground">
+                                Requester / Applicant · {sampleEmployee.designation} ({sampleEmployee.department})
+                              </div>
                             </div>
                           </div>
-                          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold">Auto</Badge>
+                          <Badge variant="secondary" className="text-[10px] font-bold">
+                            Applicant
+                          </Badge>
+                        </div>
+                      )}
+
+                      {/* Dynamic Upward Levels */}
+                      {upwardChain.length > 0 ? (
+                        <div className="space-y-3">
+                          {upwardChain.map((mgr, idx) => {
+                            const isDirect = idx === 0;
+                            const isTop = idx === upwardChain.length - 1;
+                            return (
+                              <div key={mgr.id} className="space-y-3">
+                                <div className="grid place-items-center text-muted-foreground py-0.5">
+                                  <ArrowDown className="h-4 w-4 text-emerald-600" />
+                                </div>
+                                <div className="p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between shadow-2xs">
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-9 w-9 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 grid place-items-center font-bold text-xs shrink-0 overflow-hidden">
+                                      {mgr.photoDataUrl ? (
+                                        <img src={mgr.photoDataUrl} className="h-full w-full object-cover" alt="" />
+                                      ) : (
+                                        mgr.name.slice(0, 2).toUpperCase()
+                                      )}
+                                    </div>
+                                    <div>
+                                      <div className="text-xs font-bold text-foreground flex items-center gap-2">
+                                        <span>{mgr.name}</span>
+                                        <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground">
+                                          {mgr.empCode}
+                                        </Badge>
+                                      </div>
+                                      <div className="text-[11px] text-muted-foreground">
+                                        {isDirect ? "Direct Reporting Manager (Level 1)" : isTop ? "Top Level Authority / Executive" : `Reporting Manager (Level ${idx + 1})`} · {mgr.designation} ({mgr.department})
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] font-bold">
+                                    {isTop ? "Final Stage" : `Level ${idx + 1}`}
+                                  </Badge>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="p-5 rounded-2xl border border-blue-500/30 bg-blue-500/5 text-center space-y-1.5">
+                          <ShieldCheck className="h-7 w-7 text-blue-600 mx-auto" />
+                          <div className="text-xs font-bold text-foreground">Direct Approval / Top Level Executive</div>
+                          <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
+                            {sampleEmployee ? sampleEmployee.name : "This member"} has no higher reporting manager assigned in Organization Structure. Requests submitted will route directly to final approval action.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Final Level Action Radio selector */}
+                      <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
+                        <div className="space-y-0.5">
+                          <div className="text-xs font-bold text-foreground">Final Level Action (MD / CEO)</div>
+                          <div className="text-[11px] text-muted-foreground">Choose action at the final level.</div>
                         </div>
 
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className="h-5 w-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold grid place-items-center">2</span>
-                            <div>
-                              <div className="text-xs font-bold">Sneha Patel</div>
-                              <div className="text-[10.5px] text-muted-foreground">Reporting Manager (Level 2)</div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {/* Approve Manually */}
+                          <div
+                            onClick={() => updateActiveItem({ finalLevelAction: "approve_send" })}
+                            className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+                              activeItem.finalLevelAction === "approve_send" || activeItem.finalLevelAction === "approve_only"
+                                ? "bg-emerald-500/15 border-emerald-500 text-foreground"
+                                : "bg-card hover:bg-muted/50 border-border text-muted-foreground"
+                            }`}
+                          >
+                            <div className="h-6 w-6 rounded-full bg-emerald-600 text-white mx-auto grid place-items-center mb-1.5">
+                              <Check className="h-3.5 w-3.5" />
                             </div>
+                            <div className="text-xs font-bold">Approve Manually</div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">Authority will review & approve manually</div>
                           </div>
-                          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold">Auto</Badge>
-                        </div>
 
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className="h-5 w-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold grid place-items-center">3</span>
-                            <div>
-                              <div className="text-xs font-bold">Vikas Singh</div>
-                              <div className="text-[10.5px] text-muted-foreground">Reporting Manager (Level 3)</div>
+                          {/* Auto Approve */}
+                          <div
+                            onClick={() => updateActiveItem({ finalLevelAction: "auto_approve" })}
+                            className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+                              activeItem.finalLevelAction === "auto_approve"
+                                ? "bg-blue-500/15 border-blue-500 text-foreground"
+                                : "bg-card hover:bg-muted/50 border-border text-muted-foreground"
+                            }`}
+                          >
+                            <div className="h-6 w-6 rounded-full bg-blue-600 text-white mx-auto grid place-items-center mb-1.5">
+                              <Zap className="h-3.5 w-3.5" />
                             </div>
+                            <div className="text-xs font-bold">Auto Approve</div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">Automatically approves upon timeout</div>
                           </div>
-                          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold">Auto</Badge>
-                        </div>
 
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold grid place-items-center">MD</span>
-                            <div>
-                              <div className="text-xs font-bold">Amit Mehta</div>
-                              <div className="text-[10.5px] text-muted-foreground">MD / CEO (Final Level)</div>
+                          {/* Auto Decline */}
+                          <div
+                            onClick={() => updateActiveItem({ finalLevelAction: "auto_decline" })}
+                            className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+                              activeItem.finalLevelAction === "auto_decline"
+                                ? "bg-red-500/15 border-red-500 text-foreground"
+                                : "bg-card hover:bg-muted/50 border-border text-muted-foreground"
+                            }`}
+                          >
+                            <div className="h-6 w-6 rounded-full bg-red-600 text-white mx-auto grid place-items-center mb-1.5">
+                              <XCircle className="h-3.5 w-3.5" />
                             </div>
+                            <div className="text-xs font-bold">Auto Decline</div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">Automatically declines upon timeout</div>
                           </div>
-                          <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-bold">Final</Badge>
                         </div>
-                      </div>
 
-                      <div className="pt-2 border-t border-border flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground font-medium">Final Level Action:</span>
-                        <span className="font-bold text-primary capitalize">
-                          {activeItem.finalLevelAction === "approve_send" ? "Approve Manually" : activeItem.finalLevelAction === "auto_approve" ? "Auto Approve" : "Auto Decline"}
-                        </span>
+                        <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-3 flex items-start gap-2.5 text-[11px] text-blue-700 dark:text-blue-300">
+                          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                          <div>
+                            <strong>How Real-Time Auto Flow Works?</strong> The request dynamically climbs the requesting employee's real upward manager chain configured in <strong>Organization Structure</strong>. When any manager approves & forwards, it moves to the next senior authority.
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Email Delivery Card */}
-                    <div className="rounded-2xl border border-border bg-card p-4 flex items-center justify-between shadow-soft">
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary grid place-items-center">
-                          <Mail className="h-4 w-4" />
+                    {/* Right Preview & Email Delivery (5 cols) */}
+                    <div className="lg:col-span-5 space-y-4">
+                      {/* Live Preview Stepper */}
+                      <div className="rounded-2xl border border-border bg-card p-4 space-y-3.5 shadow-soft">
+                        <div className="space-y-0.5">
+                          <div className="text-xs font-bold text-foreground">Real-Time Approval Flow Preview</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {sampleEmployee ? `Active pipeline for ${sampleEmployee.name}` : "Organization upward route"}
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-xs font-bold">Email Delivery</div>
-                          <div className="text-[11px] text-muted-foreground">Sent to employee mail after final approval.</div>
+
+                        <div className="space-y-3 pt-1">
+                          {upwardChain.length > 0 ? (
+                            upwardChain.map((mgr, idx) => {
+                              const isTop = idx === upwardChain.length - 1;
+                              return (
+                                <div key={mgr.id} className="flex items-center justify-between p-2 rounded-xl bg-muted/20 border border-border/50">
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <span className="h-6 w-6 rounded-full bg-emerald-600 text-white text-[11px] font-bold grid place-items-center shrink-0">
+                                      {idx + 1}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <div className="text-xs font-bold truncate text-foreground">{mgr.name}</div>
+                                      <div className="text-[10.5px] text-muted-foreground truncate">{mgr.designation}</div>
+                                    </div>
+                                  </div>
+                                  <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 font-bold shrink-0">
+                                    {isTop ? "Final Level" : `Stage ${idx + 1}`}
+                                  </Badge>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="p-3 text-center text-xs text-muted-foreground">
+                              Direct Final Level Approval (No intermediate managers)
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="pt-2 border-t border-border flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground font-medium">Final Level Action:</span>
+                          <span className="font-bold text-primary capitalize">
+                            {activeItem.finalLevelAction === "approve_send" ? "Approve Manually" : activeItem.finalLevelAction === "auto_approve" ? "Auto Approve" : "Auto Decline"}
+                          </span>
                         </div>
                       </div>
-                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold text-[10px]">
-                        Active
-                      </Badge>
+
+                      {/* Email Delivery Card */}
+                      <div className="rounded-2xl border border-border bg-card p-4 flex items-center justify-between shadow-soft">
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary grid place-items-center">
+                            <Mail className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold">Email Delivery</div>
+                            <div className="text-[11px] text-muted-foreground">Sent to employee mail after final approval.</div>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold text-[10px]">
+                          Active
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1938,6 +2329,295 @@ function CentralizedApprovalSettingsPage() {
             <Button onClick={handleAddExternalApprover} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
               Add External Approver
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 5: EDIT DOCUMENT TEMPLATE & DYNAMIC PLACEHOLDERS */}
+      <Dialog open={docTemplateModalOpen} onOpenChange={setDocTemplateModalOpen}>
+        <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-6 space-y-5">
+          <DialogHeader className="border-b border-border pb-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Edit Document Template: {activeItem?.name}</span>
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Customize the official letter format and use dynamic placeholders to auto-populate employee information upon download.
+                </DialogDescription>
+              </div>
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-xs font-bold">
+                {activeItem?.group || "Official Document"}
+              </Badge>
+            </div>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* LEFT COLUMN: Template Editor & Placeholder Chips (7 cols) */}
+            <div className="lg:col-span-7 space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">Official Document Title / Subject *</Label>
+                <Input
+                  value={editingDocSubject}
+                  onChange={(e) => setEditingDocSubject(e.target.value)}
+                  placeholder="e.g. Offer of Employment — {{employee_name}}"
+                  className="text-xs font-semibold bg-muted/20"
+                />
+              </div>
+
+              {/* AI Auto-Inject & Refine Banner */}
+              <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3.5 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-lg bg-emerald-600 text-white grid place-items-center shrink-0">
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-foreground">Swift AI Auto-Placeholder Inserter</div>
+                      <div className="text-[10.5px] text-muted-foreground">Analyzes pasted or existing text to inject placeholders in their exact locations.</div>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 px-3 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-soft shrink-0"
+                    onClick={() => handleAiAutoTagDocument()}
+                    disabled={isAiProcessing}
+                  >
+                    {isAiProcessing ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" /> Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3 w-3 mr-1.5" /> Auto-Inject Placeholders
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 border-t border-emerald-500/20">
+                  <Input
+                    value={aiInstruction}
+                    onChange={(e) => setAiInstruction(e.target.value)}
+                    placeholder="Optional: e.g. 'Add 30-day notice period clause' or 'Make tone strictly legal'"
+                    className="h-8 text-xs bg-card border-border placeholder:text-muted-foreground/70"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAiAutoTagDocument(aiInstruction);
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-xs font-semibold bg-card shrink-0"
+                    onClick={() => handleAiAutoTagDocument(aiInstruction)}
+                    disabled={isAiProcessing || !aiInstruction.trim()}
+                  >
+                    Refine with AI
+                  </Button>
+                </div>
+
+                {aiSummary && (
+                  <div className="text-[11px] text-emerald-800 dark:text-emerald-300 bg-emerald-500/15 p-2 rounded-xl border border-emerald-500/30 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <span>{aiSummary}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Placeholder Variables Clickable Bar (Manual Option) */}
+              <div className="space-y-2 rounded-2xl border border-border bg-muted/20 p-3.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Dynamic Placeholders (Click to insert)</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {["all", "employee", "compensation", "dates", "company"].map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setPlaceholderCategory(cat)}
+                        className={`text-[10.5px] px-2 py-0.5 rounded-lg font-semibold capitalize transition-all ${
+                          placeholderCategory === cat
+                            ? "bg-emerald-600 text-white shadow-2xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pt-1">
+                  {PLACEHOLDER_VARIABLES
+                    .filter((p) => placeholderCategory === "all" || p.category === placeholderCategory)
+                    .map((variable) => (
+                      <button
+                        key={variable.key}
+                        type="button"
+                        onClick={() => handleInsertPlaceholder(variable.key)}
+                        title={`Sample: ${variable.sample}`}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-mono bg-card hover:bg-emerald-500/10 hover:border-emerald-500/40 border border-border text-foreground transition-all shadow-2xs cursor-pointer group"
+                      >
+                        <Plus className="h-2.5 w-2.5 text-muted-foreground group-hover:text-emerald-600" />
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-400">{variable.key}</span>
+                        <span className="text-[10px] text-muted-foreground">({variable.label})</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+
+              {/* Body Content Textarea */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold">Document Body Content & Letter Paragraphs *</Label>
+                  <span className="text-[11px] text-muted-foreground">Monospace Editor</span>
+                </div>
+                <textarea
+                  rows={14}
+                  value={editingDocContent}
+                  onChange={(e) => setEditingDocContent(e.target.value)}
+                  placeholder="Enter official letter text with {{placeholders}}..."
+                  className="w-full p-3.5 text-xs rounded-xl border border-border bg-card font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                />
+              </div>
+
+              {/* Signatory Settings Row */}
+              <div className="grid grid-cols-2 gap-3 p-3.5 rounded-2xl border border-border bg-muted/20">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold">Authorized Signatory Name</Label>
+                  <Input
+                    value={editingDocSignatoryName}
+                    onChange={(e) => setEditingDocSignatoryName(e.target.value)}
+                    className="h-8 text-xs bg-card"
+                    placeholder="e.g. Dr. K. Anand"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold">Signatory Role / Designation</Label>
+                  <Input
+                    value={editingDocSignatoryRole}
+                    onChange={(e) => setEditingDocSignatoryRole(e.target.value)}
+                    className="h-8 text-xs bg-card"
+                    placeholder="e.g. Head of HR & Operations"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: Live Personalized Preview & Test PDF (5 cols) */}
+            <div className="lg:col-span-5 space-y-4">
+              {/* Employee Preview Selector */}
+              <div className="p-3.5 rounded-2xl bg-muted/30 border border-border space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground">Live Personalized Preview</span>
+                  <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/20 font-bold">
+                    Real-time Data
+                  </Badge>
+                </div>
+                <Select value={previewEmployee?.id || ""} onValueChange={(val) => setPreviewEmployeeId(val)}>
+                  <SelectTrigger className="h-8 text-xs font-semibold bg-card">
+                    <SelectValue placeholder="Select employee to test..." />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {employees.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name} ({e.empCode || "EMP"} · {e.designation})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Rendered Letter Box */}
+              <div className="rounded-2xl border-2 border-border/80 bg-card p-5 shadow-soft space-y-3 min-h-[460px] max-h-[520px] overflow-y-auto font-serif text-foreground/90">
+                {/* Simulated Letterhead */}
+                <div className="border-b-2 border-emerald-600 pb-2 flex items-center justify-between">
+                  <div>
+                    <div className="font-sans font-bold text-sm text-emerald-800 dark:text-emerald-400">
+                      {(company as any)?.legalName || company?.name || "SWIFT HRMS ENTERPRISE"}
+                    </div>
+                    <div className="font-sans text-[10px] text-muted-foreground">
+                      {company?.address || "Technology Hub, Tamil Nadu, India"}
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] font-mono text-emerald-700 dark:text-emerald-400 border-emerald-500/40">
+                    OFFICIAL
+                  </Badge>
+                </div>
+
+                {/* Rendered Subject */}
+                <div className="text-center font-sans font-bold text-xs pt-2 text-foreground border-b border-border/40 pb-2">
+                  {substitutePlaceholders(editingDocSubject, previewEmployee, company, {
+                    "{{authorized_signatory_name}}": editingDocSignatoryName,
+                    "{{authorized_signatory_designation}}": editingDocSignatoryRole,
+                  })}
+                </div>
+
+                {/* Rendered Letter Body */}
+                <div className="text-xs leading-relaxed whitespace-pre-wrap font-sans text-muted-foreground pt-1 space-y-2">
+                  {substitutePlaceholders(editingDocContent, previewEmployee, company, {
+                    "{{authorized_signatory_name}}": editingDocSignatoryName,
+                    "{{authorized_signatory_designation}}": editingDocSignatoryRole,
+                  })}
+                </div>
+
+                {/* Rendered Digital Signature Box */}
+                <div className="pt-4 border-t border-dashed border-border/60 flex items-center justify-between font-sans text-[10.5px]">
+                  <div>
+                    <div className="font-bold text-foreground">{editingDocSignatoryName}</div>
+                    <div className="text-muted-foreground text-[10px]">{editingDocSignatoryRole}</div>
+                  </div>
+                  <div className="text-right">
+                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-[9px] font-bold">
+                      ✓ DIGITALLY VERIFIED
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Download Test PDF Action */}
+              <Button
+                variant="outline"
+                className="w-full h-9 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-soft"
+                onClick={handleDownloadTestPDF}
+                disabled={isDownloadingPdf}
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                {isDownloadingPdf ? "Generating Official PDF..." : "Download Sample PDF with Real Data"}
+              </Button>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-border pt-3 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={handleResetToDefaultTemplate}
+            >
+              Reset to Standard Template
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setDocTemplateModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveDocTemplate}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-soft"
+              >
+                <Save className="h-3.5 w-3.5 mr-1.5" /> Save Document Template
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

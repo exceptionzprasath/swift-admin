@@ -1,14 +1,21 @@
 import { useEffect } from "react";
 import { useStore } from "@/lib/store";
+import { applyThemePalette } from "@/lib/palettes";
 import { Moon, Sun } from "lucide-react";
 
 export function ThemeInit() {
   const theme = useStore((s) => s.theme);
+  const paletteId = useStore((s) => s.company?.themePalette);
+
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "dark") root.classList.add("dark");
+    const isDark = theme === "dark";
+    if (isDark) root.classList.add("dark");
     else root.classList.remove("dark");
-  }, [theme]);
+
+    applyThemePalette(paletteId || "copper-wave", isDark);
+  }, [theme, paletteId]);
+
   return null;
 }
 

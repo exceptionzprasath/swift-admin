@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useStore } from "@/lib/store";
+import { PALETTES, getPalette, type ThemePaletteId } from "@/lib/palettes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calculator, ArrowRight } from "lucide-react";
+import { Calculator, ArrowRight, Palette, Check, Sparkles, Sun, Moon, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 
@@ -14,8 +15,25 @@ export const Route = createFileRoute("/admin/settings")({
 });
 
 function SettingsPage() {
-  const { company, setCompany, docAssets, setDocAssets, saveAllCompanySettings } = useStore();
+  const {
+    company,
+    setCompany,
+    docAssets,
+    setDocAssets,
+    saveAllCompanySettings,
+    theme,
+    setTheme,
+    setThemePalette,
+  } = useStore();
   const [saving, setSaving] = useState(false);
+  const activePaletteId = company.themePalette || "copper-wave";
+  const activePalette = getPalette(activePaletteId);
+
+  const handleSelectPalette = (paletteId: ThemePaletteId) => {
+    setThemePalette(paletteId);
+    const selected = getPalette(paletteId);
+    toast.success(`Theme updated to "${selected.name}" & saved to database!`);
+  };
 
   const readAsset = (key: keyof typeof docAssets) => (file: File | null) => {
     if (!file) return;
@@ -70,6 +88,171 @@ function SettingsPage() {
         >
           {saving ? "Saving to Database..." : "Save Changes"}
         </Button>
+      </div>
+
+      {/* Theme & Color Palettes Section */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                <Palette className="h-5 w-5" />
+              </div>
+              <h2 className="font-display text-xl font-bold text-foreground">Theme & Brand Color Palettes</h2>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                20 Curated Palettes
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Select your organization's brand color identity. Theme changes apply instantly and auto-save directly to your cloud database.
+            </p>
+          </div>
+
+          {/* Light / Dark Mode Toggle */}
+          <div className="flex items-center gap-2 p-1 rounded-xl bg-muted/60 border border-border shrink-0 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setTheme("light")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                theme !== "dark"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Sun className="h-3.5 w-3.5" />
+              <span>Light Mode</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTheme("dark")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                theme === "dark"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Moon className="h-3.5 w-3.5" />
+              <span>Dark Mode</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Active Theme Live Showcase Card with Component Combinations */}
+        <div className="p-5 rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-card space-y-4 shadow-xs">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider text-primary">Currently Active Theme Combination</span>
+              </div>
+              <h3 className="font-display text-xl font-bold text-foreground">
+                {activePalette.name}
+              </h3>
+              <p className="text-xs text-muted-foreground max-w-xl">
+                {activePalette.vibe}
+              </p>
+            </div>
+
+            {/* Quick Live Preview Simulation Strip */}
+            <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-card border border-border shadow-xs">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navbar text-navbar-foreground text-xs font-semibold shadow-xs">
+                Navbar
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sidebar text-sidebar-foreground text-xs font-semibold shadow-xs">
+                Sidebar
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-taskmenu text-taskmenu-foreground text-xs font-bold shadow-xs">
+                Task Menu Active
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs font-semibold">
+                Accent Pill
+              </div>
+            </div>
+          </div>
+
+          {/* Component Color Combinations Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 pt-3 border-t border-primary/15">
+            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Sidebar Navigation</div>
+              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.sidebar}</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Navbar / Header</div>
+              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.navbar}</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Task Menu / CTAs</div>
+              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.taskMenu}</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Surfaces & Cards</div>
+              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.cards}</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80 col-span-2 sm:col-span-1">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">KPIs & Accents</div>
+              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.accents}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* 20 Palettes Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+          {PALETTES.map((p, idx) => {
+            const isSelected = activePaletteId === p.id;
+            return (
+              <div
+                key={p.id}
+                onClick={() => handleSelectPalette(p.id)}
+                className={`group relative p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                  isSelected
+                    ? "border-primary bg-primary/5 ring-2 ring-primary/30 shadow-sm"
+                    : "border-border bg-card hover:border-primary/40 hover:shadow-xs"
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-1.5 mb-2">
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Palette {idx + 1}
+                    </span>
+                    {isSelected ? (
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/15 border border-primary/20">
+                        <Check className="h-3 w-3" /> Active
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                        Click to apply
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="font-display text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                    {p.name}
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
+                    {p.vibe}
+                  </p>
+                </div>
+
+                {/* 5-Color Swatch Strip with Component Combination Hints */}
+                <div className="space-y-2 pt-2 border-t border-border/60">
+                  <div className="flex h-6 w-full rounded-lg overflow-hidden border border-border/80 shadow-xs">
+                    {p.colors.map((hex, cIdx) => (
+                      <div
+                        key={cIdx}
+                        style={{ backgroundColor: hex }}
+                        className="flex-1 h-full transition-transform hover:scale-110"
+                        title={`${p.name} color ${cIdx + 1}: ${hex}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+                    <span className="truncate max-w-[120px]" title={`Sidebar: ${p.colors[0]}`}>Side: {p.colors[0]}</span>
+                    <span className="truncate max-w-[120px]" title={`Active: ${p.colors[p.colors.length - 1]}`}>Active: {p.colors[p.colors.length - 1]}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Direct Banner to Dedicated Payroll Screen */}

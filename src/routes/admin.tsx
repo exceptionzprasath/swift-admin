@@ -35,7 +35,6 @@ const nav: NavItem[] = [
   { to: "/admin/branches", label: "Branches", icon: Building2 },
   { to: "/admin/org", label: "Organization", icon: Network },
   { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal },
-  { to: "/admin/grievances", label: "Grievances", icon: MessageSquareHeart },
   { to: "/admin/roles", label: "Role Creation", icon: ShieldCheck },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays },
@@ -44,7 +43,6 @@ const nav: NavItem[] = [
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/assets", label: "Assets", icon: Package },
   { to: "/admin/vault", label: "Vault", icon: FolderLock },
-  { to: "/admin/documents", label: "Documents", icon: FileText },
   { to: "/admin/compliance", label: "Compliance AI", icon: Scale },
   { to: "/admin/compliance-docs", label: "Compliance Docs", icon: ShieldCheck },
   { to: "/admin/audit", label: "Audit Log", icon: ShieldCheck },
@@ -85,61 +83,73 @@ function AdminLayout() {
   const userEmail = demoMode ? "admin@demo.swift" : user?.email;
 
   const SidebarBody = (
-    <>
-      <div className="p-5 border-b border-sidebar-border">
-        <SwiftLogo />
+    <div className="flex flex-col h-full justify-between overflow-hidden">
+      <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
+        <div className="p-5 border-b border-sidebar-border shrink-0">
+          <SwiftLogo />
+        </div>
+        <nav className="p-3 space-y-1 overflow-y-auto flex-1">
+          {nav.map((n) => {
+            const active = n.exact ? path === n.to : path.startsWith(n.to);
+            return (
+              <Link
+                key={n.to}
+                to={n.to}
+                className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${
+                  active
+                    ? "bg-gradient-brand text-white shadow-soft font-semibold"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                }`}
+              >
+                <n.icon className="h-4 w-4 shrink-0" />
+                {n.label}
+              </Link>
+            );
+          })}
+        </nav>
       </div>
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {nav.map((n) => {
-          const active = n.exact ? path === n.to : path.startsWith(n.to);
-          return (
-            <Link
-              key={n.to}
-              to={n.to}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-gradient-brand text-white shadow-soft"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent"
-              }`}
-            >
-              <n.icon className="h-4 w-4 shrink-0" />
-              {n.label}
-            </Link>
-          );
-        })}
-      </nav>
-      <div className="p-3 border-t border-sidebar-border">
+
+      <div className="p-4 border-t border-sidebar-border space-y-2 shrink-0">
         {isSuperAdmin && (
           <a href={import.meta.env.VITE_SUPER_ADMIN_URL || "http://localhost:5173"}>
-            <Button variant="outline" size="sm" className="w-full mb-2 justify-start">
+            <Button variant="outline" size="sm" className="w-full mb-1 justify-start border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent/80 rounded-xl">
               <Shield className="h-4 w-4 mr-2 text-primary" /> Super Admin
             </Button>
           </a>
         )}
-        <div className="rounded-lg bg-sidebar-accent p-3 text-sm">
+        <div className="rounded-xl bg-sidebar-accent p-3 text-sm text-sidebar-accent-foreground">
           <div className="font-medium truncate">{userEmail}</div>
-          <div className="text-xs text-muted-foreground truncate">{displayName}</div>
+          <div className="text-xs opacity-75 truncate">{displayName}</div>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={async () => { if (demoMode) exitDemo(); else await signOut(); navigate({ to: "/login" }); }}
+          className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-xl"
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          <span>Log out</span>
+        </Button>
       </div>
-    </>
+    </div>
   );
 
   return (
-    <div className="min-h-screen flex bg-background text-foreground">
-      <aside className="hidden md:flex w-64 flex-col border-r border-sidebar-border bg-sidebar">
+    <div className="min-h-screen flex bg-background text-foreground transition-colors duration-200">
+      <aside className="hidden md:flex w-64 flex-col border-r border-sidebar-border bg-sidebar shrink-0 sticky top-0 h-screen overflow-hidden">
         {SidebarBody}
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 border-b border-border flex items-center justify-between px-4 sm:px-6 gap-2 sticky top-0 bg-background/95 backdrop-blur z-30">
-          <div className="flex items-center gap-2 min-w-0">
+        <header className="h-16 border-b border-navbar-border flex items-center justify-between px-4 sm:px-6 gap-3 sticky top-0 bg-navbar text-navbar-foreground backdrop-blur z-30 shadow-xs transition-colors duration-200">
+          <div className="flex items-center gap-3 min-w-0">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden">
+                <Button variant="ghost" size="icon" className="md:hidden text-navbar-foreground hover:bg-white/10">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-64 bg-sidebar flex flex-col">
+              <SheetContent side="left" className="p-0 w-64 bg-sidebar text-sidebar-foreground border-sidebar-border flex flex-col">
                 {SidebarBody}
               </SheetContent>
             </Sheet>
@@ -147,9 +157,9 @@ function AdminLayout() {
             {memberships.length > 1 ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-2 max-w-[180px] sm:max-w-none">
+                  <Button variant="ghost" size="sm" className="gap-2 max-w-[180px] sm:max-w-none text-navbar-foreground hover:bg-white/10 rounded-full">
                     <Building2 className="h-4 w-4 shrink-0" />
-                    <span className="truncate text-sm">{displayName}</span>
+                    <span className="truncate text-sm font-semibold">{displayName}</span>
                     <ChevronDown className="h-3 w-3 opacity-60" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -168,21 +178,29 @@ function AdminLayout() {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <span className="text-sm text-muted-foreground truncate hidden sm:inline">{displayName}</span>
+              <span className="text-base font-bold font-display text-navbar-foreground truncate hidden sm:inline">{displayName}</span>
             )}
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-3">
+            {/* Search Pill Bar matching NexaVerse */}
+            <div className="hidden lg:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/15 dark:bg-white/10 border border-white/10 text-xs w-64 focus-within:w-72 transition-all">
+              <span className="text-navbar-foreground opacity-60">🔍</span>
+              <input
+                type="text"
+                placeholder="Search employees, requests..."
+                className="bg-transparent border-none outline-none w-full text-xs text-navbar-foreground placeholder:text-navbar-foreground/60"
+              />
+            </div>
+
             <AiTriggerBell />
             <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => { if (demoMode) exitDemo(); else await signOut(); navigate({ to: "/login" }); }}
-            >
-              <LogOut className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Logout</span>
-            </Button>
+
+            <div className="flex items-center gap-2 pl-2 border-l border-navbar-border/60">
+              <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-xs font-bold text-navbar-foreground">
+                {(displayName || "A")[0].toUpperCase()}
+              </div>
+            </div>
           </div>
         </header>
         <main className="flex-1 overflow-auto p-4 sm:p-6 pb-24 md:pb-6 safe-bottom">

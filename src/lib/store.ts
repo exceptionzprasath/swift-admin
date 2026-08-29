@@ -24,6 +24,7 @@ import {
   type AssetCondition,
   type AssetStatus,
 } from "./assets";
+import { type ThemePaletteId, applyThemePalette } from "./palettes";
 
 
 
@@ -305,6 +306,7 @@ export type Notice = {
 };
 
 export type Company = {
+  themePalette?: ThemePaletteId;
   name: string;
   legalName: string;
   address: string;
@@ -954,6 +956,7 @@ type State = {
   loadCompanyState: (tenantId: string) => Promise<void>;
   resetTenantState: () => void;
   setTheme: (t: "light" | "dark") => void;
+  setThemePalette: (paletteId: ThemePaletteId) => void;
   setCompany: (c: Partial<Company>) => void;
   addEmployee: (e: Omit<Employee, "id">) => Employee;
   updateEmployee: (id: string, patch: Partial<Employee>) => void;
@@ -1010,6 +1013,8 @@ type State = {
   addGrievanceMessage: (ticketId: string, msg: Omit<GrievanceMessage, "id" | "createdAt">) => void;
   updateEmployeeApprovalSettings: (employeeId: string, settings: Partial<EmployeeApprovalSettings>) => void;
   actOnLeaveApprovalStep: (leaveId: string, action: "approve" | "approve_forward" | "approve_close" | "reject" | "escalate", comment: string, actorName: string, actorRole: string) => void;
+  // Unified Requests (Advance Loans, Comp-offs, Grievances, etc.)
+  requests: any[];
 };
 
 export interface VaultFolder {
@@ -1104,6 +1109,7 @@ export const defaultCompanyHolidaysList: CompanyHoliday[] = [
 ];
 
 const defaultCompany: Company = {
+  themePalette: "copper-wave",
   name: "SWIFT Demo Pvt Ltd",
   legalName: "SWIFT Demo Private Limited",
   address: "123 Business Ave, Suite 100, Bangalore, India",
@@ -1601,6 +1607,7 @@ export const useStore = create<State>()(
       vaultFolders: DEFAULT_VAULT_FOLDERS,
       vaultFiles: DEFAULT_VAULT_FILES,
       grievances: [],
+      requests: [],
       addVaultFolder: (f) => {
         const folder: VaultFolder = {
           ...f,
@@ -2072,6 +2079,9 @@ export const useStore = create<State>()(
               // Strip DynamoDB key fields that aren't part of the Company type
               const { id: _id, tenantId: _tid, ...backendConfig } = data.config;
               nextCompany = { ...get().company, ...backendConfig };
+              if (nextCompany.themePalette) {
+                applyThemePalette(nextCompany.themePalette, get().theme === "dark");
+              }
               // Re-derive geofence from the head branch to ensure geo-coordinates
               // stay consistent (mirrors admin-side updateBranch logic)
               const headBranch = (nextCompany.branches ?? []).find((b: any) => b.isHead)
@@ -2110,6 +2120,7 @@ export const useStore = create<State>()(
               vaultFolders: data.vaultFolders && data.vaultFolders.length ? data.vaultFolders : (get().vaultFolders?.length ? get().vaultFolders : DEFAULT_VAULT_FOLDERS),
               vaultFiles: data.vaultFiles && data.vaultFiles.length ? data.vaultFiles : (get().vaultFiles?.length ? get().vaultFiles : DEFAULT_VAULT_FILES),
               grievances: data.grievances || [],
+              requests: data.requests || [],
               demoMode: false,
             });
           } catch (_err) {}
@@ -2127,6 +2138,7 @@ export const useStore = create<State>()(
           vaultFolders: DEFAULT_VAULT_FOLDERS,
           vaultFiles: DEFAULT_VAULT_FILES,
           grievances: [],
+          requests: [],
           salaryRevisions: [],
           auditLog: [],
           roles: DEFAULT_PREDEFINED_ROLES,
@@ -2134,7 +2146,22 @@ export const useStore = create<State>()(
           demoMode: false,
         });
       },
-      setTheme: (t) => set({ theme: t }),
+      setTheme: (t) => {
+        applyThemePalette(get().company?.themePalette || "copper-wave", t === "dark");
+        set({ theme: t });
+      },
+      setThemePalette: (paletteId) => {
+        const isDark = get().theme === "dark";
+        applyThemePalette(paletteId, isDark);
+        set((s) => {
+          const nextCompany = { ...s.company, themePalette: paletteId };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+      },
       setCompany: (c) =>
         set((s) => {
           const nextCompany = { ...s.company, ...c };

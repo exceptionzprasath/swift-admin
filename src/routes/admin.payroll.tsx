@@ -182,6 +182,7 @@ export function PayrollPage() {
     setCompany,
     attendance,
     roster,
+    requests,
     applySalaryRevision,
     currentUser,
     saveAllCompanySettings,
@@ -518,7 +519,37 @@ export function PayrollPage() {
       const effectiveOtHours = ov.otHours !== undefined ? ov.otHours : otHours;
       const effectiveIncentive = ov.incentive !== undefined ? ov.incentive : 0;
       const effectiveBonus = (ov.bonus !== undefined ? ov.bonus : 0) + attBonus + yrBonus;
-      const effectiveLoan = ov.loan !== undefined ? ov.loan : 0;
+      // Automatically calculate approved Advance Loan EMI deductions for this employee in selectedMonth
+      const activeLoanRequests = (requests || []).filter((r: any) => {
+        if (r.category !== "loan" && r.category !== "advance_loan") return false;
+        const matchesEmp =
+          r.employeeId === emp.id ||
+          (emp.empCode && r.empCode === emp.empCode) ||
+          r.employeeName === emp.name;
+        if (!matchesEmp) return false;
+        const isApproved = r.status === "Approved" || r.status === "Disbursed";
+        if (!isApproved) return false;
+
+        const startMonth = r.metadata?.startMonth || (r.date ? r.date.slice(0, 7) : (r.createdAt ? r.createdAt.slice(0, 7) : ""));
+        const tenorMonths = r.metadata?.tenorMonths || (r.tenor?.includes("1") ? 1 : r.tenor?.includes("2") ? 2 : r.tenor?.includes("3") ? 3 : r.tenor?.includes("6") ? 6 : 1);
+        if (!startMonth) return true;
+
+        const [sYear, sMonth] = startMonth.split("-").map(Number);
+        const [curYear, curMonth] = selectedMonth.split("-").map(Number);
+        const startTotalMonths = sYear * 12 + sMonth;
+        const curTotalMonths = curYear * 12 + curMonth;
+        const endTotalMonths = startTotalMonths + tenorMonths - 1;
+
+        return curTotalMonths >= startTotalMonths && curTotalMonths <= endTotalMonths;
+      });
+
+      const activeLoanEmiSum = activeLoanRequests.reduce((sum: number, r: any) => {
+        const tenorMonths = r.metadata?.tenorMonths || (r.tenor?.includes("1") ? 1 : r.tenor?.includes("2") ? 2 : r.tenor?.includes("3") ? 3 : r.tenor?.includes("6") ? 6 : 1);
+        const emi = r.metadata?.monthlyEmi || Math.round((Number(r.amount) || 0) / tenorMonths);
+        return sum + emi;
+      }, 0);
+
+      const effectiveLoan = ov.loan !== undefined ? ov.loan : activeLoanEmiSum;
       const effectiveAdvance = ov.advance !== undefined ? ov.advance : 0;
       const effectiveOtherDeductions = ov.otherDeductions !== undefined ? ov.otherDeductions : 0;
       const effectiveVariablePay = ov.variablePay !== undefined ? ov.variablePay : 0;

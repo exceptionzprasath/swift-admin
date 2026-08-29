@@ -45,6 +45,26 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-navbar: var(--navbar);
+  --color-navbar-foreground: var(--navbar-foreground);
+  --color-navbar-border: var(--navbar-border);
+  --color-navbar-accent: var(--navbar-accent);
+  --color-taskmenu: var(--taskmenu);
+  --color-taskmenu-foreground: var(--taskmenu-foreground);
+  --color-taskmenu-accent: var(--taskmenu-accent);
+  --color-palette-c1: var(--palette-c1);
+  --color-palette-c2: var(--palette-c2);
+  --color-palette-c3: var(--palette-c3);
+  --color-palette-c4: var(--palette-c4);
+  --color-palette-c5: var(--palette-c5);
+  --color-kpi-1: var(--kpi-1-bg);
+  --color-kpi-1-foreground: var(--kpi-1-fg);
+  --color-kpi-2: var(--kpi-2-bg);
+  --color-kpi-2-foreground: var(--kpi-2-fg);
+  --color-kpi-3: var(--kpi-3-bg);
+  --color-kpi-3-foreground: var(--kpi-3-fg);
+  --color-kpi-4: var(--kpi-4-bg);
+  --color-kpi-4-foreground: var(--kpi-4-fg);
   --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
