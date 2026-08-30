@@ -128,13 +128,9 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
           transition={{ type: "spring", stiffness: 200, damping: 14 }}
           whileHover={{ scale: 1.12 }}
           whileTap={{ scale: 0.94 }}
-          className="fixed bottom-24 md:bottom-6 left-4 md:left-6 z-50 h-24 w-24 rounded-full flex items-center justify-center animate-swift-float cursor-pointer group"
+          className="fixed bottom-40 md:bottom-22 right-3 md:right-5 z-50 h-24 w-24 rounded-full flex items-center justify-center animate-swift-float cursor-pointer group"
           aria-label="Open SWIFT AI"
         >
-          {/* Ping rings (commented out as requested)
-          <span className="absolute inset-0 rounded-full bg-gradient-brand opacity-40 animate-swift-ping" />
-          <span className="absolute inset-0 rounded-full bg-gradient-brand opacity-20 animate-swift-ping" style={{ animationDelay: "0.7s" }} />
-          */}
           {/* Lottie Animation Only */}
           <span className="relative h-24 w-24 flex items-center justify-center overflow-hidden">
             <Lottie animationData={chatbotAnimation} loop={true} className="w-full h-full object-contain scale-110" />
@@ -153,7 +149,7 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.94 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
-            className="fixed bottom-40 md:bottom-24 left-4 md:left-6 z-50 w-[min(420px,calc(100vw-1.5rem))] h-[min(640px,calc(100vh-10rem))] md:h-[min(640px,calc(100vh-6rem))] rounded-3xl border border-border/60 glass shadow-2xl flex flex-col overflow-hidden"
+            className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-50 w-[min(420px,calc(100vw-1.5rem))] h-[min(640px,calc(100vh-10rem))] md:h-[min(640px,calc(100vh-6rem))] rounded-3xl border border-border/60 glass shadow-2xl flex flex-col overflow-hidden"
           >
             <div className="px-4 py-3 border-b border-white/10 bg-gradient-brand animate-swift-gradient text-white flex items-center gap-3 relative overflow-hidden">
               <div className="absolute inset-0 opacity-30 bg-gradient-mesh pointer-events-none" />

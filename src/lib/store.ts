@@ -392,6 +392,7 @@ export type DashboardBannerConfig = {
   enabled: boolean;
   autoScrollSeconds: number;
   transitionEffect: "slide" | "fade";
+  showLiveTicker?: boolean;
   showTextOverlay?: boolean;
   showActionButton?: boolean;
   hasBorderRadius?: boolean;
@@ -1239,6 +1240,7 @@ HR Department
     enabled: true,
     autoScrollSeconds: 5,
     transitionEffect: "slide",
+    showLiveTicker: true,
     showTextOverlay: true,
     showActionButton: true,
     hasBorderRadius: true,

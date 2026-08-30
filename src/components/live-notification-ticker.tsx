@@ -28,6 +28,7 @@ function formatRelativeTime(dateStr?: string | number): string {
 
 export function LiveNotificationTicker() {
   const {
+    company,
     employees,
     leaves,
     docRequests,
@@ -39,6 +40,8 @@ export function LiveNotificationTicker() {
   const activeTenantId = useAuth((s) => s.activeTenantId);
   const [isPaused, setIsPaused] = useState(false);
   const tickerTrackRef = useRef<HTMLDivElement>(null);
+
+  const isEnabled = company.dashboardBanners?.showLiveTicker ?? true;
 
   // Real-time backend sync: Poll live company updates from backend every 15 seconds
   useEffect(() => {
@@ -163,6 +166,8 @@ export function LiveNotificationTicker() {
   const tickerItems = useMemo(() => {
     return [...liveItems, ...liveItems];
   }, [liveItems]);
+
+  if (!isEnabled) return null;
 
   return (
     <div

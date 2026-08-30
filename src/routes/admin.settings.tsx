@@ -604,6 +604,35 @@ function SettingsPage() {
 
           <div className="sm:col-span-2 lg:col-span-3 pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
+              <Label className="text-xs font-semibold">Live Notification Stream</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Toggle the real-time auto-scrolling live ticker bar under the dashboard header.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="showLiveTickerToggle"
+                checked={company.dashboardBanners?.showLiveTicker ?? true}
+                onChange={(e) =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+                      showLiveTicker: e.target.checked,
+                    },
+                  })
+                }
+                className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+              />
+              <label htmlFor="showLiveTickerToggle" className="text-xs font-medium cursor-pointer flex items-center gap-2">
+                <span>{company.dashboardBanners?.showLiveTicker ?? true ? "Live Stream Enabled" : "Live Stream Disabled"}</span>
+                <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+              </label>
+            </div>
+          </div>
+
+          <div className="sm:col-span-2 lg:col-span-3 pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
               <Label className="text-xs font-semibold">Bottom Action Button (CTA)</Label>
               <p className="text-[11px] text-muted-foreground">
                 Toggle the exploration/action button strip under the banner. Automatically synced to the active theme palette (<span className="font-semibold text-primary">{activePalette.name}</span>).

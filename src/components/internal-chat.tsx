@@ -65,7 +65,7 @@ export function InternalChat({ me, contacts, title = "Internal Chat" }: Props) {
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.92 }}
         transition={{ type: "spring", stiffness: 260, damping: 18 }}
-        className="fixed z-50 bottom-24 md:bottom-6 right-4 h-13 w-13 h-13 rounded-full bg-gradient-brand animate-swift-gradient shadow-glow text-white flex items-center justify-center"
+        className="fixed z-50 bottom-24 md:bottom-6 right-7 md:right-8 h-13 w-13 rounded-full bg-gradient-brand animate-swift-gradient shadow-glow text-white flex items-center justify-center cursor-pointer"
         style={{ height: 52, width: 52 }}
         aria-label="Open internal chat"
       >
@@ -91,7 +91,7 @@ export function InternalChat({ me, contacts, title = "Internal Chat" }: Props) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.94 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
-            className="fixed z-50 bottom-40 md:bottom-24 right-4 w-[92vw] sm:w-[380px] h-[min(540px,calc(100vh-10rem))] rounded-3xl border border-border/60 glass shadow-2xl flex flex-col overflow-hidden"
+            className="fixed z-50 bottom-24 md:bottom-6 right-4 md:right-6 w-[92vw] sm:w-[380px] h-[min(540px,calc(100vh-10rem))] rounded-3xl border border-border/60 glass shadow-2xl flex flex-col overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-gradient-brand animate-swift-gradient text-white relative overflow-hidden">
               <div className="absolute inset-0 opacity-25 bg-gradient-mesh pointer-events-none" />

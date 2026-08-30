@@ -28,10 +28,10 @@ export const Route = createFileRoute("/admin")({
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; exact?: boolean; comingSoon?: boolean };
 const nav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/admin/ai", label: "SWIFT AI", icon: Sparkles },
+  { to: "/admin/ai", label: "SWIFT AI", icon: Sparkles, comingSoon: true },
   { to: "/admin/notices", label: "Notice Board", icon: Megaphone },
   { to: "/admin/employees", label: "Employees", icon: Users },
-  { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket },
+  { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket, comingSoon: true },
   { to: "/admin/branches", label: "Branches", icon: Building2 },
   { to: "/admin/org", label: "Organization", icon: Network },
   { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal },
@@ -39,8 +39,8 @@ const nav: NavItem[] = [
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays },
   { to: "/admin/shift-roster", label: "Swift Roster", icon: Clock },
   { to: "/admin/payroll", label: "Payroll", icon: Calculator },
-  { to: "/admin/reports", label: "Reports", icon: BarChart3 },
-  { to: "/admin/assets", label: "Assets", icon: Package },
+  { to: "/admin/reports", label: "Reports", icon: BarChart3, comingSoon: true },
+  { to: "/admin/assets", label: "Assets", icon: Package, comingSoon: true },
   { to: "/admin/vault", label: "Vault", icon: FolderLock },
   { to: "/admin/compliance", label: "Compliance AI", icon: Scale, comingSoon: true },
   { to: "/admin/compliance-docs", label: "Compliance Docs", icon: ShieldCheck, comingSoon: true },
