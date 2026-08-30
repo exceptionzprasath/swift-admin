@@ -1,11 +1,29 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useStore } from "@/lib/store";
+import { useStore, uploadToS3, type DashboardBannerItem } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 import { PALETTES, getPalette, type ThemePaletteId } from "@/lib/palettes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calculator, ArrowRight, Palette, Check, Sparkles, Sun, Moon, Wand2 } from "lucide-react";
+import {
+  Calculator,
+  ArrowRight,
+  Palette,
+  Check,
+  Sparkles,
+  Sun,
+  Moon,
+  Wand2,
+  Image as ImageIcon,
+  Plus,
+  Trash2,
+  Upload,
+  ExternalLink,
+  Sliders,
+  Radio,
+  Eye,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 
@@ -47,6 +65,86 @@ function SettingsPage() {
       toast.success("File uploaded to assets draft");
     };
     r.readAsDataURL(file);
+  };
+
+  const handleUploadBannerImage = (slideId: string) => (file: File | null) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      const tenantId = useAuth.getState().activeTenantId || "default";
+
+      const currentBanners = company.dashboardBanners?.banners || [];
+      const updatedBanners = currentBanners.map((b) =>
+        b.id === slideId ? { ...b, imageUrl: dataUrl } : b
+      );
+      setCompany({
+        dashboardBanners: {
+          ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+          banners: updatedBanners,
+        },
+      });
+
+      try {
+        toast.loading("Uploading banner to S3 bucket...", { id: `upload-${slideId}` });
+        const s3Url = await uploadToS3(tenantId, `banners/${slideId}_${Date.now()}.png`, dataUrl);
+        const finalBanners = (company.dashboardBanners?.banners || updatedBanners).map((b) =>
+          b.id === slideId ? { ...b, imageUrl: s3Url } : b
+        );
+        setCompany({
+          dashboardBanners: {
+            ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+            banners: finalBanners,
+          },
+        });
+        toast.success("Banner image successfully saved to S3 bucket!", { id: `upload-${slideId}` });
+      } catch (err: any) {
+        toast.error("S3 upload fallback: " + (err?.message || "Saved locally"), { id: `upload-${slideId}` });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddBannerSlide = () => {
+    const newSlide: DashboardBannerItem = {
+      id: `banner-${Date.now()}`,
+      imageUrl: "",
+      title: "PEOPLE & CULTURE",
+      subtitle: "Collaborate, Innovate, Excel Together.",
+      tagline: "Empowering Every Team | Real-time Engagement",
+      ctaText: "Explore Our Journey",
+      ctaLink: "/admin/org",
+      active: true,
+    };
+    const currentBanners = company.dashboardBanners?.banners || [];
+    setCompany({
+      dashboardBanners: {
+        ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+        banners: [...currentBanners, newSlide],
+      },
+    });
+    toast.success("New banner slide added! Upload an image and configure details.");
+  };
+
+  const handleDeleteBannerSlide = (slideId: string) => {
+    const currentBanners = company.dashboardBanners?.banners || [];
+    setCompany({
+      dashboardBanners: {
+        ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+        banners: currentBanners.filter((b) => b.id !== slideId),
+      },
+    });
+    toast.success("Banner slide removed");
+  };
+
+  const handleUpdateBannerSlide = (slideId: string, patch: Partial<DashboardBannerItem>) => {
+    const currentBanners = company.dashboardBanners?.banners || [];
+    setCompany({
+      dashboardBanners: {
+        ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+        banners: currentBanners.map((b) => (b.id === slideId ? { ...b, ...patch } : b)),
+      },
+    });
   };
 
   const handleSave = async () => {
@@ -252,6 +350,518 @@ function SettingsPage() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Dashboard Hero Banner & Live Notification Settings */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                <ImageIcon className="h-5 w-5" />
+              </div>
+              <h2 className="font-display font-semibold text-lg">Dashboard Hero Banners & Live Stream</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Configure dynamic auto-scrolling company hero banners, AWS S3 image storage, customized rotation timers, and live notifications.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleAddBannerSlide}
+            className="gap-1.5 rounded-xl font-medium"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Banner Slide</span>
+          </Button>
+        </div>
+
+        {/* Global Controls */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 bg-muted/30 p-5 rounded-xl border border-border/60">
+          <div>
+            <Label className="text-xs font-semibold">Enable Banner Carousel</Label>
+            <p className="text-[11px] text-muted-foreground mb-2">Display banner on Dashboard</p>
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="checkbox"
+                id="bannerEnabled"
+                checked={company.dashboardBanners?.enabled ?? true}
+                onChange={(e) =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+                      enabled: e.target.checked,
+                    },
+                  })
+                }
+                className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+              />
+              <label htmlFor="bannerEnabled" className="text-xs font-medium cursor-pointer">
+                {company.dashboardBanners?.enabled ?? true ? "Active & Visible" : "Disabled"}
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold">Text Overlay on Banner</Label>
+            <p className="text-[11px] text-muted-foreground mb-2">Show or remove typography & text</p>
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="checkbox"
+                id="textOverlayEnabled"
+                checked={company.dashboardBanners?.showTextOverlay ?? true}
+                onChange={(e) =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+                      showTextOverlay: e.target.checked,
+                    },
+                  })
+                }
+                className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+              />
+              <label htmlFor="textOverlayEnabled" className="text-xs font-medium cursor-pointer">
+                {company.dashboardBanners?.showTextOverlay ?? true ? "Text Overlay Visible" : "Remove Text (Clean Banner)"}
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold">Banner Corner Border Radius</Label>
+            <p className="text-[11px] text-muted-foreground mb-2">Rounded corners vs Sharp square edges</p>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                type="button"
+                onClick={() =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+                      hasBorderRadius: true,
+                    },
+                  })
+                }
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                  (company.dashboardBanners?.hasBorderRadius ?? true)
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background hover:bg-muted text-foreground border-border"
+                }`}
+              >
+                Rounded (2xl)
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+                      hasBorderRadius: false,
+                    },
+                  })
+                }
+                className={`px-3 py-1.5 text-xs font-semibold rounded-none border transition-colors ${
+                  !(company.dashboardBanners?.hasBorderRadius ?? true)
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background hover:bg-muted text-foreground border-border"
+                }`}
+              >
+                Sharp / Flat
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold">Auto-Scroll Interval (Seconds)</Label>
+            <p className="text-[11px] text-muted-foreground mb-2">Time per slide before rotating</p>
+            <div className="flex items-center gap-2 mt-1">
+              <Input
+                type="number"
+                min={2}
+                max={60}
+                value={company.dashboardBanners?.autoScrollSeconds || 5}
+                onChange={(e) =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { enabled: true, transitionEffect: "slide", banners: [] }),
+                      autoScrollSeconds: Math.max(2, parseInt(e.target.value) || 5),
+                    },
+                  })
+                }
+                className="w-18 h-8 text-xs rounded-lg"
+              />
+              <div className="flex gap-1">
+                {[3, 5, 7, 10].map((sec) => (
+                  <button
+                    key={sec}
+                    type="button"
+                    onClick={() =>
+                      setCompany({
+                        dashboardBanners: {
+                          ...(company.dashboardBanners || { enabled: true, transitionEffect: "slide", banners: [] }),
+                          autoScrollSeconds: sec,
+                        },
+                      })
+                    }
+                    className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition-colors ${
+                      (company.dashboardBanners?.autoScrollSeconds || 5) === sec
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background hover:bg-muted text-foreground border-border"
+                    }`}
+                  >
+                    {sec}s
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold">Banner Image Zoom Level</Label>
+            <p className="text-[11px] text-muted-foreground mb-2">Scale / Zoom image in or out</p>
+            <div className="flex items-center gap-2 mt-1">
+              <Input
+                type="number"
+                min={70}
+                max={180}
+                step={5}
+                value={company.dashboardBanners?.zoomLevel || 100}
+                onChange={(e) =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+                      zoomLevel: Math.max(70, Math.min(180, parseInt(e.target.value) || 100)),
+                    },
+                  })
+                }
+                className="w-18 h-8 text-xs rounded-lg"
+              />
+              <div className="flex gap-1">
+                {[90, 100, 115, 130].map((zoom) => (
+                  <button
+                    key={zoom}
+                    type="button"
+                    onClick={() =>
+                      setCompany({
+                        dashboardBanners: {
+                          ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+                          zoomLevel: zoom,
+                        },
+                      })
+                    }
+                    className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition-colors ${
+                      (company.dashboardBanners?.zoomLevel || 100) === zoom
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background hover:bg-muted text-foreground border-border"
+                    }`}
+                  >
+                    {zoom}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold">Image Fitting & Transition</Label>
+            <p className="text-[11px] text-muted-foreground mb-2">Object fit & slide transition</p>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <select
+                value={company.dashboardBanners?.imageFit || "cover"}
+                onChange={(e) =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, banners: [] }),
+                      imageFit: e.target.value as any,
+                    },
+                  })
+                }
+                className="w-full h-8 text-xs rounded-lg border border-border bg-background px-2"
+              >
+                <option value="cover">Fit: Cover</option>
+                <option value="contain">Fit: Contain</option>
+                <option value="fill">Fit: Fill</option>
+              </select>
+
+              <select
+                value={company.dashboardBanners?.transitionEffect || "slide"}
+                onChange={(e) =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, banners: [] }),
+                      transitionEffect: e.target.value as "slide" | "fade",
+                    },
+                  })
+                }
+                className="w-full h-8 text-xs rounded-lg border border-border bg-background px-2"
+              >
+                <option value="slide">Slide</option>
+                <option value="fade">Fade</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="sm:col-span-2 lg:col-span-3 pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <Label className="text-xs font-semibold">Bottom Action Button (CTA)</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Toggle the exploration/action button strip under the banner. Automatically synced to the active theme palette (<span className="font-semibold text-primary">{activePalette.name}</span>).
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="showActionButtonToggle"
+                checked={company.dashboardBanners?.showActionButton ?? true}
+                onChange={(e) =>
+                  setCompany({
+                    dashboardBanners: {
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+                      showActionButton: e.target.checked,
+                    },
+                  })
+                }
+                className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+              />
+              <label htmlFor="showActionButtonToggle" className="text-xs font-medium cursor-pointer flex items-center gap-2">
+                <span>{company.dashboardBanners?.showActionButton ?? true ? "Action Button Enabled" : "Action Button Disabled"}</span>
+                <span className="h-2.5 w-6 rounded-full bg-primary inline-block" title="Synced to current theme" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Banner Slides List */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-xs text-foreground uppercase tracking-wider">
+              Configured Banner Slides ({company.dashboardBanners?.banners?.length || 0})
+            </h3>
+          </div>
+
+          <div className="space-y-4">
+            {(company.dashboardBanners?.banners || []).map((slide, index) => (
+              <div
+                key={slide.id || index}
+                className="p-4 rounded-xl border border-border bg-card/80 shadow-xs space-y-4"
+              >
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold items-center justify-center">
+                      {index + 1}
+                    </span>
+                    <span className="font-semibold text-xs text-foreground">
+                      {slide.title || `Slide ${index + 1}`}
+                    </span>
+                    {slide.active === false && (
+                      <span className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full font-medium">
+                        Hidden
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={slide.active !== false}
+                        onChange={(e) =>
+                          handleUpdateBannerSlide(slide.id, { active: e.target.checked })
+                        }
+                        className="h-3.5 w-3.5 accent-primary cursor-pointer"
+                      />
+                      <span>Active</span>
+                    </label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteBannerSlide(slide.id)}
+                      className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 rounded-lg"
+                      title="Delete Slide"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                  {/* Image Upload Box with S3 Preview */}
+                  <div className="md:col-span-4 space-y-2">
+                    <Label className="text-xs font-medium">Banner Background Image</Label>
+                    <div className="relative rounded-lg border-2 border-dashed border-border/80 overflow-hidden bg-muted/20 h-28 flex flex-col items-center justify-center text-center p-2 group hover:border-primary/50 transition-colors">
+                      {slide.imageUrl ? (
+                        <>
+                          <img
+                            src={slide.imageUrl}
+                            alt="Banner Preview"
+                            className="w-full h-full object-cover rounded-md"
+                          />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-2">
+                            <span className="text-[10px] text-white font-medium">Click to replace</span>
+                            <label className="cursor-pointer bg-primary text-primary-foreground text-[10px] font-semibold px-2.5 py-1 rounded-md shadow-xs hover:opacity-90">
+                              Upload New
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) =>
+                                  handleUploadBannerImage(slide.id)(e.target.files?.[0] || null)
+                                }
+                              />
+                            </label>
+                          </div>
+                        </>
+                      ) : (
+                        <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 w-full h-full">
+                          <Upload className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                          <span className="text-[11px] font-medium text-foreground">Upload to S3</span>
+                          <span className="text-[9px] text-muted-foreground">PNG, JPG or WEBP</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) =>
+                              handleUploadBannerImage(slide.id)(e.target.files?.[0] || null)
+                            }
+                          />
+                        </label>
+                      )}
+                    </div>
+                    {slide.imageUrl && (
+                      <p className="text-[10px] text-muted-foreground truncate" title={slide.imageUrl}>
+                        Source: {slide.imageUrl.startsWith("data:") ? "Local draft (uploads on save)" : "Saved in S3"}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Text Content Inputs */}
+                  <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Badge / Category</Label>
+                      <Input
+                        value={slide.title || ""}
+                        onChange={(e) =>
+                          handleUpdateBannerSlide(slide.id, { title: e.target.value })
+                        }
+                        placeholder="e.g. A PEOPLE-FIRST WORKPLACE"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">Headline / Subtitle</Label>
+                      <Input
+                        value={slide.subtitle || ""}
+                        onChange={(e) =>
+                          handleUpdateBannerSlide(slide.id, { subtitle: e.target.value })
+                        }
+                        placeholder="e.g. Where People Grow, Businesses Thrive."
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">Tagline / Keywords</Label>
+                      <Input
+                        value={slide.tagline || ""}
+                        onChange={(e) =>
+                          handleUpdateBannerSlide(slide.id, { tagline: e.target.value })
+                        }
+                        placeholder="e.g. Smarter HR | Stronger Teams"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">CTA Button Text</Label>
+                        <Input
+                          value={slide.ctaText || ""}
+                          onChange={(e) =>
+                            handleUpdateBannerSlide(slide.id, { ctaText: e.target.value })
+                          }
+                          placeholder="e.g. Explore Our Journey"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">CTA Target Link</Label>
+                        <Input
+                          value={slide.ctaLink || ""}
+                          onChange={(e) =>
+                            handleUpdateBannerSlide(slide.id, { ctaLink: e.target.value })
+                          }
+                          placeholder="e.g. /admin/org"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Per-Slide Options: Hide Text, Hide Action Button & Zoom */}
+                    <div className="sm:col-span-2 pt-2 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-center">
+                      <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={slide.hideTextOverlay === true}
+                          onChange={(e) =>
+                            handleUpdateBannerSlide(slide.id, { hideTextOverlay: e.target.checked })
+                          }
+                          className="h-3.5 w-3.5 accent-primary cursor-pointer"
+                        />
+                        <span>Remove Text</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={slide.hideActionButton === true}
+                          onChange={(e) =>
+                            handleUpdateBannerSlide(slide.id, { hideActionButton: e.target.checked })
+                          }
+                          className="h-3.5 w-3.5 accent-primary cursor-pointer"
+                        />
+                        <span>Hide Action Button</span>
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        <Label className="text-[11px] text-muted-foreground whitespace-nowrap">Zoom:</Label>
+                        <Input
+                          type="number"
+                          min={70}
+                          max={180}
+                          step={5}
+                          value={slide.zoomLevel || 100}
+                          onChange={(e) =>
+                            handleUpdateBannerSlide(slide.id, {
+                              zoomLevel: Math.max(70, Math.min(180, parseInt(e.target.value) || 100)),
+                            })
+                          }
+                          className="h-7 text-xs w-16"
+                        />
+                        <span className="text-[10px] text-muted-foreground">%</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Label className="text-[11px] text-muted-foreground whitespace-nowrap">Fit:</Label>
+                        <select
+                          value={slide.imageFit || "cover"}
+                          onChange={(e) =>
+                            handleUpdateBannerSlide(slide.id, { imageFit: e.target.value as any })
+                          }
+                          className="h-7 text-xs rounded-md border border-border bg-background px-1.5 w-full"
+                        >
+                          <option value="cover">Cover</option>
+                          <option value="contain">Contain</option>
+                          <option value="fill">Fill</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

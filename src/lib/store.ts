@@ -75,7 +75,7 @@ async function syncDelete(table: string, tenantId: string, id: string) {
   });
 }
 
-async function uploadToS3(tenantId: string, path: string, fileDataUrl: string) {
+export async function uploadToS3(tenantId: string, path: string, fileDataUrl: string) {
   if (!fileDataUrl || !fileDataUrl.startsWith("data:")) return fileDataUrl;
   const res = await safeFetch("/api/companies/upload", {
     method: "POST",
@@ -370,6 +370,34 @@ export type Company = {
   attendanceRequestCategories?: AttendanceRequestCategory[];
   documentTypes?: DocumentTypeItem[];
   approvalWorkflows?: any;
+  dashboardBanners?: DashboardBannerConfig;
+};
+
+export type DashboardBannerItem = {
+  id: string;
+  imageUrl: string;
+  title?: string;
+  subtitle?: string;
+  tagline?: string;
+  ctaText?: string;
+  ctaLink?: string;
+  active?: boolean;
+  hideTextOverlay?: boolean;
+  hideActionButton?: boolean;
+  zoomLevel?: number; // 70 to 150
+  imageFit?: "cover" | "contain" | "fill";
+};
+
+export type DashboardBannerConfig = {
+  enabled: boolean;
+  autoScrollSeconds: number;
+  transitionEffect: "slide" | "fade";
+  showTextOverlay?: boolean;
+  showActionButton?: boolean;
+  hasBorderRadius?: boolean;
+  zoomLevel?: number; // 70 to 150
+  imageFit?: "cover" | "contain" | "fill";
+  banners: DashboardBannerItem[];
 };
 
 export type SalaryStructure = {
@@ -1207,6 +1235,48 @@ HR Department
       holidayCalendar: "India-Standard",
     },
   ],
+  dashboardBanners: {
+    enabled: true,
+    autoScrollSeconds: 5,
+    transitionEffect: "slide",
+    showTextOverlay: true,
+    showActionButton: true,
+    hasBorderRadius: true,
+    zoomLevel: 100,
+    imageFit: "cover",
+    banners: [
+      {
+        id: "banner-1",
+        imageUrl: "",
+        title: "A PEOPLE-FIRST WORKPLACE",
+        subtitle: "Where People Grow, Businesses Thrive.",
+        tagline: "Smarter HR | Stronger Teams | A Brighter Tomorrow",
+        ctaText: "Explore Our Journey",
+        ctaLink: "/admin/org",
+        active: true,
+      },
+      {
+        id: "banner-2",
+        imageUrl: "",
+        title: "EMPOWERING MODERN WORKSPACES",
+        subtitle: "Automated Attendance, Intelligent Leaves & Instant Approvals.",
+        tagline: "Speed | Accuracy | Transparency",
+        ctaText: "Approval Settings",
+        ctaLink: "/admin/approval-settings",
+        active: true,
+      },
+      {
+        id: "banner-3",
+        imageUrl: "",
+        title: "INTELLIGENT WORKFORCE OPERATIONS",
+        subtitle: "Streamlined Payroll, Realtime Shifts & Zero Compliance Gaps.",
+        tagline: "Engage | Enable | Excel | Together",
+        ctaText: "Shift Roster",
+        ctaLink: "/admin/shift-roster",
+        active: true,
+      },
+    ],
+  },
 };
 
 function buildDemoData() {
@@ -1878,7 +1948,33 @@ export const useStore = create<State>()(
           set({ docAssets: finalDocAssets });
         }
 
-        syncItem("config", { id: "config", tenantId, ...st.company });
+        // Upload any new banner images to S3
+        let updatedCompany = { ...st.company };
+        if (updatedCompany.dashboardBanners?.banners?.length) {
+          let bannerChanged = false;
+          const updatedBanners = await Promise.all(
+            updatedCompany.dashboardBanners.banners.map(async (b) => {
+              if (b.imageUrl && b.imageUrl.startsWith("data:")) {
+                const s3BannerUrl = await uploadToS3(tenantId, `banners/${b.id}.png`, b.imageUrl);
+                bannerChanged = true;
+                return { ...b, imageUrl: s3BannerUrl };
+              }
+              return b;
+            })
+          );
+          if (bannerChanged) {
+            updatedCompany = {
+              ...updatedCompany,
+              dashboardBanners: {
+                ...updatedCompany.dashboardBanners,
+                banners: updatedBanners,
+              },
+            };
+            set({ company: updatedCompany });
+          }
+        }
+
+        syncItem("config", { id: "config", tenantId, ...updatedCompany });
         syncItem("docAssets", { id: "doc_assets", tenantId, ...finalDocAssets });
       },
       addLibraryItem: (item) => {

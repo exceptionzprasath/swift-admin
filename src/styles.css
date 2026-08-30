@@ -261,3 +261,12 @@
 @utility animate-swift-ping {
   animation: swift-ping-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
+
+@keyframes live-ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@utility animate-live-ticker {
+  animation: live-ticker-scroll 38s linear infinite;
+}

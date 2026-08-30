@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NoticeBoard } from "@/components/notice-board";
+import { LiveNotificationTicker } from "@/components/live-notification-ticker";
+import { DashboardHeroCarousel } from "@/components/dashboard-hero-carousel";
 import {
   ResponsiveContainer,
   BarChart,
@@ -208,6 +210,12 @@ function Dashboard() {
         </div>
       </div>
 
+      {/* LIVE NOTIFICATION TICKER */}
+      <LiveNotificationTicker />
+
+      {/* AUTO-SCROLLING HERO BANNER CAROUSEL & CTA */}
+      <DashboardHeroCarousel />
+
       {/* TOP ROW: 4 Distinctive Palette KPI Cards matching NexaVerse reference */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpiCards.map((c, i) => (
@@ -216,7 +224,7 @@ function Dashboard() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
-            className={`rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col justify-between min-h-[135px] transition-transform hover:-translate-y-0.5 cursor-pointer ${c.bgClass}`}
+            className={`rounded-none p-5 sm:p-6 shadow-xs flex flex-col justify-between min-h-[135px] transition-transform hover:-translate-y-0.5 cursor-pointer ${c.bgClass}`}
           >
             <Link to={c.link} className="flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
