@@ -25,7 +25,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminLayout,
 });
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; exact?: boolean };
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; exact?: boolean; comingSoon?: boolean };
 const nav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/admin/ai", label: "SWIFT AI", icon: Sparkles },
@@ -35,7 +35,6 @@ const nav: NavItem[] = [
   { to: "/admin/branches", label: "Branches", icon: Building2 },
   { to: "/admin/org", label: "Organization", icon: Network },
   { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal },
-  { to: "/admin/roles", label: "Role Creation", icon: ShieldCheck },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays },
   { to: "/admin/shift-roster", label: "Swift Roster", icon: Clock },
@@ -43,11 +42,11 @@ const nav: NavItem[] = [
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/assets", label: "Assets", icon: Package },
   { to: "/admin/vault", label: "Vault", icon: FolderLock },
-  { to: "/admin/compliance", label: "Compliance AI", icon: Scale },
-  { to: "/admin/compliance-docs", label: "Compliance Docs", icon: ShieldCheck },
-  { to: "/admin/audit", label: "Audit Log", icon: ShieldCheck },
-  { to: "/admin/subscription", label: "Subscription", icon: CreditCard },
-  { to: "/admin/renewals", label: "Renewal Scheduler", icon: BellRing },
+  { to: "/admin/compliance", label: "Compliance AI", icon: Scale, comingSoon: true },
+  { to: "/admin/compliance-docs", label: "Compliance Docs", icon: ShieldCheck, comingSoon: true },
+  { to: "/admin/audit", label: "Audit Log", icon: ShieldCheck, comingSoon: true },
+  { to: "/admin/subscription", label: "Subscription", icon: CreditCard, comingSoon: true },
+  { to: "/admin/renewals", label: "Renewal Scheduler", icon: BellRing, comingSoon: true },
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -85,7 +84,7 @@ function AdminLayout() {
   const SidebarBody = (
     <div className="flex flex-col h-full justify-between overflow-hidden">
       <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
-        <div className="p-5 border-b border-sidebar-border shrink-0">
+        <div className="border-b border-sidebar-border shrink-0 overflow-hidden bg-white">
           <SwiftLogo />
         </div>
         <nav className="p-3 space-y-1 overflow-y-auto flex-1">
@@ -95,14 +94,25 @@ function AdminLayout() {
               <Link
                 key={n.to}
                 to={n.to}
-                className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${
+                className={`flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${
                   active
                     ? "bg-gradient-brand text-white shadow-soft font-semibold"
                     : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 }`}
               >
-                <n.icon className="h-4 w-4 shrink-0" />
-                {n.label}
+                <div className="flex items-center gap-3 min-w-0">
+                  <n.icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{n.label}</span>
+                </div>
+                {n.comingSoon && (
+                  <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-md ${
+                    active
+                      ? "bg-white/20 text-white"
+                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                  }`}>
+                    Soon
+                  </span>
+                )}
               </Link>
             );
           })}

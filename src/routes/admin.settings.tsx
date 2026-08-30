@@ -617,20 +617,6 @@ function SettingsPage() {
         </div>
       </Card>
 
-      {/* Appointment Letter Template */}
-      <Card title="Appointment Letter Template">
-        <div className="col-span-3">
-          <Label className="text-xs text-muted-foreground mb-2 block">
-            Template placeholders: {"{{name}}, {{designation}}, {{department}}, {{company}}, {{doj}}, {{empCode}}, {{ctc}}, {{gross}}"}
-          </Label>
-          <Textarea
-            rows={8}
-            value={company.appointmentTemplate}
-            onChange={(e) => setCompany({ appointmentTemplate: e.target.value })}
-            className="font-mono text-xs"
-          />
-        </div>
-      </Card>
     </div>
   );
 }
