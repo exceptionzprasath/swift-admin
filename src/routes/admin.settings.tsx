@@ -572,7 +572,7 @@ function SettingsPage() {
                 onChange={(e) =>
                   setCompany({
                     dashboardBanners: {
-                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, banners: [] }),
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide" as const, banners: [] }),
                       imageFit: e.target.value as any,
                     },
                   })

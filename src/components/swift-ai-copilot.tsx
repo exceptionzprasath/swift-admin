@@ -15,12 +15,25 @@ import { parseComplianceCommand, renderComplianceDocPDF } from "@/lib/compliance
 import { useComplianceDocs, blobToDataUrl } from "@/lib/compliance-docs-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sparkles, X, Send, Loader2, Bot, Zap } from "lucide-react";
+import { Sparkles, X, Send, Loader2, Bot, Zap, FileText, MessageSquare, Download } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  generateEmployeesPdf,
+  generateAttendancePdf,
+  generateSalaryPdf,
+  generateAiReportPdf,
+  downloadPdfBlob,
+} from "@/lib/ai-pdf-reports";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  isFormatPrompt?: boolean;
+  originalQuery?: string;
+  downloadQuery?: string;
+};
 
 export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Role; viewerEmployeeId?: string }) {
   const [open, setOpen] = useState(false);
@@ -87,24 +100,109 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
     return `✅ Generated **${specs.length}** compliance document(s), auto-filled from your tenant data. Bundle downloaded and archived at **/admin/compliance-docs**.\n\n${lines.join("\n")}`;
   };
 
-  const send = async (text: string) => {
+  const [pendingReportQuery, setPendingReportQuery] = useState<string | null>(null);
+
+  const isReportQuery = (text: string): boolean => {
+    const lower = text.toLowerCase().trim();
+    if (/^(?:hi|hello|hey|thanks|thank you|ok|okay|bye)$/i.test(lower)) return false;
+    if (/(?:api\s*key|password|\.env|credential|token|system\s*prompt)/i.test(lower)) return false;
+    return /(?:employee|staff|team|attendance|present|absent|late|punch|roster|salary|payroll|ctc|leave|holiday|company|overview|department|branch|report|details|summary|who|list|all)/i.test(
+      lower
+    );
+  };
+
+  const handleGeneratePdfForQuery = (query: string, rawContent?: string) => {
+    const lower = query.toLowerCase();
+    const snapshot = buildEnterpriseSnapshot({ company, employees, attendance, payrolls, leaves, docRequests, role, viewerEmployeeId });
+    let blob: Blob;
+    let filename = `SWIFT_AI_Report_${Date.now()}.pdf`;
+
+    if (lower.includes("attendance")) {
+      blob = generateAttendancePdf(company, snapshot.attendance.monthlyReport, snapshot.attendance.todayLiveRoster);
+      filename = `Attendance_Report_${snapshot.today}.pdf`;
+    } else if (lower.includes("salary") || lower.includes("ctc") || lower.includes("payroll")) {
+      blob = generateSalaryPdf(company, snapshot.employees);
+      filename = `Salary_Summary_${snapshot.today}.pdf`;
+    } else if (lower.includes("employee") || lower.includes("staff")) {
+      blob = generateEmployeesPdf(company, snapshot.employees);
+      filename = `Employee_Master_Registry_${snapshot.today}.pdf`;
+    } else {
+      blob = generateAiReportPdf("SWIFT HRMS Report", rawContent || query, company);
+      filename = `HRMS_Report_${snapshot.today}.pdf`;
+    }
+
+    downloadPdfBlob(blob, filename);
+    toast.success(`PDF downloaded: ${filename}`);
+  };
+
+  const send = async (text: string, forceFormat?: "pdf" | "text") => {
     if (!text.trim() || busy) return;
+    const lower = text.toLowerCase();
+
+    // Check if user is asking for a report without format preference
+    const wantsPdf = forceFormat === "pdf" || /\b(pdf|download\s*pdf|in\s*pdf)\b/i.test(lower);
+    const wantsText = forceFormat === "text" || /\b(text|in\s*text|chat|here)\b/i.test(lower);
+
+    // If it's a fresh report query and no format is specified yet, ask the user first!
+    if (!forceFormat && !wantsPdf && !wantsText && isReportQuery(text) && !pendingReportQuery) {
+      setPendingReportQuery(text);
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: text },
+        {
+          role: "assistant",
+          content: `📄 **Format Selection Required**\n\nWould you like the **${text.trim()}** in **PDF Document format** (downloadable file) or **Text format** (view directly in chat)?\n\nPlease select an option below:`,
+          isFormatPrompt: true,
+          originalQuery: text,
+        },
+      ]);
+      setInput("");
+      return;
+    }
+
+    const queryToExecute = pendingReportQuery || text;
+    setPendingReportQuery(null);
+
     const next: Msg[] = [...messages, { role: "user", content: text }];
     setMessages(next);
     setInput("");
     setBusy(true);
+
     try {
-      const cmdResult = await tryComplianceCommand(text);
+      const cmdResult = await tryComplianceCommand(queryToExecute);
       if (cmdResult) {
         setMessages((m) => [...m, { role: "assistant", content: cmdResult }]);
         toast.success("Compliance documents generated");
         return;
       }
+
       const snapshot = buildEnterpriseSnapshot({ company, employees, attendance, payrolls, leaves, docRequests, role, viewerEmployeeId });
+
+      if (wantsPdf) {
+        // Generate and download PDF directly
+        handleGeneratePdfForQuery(queryToExecute);
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            content: `📄 **PDF Generated & Downloaded**\n\nYour formatted PDF report for **"${queryToExecute}"** has been generated and downloaded to your device with official company headers.\n\n*Click the button below if you need to download it again.*`,
+            downloadQuery: queryToExecute,
+          },
+        ]);
+        setBusy(false);
+        return;
+      }
+
       const res = await ask({ data: { messages: next, snapshot } });
       if (res.ok) {
-        setMessages((m) => [...m, { role: "assistant", content: res.content }]);
-        // Detect "rule captured" language and echo as live notification
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            content: res.content,
+            downloadQuery: queryToExecute,
+          },
+        ]);
         if (/rule\s*(?:added|captured|created)/i.test(res.content)) {
           aiGuide.notify.emit({ title: "Rule captured", body: res.content.slice(0, 120), kind: "rule" });
         }
@@ -160,11 +258,12 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
               <div className="flex-1 relative">
                 <div className="font-display font-semibold text-sm flex items-center gap-1.5">
                   SWIFT AI
+                  <span className="text-[10px] bg-white/20 rounded-full px-2 py-0.5 font-normal">OpenAI</span>
                   {guideActive && <span className="text-[10px] bg-white/25 rounded-full px-2 py-0.5">Guide mode</span>}
                 </div>
                 <div className="text-[11px] opacity-90 flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                  Tenant-scoped · {company.name}
+                  Live Brain · {company.name}
                 </div>
               </div>
               <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 relative" onClick={() => setOpen(false)}>
@@ -186,10 +285,72 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
                       <Bot className="h-4 w-4" />
                     </div>
                   )}
-                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm ${m.role === "user" ? "bg-gradient-brand text-white rounded-br-sm shadow-soft" : "bg-card border border-border rounded-bl-sm"}`}>
-                    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-table:my-2 prose-headings:my-1">
-                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                  <div className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm shadow-xs ${m.role === "user" ? "bg-gradient-brand text-white rounded-br-xs shadow-soft" : "bg-card border border-border/90 rounded-bl-xs text-foreground"}`}>
+                    <div className={`prose prose-sm max-w-none ${m.role === "user" ? "prose-invert" : "dark:prose-invert"}`}>
+                      <ReactMarkdown
+                        components={{
+                          table: ({ children }) => (
+                            <div className="overflow-x-auto my-2.5 rounded-xl border border-border/80 bg-background/70 shadow-xs">
+                              <table className="w-full text-left text-xs border-collapse divide-y divide-border/60">
+                                {children}
+                              </table>
+                            </div>
+                          ),
+                          thead: ({ children }) => <thead className="bg-muted/80">{children}</thead>,
+                          th: ({ children }) => (
+                            <th className="font-semibold px-3 py-2 text-foreground text-[11px] whitespace-nowrap">
+                              {children}
+                            </th>
+                          ),
+                          td: ({ children }) => (
+                            <td className="px-3 py-2 text-foreground/90 text-xs border-t border-border/40 whitespace-nowrap">
+                              {children}
+                            </td>
+                          ),
+                          ul: ({ children }) => <ul className="my-1.5 space-y-1 pl-4 list-disc marker:text-primary/70">{children}</ul>,
+                          p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
+                          strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                        }}
+                      >
+                        {m.content}
+                      </ReactMarkdown>
                     </div>
+
+                    {/* Interactive Format Selection Buttons */}
+                    {m.isFormatPrompt && (
+                      <div className="mt-3 pt-2.5 border-t border-border/60 flex flex-col gap-2">
+                        <div className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+                          <Sparkles className="h-3 w-3 text-primary" /> Select output format:
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => send("PDF format", "pdf")}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition shadow-xs cursor-pointer active:scale-95"
+                          >
+                            <FileText className="h-3.5 w-3.5" /> 📄 PDF Format
+                          </button>
+                          <button
+                            onClick={() => send("Text format", "text")}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-muted/80 hover:bg-muted border border-border text-foreground text-xs font-semibold transition cursor-pointer active:scale-95"
+                          >
+                            <MessageSquare className="h-3.5 w-3.5 text-primary" /> 💬 Text Format
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Download PDF button on report answers */}
+                    {m.downloadQuery && !m.isFormatPrompt && (
+                      <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-muted-foreground">Export as official document</span>
+                        <button
+                          onClick={() => handleGeneratePdfForQuery(m.downloadQuery!, m.content)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-semibold transition cursor-pointer active:scale-95"
+                        >
+                          <Download className="h-3 w-3" /> Download PDF
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               ))}

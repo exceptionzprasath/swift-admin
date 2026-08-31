@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { useStore, type LeaveRequest, type DocumentRequest, type Employee } from "@/lib/store";
+import { useStore, type LeaveRequest, type DocRequest, type Employee } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { Radio, ArrowRight, ArrowLeft, Bell, Sparkles } from "lucide-react";
 
