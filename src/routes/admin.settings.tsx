@@ -23,6 +23,7 @@ import {
   Sliders,
   Radio,
   Eye,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -39,12 +40,12 @@ function SettingsPage() {
     docAssets,
     setDocAssets,
     saveAllCompanySettings,
-    theme,
-    setTheme,
-    setThemePalette,
   } = useStore();
+  const { theme, setTheme, setThemePalette } = useStore();
   const [saving, setSaving] = useState(false);
-  const activePaletteId = company.themePalette || "copper-wave";
+  const [paletteDropdownOpen, setPaletteDropdownOpen] = useState(false);
+
+  const activePaletteId = company.themePalette || "swift-teal";
   const activePalette = getPalette(activePaletteId);
 
   const handleSelectPalette = (paletteId: ThemePaletteId) => {
@@ -189,14 +190,14 @@ function SettingsPage() {
       </div>
 
       {/* Theme & Color Palettes Section */}
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-xl bg-primary/10 text-primary">
                 <Palette className="h-5 w-5" />
               </div>
-              <h2 className="font-display text-xl font-bold text-foreground">Theme & Brand Color Palettes</h2>
+              <h2 className="font-display text-xl font-bold text-foreground">Theme & Brand Color Identity</h2>
               <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                 20 Curated Palettes
               </span>
@@ -211,7 +212,7 @@ function SettingsPage() {
             <button
               type="button"
               onClick={() => setTheme("light")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                 theme !== "dark"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -223,7 +224,7 @@ function SettingsPage() {
             <button
               type="button"
               onClick={() => setTheme("dark")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                 theme === "dark"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -235,121 +236,110 @@ function SettingsPage() {
           </div>
         </div>
 
-        {/* Active Theme Live Showcase Card with Component Combinations */}
-        <div className="p-5 rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-card space-y-4 shadow-xs">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-                <span className="text-xs font-bold uppercase tracking-wider text-primary">Currently Active Theme Combination</span>
-              </div>
-              <h3 className="font-display text-xl font-bold text-foreground">
-                {activePalette.name}
-              </h3>
-              <p className="text-xs text-muted-foreground max-w-xl">
-                {activePalette.vibe}
-              </p>
-            </div>
+        {/* Compact Dropdown & Component Preview Bar */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          {/* Dropdown Selector */}
+          <div className="lg:col-span-6 relative">
+            <Label className="text-xs font-semibold mb-1.5 block">Choose Color Palette</Label>
+            
+            {/* Custom Dropdown Trigger */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setPaletteDropdownOpen((prev) => !prev)}
+                className="w-full p-3 rounded-xl border border-border bg-background hover:bg-muted/40 transition-all flex items-center justify-between gap-3 text-left shadow-xs focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-5 w-20 rounded-md overflow-hidden border border-border/80 shrink-0 shadow-xs">
+                    {activePalette.colors.map((hex, cIdx) => (
+                      <div key={cIdx} style={{ backgroundColor: hex }} className="flex-1 h-full" />
+                    ))}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-display text-sm font-bold text-foreground truncate">{activePalette.name}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">{activePalette.vibe}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">
+                    Active
+                  </span>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${paletteDropdownOpen ? "rotate-180" : ""}`} />
+                </div>
+              </button>
 
-            {/* Quick Live Preview Simulation Strip */}
-            <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-card border border-border shadow-xs">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navbar text-navbar-foreground text-xs font-semibold shadow-xs">
+              {/* Dropdown Menu Popover */}
+              {paletteDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setPaletteDropdownOpen(false)} />
+                  <div className="absolute top-full left-0 right-0 mt-2 z-50 p-2 rounded-2xl border border-border bg-card shadow-2xl max-h-[360px] overflow-y-auto space-y-1 backdrop-blur-xl">
+                    {PALETTES.map((p, idx) => {
+                      const isSelected = activePaletteId === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            handleSelectPalette(p.id);
+                            setPaletteDropdownOpen(false);
+                          }}
+                          className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${
+                            isSelected
+                              ? "border-primary bg-primary/10 text-primary font-semibold ring-1 ring-primary/30"
+                              : "border-transparent bg-transparent hover:bg-muted/60 text-foreground"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex h-4 w-18 rounded overflow-hidden border border-border/80 shrink-0 shadow-xs">
+                              {p.colors.map((hex, cIdx) => (
+                                <div key={cIdx} style={{ backgroundColor: hex }} className="flex-1 h-full" />
+                              ))}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold truncate flex items-center gap-1.5">
+                                <span>{p.name}</span>
+                                <span className="text-[10px] font-normal text-muted-foreground">#{idx + 1}</span>
+                              </div>
+                              <div className="text-[10px] text-muted-foreground truncate">{p.vibe}</div>
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <Check className="h-4 w-4 text-primary shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Live Preview Simulation Strip */}
+          <div className="lg:col-span-6 p-3 rounded-xl bg-muted/30 border border-border/70 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Live Components ({activePalette.name})
+              </span>
+              <span className="text-[10px] text-primary font-medium flex items-center gap-1">
+                <Sparkles className="h-3 w-3" /> Synced
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-navbar text-navbar-foreground text-xs font-semibold shadow-xs">
                 Navbar
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sidebar text-sidebar-foreground text-xs font-semibold shadow-xs">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sidebar text-sidebar-foreground text-xs font-semibold shadow-xs">
                 Sidebar
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-taskmenu text-taskmenu-foreground text-xs font-bold shadow-xs">
-                Task Menu Active
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-taskmenu text-taskmenu-foreground text-xs font-bold shadow-xs">
+                Active Menu
               </div>
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs font-semibold">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent text-accent-foreground text-xs font-semibold">
                 Accent Pill
               </div>
             </div>
           </div>
-
-          {/* Component Color Combinations Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 pt-3 border-t border-primary/15">
-            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80">
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Sidebar Navigation</div>
-              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.sidebar}</div>
-            </div>
-            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80">
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Navbar / Header</div>
-              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.navbar}</div>
-            </div>
-            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80">
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Task Menu / CTAs</div>
-              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.taskMenu}</div>
-            </div>
-            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80">
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Surfaces & Cards</div>
-              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.cards}</div>
-            </div>
-            <div className="p-2.5 rounded-xl bg-background/80 border border-border/80 col-span-2 sm:col-span-1">
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">KPIs & Accents</div>
-              <div className="text-xs font-bold text-foreground mt-0.5">{activePalette.componentRoles.accents}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 20 Palettes Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-          {PALETTES.map((p, idx) => {
-            const isSelected = activePaletteId === p.id;
-            return (
-              <div
-                key={p.id}
-                onClick={() => handleSelectPalette(p.id)}
-                className={`group relative p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-3 ${
-                  isSelected
-                    ? "border-primary bg-primary/5 ring-2 ring-primary/30 shadow-sm"
-                    : "border-border bg-card hover:border-primary/40 hover:shadow-xs"
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-1.5 mb-2">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      Palette {idx + 1}
-                    </span>
-                    {isSelected ? (
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/15 border border-primary/20">
-                        <Check className="h-3 w-3" /> Active
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                        Click to apply
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="font-display text-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                    {p.name}
-                  </h4>
-                  <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
-                    {p.vibe}
-                  </p>
-                </div>
-
-                {/* 5-Color Swatch Strip with Component Combination Hints */}
-                <div className="space-y-2 pt-2 border-t border-border/60">
-                  <div className="flex h-6 w-full rounded-lg overflow-hidden border border-border/80 shadow-xs">
-                    {p.colors.map((hex, cIdx) => (
-                      <div
-                        key={cIdx}
-                        style={{ backgroundColor: hex }}
-                        className="flex-1 h-full transition-transform hover:scale-110"
-                        title={`${p.name} color ${cIdx + 1}: ${hex}`}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between text-[9px] text-muted-foreground">
-                    <span className="truncate max-w-[120px]" title={`Sidebar: ${p.colors[0]}`}>Side: {p.colors[0]}</span>
-                    <span className="truncate max-w-[120px]" title={`Active: ${p.colors[p.colors.length - 1]}`}>Active: {p.colors[p.colors.length - 1]}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
         </div>
       </div>
 

@@ -1018,7 +1018,17 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                   <div className="grid grid-cols-2 gap-4 pt-2">
                     <div className="col-span-2">
                       <Label>Reports to</Label>
-                      <Select value={form.managerId || "__none"} onValueChange={(v) => setForm({ ...form, managerId: v === "__none" ? undefined : v })}>
+                      <Select
+                        value={form.managerId || "__none"}
+                        onValueChange={(v) => {
+                          const m = employees.find((e) => e.id === v);
+                          setForm({
+                            ...form,
+                            managerId: v === "__none" ? undefined : v,
+                            reportingManager: v === "__none" ? undefined : (m?.name || v),
+                          });
+                        }}
+                      >
                         <SelectTrigger><SelectValue placeholder="No manager" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="__none">— Top of company —</SelectItem>
