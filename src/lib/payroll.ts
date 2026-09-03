@@ -162,33 +162,20 @@ export function computePayroll(opts: {
   const hourly = fixedGross / (wd * (c.workingHoursPerDay || 8));
 
   // 1. Resolve Salary Structure Components according to Company Master & Toggles
-  const basicPct = c.basicPct ?? 20;
+  // Merged Basic + DA (Core Mandatory Wage Head)
+  const basicPct = c.basicPct ?? (c.daPct ? (c.basicPct ?? 20) + c.daPct : 33.33);
   const monthlyBasic = Math.round(fixedGross * (basicPct / 100));
   const earnedBasic = Math.round(monthlyBasic * prorateFactor);
 
   const earningsList: { id: string; name: string; amount: number; c: EarningComponent }[] = [];
 
-  // 1. Basic (Always active)
+  // 1. Basic + DA (Always active core wage)
   earningsList.push({
     id: "basic",
-    name: "Basic Pay",
+    name: "Basic + DA",
     amount: earnedBasic,
-    c: { id: "basic", name: "Basic Pay", formula: "pctOfBasic", value: 100, prorate: true, taxable: true, includeInPf: true, includeInEsi: true, includeInGratuity: true },
+    c: { id: "basic", name: "Basic + DA", formula: "pctOfBasic", value: 100, prorate: true, taxable: true, includeInPf: true, includeInEsi: true, includeInGratuity: true },
   });
-
-  // 2. DA (Dearness Allowance - if enabled)
-  let earnedDA = 0;
-  if (c.daEnabled !== false) {
-    const daPct = c.daPct ?? 13.33;
-    const monthlyDA = Math.round(fixedGross * (daPct / 100));
-    earnedDA = Math.round(monthlyDA * prorateFactor);
-    earningsList.push({
-      id: "da",
-      name: "Dearness Allowance (DA)",
-      amount: earnedDA,
-      c: { id: "da", name: "Dearness Allowance (DA)", formula: "pctOfBasic", value: daPct, prorate: true, taxable: true, includeInPf: true, includeInEsi: true, includeInGratuity: true },
-    });
-  }
 
   // 3. HRA (House Rent Allowance - if enabled)
   let earnedHRA = 0;
@@ -340,7 +327,7 @@ export function computePayroll(opts: {
   // =========================================================================
 
   // 1. Provident Fund (EPF Act 1952)
-  // PF Wage = Earned Basic + Earned DA
+  // PF Wage = Earned Basic + DA
   const pfRules = c.pfRules;
   const pfEnabled = pfRules?.enabled !== false;
   let employeePF = 0;
@@ -350,23 +337,25 @@ export function computePayroll(opts: {
   let edli = 0;
   let pfAdmin = 0;
 
-  const pfBaseRaw = earnedBasic + earnedDA;
+  const pfBaseRaw = earnedBasic;
   const PF_CEILING = pfRules?.ceiling && pfRules.ceiling > 0 ? pfRules.ceiling : 15000;
   const proratedCeiling = Math.round(PF_CEILING * prorateFactor);
   const pfBase = Math.min(pfBaseRaw, proratedCeiling > 0 ? proratedCeiling : PF_CEILING);
 
   if (pfEnabled && pfBase > 0) {
+    const empEnabled = (c.pfRules as any)?.employeeEnabled !== false && c.employeePfEnabled !== false;
+    const emplyrEnabled = (c.pfRules as any)?.employerEnabled !== false && c.employerPfEnabled !== false;
     const empPct = pfRules?.employeePct ?? c.employeePfPct ?? 12;
     const emplyrPct = pfRules?.employerPct ?? c.employerPfPct ?? 13;
 
-    employeePF = Math.round(pfBase * (empPct / 100));
-    employerPF = Math.round(pfBase * (emplyrPct / 100));
+    employeePF = empEnabled ? Math.round(pfBase * (empPct / 100)) : 0;
+    employerPF = emplyrEnabled ? Math.round(pfBase * (emplyrPct / 100)) : 0;
 
     // EPS diversion: 8.33%
-    eps = Math.round(pfBase * 0.0833);
+    eps = employerPF > 0 ? Math.round(pfBase * 0.0833) : 0;
     epfEmployer = Math.max(0, employerPF - eps);
-    edli = Math.round(pfBase * 0.005);
-    pfAdmin = Math.round(pfBase * 0.005);
+    edli = employerPF > 0 ? Math.round(pfBase * 0.005) : 0;
+    pfAdmin = employerPF > 0 ? Math.round(pfBase * 0.005) : 0;
   }
 
   // 2. Employee State Insurance (ESI Act 1948)
@@ -382,21 +371,25 @@ export function computePayroll(opts: {
     esiEligible = fixedGross <= esiThreshold || (esiRules as any)?.applyToAll;
 
     if (esiEligible) {
+      const empEsiEnabled = (c.esiRules as any)?.employeeEnabled !== false && c.employeeEsiEnabled !== false;
+      const emplyrEsiEnabled = (c.esiRules as any)?.employerEnabled !== false && c.employerEsiEnabled !== false;
       const empEsiPct = esiRules?.employeePct ?? c.employeeEsiPct ?? 0.75;
       const emplyrEsiPct = esiRules?.employerPct ?? c.employerEsiPct ?? 3.25;
 
-      employeeESI = Math.round(gross * (empEsiPct / 100));
-      employerESI = Math.round(gross * (emplyrEsiPct / 100));
+      employeeESI = empEsiEnabled ? Math.round(gross * (empEsiPct / 100)) : 0;
+      employerESI = emplyrEsiEnabled ? Math.round(gross * (emplyrEsiPct / 100)) : 0;
     }
   }
 
   // 3. Professional Tax (PT)
   let professionalTax = 0;
   if (c.ptEnabled !== false && gross > 0) {
-    if (c.ptSlabs && c.ptSlabs.length > 0) {
+    if (typeof c.ptAmount === "number" && !isNaN(c.ptAmount)) {
+      professionalTax = c.ptAmount;
+    } else if (c.ptSlabs && c.ptSlabs.length > 0) {
       professionalTax = ptFromSlabs(gross, c.ptSlabs);
     } else {
-      professionalTax = c.ptAmount ?? 208;
+      professionalTax = 208;
     }
   }
 
@@ -468,7 +461,7 @@ export function computePayroll(opts: {
 
   // Gratuity & Cost to Company (CTC)
   const gratuity = c.gratuityRules?.enabled
-    ? Math.round((earnedBasic + earnedDA) * ((c.gratuityRules.numerator || 15) / (c.gratuityRules.denominator || 26)) / 12)
+    ? Math.round(earnedBasic * ((c.gratuityRules.numerator || 15) / (c.gratuityRules.denominator || 26)) / 12)
     : 0;
 
   const employerContrib = { employerPF, employerESI, employerLwf, gratuity, eps, epfEmployer, edli, pfAdmin };

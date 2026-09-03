@@ -49,6 +49,9 @@ import {
   Building2,
   Check,
   Zap,
+  Plus,
+  Minus,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { inr } from "@/lib/payroll";
@@ -468,37 +471,97 @@ function AttendancePage() {
     };
   }, [dailyRows, employees.length]);
 
+  // Open Manual Edit Punch / Regularization Dialog for specific employee & date
+  const handleOpenRegularize = useCallback(
+    (emp: Employee, dateStr: string = selectedDate, existingRec?: AttendanceRecord) => {
+      const rec =
+        existingRec ||
+        attendance.find(
+          (a) => (a.employeeId === emp.id || a.employeeName === emp.name) && a.date === dateStr
+        );
+      const scheduled = getScheduledShiftForDate(emp, dateStr);
+      const defaultIn = scheduled.shift.start || "09:00";
+      const defaultOut = scheduled.shift.end || "18:00";
+
+      const inTime = rec?.checkIn || rec?.clockIn || defaultIn;
+      const outTime = rec?.checkOut || rec?.clockOut || defaultOut;
+      const stdHours = company.workingHoursPerDay || 9;
+      const autoCalc = computeWorkedHours(inTime, outTime, stdHours);
+
+      const otVal =
+        rec?.otHours !== undefined && rec?.otHours !== null
+          ? Number(rec.otHours)
+          : autoCalc.otHours;
+
+      let reason = "Manual Administrative Edit";
+      let note = "";
+      if (rec?.regularizedReason) {
+        if (rec.regularizedReason.includes(":")) {
+          const parts = rec.regularizedReason.split(":");
+          reason = parts[0].trim();
+          note = parts.slice(1).join(":").trim();
+        } else {
+          reason = rec.regularizedReason;
+        }
+      }
+
+      setRegularizeDialog({
+        open: true,
+        employeeId: emp.id,
+        date: dateStr,
+        checkIn: inTime,
+        checkOut: outTime,
+        status: (rec?.status as any) || "present",
+        otHours: otVal,
+        reason,
+        note,
+      });
+    },
+    [attendance, selectedDate, getScheduledShiftForDate, company.workingHoursPerDay]
+  );
+
   // Quick Action: Mark status
   const handleQuickMark = (
     empId: string,
-    status: "present" | "absent" | "leave" | "half-day" | "late"
+    status: "present" | "absent" | "leave" | "half-day" | "late" | "edit_manual"
   ) => {
-    const existing = attendance.find((a) => a.employeeId === empId && a.date === selectedDate);
     const emp = employees.find((e) => e.id === empId);
+    if (!emp) return;
+
+    if (status === "edit_manual") {
+      handleOpenRegularize(emp, selectedDate);
+      return;
+    }
+
+    const existing = attendance.find((a) => (a.employeeId === empId || a.employeeName === emp.name) && a.date === selectedDate);
+    const scheduled = getScheduledShiftForDate(emp, selectedDate);
+    const defaultIn = scheduled.shift.start || "09:00";
+    const defaultOut = scheduled.shift.end || "18:00";
 
     const checkInTime =
       existing?.checkIn ||
       existing?.clockIn ||
-      (status === "present" || status === "late" ? "09:00" : status === "half-day" ? "12:00" : undefined);
+      (status === "present" || status === "late" ? defaultIn : status === "half-day" ? "12:00" : undefined);
 
     const checkOutTime =
       existing?.checkOut ||
       existing?.clockOut ||
-      (status === "present" || status === "late" || status === "half-day" ? "18:00" : undefined);
+      (status === "present" || status === "late" || status === "half-day" ? defaultOut : undefined);
 
+    const stdHours = company.workingHoursPerDay || 9;
     const hours =
       status === "present" || status === "late"
-        ? company.workingHoursPerDay || 8
+        ? stdHours
         : status === "half-day"
-        ? (company.workingHoursPerDay || 8) / 2
+        ? stdHours / 2
         : 0;
 
     upsertAttendance({
       id: existing?.id || `att-${empId}-${selectedDate}`,
       employeeId: empId,
-      employeeName: emp?.name,
-      empCode: emp?.empCode,
-      department: emp?.department,
+      employeeName: emp.name,
+      empCode: emp.empCode,
+      department: emp.department,
       date: selectedDate,
       status: status === "late" ? "present" : status,
       checkIn: checkInTime,
@@ -513,10 +576,10 @@ function AttendancePage() {
       updatedAt: new Date().toISOString(),
     });
 
-    toast.success(`Updated attendance to "${status.toUpperCase()}" for ${emp?.name || "employee"}`);
+    toast.success(`Updated attendance to "${status.toUpperCase()}" for ${emp.name}`);
   };
 
-  // Submit Manual Regularization
+  // Submit Manual Regularization / Punch & OT Override
   const handleSaveRegularization = () => {
     const { employeeId, date, checkIn, checkOut, status, otHours, reason, note } = regularizeDialog;
     if (!employeeId || !date) {
@@ -525,12 +588,24 @@ function AttendancePage() {
     }
 
     const emp = employees.find((e) => e.id === employeeId);
-    const existing = attendance.find((a) => a.employeeId === employeeId && a.date === date);
+    const existing = attendance.find(
+      (a) => (a.employeeId === employeeId || a.employeeName === emp?.name) && a.date === date
+    );
 
     // Calculate hours worked
-    let hoursWorked = company.workingHoursPerDay || 8;
-    if (status === "half-day") hoursWorked = hoursWorked / 2;
-    if (status === "absent" || status === "leave") hoursWorked = 0;
+    const stdHours = company.workingHoursPerDay || 9;
+    let hoursWorked = stdHours;
+    if (checkIn && checkOut && status !== "absent" && status !== "leave") {
+      const computed = computeWorkedHours(checkIn, checkOut, stdHours);
+      hoursWorked = computed.hoursWorked > 0 ? computed.hoursWorked : stdHours;
+    } else if (status === "half-day") {
+      hoursWorked = stdHours / 2;
+    } else if (status === "absent" || status === "leave") {
+      hoursWorked = 0;
+    }
+
+    const cleanCheckIn = status === "absent" || status === "leave" ? undefined : (checkIn || undefined);
+    const cleanCheckOut = status === "absent" || status === "leave" ? undefined : (checkOut || undefined);
 
     upsertAttendance({
       id: existing?.id || `att-${employeeId}-${date}`,
@@ -540,19 +615,19 @@ function AttendancePage() {
       department: emp?.department,
       date,
       status: status === "late" ? "present" : status,
-      checkIn: checkIn || undefined,
-      checkOut: checkOut || undefined,
-      clockIn: checkIn || undefined,
-      clockOut: checkOut || undefined,
+      checkIn: cleanCheckIn,
+      checkOut: cleanCheckOut,
+      clockIn: cleanCheckIn,
+      clockOut: cleanCheckOut,
       hoursWorked,
-      otHours: Number(otHours) || 0,
+      otHours: Math.max(0, Number(otHours) || 0),
       regularized: true,
       regularizedBy: "Admin",
       regularizedReason: `${reason}${note ? ": " + note : ""}`,
       updatedAt: new Date().toISOString(),
     });
 
-    toast.success(`Attendance regularized for ${emp?.name} on ${date}`);
+    toast.success(`Punch & OT updated for ${emp?.name || "employee"} on ${date}`);
     setRegularizeDialog((prev) => ({ ...prev, open: false }));
   };
 
@@ -686,19 +761,11 @@ function AttendancePage() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() =>
-              setRegularizeDialog({
-                open: true,
-                employeeId: employees[0]?.id || "",
-                date: selectedDate,
-                checkIn: "09:00",
-                checkOut: "18:00",
-                status: "present",
-                otHours: 0,
-                reason: "On-Duty Client Visit",
-                note: "",
-              })
-            }
+            onClick={() => {
+              if (employees[0]) {
+                handleOpenRegularize(employees[0], selectedDate);
+              }
+            }}
             className="gap-1.5 h-9 rounded-xl shadow-xs"
           >
             <Edit3 className="h-3.5 w-3.5 text-primary" />
@@ -1207,6 +1274,23 @@ function AttendancePage() {
                               </Tooltip>
                             </TooltipProvider>
 
+                            {/* Edit Check-In, Check-Out & OT */}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleOpenRegularize(emp, selectedDate, rec)}
+                                    className="h-8 w-8 p-0 rounded-lg text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 border-amber-500/30"
+                                  >
+                                    <Edit3 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Edit Check-In, Out & OT Manually</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
                             {/* Quick Mark Dropdown */}
                             <Select
                               onValueChange={(val) => handleQuickMark(emp.id, val as any)}
@@ -1216,6 +1300,9 @@ function AttendancePage() {
                                 <SelectValue placeholder="Quick Mark" />
                               </SelectTrigger>
                               <SelectContent align="end">
+                                <SelectItem value="edit_manual" className="font-semibold text-amber-600">
+                                  ✏️ Edit Punch & OT...
+                                </SelectItem>
                                 <SelectItem value="present">Mark Present</SelectItem>
                                 <SelectItem value="late">Mark Late</SelectItem>
                                 <SelectItem value="half-day">Mark Half-Day</SelectItem>
@@ -1513,6 +1600,7 @@ function AttendancePage() {
           getScheduledShiftForDate={getScheduledShiftForDate}
           evaluatePunctuality={evaluatePunctuality}
           onInspectPunch={(emp, rec, date) => setInspectRecord({ emp, rec, date })}
+          onRegularizePunch={(emp, date, rec) => handleOpenRegularize(emp, date, rec)}
         />
       )}
 
@@ -1665,145 +1753,338 @@ function AttendancePage() {
       )}
 
       {/* ========================================================================= */}
-      {/* 6. MANUAL PUNCH REGULARIZATION DIALOG                                      */}
+      {/* 6. MANUAL PUNCH & OVERTIME (OT) REGULARIZATION DIALOG                       */}
       {/* ========================================================================= */}
       <Dialog
         open={regularizeDialog.open}
         onOpenChange={(open) => setRegularizeDialog((prev) => ({ ...prev, open }))}
       >
-        <DialogContent className="max-w-lg rounded-2xl p-6">
+        <DialogContent className="max-w-xl rounded-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <Edit3 className="h-5 w-5 text-primary" />
-              Manual Attendance Regularization
-            </DialogTitle>
-            <DialogDescription>
-              Adjust or manually log punch entries for an employee with administrative audit remarks.
+            <div className="flex items-center justify-between">
+              <DialogTitle className="flex items-center gap-2 text-lg">
+                <Edit3 className="h-5 w-5 text-amber-500" />
+                Manual Attendance & Overtime Editor
+              </DialogTitle>
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[11px]">
+                Admin Override
+              </Badge>
+            </div>
+            <DialogDescription className="text-xs">
+              Manually set or adjust Check-In, Check-Out, Overtime (OT) hours, and status. Changes immediately synchronize with Mobile App and Payroll calculation.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Employee</Label>
-                <Select
-                  value={regularizeDialog.employeeId}
-                  onValueChange={(val) => setRegularizeDialog((p) => ({ ...p, employeeId: val }))}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select employee" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {employees.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.name} ({e.empCode})
-                      </SelectItem>
+          {(() => {
+            const selectedEmp = employees.find((e) => e.id === regularizeDialog.employeeId) || employees[0];
+            const scheduled = selectedEmp ? getScheduledShiftForDate(selectedEmp, regularizeDialog.date) : null;
+            const stdHours = company.workingHoursPerDay || 9;
+            const computed = computeWorkedHours(regularizeDialog.checkIn, regularizeDialog.checkOut, stdHours);
+
+            return (
+              <div className="space-y-4 py-2 text-sm">
+                {/* Employee & Date Selectors */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Employee</Label>
+                    <Select
+                      value={regularizeDialog.employeeId}
+                      onValueChange={(val) => {
+                        const newEmp = employees.find((e) => e.id === val);
+                        if (newEmp) {
+                          handleOpenRegularize(newEmp, regularizeDialog.date);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue placeholder="Select employee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {employees.map((e) => (
+                          <SelectItem key={e.id} value={e.id}>
+                            {e.name} ({e.empCode})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Attendance Date</Label>
+                    <Input
+                      type="date"
+                      value={regularizeDialog.date}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        if (selectedEmp) {
+                          handleOpenRegularize(selectedEmp, newDate);
+                        } else {
+                          setRegularizeDialog((p) => ({ ...p, date: newDate }));
+                        }
+                      }}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Shift Context Pill */}
+                {scheduled && (
+                  <div className="p-2.5 rounded-xl bg-muted/40 border border-border flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-primary" />
+                      <div>
+                        <span className="font-semibold text-foreground">{scheduled.shift.name || "General Shift"}</span>
+                        <span className="text-muted-foreground ml-1.5">
+                          ({scheduled.shift.start || "09:00"} - {scheduled.shift.end || "18:00"})
+                        </span>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/20">
+                      Standard: {stdHours} hrs
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Check-In & Check-Out Timings */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold">Check-In Punch Time</Label>
+                      <button
+                        type="button"
+                        onClick={() => setRegularizeDialog((p) => ({ ...p, checkIn: scheduled?.shift.start || "09:00" }))}
+                        className="text-[10px] text-primary hover:underline"
+                      >
+                        Set Shift Start
+                      </button>
+                    </div>
+                    <Input
+                      type="time"
+                      value={regularizeDialog.checkIn}
+                      onChange={(e) => setRegularizeDialog((p) => ({ ...p, checkIn: e.target.value }))}
+                      className="h-9 text-xs font-mono font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold">Check-Out Punch Time</Label>
+                      <button
+                        type="button"
+                        onClick={() => setRegularizeDialog((p) => ({ ...p, checkOut: scheduled?.shift.end || "18:00" }))}
+                        className="text-[10px] text-primary hover:underline"
+                      >
+                        Set Shift End
+                      </button>
+                    </div>
+                    <Input
+                      type="time"
+                      value={regularizeDialog.checkOut}
+                      onChange={(e) => setRegularizeDialog((p) => ({ ...p, checkOut: e.target.value }))}
+                      className="h-9 text-xs font-mono font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Duration & Suggested Overtime Banner */}
+                <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Timer className="h-4 w-4 text-emerald-600" />
+                      <span className="font-semibold text-foreground">
+                        Calculated Duration:{" "}
+                        <strong className="text-emerald-600 font-bold">{computed.hoursWorked} hrs</strong>
+                      </span>
+                      <span className="text-muted-foreground">({stdHours}h standard shift)</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setRegularizeDialog((p) => ({ ...p, otHours: computed.otHours }))}
+                      className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline inline-flex items-center gap-1"
+                    >
+                      <Zap className="h-3 w-3 text-amber-500" />
+                      <span>Auto-Set OT ({computed.otHours}h)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Overtime (OT) Custom Editing & Presets */}
+                <div className="space-y-2 p-3 rounded-xl bg-card border border-border">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs font-semibold flex items-center gap-1.5">
+                        <Flame className="h-3.5 w-3.5 text-orange-500" />
+                        <span>Manual Overtime (OT Hours)</span>
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Set manual OT hours to credit towards payroll salary calculation.
+                      </p>
+                    </div>
+
+                    {/* Stepper buttons & Numeric Input */}
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-8 w-8 rounded-lg"
+                        onClick={() =>
+                          setRegularizeDialog((p) => ({
+                            ...p,
+                            otHours: Math.max(0, Math.round((Number(p.otHours || 0) - 0.5) * 10) / 10),
+                          }))
+                        }
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </Button>
+
+                      <Input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="24"
+                        value={regularizeDialog.otHours}
+                        onChange={(e) =>
+                          setRegularizeDialog((p) => ({
+                            ...p,
+                            otHours: Math.max(0, Number(e.target.value) || 0),
+                          }))
+                        }
+                        className="h-8 w-20 text-center font-bold font-mono text-xs rounded-lg"
+                      />
+
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-8 w-8 rounded-lg"
+                        onClick={() =>
+                          setRegularizeDialog((p) => ({
+                            ...p,
+                            otHours: Math.round((Number(p.otHours || 0) + 0.5) * 10) / 10,
+                          }))
+                        }
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Quick Preset OT Pills */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-muted-foreground uppercase font-semibold mr-1">Quick OT:</span>
+                    {[0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setRegularizeDialog((p) => ({ ...p, otHours: preset }))}
+                        className={`text-[11px] px-2 py-0.5 rounded-lg border transition-all ${
+                          regularizeDialog.otHours === preset
+                            ? "bg-amber-500 text-amber-950 font-bold border-amber-500 shadow-xs"
+                            : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground border-border"
+                        }`}
+                      >
+                        {preset === 0 ? "0h" : `+${preset}h`}
+                      </button>
                     ))}
-                  </SelectContent>
-                </Select>
+                    {computed.otHours > 0 && ![0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0].includes(computed.otHours) && (
+                      <button
+                        type="button"
+                        onClick={() => setRegularizeDialog((p) => ({ ...p, otHours: computed.otHours }))}
+                        className="text-[11px] px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/30"
+                      >
+                        Auto: +{computed.otHours}h
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Status Override & Reason */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Attendance Status Override</Label>
+                    <Select
+                      value={regularizeDialog.status}
+                      onValueChange={(val: any) => setRegularizeDialog((p) => ({ ...p, status: val }))}
+                    >
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="present">Present (Full Day)</SelectItem>
+                        <SelectItem value="half-day">Half-Day Session</SelectItem>
+                        <SelectItem value="late">Late Check-In</SelectItem>
+                        <SelectItem value="leave">Approved Leave</SelectItem>
+                        <SelectItem value="absent">Absent / No Punch</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Reason for Action</Label>
+                    <Select
+                      value={regularizeDialog.reason}
+                      onValueChange={(val) => setRegularizeDialog((p) => ({ ...p, reason: val }))}
+                    >
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Manual Administrative Edit">Manual Administrative Edit</SelectItem>
+                        <SelectItem value="Approved Overtime Shift">Approved Overtime Shift</SelectItem>
+                        <SelectItem value="On-Duty Client Visit">On-Duty Client Visit</SelectItem>
+                        <SelectItem value="Outdoor Sales / Field Duty">Outdoor Sales / Field Duty</SelectItem>
+                        <SelectItem value="Biometric App / Phone Glitch">Biometric App / Phone Glitch</SelectItem>
+                        <SelectItem value="Forgot to Punch In / Out">Forgot to Punch In / Out</SelectItem>
+                        <SelectItem value="Emergency Half-Day Permission">Emergency Half-Day Permission</SelectItem>
+                        <SelectItem value="Late Coming Authorized">Late Coming Authorized</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Admin Audit Notes */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Administrative Remarks & Notes</Label>
+                  <Textarea
+                    placeholder="Optional administrative note or approval reference..."
+                    value={regularizeDialog.note}
+                    onChange={(e) => setRegularizeDialog((p) => ({ ...p, note: e.target.value }))}
+                    rows={2}
+                    className="text-xs"
+                  />
+                </div>
+
+                {/* Live Impact Preview */}
+                <div className="p-3 rounded-xl bg-muted/40 border border-border text-xs space-y-1 text-muted-foreground">
+                  <div className="flex items-center justify-between font-semibold text-foreground">
+                    <span>Summary Preview:</span>
+                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-[10px]">
+                      {regularizeDialog.status.toUpperCase()}
+                    </Badge>
+                  </div>
+                  <div>
+                    Punches: <strong>{regularizeDialog.checkIn || "—"}</strong> to <strong>{regularizeDialog.checkOut || "—"}</strong> • OT: <strong>+{regularizeDialog.otHours} hrs</strong>
+                  </div>
+                  <div className="text-[11px] text-primary">
+                    ✓ Reflects immediately across Attendance live tables, Dossiers, Mobile App logs, and Payroll Overtime calculations.
+                  </div>
+                </div>
               </div>
+            );
+          })()}
 
-              <div className="space-y-1.5">
-                <Label>Date</Label>
-                <Input
-                  type="date"
-                  value={regularizeDialog.date}
-                  onChange={(e) => setRegularizeDialog((p) => ({ ...p, date: e.target.value }))}
-                  className="h-9"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Check-In Time</Label>
-                <Input
-                  type="time"
-                  value={regularizeDialog.checkIn}
-                  onChange={(e) => setRegularizeDialog((p) => ({ ...p, checkIn: e.target.value }))}
-                  className="h-9"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Check-Out Time</Label>
-                <Input
-                  type="time"
-                  value={regularizeDialog.checkOut}
-                  onChange={(e) => setRegularizeDialog((p) => ({ ...p, checkOut: e.target.value }))}
-                  className="h-9"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Status Override</Label>
-                <Select
-                  value={regularizeDialog.status}
-                  onValueChange={(val: any) => setRegularizeDialog((p) => ({ ...p, status: val }))}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="present">Present</SelectItem>
-                    <SelectItem value="half-day">Half-Day</SelectItem>
-                    <SelectItem value="late">Late Check-In</SelectItem>
-                    <SelectItem value="leave">On Leave</SelectItem>
-                    <SelectItem value="absent">Absent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Overtime (OT Hours)</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  value={regularizeDialog.otHours}
-                  onChange={(e) => setRegularizeDialog((p) => ({ ...p, otHours: Number(e.target.value) || 0 }))}
-                  className="h-9"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Reason for Regularization</Label>
-              <Select
-                value={regularizeDialog.reason}
-                onValueChange={(val) => setRegularizeDialog((p) => ({ ...p, reason: val }))}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="On-Duty Client Visit">On-Duty Client Visit</SelectItem>
-                  <SelectItem value="Biometric App Glitch">Biometric App / Phone Glitch</SelectItem>
-                  <SelectItem value="Outdoor Sales / Field Duty">Outdoor Sales / Field Duty</SelectItem>
-                  <SelectItem value="Forgot to Punch Out">Forgot to Punch Out</SelectItem>
-                  <SelectItem value="Emergency Half-Day Permission">Emergency Half-Day Permission</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Admin Notes</Label>
-              <Textarea
-                placeholder="Optional notes or remarks..."
-                value={regularizeDialog.note}
-                onChange={(e) => setRegularizeDialog((p) => ({ ...p, note: e.target.value }))}
-                rows={2}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setRegularizeDialog((p) => ({ ...p, open: false }))}>
               Cancel
             </Button>
-            <Button onClick={handleSaveRegularization} className="bg-primary text-primary-foreground font-semibold">
-              Save Regularization
+            <Button
+              onClick={handleSaveRegularization}
+              className="bg-primary text-primary-foreground font-semibold gap-1.5"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              <span>Save Punch & OT</span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1829,6 +2110,7 @@ interface EmployeeAttendanceDossierProps {
   getScheduledShiftForDate: (emp: Employee, dateStr: string) => any;
   evaluatePunctuality: (rec: any, scheduled: any, emp: Employee, dateStr: string) => any;
   onInspectPunch: (emp: Employee, rec: any, date: string) => void;
+  onRegularizePunch?: (emp: Employee, date: string, rec?: AttendanceRecord) => void;
 }
 
 function EmployeeAttendanceDossierModal({
@@ -1845,6 +2127,7 @@ function EmployeeAttendanceDossierModal({
   getScheduledShiftForDate,
   evaluatePunctuality,
   onInspectPunch,
+  onRegularizePunch,
 }: EmployeeAttendanceDossierProps) {
   // Date Range Presets
   const [dateRangePreset, setDateRangePreset] = useState<
@@ -2383,15 +2666,27 @@ function EmployeeAttendanceDossierModal({
                       </td>
 
                       <td className="p-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => onInspectPunch(employee, rec, dateStr)}
-                          className="h-7 text-xs rounded-lg gap-1"
-                        >
-                          <Camera className="h-3.5 w-3.5 text-primary" />
-                          <span>Inspect</span>
-                        </Button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onRegularizePunch?.(employee, dateStr, rec)}
+                            className="h-7 text-xs rounded-lg gap-1 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 border-amber-500/30"
+                          >
+                            <Edit3 className="h-3 w-3" />
+                            <span>Edit</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onInspectPunch(employee, rec, dateStr)}
+                            className="h-7 text-xs rounded-lg gap-1"
+                          >
+                            <Camera className="h-3.5 w-3.5 text-primary" />
+                            <span>Inspect</span>
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))

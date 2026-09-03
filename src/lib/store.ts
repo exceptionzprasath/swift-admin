@@ -318,8 +318,12 @@ export type Company = {
   esiThreshold: number;
   employeePfPct: number;
   employerPfPct: number;
+  employeePfEnabled?: boolean;
+  employerPfEnabled?: boolean;
   employeeEsiPct: number;
   employerEsiPct: number;
+  employeeEsiEnabled?: boolean;
+  employerEsiEnabled?: boolean;
   basicPct?: number;
   hraEnabled?: boolean;
   hraPct: number;

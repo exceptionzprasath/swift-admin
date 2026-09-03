@@ -121,9 +121,17 @@ interface MonthlyOverrideData {
   bonus?: number;
   variablePay?: number;
   otherEarnings?: number;
-  // Deductions
+  // Deductions (Separate Employee and Employer PF & ESI)
   pfEnabled?: boolean;
+  pfEmployeeEnabled?: boolean;
+  pfEmployerEnabled?: boolean;
+  employeePfPct?: number;
+  employerPfPct?: number;
   esiEnabled?: boolean;
+  esiEmployeeEnabled?: boolean;
+  esiEmployerEnabled?: boolean;
+  employeeEsiPct?: number;
+  employerEsiPct?: number;
   ptEnabled?: boolean;
   ptAmountOverride?: number;
   lwfEnabled?: boolean;
@@ -163,7 +171,15 @@ interface EditingPayrollRecord extends MonthlyOverrideData {
   variablePay: number;
   otherEarnings: number;
   pfEnabled: boolean;
+  pfEmployeeEnabled: boolean;
+  pfEmployerEnabled: boolean;
+  employeePfPct: number;
+  employerPfPct: number;
   esiEnabled: boolean;
+  esiEmployeeEnabled: boolean;
+  esiEmployerEnabled: boolean;
+  employeeEsiPct: number;
+  employerEsiPct: number;
   ptEnabled: boolean;
   ptAmountOverride: number;
   lwfEnabled: boolean;
@@ -252,16 +268,11 @@ export function PayrollPage() {
     const gross = benchmarkSalary || 0;
     const ctcLpa = ((gross * 12) / 100000).toFixed(2);
 
-    // 1. Basic (Always Enabled, editable %)
-    const basicPct = company.basicPct ?? 20;
+    // 1. Basic + DA (Mandatory Core Wage, editable %)
+    const basicPct = company.basicPct ?? (company.daPct ? (company.basicPct ?? 20) + company.daPct : 33.33);
     const basic = Math.round(gross * (basicPct / 100));
 
-    // 2. DA (Dearness Allowance)
-    const daEnabled = company.daEnabled !== false;
-    const daPct = daEnabled ? (company.daPct ?? 13.33) : 0;
-    const da = daEnabled ? Math.round(gross * (daPct / 100)) : 0;
-
-    // 3. HRA
+    // 2. HRA
     const hraEnabled = company.hraEnabled !== false;
     const hraPct = hraEnabled ? (company.hraPct ?? 16.67) : 0;
     const hra = hraEnabled ? Math.round(gross * (hraPct / 100)) : 0;
@@ -298,7 +309,7 @@ export function PayrollPage() {
       return sum + (e.value || 0);
     }, 0);
 
-    const totalEarnings = basic + da + hra + oa + ca + lta + customAllowancesSum;
+    const totalEarnings = basic + hra + oa + ca + lta + customAllowancesSum;
     const totalEarningsPct = gross > 0 ? Math.round((totalEarnings / gross) * 1000) / 10 : 0;
     const isExceeded = totalEarningsPct > 100;
 
@@ -311,14 +322,22 @@ export function PayrollPage() {
 
     const totalBonuses = attendanceBonus + yearlyBonus;
 
-    // Statutory Deductions
+    // Statutory Deductions (Accurate Base & Separate Employee / Employer Rates)
     const pfEnabled = company.pfRules?.enabled !== false;
-    const pfEmployer = pfEnabled ? (company.employerPfPct ? Math.round(gross * (company.employerPfPct / 100)) : 1000) : 0;
-    const pfEmployee = pfEnabled ? (company.employeePfPct ? Math.round(gross * (company.employeePfPct / 100)) : 1000) : 0;
+    const pfCeiling = company.pfRules?.ceiling && company.pfRules.ceiling > 0 ? company.pfRules.ceiling : 15000;
+    const pfBase = Math.min(basic, pfCeiling);
+    const employeePfPct = company.employeePfPct ?? company.pfRules?.employeePct ?? 12;
+    const employerPfPct = company.employerPfPct ?? company.pfRules?.employerPct ?? 13;
+    const pfEmployer = pfEnabled ? Math.round(pfBase * (employerPfPct / 100)) : 0;
+    const pfEmployee = pfEnabled ? Math.round(pfBase * (employeePfPct / 100)) : 0;
 
     const esiEnabled = company.esiRules?.enabled !== false;
-    const esiEmployer = esiEnabled ? (company.employerEsiPct ? Math.round(gross * (company.employerEsiPct / 100)) : 1000) : 0;
-    const esiEmployee = esiEnabled ? (company.employeeEsiPct ? Math.round(gross * (company.employeeEsiPct / 100)) : 1000) : 0;
+    const esiThreshold = company.esiRules?.threshold ?? company.esiThreshold ?? 21000;
+    const esiEligible = gross <= esiThreshold || (company.esiRules as any)?.applyToAll;
+    const employeeEsiPct = company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75;
+    const employerEsiPct = company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25;
+    const esiEmployer = (esiEnabled && esiEligible) ? Math.round(gross * (employerEsiPct / 100)) : 0;
+    const esiEmployee = (esiEnabled && esiEligible) ? Math.round(gross * (employeeEsiPct / 100)) : 0;
 
     const ptEnabled = company.ptEnabled !== false;
     const pt = ptEnabled ? (company.ptAmount ?? 208) : 0;
@@ -337,9 +356,6 @@ export function PayrollPage() {
       ctcLpa,
       basicPct,
       basic,
-      daEnabled,
-      daPct,
-      da,
       hraEnabled,
       hraPct,
       hra,
@@ -363,9 +379,15 @@ export function PayrollPage() {
       yearlyBonus,
       totalBonuses,
       pfEnabled,
+      pfBase,
+      employeePfPct,
+      employerPfPct,
       pfEmployer,
       pfEmployee,
       esiEnabled,
+      esiEligible,
+      employeeEsiPct,
+      employerEsiPct,
       esiEmployer,
       esiEmployee,
       ptEnabled,
@@ -435,9 +457,9 @@ export function PayrollPage() {
       const daysLeave = monthAtt.filter((a) => a.status === "leave").length;
       const rawPresentDays = daysPresent + daysHalf * 0.5;
 
-      // Compute OT from actual check-in/check-out timestamps for each day
+      // Compute OT from actual check-in/check-out timestamps or explicit otHours for each day
       const otHours = monthAtt.reduce((sum, a) => {
-        if (a.otHours && a.otHours > 0) return sum + a.otHours;
+        if (a.otHours !== undefined && a.otHours !== null) return sum + (Number(a.otHours) || 0);
         // Derive from timestamps if no stored OT
         const inTime = a.checkIn || a.clockIn;
         const outTime = a.checkOut || a.clockOut;
@@ -493,13 +515,25 @@ export function PayrollPage() {
         ltaPct: ov.ltaPct !== undefined ? ov.ltaPct : company.ltaPct,
         ptEnabled: ov.ptEnabled !== undefined ? ov.ptEnabled : company.ptEnabled,
         ptAmount: ov.ptAmountOverride !== undefined ? ov.ptAmountOverride : company.ptAmount,
+        employeePfEnabled: ov.pfEmployeeEnabled !== undefined ? ov.pfEmployeeEnabled : true,
+        employerPfEnabled: ov.pfEmployerEnabled !== undefined ? ov.pfEmployerEnabled : true,
+        employeePfPct: ov.employeePfPct !== undefined ? ov.employeePfPct : (company.employeePfPct ?? 12),
+        employerPfPct: ov.employerPfPct !== undefined ? ov.employerPfPct : (company.employerPfPct ?? 13),
         pfRules: {
           ...company.pfRules,
           enabled: ov.pfEnabled !== undefined ? ov.pfEnabled : (company.pfRules?.enabled !== false),
+          employeePct: ov.employeePfPct !== undefined ? ov.employeePfPct : (company.employeePfPct ?? company.pfRules?.employeePct ?? 12),
+          employerPct: ov.employerPfPct !== undefined ? ov.employerPfPct : (company.employerPfPct ?? company.pfRules?.employerPct ?? 13),
         },
+        employeeEsiEnabled: ov.esiEmployeeEnabled !== undefined ? ov.esiEmployeeEnabled : true,
+        employerEsiEnabled: ov.esiEmployerEnabled !== undefined ? ov.esiEmployerEnabled : true,
+        employeeEsiPct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? 0.75),
+        employerEsiPct: ov.employerEsiPct !== undefined ? ov.employerEsiPct : (company.employerEsiPct ?? 3.25),
         esiRules: {
           ...company.esiRules,
           enabled: ov.esiEnabled !== undefined ? ov.esiEnabled : (company.esiRules?.enabled !== false),
+          employeePct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75),
+          employerPct: ov.employerEsiPct !== undefined ? ov.employerEsiPct : (company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25),
         },
         lwfRules: {
           ...company.lwfRules,
@@ -608,13 +642,25 @@ export function PayrollPage() {
       ltaPct: editingRecord.ltaPct,
       ptEnabled: editingRecord.ptEnabled,
       ptAmount: editingRecord.ptAmountOverride,
+      employeePfEnabled: editingRecord.pfEmployeeEnabled,
+      employerPfEnabled: editingRecord.pfEmployerEnabled,
+      employeePfPct: editingRecord.employeePfPct,
+      employerPfPct: editingRecord.employerPfPct,
       pfRules: {
         ...company.pfRules,
         enabled: editingRecord.pfEnabled,
+        employeePct: editingRecord.employeePfPct,
+        employerPct: editingRecord.employerPfPct,
       },
+      employeeEsiEnabled: editingRecord.esiEmployeeEnabled,
+      employerEsiEnabled: editingRecord.esiEmployerEnabled,
+      employeeEsiPct: editingRecord.employeeEsiPct,
+      employerEsiPct: editingRecord.employerEsiPct,
       esiRules: {
         ...company.esiRules,
         enabled: editingRecord.esiEnabled,
+        employeePct: editingRecord.employeeEsiPct,
+        employerPct: editingRecord.employerEsiPct,
       },
       lwfRules: {
         ...company.lwfRules,
@@ -820,15 +866,18 @@ export function PayrollPage() {
                         <td className="p-3 text-right font-bold text-primary text-sm">{inr(benchmarkCalc.gross)}</td>
                       </tr>
 
-                      {/* 1. Basic Pay (ALWAYS ON - NO TOGGLE, EDITABLE %) */}
+                      {/* 1. Basic + DA (MANDATORY CORE WAGE - EDITABLE %) */}
                       <tr>
                         <td className="p-3 font-semibold">
                           <div className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                            <span>Basic</span>
-                            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
-                              Mandatory
+                            <span>Basic + DA</span>
+                            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-bold">
+                              Mandatory Core Wage
                             </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground pl-4">
+                            Statutory wage base for EPF &amp; Gratuity
                           </div>
                         </td>
                         <td className="p-3">
@@ -836,7 +885,7 @@ export function PayrollPage() {
                             <Input
                               type="number"
                               step="0.1"
-                              value={company.basicPct ?? 20}
+                              value={company.basicPct ?? 33.33}
                               onChange={(e) => setCompany({ basicPct: Number(e.target.value) || 0 })}
                               className="h-8 w-20 text-xs font-semibold"
                             />
@@ -844,35 +893,6 @@ export function PayrollPage() {
                           </div>
                         </td>
                         <td className="p-3 text-right font-semibold">{inr(benchmarkCalc.basic)}</td>
-                      </tr>
-
-                      {/* 2. DA (TOGGLEABLE) */}
-                      <tr className={benchmarkCalc.daEnabled ? "bg-transparent" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 font-medium">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.daEnabled}
-                              onCheckedChange={(checked) => setCompany({ daEnabled: checked })}
-                            />
-                            <span>DA (Dearness Allowance)</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.1"
-                              disabled={!benchmarkCalc.daEnabled}
-                              value={company.daPct ?? 13.33}
-                              onChange={(e) => setCompany({ daPct: Number(e.target.value) || 0 })}
-                              className="h-8 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% of Gross</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {benchmarkCalc.daEnabled ? inr(benchmarkCalc.da) : <span className="text-xs text-muted-foreground">Excluded</span>}
-                        </td>
                       </tr>
 
                       {/* ALLOWANCES SUB-HEADER */}
@@ -1302,12 +1322,19 @@ export function PayrollPage() {
 
                       {/* STATUTORY & DEDUCTIONS HEADER */}
                       <tr className="bg-rose-500/10 font-bold text-xs uppercase text-rose-800 dark:text-rose-200">
-                        <td colSpan={3} className="p-2 pl-3">PF, ESI &amp; Professional Tax</td>
+                        <td colSpan={3} className="p-2.5 pl-3">
+                          <div className="flex items-center justify-between">
+                            <span>PF, ESI &amp; Professional Tax (Employee &amp; Employer Split)</span>
+                            <Badge variant="outline" className="bg-rose-500/20 text-rose-700 dark:text-rose-300 text-[9px] border-rose-500/30">
+                              Statutory Compliant
+                            </Badge>
+                          </div>
+                        </td>
                       </tr>
 
-                      {/* PF (Provident Fund) */}
+                      {/* PF (Provident Fund) MASTER TOGGLE */}
                       <tr className={benchmarkCalc.pfEnabled ? "bg-rose-500/5" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 font-medium">
+                        <td className="p-3 font-semibold text-rose-950 dark:text-rose-100">
                           <div className="flex items-center gap-2.5">
                             <Switch
                               checked={benchmarkCalc.pfEnabled}
@@ -1320,29 +1347,114 @@ export function PayrollPage() {
                                 })
                               }
                             />
-                            <span>PF (Employee 12% · Employer 13%)</span>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span>Provident Fund (EPF Act 1952)</span>
+                                <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">
+                                  Ceiling ₹{company.pfRules?.ceiling || 15000}
+                                </Badge>
+                              </div>
+                              <div className="text-[10px] text-muted-foreground font-normal">
+                                Wage Base: Basic + DA = {inr(benchmarkCalc.pfBase)}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         <td className="p-3">
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            {benchmarkCalc.pfEnabled ? "PF Enabled" : "PF Disabled"}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right font-bold text-xs text-rose-600">
+                          {benchmarkCalc.pfEnabled ? "Configurable Split" : <span className="text-muted-foreground font-normal">Disabled</span>}
+                        </td>
+                      </tr>
+
+                      {/* PF — EMPLOYEE SHARE */}
+                      <tr className={benchmarkCalc.pfEnabled ? "bg-rose-500/5 border-t border-border/40" : "opacity-50 bg-muted/20 border-t border-border/40"}>
+                        <td className="p-2.5 pl-8 font-medium">
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+                            <span className="text-xs font-semibold">Employee PF Share</span>
+                            <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/30">
+                              Deduction
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground pl-3.5">
+                            Deducted from employee monthly take-home salary
+                          </div>
+                        </td>
+                        <td className="p-2.5">
                           <div className="flex items-center gap-2">
                             <Input
                               type="number"
+                              step="0.1"
                               disabled={!benchmarkCalc.pfEnabled}
                               value={company.employeePfPct ?? 12}
-                              onChange={(e) => setCompany({ employeePfPct: Number(e.target.value) || 0 })}
-                              className="h-8 w-16 text-xs font-semibold"
+                              onChange={(e) => {
+                                const val = Number(e.target.value) || 0;
+                                setCompany({
+                                  employeePfPct: val,
+                                  pfRules: {
+                                    ...(company.pfRules || { employeePct: 12, employerPct: 13, ceiling: 15000, enabled: true }),
+                                    employeePct: val,
+                                  },
+                                });
+                              }}
+                              className="h-7.5 w-20 text-xs font-semibold"
                             />
                             <span className="text-xs text-muted-foreground">% Employee</span>
                           </div>
                         </td>
-                        <td className="p-3 text-right font-semibold text-rose-600">
-                          {benchmarkCalc.pfEnabled ? `-${inr(benchmarkCalc.pfEmployee)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
+                        <td className="p-2.5 text-right font-semibold text-rose-600">
+                          {benchmarkCalc.pfEnabled ? `-${inr(benchmarkCalc.pfEmployee)}` : <span className="text-xs text-muted-foreground">Excluded</span>}
                         </td>
                       </tr>
 
-                      {/* ESI (State Insurance) */}
-                      <tr className={benchmarkCalc.esiEnabled ? "bg-rose-500/5" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 font-medium">
+                      {/* PF — EMPLOYER SHARE */}
+                      <tr className={benchmarkCalc.pfEnabled ? "bg-rose-500/5" : "opacity-50 bg-muted/20"}>
+                        <td className="p-2.5 pl-8 font-medium">
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
+                            <span className="text-xs font-semibold">Employer PF Share</span>
+                            <Badge variant="outline" className="text-[9px] bg-indigo-500/10 text-indigo-600 border-indigo-500/30">
+                              Company CTC
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground pl-3.5">
+                            Company contribution (EPF 3.67% + EPS 8.33% + Admin 1.0%)
+                          </div>
+                        </td>
+                        <td className="p-2.5">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              step="0.1"
+                              disabled={!benchmarkCalc.pfEnabled}
+                              value={company.employerPfPct ?? 13}
+                              onChange={(e) => {
+                                const val = Number(e.target.value) || 0;
+                                setCompany({
+                                  employerPfPct: val,
+                                  pfRules: {
+                                    ...(company.pfRules || { employeePct: 12, employerPct: 13, ceiling: 15000, enabled: true }),
+                                    employerPct: val,
+                                  },
+                                });
+                              }}
+                              className="h-7.5 w-20 text-xs font-semibold"
+                            />
+                            <span className="text-xs text-muted-foreground">% Employer</span>
+                          </div>
+                        </td>
+                        <td className="p-2.5 text-right font-semibold text-indigo-600 dark:text-indigo-400">
+                          {benchmarkCalc.pfEnabled ? `+${inr(benchmarkCalc.pfEmployer)} (CTC)` : <span className="text-xs text-muted-foreground">Excluded</span>}
+                        </td>
+                      </tr>
+
+                      {/* ESI (State Insurance) MASTER TOGGLE */}
+                      <tr className={benchmarkCalc.esiEnabled ? "bg-rose-500/5 border-t-2 border-border/60" : "opacity-50 bg-muted/20 border-t-2 border-border/60"}>
+                        <td className="p-3 font-semibold text-rose-950 dark:text-rose-100">
                           <div className="flex items-center gap-2.5">
                             <Switch
                               checked={benchmarkCalc.esiEnabled}
@@ -1355,29 +1467,119 @@ export function PayrollPage() {
                                 })
                               }
                             />
-                            <span>ESI (Employee 0.75% · Employer 3.25%)</span>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span>ESI (Employee State Insurance)</span>
+                                <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">
+                                  Threshold ≤ ₹{company.esiRules?.threshold || company.esiThreshold || 21000}
+                                </Badge>
+                              </div>
+                              <div className="text-[10px] text-muted-foreground font-normal">
+                                {benchmarkCalc.esiEligible
+                                  ? `Gross salary ${inr(benchmarkCalc.gross)} is eligible for ESI`
+                                  : `Gross salary ${inr(benchmarkCalc.gross)} exceeds statutory ₹21k limit`}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         <td className="p-3">
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            {benchmarkCalc.esiEnabled ? (benchmarkCalc.esiEligible ? "ESI Applicable" : "Wage Exceeds Limit") : "ESI Disabled"}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right font-bold text-xs text-rose-600">
+                          {benchmarkCalc.esiEnabled ? "Configurable Split" : <span className="text-muted-foreground font-normal">Disabled</span>}
+                        </td>
+                      </tr>
+
+                      {/* ESI — EMPLOYEE SHARE */}
+                      <tr className={benchmarkCalc.esiEnabled ? "bg-rose-500/5 border-t border-border/40" : "opacity-50 bg-muted/20 border-t border-border/40"}>
+                        <td className="p-2.5 pl-8 font-medium">
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+                            <span className="text-xs font-semibold">Employee ESI Share</span>
+                            <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/30">
+                              Deduction
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground pl-3.5">
+                            Deducted from employee gross salary if Gross ≤ ₹21,000
+                          </div>
+                        </td>
+                        <td className="p-2.5">
                           <div className="flex items-center gap-2">
                             <Input
                               type="number"
                               step="0.01"
                               disabled={!benchmarkCalc.esiEnabled}
                               value={company.employeeEsiPct ?? 0.75}
-                              onChange={(e) => setCompany({ employeeEsiPct: Number(e.target.value) || 0 })}
-                              className="h-8 w-16 text-xs font-semibold"
+                              onChange={(e) => {
+                                const val = Number(e.target.value) || 0;
+                                setCompany({
+                                  employeeEsiPct: val,
+                                  esiRules: {
+                                    ...(company.esiRules || { employeePct: 0.75, employerPct: 3.25, threshold: 21000, enabled: true }),
+                                    employeePct: val,
+                                  },
+                                });
+                              }}
+                              className="h-7.5 w-20 text-xs font-semibold"
                             />
                             <span className="text-xs text-muted-foreground">% Employee</span>
                           </div>
                         </td>
-                        <td className="p-3 text-right font-semibold text-rose-600">
-                          {benchmarkCalc.esiEnabled ? `-${inr(benchmarkCalc.esiEmployee)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
+                        <td className="p-2.5 text-right font-semibold text-rose-600">
+                          {benchmarkCalc.esiEnabled && benchmarkCalc.esiEligible
+                            ? `-${inr(benchmarkCalc.esiEmployee)}`
+                            : <span className="text-xs text-muted-foreground">{benchmarkCalc.esiEnabled ? "₹0 (Exceeds ₹21k)" : "Excluded"}</span>}
+                        </td>
+                      </tr>
+
+                      {/* ESI — EMPLOYER SHARE */}
+                      <tr className={benchmarkCalc.esiEnabled ? "bg-rose-500/5" : "opacity-50 bg-muted/20"}>
+                        <td className="p-2.5 pl-8 font-medium">
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
+                            <span className="text-xs font-semibold">Employer ESI Share</span>
+                            <Badge variant="outline" className="text-[9px] bg-indigo-500/10 text-indigo-600 border-indigo-500/30">
+                              Company CTC
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground pl-3.5">
+                            Company contribution deposited to ESIC healthcare fund
+                          </div>
+                        </td>
+                        <td className="p-2.5">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              disabled={!benchmarkCalc.esiEnabled}
+                              value={company.employerEsiPct ?? 3.25}
+                              onChange={(e) => {
+                                const val = Number(e.target.value) || 0;
+                                setCompany({
+                                  employerEsiPct: val,
+                                  esiRules: {
+                                    ...(company.esiRules || { employeePct: 0.75, employerPct: 3.25, threshold: 21000, enabled: true }),
+                                    employerPct: val,
+                                  },
+                                });
+                              }}
+                              className="h-7.5 w-20 text-xs font-semibold"
+                            />
+                            <span className="text-xs text-muted-foreground">% Employer</span>
+                          </div>
+                        </td>
+                        <td className="p-2.5 text-right font-semibold text-indigo-600 dark:text-indigo-400">
+                          {benchmarkCalc.esiEnabled && benchmarkCalc.esiEligible
+                            ? `+${inr(benchmarkCalc.esiEmployer)} (CTC)`
+                            : <span className="text-xs text-muted-foreground">{benchmarkCalc.esiEnabled ? "₹0 (Exceeds ₹21k)" : "Excluded"}</span>}
                         </td>
                       </tr>
 
                       {/* Professional Tax (PT) */}
-                      <tr className={benchmarkCalc.ptEnabled ? "bg-rose-500/5" : "opacity-50 bg-muted/20"}>
+                      <tr className={benchmarkCalc.ptEnabled ? "bg-rose-500/5 border-t-2 border-border/60" : "opacity-50 bg-muted/20 border-t-2 border-border/60"}>
                         <td className="p-3 font-medium">
                           <div className="flex items-center gap-2.5">
                             <Switch
@@ -1486,16 +1688,10 @@ export function PayrollPage() {
                       Earnings
                     </div>
                     <div className="space-y-1 text-[11px]">
-                      <div className="flex justify-between">
-                        <span>Basic Pay</span>
-                        <span className="font-semibold">{inr(benchmarkCalc.basic)}</span>
+                      <div className="flex justify-between font-semibold">
+                        <span>Basic + DA</span>
+                        <span>{inr(benchmarkCalc.basic)}</span>
                       </div>
-                      {benchmarkCalc.daEnabled && (
-                        <div className="flex justify-between">
-                          <span>DA</span>
-                          <span className="font-semibold">{inr(benchmarkCalc.da)}</span>
-                        </div>
-                      )}
                       {benchmarkCalc.hraEnabled && (
                         <div className="flex justify-between">
                           <span>HRA</span>
@@ -1557,14 +1753,16 @@ export function PayrollPage() {
                     <div className="space-y-1 text-[11px]">
                       {benchmarkCalc.pfEnabled && (
                         <div className="flex justify-between text-rose-600">
-                          <span>Employee PF</span>
+                          <span>Employee PF ({benchmarkCalc.employeePfPct}%)</span>
                           <span className="font-semibold">-{inr(benchmarkCalc.pfEmployee)}</span>
                         </div>
                       )}
                       {benchmarkCalc.esiEnabled && (
                         <div className="flex justify-between text-rose-600">
-                          <span>Employee ESI</span>
-                          <span className="font-semibold">-{inr(benchmarkCalc.esiEmployee)}</span>
+                          <span>Employee ESI ({benchmarkCalc.employeeEsiPct}%)</span>
+                          <span className="font-semibold">
+                            {benchmarkCalc.esiEligible ? `-${inr(benchmarkCalc.esiEmployee)}` : "₹0 (Exceeds ₹21k)"}
+                          </span>
                         </div>
                       )}
                       {benchmarkCalc.ptEnabled && (
@@ -1610,10 +1808,14 @@ export function PayrollPage() {
                 {/* Employer CTC Breakdown */}
                 <div className="pt-2 border-t border-border/50 text-[10px] space-y-1 text-muted-foreground">
                   <div className="flex justify-between font-medium">
-                    <span>Employer Statutory (PF + ESI)</span>
-                    <span>{inr(benchmarkCalc.pfEmployer + benchmarkCalc.esiEmployer)}</span>
+                    <span>Employer PF ({benchmarkCalc.employerPfPct}%)</span>
+                    <span>+{inr(benchmarkCalc.pfEmployer)}</span>
                   </div>
-                  <div className="flex justify-between font-bold text-foreground">
+                  <div className="flex justify-between font-medium">
+                    <span>Employer ESI ({benchmarkCalc.employerEsiPct}%)</span>
+                    <span>+{inr(benchmarkCalc.esiEmployer)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-foreground pt-1 border-t border-border/40">
                     <span>Total Cost to Company (CTC)</span>
                     <span className="text-primary font-bold">
                       {inr(benchmarkCalc.totalMonthlyCtc)} / mo ({benchmarkCalc.totalYearlyCtcLpa} LPA)
@@ -1863,9 +2065,17 @@ export function PayrollPage() {
                                 otherEarnings: overrideData.otherEarnings !== undefined ? overrideData.otherEarnings : 0,
                                 // Deductions:
                                 pfEnabled: overrideData.pfEnabled !== undefined ? overrideData.pfEnabled : (company.pfRules?.enabled !== false),
+                                pfEmployeeEnabled: overrideData.pfEmployeeEnabled !== undefined ? overrideData.pfEmployeeEnabled : true,
+                                pfEmployerEnabled: overrideData.pfEmployerEnabled !== undefined ? overrideData.pfEmployerEnabled : true,
+                                employeePfPct: overrideData.employeePfPct !== undefined ? overrideData.employeePfPct : (company.employeePfPct ?? 12),
+                                employerPfPct: overrideData.employerPfPct !== undefined ? overrideData.employerPfPct : (company.employerPfPct ?? 13),
                                 esiEnabled: overrideData.esiEnabled !== undefined ? overrideData.esiEnabled : (company.esiRules?.enabled !== false),
+                                esiEmployeeEnabled: overrideData.esiEmployeeEnabled !== undefined ? overrideData.esiEmployeeEnabled : true,
+                                esiEmployerEnabled: overrideData.esiEmployerEnabled !== undefined ? overrideData.esiEmployerEnabled : true,
+                                employeeEsiPct: overrideData.employeeEsiPct !== undefined ? overrideData.employeeEsiPct : (company.employeeEsiPct ?? 0.75),
+                                employerEsiPct: overrideData.employerEsiPct !== undefined ? overrideData.employerEsiPct : (company.employerEsiPct ?? 3.25),
                                 ptEnabled: overrideData.ptEnabled !== undefined ? overrideData.ptEnabled : (company.ptEnabled !== false),
-                                ptAmountOverride: overrideData.ptAmountOverride !== undefined ? overrideData.ptAmountOverride : (company.ptAmount ?? 208),
+                                ptAmountOverride: overrideData.ptAmountOverride !== undefined ? overrideData.ptAmountOverride : (comp.deductions.professionalTax || company.ptAmount || 208),
                                 lwfEnabled: overrideData.lwfEnabled !== undefined ? overrideData.lwfEnabled : (company.lwfRules?.enabled === true),
                                 lwfAmountOverride: overrideData.lwfAmountOverride !== undefined ? overrideData.lwfAmountOverride : (company.lwfRules?.employeeAmount ?? 10),
                                 tds: overrideData.tds !== undefined ? overrideData.tds : 0,
@@ -2368,12 +2578,12 @@ export function PayrollPage() {
                     </div>
 
                     <div className="space-y-2.5">
-                      {/* Basic Pay */}
+                      {/* Basic + DA */}
                       <div className="flex items-center justify-between p-2.5 rounded-xl bg-card border border-border/60">
                         <div className="flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                          <span className="text-xs font-bold">Basic Pay</span>
-                          <Badge variant="secondary" className="text-[9px] h-4 px-1 py-0">Mandatory</Badge>
+                          <span className="text-xs font-bold">Basic + DA</span>
+                          <Badge variant="secondary" className="text-[9px] h-4 px-1 py-0">Mandatory Core Wage</Badge>
                         </div>
                         <div className="flex items-center gap-2">
                           <Input
@@ -2387,35 +2597,6 @@ export function PayrollPage() {
                             {inr(Math.round(editingRecord.customBasic * (editingRecord.basicPct / 100)))}
                           </span>
                         </div>
-                      </div>
-
-                      {/* DA */}
-                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-card border border-border/60">
-                        <div className="flex items-center gap-2.5">
-                          <Switch
-                            checked={editingRecord.daEnabled}
-                            onCheckedChange={(val) => setEditingRecord({ ...editingRecord, daEnabled: val })}
-                          />
-                          <span className={`text-xs font-semibold ${editingRecord.daEnabled ? "text-foreground" : "text-muted-foreground line-through"}`}>
-                            Dearness Allowance (DA)
-                          </span>
-                        </div>
-                        {editingRecord.daEnabled ? (
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              value={editingRecord.daPct}
-                              onChange={(e) => setEditingRecord({ ...editingRecord, daPct: Number(e.target.value) || 0 })}
-                              className="h-7 w-16 text-xs text-right font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">%</span>
-                            <span className="text-xs font-bold text-foreground w-20 text-right">
-                              {inr(Math.round(editingRecord.customBasic * (editingRecord.daPct / 100)))}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">Excluded</span>
-                        )}
                       </div>
 
                       {/* HRA */}
@@ -2711,77 +2892,212 @@ export function PayrollPage() {
 
                   {/* 4. Deductions (Statutory & Voluntary) */}
                   <div className="p-4 rounded-2xl bg-muted/30 border border-border/70 space-y-3">
-                    <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      4. Deductions & Statutory Toggles
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        4. Deductions &amp; Statutory Controls (Employee &amp; Employer Split)
+                      </div>
+                      <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/20">
+                        Statutory Split
+                      </Badge>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* PF Switch */}
-                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-card border border-border/60">
-                        <div>
-                          <div className="text-xs font-semibold">Employee PF (12%)</div>
-                          <div className="text-[10px] text-muted-foreground">EPF Act 1952</div>
+                      {/* Employee PF */}
+                      <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-rose-500" />
+                            <span className="text-xs font-bold">Employee PF Share</span>
+                            <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/20">
+                              Deduction
+                            </Badge>
+                          </div>
+                          <Switch
+                            checked={editingRecord.pfEmployeeEnabled}
+                            onCheckedChange={(val) => setEditingRecord({ ...editingRecord, pfEmployeeEnabled: val })}
+                          />
                         </div>
-                        <Switch
-                          checked={editingRecord.pfEnabled}
-                          onCheckedChange={(val) => setEditingRecord({ ...editingRecord, pfEnabled: val })}
-                        />
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              type="number"
+                              step="0.1"
+                              disabled={!editingRecord.pfEmployeeEnabled}
+                              value={editingRecord.employeePfPct}
+                              onChange={(e) => setEditingRecord({ ...editingRecord, employeePfPct: Number(e.target.value) || 0 })}
+                              className="h-7 w-16 text-xs text-right font-semibold"
+                            />
+                            <span className="text-xs text-muted-foreground">%</span>
+                          </div>
+                          <span className="text-xs font-bold text-rose-600">
+                            {editingRecord.pfEmployeeEnabled && editingComp ? `-${inr(editingComp.deductions.employeePF)}` : <span className="text-muted-foreground font-normal">₹0</span>}
+                          </span>
+                        </div>
                       </div>
 
-                      {/* ESI Switch */}
-                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-card border border-border/60">
-                        <div>
-                          <div className="text-xs font-semibold">Employee ESI (0.75%)</div>
-                          <div className="text-[10px] text-muted-foreground">ESI Act 1948</div>
+                      {/* Employer PF */}
+                      <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                            <span className="text-xs font-bold">Employer PF Share</span>
+                            <Badge variant="outline" className="text-[9px] bg-indigo-500/10 text-indigo-600 border-indigo-500/20">
+                              Company CTC
+                            </Badge>
+                          </div>
+                          <Switch
+                            checked={editingRecord.pfEmployerEnabled}
+                            onCheckedChange={(val) => setEditingRecord({ ...editingRecord, pfEmployerEnabled: val })}
+                          />
                         </div>
-                        <Switch
-                          checked={editingRecord.esiEnabled}
-                          onCheckedChange={(val) => setEditingRecord({ ...editingRecord, esiEnabled: val })}
-                        />
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              type="number"
+                              step="0.1"
+                              disabled={!editingRecord.pfEmployerEnabled}
+                              value={editingRecord.employerPfPct}
+                              onChange={(e) => setEditingRecord({ ...editingRecord, employerPfPct: Number(e.target.value) || 0 })}
+                              className="h-7 w-16 text-xs text-right font-semibold"
+                            />
+                            <span className="text-xs text-muted-foreground">%</span>
+                          </div>
+                          <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                            {editingRecord.pfEmployerEnabled && editingComp ? `+${inr(editingComp.employerContrib.employerPF)}` : <span className="text-muted-foreground font-normal">₹0</span>}
+                          </span>
+                        </div>
                       </div>
 
-                      {/* PT Switch & Amount */}
-                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-card border border-border/60">
-                        <div className="flex items-center gap-2">
+                      {/* Employee ESI */}
+                      <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-rose-500" />
+                            <span className="text-xs font-bold">Employee ESI Share</span>
+                            <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/20">
+                              Deduction
+                            </Badge>
+                          </div>
+                          <Switch
+                            checked={editingRecord.esiEmployeeEnabled}
+                            onCheckedChange={(val) => setEditingRecord({ ...editingRecord, esiEmployeeEnabled: val })}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              disabled={!editingRecord.esiEmployeeEnabled}
+                              value={editingRecord.employeeEsiPct}
+                              onChange={(e) => setEditingRecord({ ...editingRecord, employeeEsiPct: Number(e.target.value) || 0 })}
+                              className="h-7 w-16 text-xs text-right font-semibold"
+                            />
+                            <span className="text-xs text-muted-foreground">%</span>
+                          </div>
+                          <span className="text-xs font-bold text-rose-600">
+                            {editingRecord.esiEmployeeEnabled && editingComp ? `-${inr(editingComp.deductions.employeeESI)}` : <span className="text-muted-foreground font-normal">₹0</span>}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Employer ESI */}
+                      <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                            <span className="text-xs font-bold">Employer ESI Share</span>
+                            <Badge variant="outline" className="text-[9px] bg-indigo-500/10 text-indigo-600 border-indigo-500/20">
+                              Company CTC
+                            </Badge>
+                          </div>
+                          <Switch
+                            checked={editingRecord.esiEmployerEnabled}
+                            onCheckedChange={(val) => setEditingRecord({ ...editingRecord, esiEmployerEnabled: val })}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              disabled={!editingRecord.esiEmployerEnabled}
+                              value={editingRecord.employerEsiPct}
+                              onChange={(e) => setEditingRecord({ ...editingRecord, employerEsiPct: Number(e.target.value) || 0 })}
+                              className="h-7 w-16 text-xs text-right font-semibold"
+                            />
+                            <span className="text-xs text-muted-foreground">%</span>
+                          </div>
+                          <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                            {editingRecord.esiEmployerEnabled && editingComp ? `+${inr(editingComp.employerContrib.employerESI)}` : <span className="text-muted-foreground font-normal">₹0</span>}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* PT Switch & Instant Editable Amount */}
+                      <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-amber-500" />
+                            <span className="text-xs font-bold">Prof. Tax (PT)</span>
+                            <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/20">
+                              State Slab / Custom
+                            </Badge>
+                          </div>
                           <Switch
                             checked={editingRecord.ptEnabled}
                             onCheckedChange={(val) => setEditingRecord({ ...editingRecord, ptEnabled: val })}
                           />
-                          <span className="text-xs font-semibold">Prof. Tax (PT)</span>
                         </div>
-                        {editingRecord.ptEnabled && (
-                          <div className="flex items-center gap-1">
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-1.5">
                             <span className="text-xs text-muted-foreground">₹</span>
                             <Input
                               type="number"
+                              disabled={!editingRecord.ptEnabled}
                               value={editingRecord.ptAmountOverride}
-                              onChange={(e) => setEditingRecord({ ...editingRecord, ptAmountOverride: Number(e.target.value) || 0 })}
-                              className="h-7 w-16 text-xs text-right font-semibold"
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setEditingRecord({ ...editingRecord, ptAmountOverride: isNaN(val) ? 0 : val });
+                              }}
+                              className="h-7 w-20 text-xs text-right font-bold text-foreground"
                             />
+                            <span className="text-[10px] text-muted-foreground">Amount</span>
                           </div>
-                        )}
+                          <span className="text-xs font-bold text-rose-600">
+                            {editingRecord.ptEnabled && editingComp ? `-${inr(editingComp.deductions.professionalTax)}` : <span className="text-muted-foreground font-normal">₹0</span>}
+                          </span>
+                        </div>
                       </div>
 
                       {/* LWF Switch & Amount */}
-                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-card border border-border/60">
-                        <div className="flex items-center gap-2">
+                      <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-teal-500" />
+                            <span className="text-xs font-bold">Labour Fund (LWF)</span>
+                          </div>
                           <Switch
                             checked={editingRecord.lwfEnabled}
                             onCheckedChange={(val) => setEditingRecord({ ...editingRecord, lwfEnabled: val })}
                           />
-                          <span className="text-xs font-semibold">Labour Fund (LWF)</span>
                         </div>
-                        {editingRecord.lwfEnabled && (
-                          <div className="flex items-center gap-1">
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-1.5">
                             <span className="text-xs text-muted-foreground">₹</span>
                             <Input
                               type="number"
+                              disabled={!editingRecord.lwfEnabled}
                               value={editingRecord.lwfAmountOverride}
                               onChange={(e) => setEditingRecord({ ...editingRecord, lwfAmountOverride: Number(e.target.value) || 0 })}
-                              className="h-7 w-16 text-xs text-right font-semibold"
+                              className="h-7 w-20 text-xs text-right font-bold text-foreground"
                             />
+                            <span className="text-[10px] text-muted-foreground">Amount</span>
                           </div>
-                        )}
+                          <span className="text-xs font-bold text-rose-600">
+                            {editingRecord.lwfEnabled && editingComp ? `-${inr(editingComp.deductions.lwf)}` : <span className="text-muted-foreground font-normal">₹0</span>}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -2960,10 +3276,24 @@ export function PayrollPage() {
                           </div>
                         </div>
 
-                        {/* Monthly CTC */}
-                        <div className="flex justify-between pt-2 border-t border-border text-[11px] text-muted-foreground">
-                          <span>Monthly CTC:</span>
-                          <span className="font-bold text-primary">{inr(editingComp.monthlyCTC)}</span>
+                        {/* Monthly CTC & Employer Contributions */}
+                        <div className="pt-2 border-t border-border/50 text-[11px] space-y-1 text-muted-foreground">
+                          {editingComp.employerContrib.employerPF > 0 && (
+                            <div className="flex justify-between font-medium">
+                              <span>Employer PF ({editingRecord.employerPfPct}%)</span>
+                              <span>+{inr(editingComp.employerContrib.employerPF)}</span>
+                            </div>
+                          )}
+                          {editingComp.employerContrib.employerESI > 0 && (
+                            <div className="flex justify-between font-medium">
+                              <span>Employer ESI ({editingRecord.employerEsiPct}%)</span>
+                              <span>+{inr(editingComp.employerContrib.employerESI)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between font-bold text-foreground pt-1 border-t border-border/40">
+                            <span>Monthly CTC:</span>
+                            <span className="font-bold text-primary">{inr(editingComp.monthlyCTC)}</span>
+                          </div>
                         </div>
                       </div>
                     )}
