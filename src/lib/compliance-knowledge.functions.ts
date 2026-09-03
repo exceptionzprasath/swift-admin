@@ -33,11 +33,24 @@ LIMITS
 - Do not execute writes. Guide the user to the exact SWIFT screen and permission required.
 - Do not leak tenant-specific data beyond what the profile explicitly contains.`;
 
+import { inspectUserInput, sanitizeModelOutput } from "./ai-security";
+
 export const askComplianceKnowledge = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }) => {
-    const key = process.env.OPENAI_API_KEY;
-    if (!key) throw new Error("SWIFT AI is not configured (missing OPENAI_API_KEY).");
+    const lastUserMessage = [...data.messages].reverse().find((m) => m.role === "user");
+    if (lastUserMessage) {
+      const inspection = inspectUserInput(lastUserMessage.content);
+      if (!inspection.isSafe && inspection.refusalMessage) {
+        return {
+          ok: true as const,
+          content: inspection.refusalMessage,
+        };
+      }
+    }
+
+    const key = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
+    if (!key) return { ok: false as const, error: "SWIFT AI is not configured (missing OPENAI_API_KEY)." };
 
     const registryJson = JSON.stringify(data.registry).slice(0, 80000);
     const profileJson = data.profile ? JSON.stringify(data.profile).slice(0, 4000) : "{}";
@@ -46,7 +59,7 @@ export const askComplianceKnowledge = createServerFn({ method: "POST" })
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`,
+        Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -56,6 +69,7 @@ export const askComplianceKnowledge = createServerFn({ method: "POST" })
           { role: "system", content: `Compliance registry (authoritative knowledge base):\n${registryJson}` },
           ...data.messages,
         ],
+        temperature: 0.3,
       }),
     });
 
@@ -67,5 +81,5 @@ export const askComplianceKnowledge = createServerFn({ method: "POST" })
 
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const content = json.choices?.[0]?.message?.content?.trim() || "I couldn't produce a response.";
-    return { ok: true as const, content };
+    return { ok: true as const, content: sanitizeModelOutput(content) };
   });

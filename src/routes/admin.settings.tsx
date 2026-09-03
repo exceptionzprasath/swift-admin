@@ -562,7 +562,11 @@ function SettingsPage() {
                 onChange={(e) =>
                   setCompany({
                     dashboardBanners: {
+<<<<<<< HEAD
                       ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide", banners: [] }),
+=======
+                      ...(company.dashboardBanners || { enabled: true, autoScrollSeconds: 5, transitionEffect: "slide" as const, banners: [] }),
+>>>>>>> origin/main
                       imageFit: e.target.value as any,
                     },
                   })
