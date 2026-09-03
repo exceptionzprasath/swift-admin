@@ -64,6 +64,11 @@ import {
   Play,
   Copy,
   Trash2,
+  FileText,
+  RadioTower,
+  Code2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { inr } from "@/lib/payroll";
@@ -169,6 +174,70 @@ function AttendancePage() {
     punchType: "FINGERPRINT",
     timeStr: new Date().toTimeString().slice(0, 5),
   });
+
+  // Live Biometric Logs State
+  const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
+  const [logsFilterSerial, setLogsFilterSerial] = useState("ALL");
+  const [logsFilterType, setLogsFilterType] = useState("ALL");
+  const [logsSearchText, setLogsSearchText] = useState("");
+  const [liveLogs, setLiveLogs] = useState<Array<{
+    id: string;
+    timestamp: string;
+    type: string;
+    serialNumber: string;
+    clientIp: string;
+    method: string;
+    path: string;
+    details: string;
+    rawPayload: string | null;
+    status: string;
+  }>>([]);
+  const [isLogsLoading, setIsLogsLoading] = useState(false);
+  const [autoRefreshLogs, setAutoRefreshLogs] = useState(true);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  const fetchLiveLogs = useCallback(async (serial: string = logsFilterSerial) => {
+    setIsLogsLoading(true);
+    try {
+      const backendUrl = getBackendUrl();
+      const snParam = serial && serial !== "ALL" ? `&serialNumber=${encodeURIComponent(serial)}` : "";
+      const res = await fetch(`${backendUrl}/api/devices/live-logs?tenantId=${encodeURIComponent(activeTenantId || "company-demo")}${snParam}&limit=100`);
+      if (res.ok) {
+        const data = await res.json();
+        setLiveLogs(data.logs || []);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch live logs:", err);
+    } finally {
+      setIsLogsLoading(false);
+    }
+  }, [activeTenantId, logsFilterSerial]);
+
+  const handleOpenLiveLogs = (serial: string = "ALL") => {
+    setLogsFilterSerial(serial);
+    setIsLogsModalOpen(true);
+    fetchLiveLogs(serial);
+  };
+
+  const handleClearLiveLogs = async () => {
+    try {
+      const backendUrl = getBackendUrl();
+      await fetch(`${backendUrl}/api/devices/clear-logs`, { method: "POST" });
+      setLiveLogs([]);
+      toast.success("Live request logs cleared!");
+    } catch (err) {
+      toast.error("Failed to clear logs");
+    }
+  };
+
+  // Auto-polling interval for live logs when modal is open
+  useEffect(() => {
+    if (!isLogsModalOpen || !autoRefreshLogs) return;
+    const interval = setInterval(() => {
+      fetchLiveLogs(logsFilterSerial);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [isLogsModalOpen, autoRefreshLogs, logsFilterSerial, fetchLiveLogs]);
 
   const handleOpenAddDevice = (device?: Device) => {
     if (device) {
@@ -1756,6 +1825,17 @@ function AttendancePage() {
               <Button
                 size="sm"
                 variant="outline"
+                onClick={() => handleOpenLiveLogs("ALL")}
+                className="h-8 text-xs rounded-xl gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 shadow-2xs font-semibold"
+              >
+                <Terminal className="h-3.5 w-3.5 text-emerald-500" />
+                <span>Live Logs</span>
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={() => setIsGuideOpen(true)}
                 className="h-8 text-xs rounded-xl gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
               >
@@ -1837,14 +1917,15 @@ function AttendancePage() {
 
             <Card className="rounded-xl border-purple-500/20 bg-purple-500/5 p-4 shadow-xs">
               <div className="flex items-center justify-between text-purple-600 text-xs mb-1">
-                <span>Database Sync</span>
+                <span>Live Logs Stream</span>
                 <HardDrive className="h-4 w-4 text-purple-600" />
               </div>
-              <div className="text-base font-bold text-purple-600 mt-0.5">
-                AWS DynamoDB
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-base font-bold text-purple-600">Real-Time Ingestion</span>
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
               <div className="text-[11px] text-muted-foreground mt-1">
-                Zero MongoDB dependencies
+                Audit buffer & DynamoDB sync
               </div>
             </Card>
           </div>
@@ -1893,6 +1974,7 @@ function AttendancePage() {
                       <th className="p-3">Protocol Status</th>
                       <th className="p-3">IP / Port</th>
                       <th className="p-3">Last Heartbeat</th>
+                      <th className="p-3 text-center">Live Logs</th>
                       <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -1949,6 +2031,18 @@ function AttendancePage() {
                         </td>
                         <td className="p-3 text-muted-foreground text-[11px]">
                           {dev.lastHeartbeat ? new Date(dev.lastHeartbeat).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Recently"}
+                        </td>
+                        <td className="p-3 text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenLiveLogs(dev.serialNumber)}
+                            className="h-7 px-2.5 text-[11px] rounded-lg gap-1 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 shadow-2xs font-medium"
+                          >
+                            <Terminal className="h-3 w-3 text-emerald-500" />
+                            <span>Logs</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+                          </Button>
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -2828,6 +2922,253 @@ npm start
                 <Play className="h-4 w-4" />
               )}
               <span>{isSimulating ? "Pushing Punch..." : "Simulate Machine Punch"}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 11. LIVE BIOMETRIC REQUEST LOGS & PACKET STREAM CONSOLE                   */}
+      {/* ========================================================================= */}
+      <Dialog open={isLogsModalOpen} onOpenChange={setIsLogsModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col rounded-2xl p-6 overflow-hidden">
+          <DialogHeader className="pb-2 border-b border-border">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <DialogTitle className="flex items-center gap-2 text-lg">
+                  <Terminal className="h-5 w-5 text-emerald-500" />
+                  <span>Live Biometric Hardware Request Logs</span>
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] ml-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
+                    Live Stream
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Real-time feed of all incoming ADMS pings, heartbeat handshakes, ATTLOG punches, and LAN agent forwardings.
+                </DialogDescription>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAutoRefreshLogs(!autoRefreshLogs)}
+                  className={`h-8 text-xs rounded-xl gap-1.5 ${autoRefreshLogs ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/5" : "text-muted-foreground"}`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${autoRefreshLogs ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground"}`} />
+                  <span>{autoRefreshLogs ? "Auto (2.5s)" : "Paused"}</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => fetchLiveLogs(logsFilterSerial)}
+                  disabled={isLogsLoading}
+                  className="h-8 text-xs rounded-xl gap-1.5"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isLogsLoading ? "animate-spin text-primary" : ""}`} />
+                  <span>Refresh</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleClearLiveLogs}
+                  className="h-8 text-xs rounded-xl text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Clear</span>
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Filters Bar */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 py-3 border-b border-border bg-muted/20 px-2 rounded-xl mt-2">
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground">Filter by Device</Label>
+              <Select
+                value={logsFilterSerial}
+                onValueChange={(val) => {
+                  setLogsFilterSerial(val);
+                  fetchLiveLogs(val);
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs bg-background">
+                  <SelectValue placeholder="All Devices" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Hardware Terminals</SelectItem>
+                  {devices.map((d) => (
+                    <SelectItem key={d.id} value={d.serialNumber}>
+                      {d.name} ({d.serialNumber})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground">Request Type</Label>
+              <Select value={logsFilterType} onValueChange={setLogsFilterType}>
+                <SelectTrigger className="h-8 text-xs bg-background">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Request Types</SelectItem>
+                  <SelectItem value="HEARTBEAT">Heartbeats & Handshakes</SelectItem>
+                  <SelectItem value="PUNCH_PUSH">Punches (ATTLOG)</SelectItem>
+                  <SelectItem value="REST_PUNCH">LAN Agent Punches</SelectItem>
+                  <SelectItem value="SIMULATION">Simulator Test Punches</SelectItem>
+                  <SelectItem value="COMMAND_POLL">Command Polls</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground">Search Logs</Label>
+              <div className="relative">
+                <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search IP, details, PIN..."
+                  value={logsSearchText}
+                  onChange={(e) => setLogsSearchText(e.target.value)}
+                  className="pl-7 h-8 text-xs bg-background"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Logs Terminal Console Stream */}
+          <div className="flex-1 overflow-y-auto space-y-2 py-3 pr-1 font-mono text-xs max-h-[450px]">
+            {(() => {
+              const filtered = liveLogs.filter((log) => {
+                if (logsFilterType !== "ALL" && log.type !== logsFilterType) return false;
+                if (logsSearchText) {
+                  const s = logsSearchText.toLowerCase();
+                  const match =
+                    log.serialNumber?.toLowerCase().includes(s) ||
+                    log.clientIp?.toLowerCase().includes(s) ||
+                    log.details?.toLowerCase().includes(s) ||
+                    log.rawPayload?.toLowerCase().includes(s) ||
+                    log.path?.toLowerCase().includes(s);
+                  if (!match) return false;
+                }
+                return true;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="p-12 text-center space-y-3 bg-muted/20 rounded-xl border border-dashed border-border">
+                    <RadioTower className="h-8 w-8 text-muted-foreground mx-auto animate-pulse" />
+                    <div className="font-semibold text-foreground text-xs">
+                      {liveLogs.length === 0 ? "Listening for incoming requests..." : "No logs match the selected filter"}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground max-w-sm mx-auto font-sans">
+                      Physical terminals pinging <code className="bg-muted px-1 py-0.5 rounded text-primary">/iclock/cdata</code> or simulator punches will appear here in real time.
+                    </p>
+                  </div>
+                );
+              }
+
+              return filtered.map((log) => {
+                const isExpanded = expandedLogId === log.id;
+                const timeFormatted = new Date(log.timestamp).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                  fractionalSecondDigits: 3,
+                });
+
+                return (
+                  <div
+                    key={log.id}
+                    className="p-3 rounded-xl border border-border bg-card/60 hover:bg-muted/30 transition-all space-y-1.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] font-bold px-1.5 py-0 ${
+                            log.method === "POST"
+                              ? "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                              : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                          }`}
+                        >
+                          {log.method}
+                        </Badge>
+
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${
+                            log.type === "PUNCH_PUSH" || log.type === "REST_PUNCH"
+                              ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                              : log.type === "SIMULATION"
+                              ? "bg-purple-500/10 text-purple-600 border-purple-500/30"
+                              : log.type === "ERROR"
+                              ? "bg-destructive/10 text-destructive border-destructive/30"
+                              : "bg-muted text-muted-foreground border-border"
+                          }`}
+                        >
+                          {log.type}
+                        </Badge>
+
+                        <span className="font-bold text-foreground text-[11px] font-sans">
+                          SN: {log.serialNumber}
+                        </span>
+
+                        <span className="text-muted-foreground text-[11px]">
+                          IP: {log.clientIp}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground">
+                          {timeFormatted}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                          {log.status}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-foreground font-sans">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground font-mono">{log.path}</span>
+                        <span>•</span>
+                        <span className="font-medium text-foreground">{log.details}</span>
+                      </div>
+
+                      {log.rawPayload && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                          className="text-[10px] text-primary hover:underline flex items-center gap-0.5 ml-2 font-mono shrink-0"
+                        >
+                          <Code2 className="h-3 w-3" />
+                          <span>{isExpanded ? "Hide Packet" : "View Raw Packet"}</span>
+                          {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        </button>
+                      )}
+                    </div>
+
+                    {isExpanded && log.rawPayload && (
+                      <pre className="p-2.5 rounded-lg bg-black text-emerald-400 font-mono text-[11px] overflow-x-auto border border-border mt-2 whitespace-pre-wrap">
+                        {log.rawPayload}
+                      </pre>
+                    )}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+
+          <DialogFooter className="pt-2 border-t border-border flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground">
+              Showing <strong>{liveLogs.length}</strong> recent incoming requests
+            </span>
+            <Button variant="outline" onClick={() => setIsLogsModalOpen(false)}>
+              Close Console
             </Button>
           </DialogFooter>
         </DialogContent>
