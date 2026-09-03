@@ -658,6 +658,22 @@ export type DemoTenant = {
   createdAt: string;
 };
 
+export type Device = {
+  id: string;
+  tenantId?: string;
+  serialNumber: string;
+  name: string;
+  branchId?: string;
+  branchName?: string;
+  model?: string;
+  status: "ONLINE" | "OFFLINE" | "UNASSIGNED";
+  ipAddress?: string;
+  lastHeartbeat?: string;
+  firmware?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type AttendanceRecord = {
   id: string;
   tenantId?: string;
@@ -692,6 +708,9 @@ export type AttendanceRecord = {
   punctuality?: "on-time" | "within-grace" | "late" | "half-day" | "absent" | "flexible";
   isAfternoonHalfDay?: boolean;
   status: "present" | "absent" | "leave" | "half-day" | "late" | "holiday" | "weekly-off";
+  deviceSerial?: string;
+  punchType?: string;
+  source?: "MOBILE_APP" | "BIOMETRIC_TERMINAL" | "MANUAL_ADMIN" | string;
   note?: string;
   regularized?: boolean;
   regularizedBy?: string;
@@ -1013,6 +1032,10 @@ type State = {
   assignRoster: (r: Omit<ShiftAssignment, "id"> & { id?: string }) => ShiftAssignment;
   bulkAssignRoster: (items: Array<Omit<ShiftAssignment, "id"> & { id?: string }>) => Promise<number>;
   deleteRosterAssignment: (id: string) => void;
+  devices: Device[];
+  addDevice: (d: Omit<Device, "id" | "createdAt" | "updatedAt"> & { id?: string }) => Device;
+  updateDevice: (id: string, patch: Partial<Device>) => void;
+  deleteDevice: (id: string) => void;
   login: (u: User) => void;
   logout: () => void;
   seedDemo: (asRole: "admin" | "employee") => void;
@@ -2223,6 +2246,7 @@ export const useStore = create<State>()(
               vaultFiles: data.vaultFiles && data.vaultFiles.length ? data.vaultFiles : (get().vaultFiles?.length ? get().vaultFiles : DEFAULT_VAULT_FILES),
               grievances: data.grievances || [],
               requests: data.requests || [],
+              devices: data.devices || [],
               demoMode: false,
             });
           } catch (_err) {}
@@ -2241,6 +2265,7 @@ export const useStore = create<State>()(
           vaultFiles: DEFAULT_VAULT_FILES,
           grievances: [],
           requests: [],
+          devices: [],
           salaryRevisions: [],
           auditLog: [],
           roles: DEFAULT_PREDEFINED_ROLES,
@@ -2749,6 +2774,39 @@ export const useStore = create<State>()(
           }
           return { roster: st.roster.filter((r) => r.id !== id) };
         });
+      },
+      devices: [],
+      addDevice: (d) => {
+        const item: Device = {
+          ...d,
+          id: d.id || `dev-${d.serialNumber.trim()}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: d.status || "ONLINE",
+        };
+        set((s) => ({ devices: [item, ...s.devices.filter((x) => x.id !== item.id && x.serialNumber !== item.serialNumber)] }));
+        const tenantId = useAuth.getState().activeTenantId;
+        if (tenantId && !get().demoMode) {
+          syncItem("devices", { tenantId, ...item });
+        }
+        return item;
+      },
+      updateDevice: (id, patch) =>
+        set((s) => {
+          const nextDevices = s.devices.map((d) => (d.id === id ? { ...d, ...patch, updatedAt: new Date().toISOString() } : d));
+          const tenantId = useAuth.getState().activeTenantId;
+          const item = nextDevices.find((d) => d.id === id);
+          if (tenantId && item && !s.demoMode) {
+            syncItem("devices", { tenantId, ...item });
+          }
+          return { devices: nextDevices };
+        }),
+      deleteDevice: (id) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        set((s) => ({ devices: s.devices.filter((d) => d.id !== id) }));
+        if (tenantId && !get().demoMode) {
+          syncDelete("devices", tenantId, id);
+        }
       },
       login: (u) => set({ currentUser: u }),
       logout: () => set({ currentUser: null }),

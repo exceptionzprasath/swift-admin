@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { useStore, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType } from "@/lib/store";
+import { useStore, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device, getBackendUrl } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,18 @@ import {
   Plus,
   Minus,
   RotateCcw,
+  Cpu,
+  Server,
+  Wifi,
+  WifiOff,
+  Terminal,
+  Laptop,
+  HelpCircle,
+  HardDrive,
+  Radio,
+  Play,
+  Copy,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { inr } from "@/lib/payroll";
@@ -116,6 +128,10 @@ function AttendancePage() {
     leaves,
     holidays,
     roster,
+    devices = [],
+    addDevice,
+    updateDevice,
+    deleteDevice,
     loadCompanyState,
   } = useStore();
   const { activeTenantId } = useAuth();
@@ -124,6 +140,132 @@ function AttendancePage() {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
+
+  // Biometric Hardware Devices State & Dialogs
+  const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [deviceForm, setDeviceForm] = useState<{
+    serialNumber: string;
+    name: string;
+    branchId: string;
+    model: string;
+    status: "ONLINE" | "OFFLINE";
+  }>({
+    serialNumber: "",
+    name: "",
+    branchId: company.branches?.[0]?.id || "br-hq",
+    model: "BioMax / eSSL ADMS SpeedFace",
+    status: "ONLINE",
+  });
+
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isAgentGuideOpen, setIsAgentGuideOpen] = useState(false);
+  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulatorForm, setSimulatorForm] = useState({
+    employeeId: employees[0]?.id || "",
+    deviceSerial: devices[0]?.serialNumber || "NFZ8235301513",
+    punchState: "CHECK_IN",
+    punchType: "FINGERPRINT",
+    timeStr: new Date().toTimeString().slice(0, 5),
+  });
+
+  const handleOpenAddDevice = (device?: Device) => {
+    if (device) {
+      setEditingDevice(device);
+      setDeviceForm({
+        serialNumber: device.serialNumber,
+        name: device.name,
+        branchId: device.branchId || company.branches?.[0]?.id || "br-hq",
+        model: device.model || "BioMax / eSSL ADMS",
+        status: device.status === "OFFLINE" ? "OFFLINE" : "ONLINE",
+      });
+    } else {
+      setEditingDevice(null);
+      setDeviceForm({
+        serialNumber: "",
+        name: "",
+        branchId: company.branches?.[0]?.id || "br-hq",
+        model: "BioMax / eSSL ADMS SpeedFace",
+        status: "ONLINE",
+      });
+    }
+    setIsDeviceModalOpen(true);
+  };
+
+  const handleSaveDevice = () => {
+    if (!deviceForm.serialNumber.trim()) {
+      toast.error("Please enter the biometric machine Serial Number (SN)");
+      return;
+    }
+    const branchObj = company.branches?.find((b) => b.id === deviceForm.branchId);
+    if (editingDevice) {
+      updateDevice(editingDevice.id, {
+        serialNumber: deviceForm.serialNumber.trim(),
+        name: deviceForm.name.trim() || `Terminal (${deviceForm.serialNumber.trim()})`,
+        branchId: deviceForm.branchId,
+        branchName: branchObj?.name || "Head Office",
+        model: deviceForm.model,
+        status: deviceForm.status,
+      });
+      toast.success(`Updated terminal ${deviceForm.serialNumber}`);
+    } else {
+      addDevice({
+        serialNumber: deviceForm.serialNumber.trim(),
+        name: deviceForm.name.trim() || `Terminal (${deviceForm.serialNumber.trim()})`,
+        branchId: deviceForm.branchId,
+        branchName: branchObj?.name || "Head Office",
+        model: deviceForm.model,
+        status: deviceForm.status,
+        lastHeartbeat: new Date().toISOString(),
+        ipAddress: "127.0.0.1",
+      });
+      toast.success(`Registered new terminal ${deviceForm.serialNumber} successfully!`);
+    }
+    setIsDeviceModalOpen(false);
+  };
+
+  const handleDeleteDeviceClick = (dev: Device) => {
+    deleteDevice(dev.id);
+    toast.success(`Unregistered terminal ${dev.name || dev.serialNumber}`);
+  };
+
+  const handleRunSimulator = async () => {
+    if (!simulatorForm.employeeId) {
+      toast.error("Please select an employee");
+      return;
+    }
+    setIsSimulating(true);
+    try {
+      const backendUrl = getBackendUrl();
+      const res = await fetch(`${backendUrl}/api/adms/simulate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: activeTenantId || "company-demo",
+          employeeId: simulatorForm.employeeId,
+          deviceSerial: simulatorForm.deviceSerial || "SIMULATOR-001",
+          punchState: simulatorForm.punchState,
+          punchType: simulatorForm.punchType,
+          timeStr: simulatorForm.timeStr,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.record) {
+          upsertAttendance(data.record);
+        }
+        toast.success(`Simulated ${simulatorForm.punchState} punch logged successfully in DynamoDB!`);
+        setIsSimulatorOpen(false);
+      } else {
+        toast.error("Failed to simulate hardware punch");
+      }
+    } catch (err: any) {
+      toast.error("Simulation error: " + err.message);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
 
   // Live Polling & Sync State
   const [isSyncing, setIsSyncing] = useState(false);
@@ -952,6 +1094,15 @@ function AttendancePage() {
               <TrendingUp className="h-3.5 w-3.5" />
               Punctuality Insights
             </TabsTrigger>
+            <TabsTrigger value="devices" className="rounded-lg gap-1.5 text-xs font-medium">
+              <Cpu className="h-3.5 w-3.5" />
+              Biometric Hardware Terminals
+              {devices.length > 0 && (
+                <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-primary/10 text-primary">
+                  {devices.length}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           <span className="text-xs text-muted-foreground">
@@ -1580,6 +1731,265 @@ function AttendancePage() {
             </Card>
           </div>
         </TabsContent>
+
+        {/* TAB 4: BIOMETRIC HARDWARE TERMINALS & ADMS HUB */}
+        <TabsContent value="devices" className="space-y-4 m-0">
+          {/* Header Card with Cloud ADMS Listener Banner */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-gradient-to-r from-primary/10 via-background to-card p-5 rounded-2xl border border-primary/20 shadow-xs">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Cpu className="h-5 w-5 text-primary" />
+                <h3 className="font-bold text-base text-foreground">
+                  BioMax / eSSL / ZKTeco Biometric Terminal Hub
+                </h3>
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
+                  ADMS Push Engine Active
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground max-w-2xl">
+                Connect physical fingerprint, face, and RFID time attendance machines over Cloud Direct ADMS protocol or local network LAN sync agent. Punches synchronize directly to AWS DynamoDB.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsGuideOpen(true)}
+                className="h-8 text-xs rounded-xl gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                <span>ADMS Cloud Guide</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsAgentGuideOpen(true)}
+                className="h-8 text-xs rounded-xl gap-1.5"
+              >
+                <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>LAN Sync Agent</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsSimulatorOpen(true)}
+                className="h-8 text-xs rounded-xl gap-1.5 border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+              >
+                <Play className="h-3.5 w-3.5 text-amber-500" />
+                <span>Test Simulator</span>
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={() => handleOpenAddDevice()}
+                className="h-8 text-xs rounded-xl gap-1.5 bg-primary text-primary-foreground font-semibold shadow-xs"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Register Terminal</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Quick Metrics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <Card className="rounded-xl border-border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
+                <span>Registered Devices</span>
+                <Server className="h-4 w-4 text-primary" />
+              </div>
+              <div className="text-2xl font-bold font-display text-foreground">
+                {devices.length}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
+                Physical Hardware Terminals
+              </div>
+            </Card>
+
+            <Card className="rounded-xl border-emerald-500/20 bg-emerald-500/5 p-4 shadow-xs">
+              <div className="flex items-center justify-between text-emerald-600 text-xs mb-1">
+                <span>Online / Active Now</span>
+                <Wifi className="h-4 w-4 text-emerald-600" />
+              </div>
+              <div className="text-2xl font-bold font-display text-emerald-600">
+                {devices.filter((d) => d.status !== "OFFLINE").length}
+              </div>
+              <div className="text-[11px] text-emerald-700/80 dark:text-emerald-300 mt-0.5">
+                Ready to receive live punches
+              </div>
+            </Card>
+
+            <Card className="rounded-xl border-blue-500/20 bg-blue-500/5 p-4 shadow-xs">
+              <div className="flex items-center justify-between text-blue-600 text-xs mb-1">
+                <span>Cloud Push Protocol</span>
+                <Radio className="h-4 w-4 text-blue-600" />
+              </div>
+              <div className="text-sm font-bold font-mono text-blue-600 truncate mt-1">
+                ADMS / iClock 2.4.1
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-1">
+                Endpoint: <code className="bg-muted px-1 rounded">/iclock/cdata</code>
+              </div>
+            </Card>
+
+            <Card className="rounded-xl border-purple-500/20 bg-purple-500/5 p-4 shadow-xs">
+              <div className="flex items-center justify-between text-purple-600 text-xs mb-1">
+                <span>Database Sync</span>
+                <HardDrive className="h-4 w-4 text-purple-600" />
+              </div>
+              <div className="text-base font-bold text-purple-600 mt-0.5">
+                AWS DynamoDB
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-1">
+                Zero MongoDB dependencies
+              </div>
+            </Card>
+          </div>
+
+          {/* Devices List Table */}
+          <Card className="rounded-2xl border-border shadow-xs overflow-hidden">
+            <CardHeader className="p-4 border-b border-border bg-muted/20 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Cpu className="h-4 w-4 text-primary" />
+                  Registered Biometric Hardware Terminals ({devices.length})
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Terminals mapped to company branches for biometric attendance punching
+                </CardDescription>
+              </div>
+            </CardHeader>
+
+            <div className="overflow-x-auto">
+              {devices.length === 0 ? (
+                <div className="p-12 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary">
+                    <Cpu className="h-6 w-6" />
+                  </div>
+                  <div className="font-semibold text-foreground text-sm">No Biometric Terminals Registered Yet</div>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    Register your BioMax, eSSL, or ZKTeco machine serial number to begin receiving automatic live attendance punch streams.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={() => handleOpenAddDevice()}
+                    className="h-8 text-xs rounded-xl gap-1.5 bg-primary text-primary-foreground font-semibold"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Register First Terminal</span>
+                  </Button>
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-muted/40 border-b border-border text-muted-foreground font-semibold">
+                      <th className="p-3">Terminal Info</th>
+                      <th className="p-3">Serial Number (SN)</th>
+                      <th className="p-3">Assigned Branch</th>
+                      <th className="p-3">Hardware Model</th>
+                      <th className="p-3">Protocol Status</th>
+                      <th className="p-3">IP / Port</th>
+                      <th className="p-3">Last Heartbeat</th>
+                      <th className="p-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {devices.map((dev) => (
+                      <tr key={dev.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="p-3">
+                          <div className="font-bold text-foreground text-sm flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            {dev.name}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground font-mono">
+                            ID: {dev.id}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold bg-muted px-2 py-0.5 rounded-md border border-border">
+                              {dev.serialNumber}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(dev.serialNumber);
+                                toast.success("Copied Serial Number to clipboard!");
+                              }}
+                              className="text-muted-foreground hover:text-primary p-1 rounded"
+                              title="Copy Serial Number"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="p-3 font-medium text-foreground">
+                          {dev.branchName || company.branches?.find((b) => b.id === dev.branchId)?.name || "Head Office"}
+                        </td>
+                        <td className="p-3 text-muted-foreground">
+                          {dev.model || "BioMax / eSSL ADMS"}
+                        </td>
+                        <td className="p-3">
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${
+                              dev.status !== "OFFLINE"
+                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                                : "bg-muted text-muted-foreground border-border"
+                            }`}
+                          >
+                            {dev.status !== "OFFLINE" ? "ONLINE" : "OFFLINE"}
+                          </Badge>
+                        </td>
+                        <td className="p-3 font-mono text-[11px] text-muted-foreground">
+                          {dev.ipAddress || "127.0.0.1"}:4370
+                        </td>
+                        <td className="p-3 text-muted-foreground text-[11px]">
+                          {dev.lastHeartbeat ? new Date(dev.lastHeartbeat).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Recently"}
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSimulatorForm((p) => ({ ...p, deviceSerial: dev.serialNumber }));
+                                setIsSimulatorOpen(true);
+                              }}
+                              className="h-7 text-[11px] rounded-lg gap-1 border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+                            >
+                              <Play className="h-3 w-3" />
+                              <span>Test Punch</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleOpenAddDevice(dev)}
+                              className="h-7 text-[11px] rounded-lg text-primary"
+                            >
+                              <Edit3 className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDeleteDeviceClick(dev)}
+                              className="h-7 text-[11px] rounded-lg text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* ========================================================================= */}
@@ -2085,6 +2495,339 @@ function AttendancePage() {
             >
               <CheckCircle2 className="h-4 w-4" />
               <span>Save Punch & OT</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 7. BIOMETRIC DEVICE REGISTRATION / EDIT MODAL                             */}
+      {/* ========================================================================= */}
+      <Dialog open={isDeviceModalOpen} onOpenChange={setIsDeviceModalOpen}>
+        <DialogContent className="max-w-md rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Cpu className="h-5 w-5 text-primary" />
+              {editingDevice ? "Edit Biometric Terminal" : "Register Biometric Terminal"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Configure physical BioMax, eSSL, or ZKTeco machines to stream punches directly into DynamoDB.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3.5 py-2 text-sm">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Device Serial Number (SN) *</Label>
+              <Input
+                placeholder="e.g. NFZ8235301513 or CLK99201"
+                value={deviceForm.serialNumber}
+                onChange={(e) => setDeviceForm((p) => ({ ...p, serialNumber: e.target.value }))}
+                className="h-9 text-xs font-mono font-bold"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Found on the back of the device or in Admin Menu → System Info → Device Info.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Terminal Friendly Name</Label>
+              <Input
+                placeholder="e.g. Main Reception BioMax / Factory Gate 1"
+                value={deviceForm.name}
+                onChange={(e) => setDeviceForm((p) => ({ ...p, name: e.target.value }))}
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Assigned Branch</Label>
+                <Select
+                  value={deviceForm.branchId}
+                  onValueChange={(val) => setDeviceForm((p) => ({ ...p, branchId: val }))}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(company.branches || [{ id: "br-hq", name: "Head Office" }]).map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Hardware Status</Label>
+                <Select
+                  value={deviceForm.status}
+                  onValueChange={(val: any) => setDeviceForm((p) => ({ ...p, status: val }))}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ONLINE">ONLINE (Active)</SelectItem>
+                    <SelectItem value="OFFLINE">OFFLINE (Standby)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Hardware Model</Label>
+              <Select
+                value={deviceForm.model}
+                onValueChange={(val) => setDeviceForm((p) => ({ ...p, model: val }))}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BioMax / eSSL ADMS SpeedFace">BioMax / eSSL ADMS SpeedFace</SelectItem>
+                  <SelectItem value="eSSL SilkBio-101TC Face & Finger">eSSL SilkBio-101TC Face & Finger</SelectItem>
+                  <SelectItem value="BioMax N-K50 Fingerprint & RFID">BioMax N-K50 Fingerprint & RFID</SelectItem>
+                  <SelectItem value="ZKTeco uFace800 Multi-Biometric">ZKTeco uFace800 Multi-Biometric</SelectItem>
+                  <SelectItem value="Universal ADMS / iClock Protocol">Universal ADMS / iClock Protocol</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsDeviceModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveDevice} className="bg-primary text-primary-foreground font-semibold gap-1.5">
+              <Check className="h-4 w-4" />
+              <span>{editingDevice ? "Save Changes" : "Register Device"}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 8. ADMS CLOUD CONFIGURATION GUIDE MODAL                                    */}
+      {/* ========================================================================= */}
+      <Dialog open={isGuideOpen} onOpenChange={setIsGuideOpen}>
+        <DialogContent className="max-w-lg rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <HelpCircle className="h-5 w-5 text-primary" />
+              Physical Terminal Cloud ADMS Setup Guide
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Configure your physical BioMax, eSSL, or ZKTeco machine to stream attendance directly over the internet.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 space-y-1.5">
+              <div className="font-bold text-foreground flex items-center justify-between">
+                <span>Cloud Server Parameters:</span>
+                <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30 text-[10px]">
+                  ADMS Push
+                </Badge>
+              </div>
+              <div className="font-mono text-[11px] space-y-1">
+                <div>Server Address / Domain: <strong>{getBackendUrl() || "http://localhost:5000"}</strong></div>
+                <div>Server Port: <strong>5000</strong> (or 80 / 443 on production domain)</div>
+                <div>Push Version: <strong>2.4.1</strong></div>
+                <div>Push Path: <strong>/iclock/cdata</strong></div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">Step-by-Step Machine Setup:</h4>
+              <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground">
+                <li>Press <strong className="text-foreground">M/OK</strong> on your biometric terminal to enter Admin Menu.</li>
+                <li>Go to <strong className="text-foreground">Comm. (Communication) → Cloud Server Setting / ADMS Setting</strong>.</li>
+                <li>Set <strong className="text-foreground">Server Address</strong> to your server domain or public IP.</li>
+                <li>Set <strong className="text-foreground">Server Port</strong> to <strong className="text-foreground">5000</strong> (or your cloud port).</li>
+                <li>Enable <strong className="text-foreground">Domain Name Mode</strong> if using a hostname instead of an IP address.</li>
+                <li>Save and restart the machine. The LCD screen will display a green globe/cloud icon once online!</li>
+              </ol>
+            </div>
+
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+              ✓ Once connected, all employee punches from the machine will immediately reflect in the Daily Live Roster, Employee Dossiers, Mobile App, and Payroll calculations.
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button onClick={() => setIsGuideOpen(false)}>
+              Got It
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 9. LAN SYNC AGENT INSTRUCTIONS MODAL                                       */}
+      {/* ========================================================================= */}
+      <Dialog open={isAgentGuideOpen} onOpenChange={setIsAgentGuideOpen}>
+        <DialogContent className="max-w-lg rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Terminal className="h-5 w-5 text-primary" />
+              Local Network (LAN) Sync Agent (node-zklib)
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              For on-premise biometric terminals that cannot access the cloud directly over WAN.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            <p className="text-muted-foreground">
+              If your biometric machine is on a private local network without direct internet access, run our lightweight local sync agent on any office PC connected to the same WiFi/Ethernet switch.
+            </p>
+
+            <div className="p-3 rounded-xl bg-muted/60 border border-border space-y-2">
+              <div className="font-bold text-foreground">How to Start the Local Sync Agent:</div>
+              <pre className="p-2.5 rounded-lg bg-black text-emerald-400 font-mono text-[11px] overflow-x-auto">
+{`# 1. Open Terminal in the agent directory:
+cd Attendance/agent
+
+# 2. Start the automated polling agent:
+npm start
+
+# Or double-click start-agent.bat on Windows`}
+              </pre>
+            </div>
+
+            <div className="space-y-1 text-muted-foreground">
+              <div>• Scans local subnet on port <strong className="text-foreground">4370</strong> automatically.</div>
+              <div>• Pulls real-time fingerprint/face logs via <strong className="text-foreground">node-zklib</strong>.</div>
+              <div>• Streams punches securely to <strong className="text-foreground">/api/attendance/punch</strong> and AWS DynamoDB.</div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button onClick={() => setIsAgentGuideOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 10. BIOMETRIC HARDWARE PUNCH SIMULATOR MODAL                               */}
+      {/* ========================================================================= */}
+      <Dialog open={isSimulatorOpen} onOpenChange={setIsSimulatorOpen}>
+        <DialogContent className="max-w-md rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Play className="h-5 w-5 text-amber-500" />
+              Biometric Hardware Push Simulator
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Simulate real hardware punches from BioMax/eSSL machines to verify live ingestion into DynamoDB.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3.5 py-2 text-sm">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Select Employee</Label>
+              <Select
+                value={simulatorForm.employeeId}
+                onValueChange={(val) => setSimulatorForm((p) => ({ ...p, employeeId: val }))}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select employee" />
+                </SelectTrigger>
+                <SelectContent>
+                  {employees.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.name} ({e.empCode})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Device Serial Number</Label>
+                <Input
+                  value={simulatorForm.deviceSerial}
+                  onChange={(e) => setSimulatorForm((p) => ({ ...p, deviceSerial: e.target.value }))}
+                  className="h-9 text-xs font-mono font-bold"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Punch Time</Label>
+                <Input
+                  type="time"
+                  value={simulatorForm.timeStr}
+                  onChange={(e) => setSimulatorForm((p) => ({ ...p, timeStr: e.target.value }))}
+                  className="h-9 text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Punch State</Label>
+                <Select
+                  value={simulatorForm.punchState}
+                  onValueChange={(val) => setSimulatorForm((p) => ({ ...p, punchState: val }))}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CHECK_IN">Check-In Punch (0)</SelectItem>
+                    <SelectItem value="CHECK_OUT">Check-Out Punch (1)</SelectItem>
+                    <SelectItem value="OVERTIME_IN">Overtime In (4)</SelectItem>
+                    <SelectItem value="OVERTIME_OUT">Overtime Out (5)</SelectItem>
+                    <SelectItem value="BREAK_OUT">Break Out (2)</SelectItem>
+                    <SelectItem value="BREAK_IN">Break In (3)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Verification Type</Label>
+                <Select
+                  value={simulatorForm.punchType}
+                  onValueChange={(val) => setSimulatorForm((p) => ({ ...p, punchType: val }))}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FINGERPRINT">Fingerprint (1)</SelectItem>
+                    <SelectItem value="FACE_RECOGNITION">Face Recognition (15)</SelectItem>
+                    <SelectItem value="CARD_RFID">RFID Card (3)</SelectItem>
+                    <SelectItem value="PIN_PASSWORD">PIN / Password (2)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300">
+              ⚡ Clicking "Simulate Machine Punch" sends the raw ADMS packet to our backend and immediately registers the attendance in DynamoDB.
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsSimulatorOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRunSimulator}
+              disabled={isSimulating}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1.5"
+            >
+              {isSimulating ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              <span>{isSimulating ? "Pushing Punch..." : "Simulate Machine Punch"}</span>
             </Button>
           </DialogFooter>
         </DialogContent>
