@@ -190,14 +190,61 @@ let processedPunches = new Set();
 let consecutiveFailures = 0;
 
 async function sendHeartbeat() {
+  const apiUrl = config.cloudApiUrl.replace(/\/$/, '');
   try {
-    await axios.post(\`\${config.cloudApiUrl}/api/devices/heartbeat\`, {
-      serialNumber: config.deviceSerial,
-      status: 'ONLINE',
-      ipAddress: config.deviceIp,
-      timestamp: new Date().toISOString()
+    await axios.get(\`\${apiUrl}/iclock/cdata?SN=\${encodeURIComponent(config.deviceSerial)}\`, { timeout: 8000 });
+  } catch (err) {
+    try {
+      await axios.post(\`\${apiUrl}/api/devices/heartbeat\`, {
+        serialNumber: config.deviceSerial,
+        status: 'ONLINE',
+        ipAddress: config.deviceIp,
+        timestamp: new Date().toISOString()
+      }, { timeout: 8000 });
+    } catch (e) {}
+  }
+}
+
+async function pushSinglePunch(p) {
+  const apiUrl = config.cloudApiUrl.replace(/\/$/, '');
+  const empId = String(p.deviceUserId || p.userId || p.pin || '').trim();
+  if (!empId) return false;
+
+  const recordDate = p.recordTime ? new Date(p.recordTime) : new Date();
+  const payload = {
+    deviceSerial: config.deviceSerial,
+    employeeId: empId,
+    timestamp: recordDate.toISOString(),
+    state: p.recordType === 1 ? 'CHECK_OUT' : 'CHECK_IN',
+    punchType: p.verifyType === 15 ? 'FACE_RECOGNITION' : p.verifyType === 3 ? 'CARD_RFID' : 'FINGERPRINT',
+    rawData: \`AGENT_PUNCH: \${empId}\\t\${recordDate.toISOString()}\`
+  };
+
+  try {
+    const res = await axios.post(\`\${apiUrl}/api/attendance/punch\`, payload, {
+      timeout: 12000,
+      headers: { 'Content-Type': 'application/json' }
     });
-  } catch (err) {}
+    if (res.data) {
+      console.log(\`✅ [SYNCED TO CLOUD] Employee PIN: \${empId} | \${recordDate.toLocaleTimeString()} | State: \${payload.state}\`);
+      return true;
+    }
+  } catch (err) {
+    // Attempt fallback batch endpoint
+    try {
+      await axios.post(\`\${apiUrl}/api/devices/punch-batch\`, {
+        serialNumber: config.deviceSerial,
+        punches: [payload]
+      }, { timeout: 12000 });
+      console.log(\`✅ [SYNCED TO CLOUD (BATCH)] Employee PIN: \${empId}\`);
+      return true;
+    } catch (fallbackErr) {
+      const msg = (err.response && err.response.data && (err.response.data.error || err.response.data.message)) || err.message;
+      console.warn(\`⚠️ [SYNC WARNING] Cloud API returned error for PIN \${empId}:\`, msg);
+      return false;
+    }
+  }
+  return false;
 }
 
 async function pollAttendanceLogs() {
@@ -214,19 +261,13 @@ async function pollAttendanceLogs() {
 
       if (newLogs.length > 0) {
         console.log(\`Captured \${newLogs.length} new punch(es) from \${config.deviceSerial}\`);
-        await axios.post(\`\${config.cloudApiUrl}/api/devices/punch-batch\`, {
-          serialNumber: config.deviceSerial,
-          punches: newLogs.map(p => ({
-            employeeId: p.deviceUserId,
-            timestamp: new Date(p.recordTime).toISOString(),
-            punchType: p.verifyType === 15 ? 'FACE_RECOGNITION' : p.verifyType === 3 ? 'CARD_RFID' : 'FINGERPRINT',
-            state: 'CHECK_IN'
-          }))
-        });
+        for (const log of newLogs) {
+          await pushSinglePunch(log);
+        }
       }
     }
   } catch (err) {
-    console.warn('Poll attendance warning:', err.message);
+    console.warn('Poll attendance warning:', err ? err.message : err);
   }
 }
 
@@ -329,9 +370,14 @@ export function HardwareBridgeModal({
     devices[0]?.serialNumber || "NFZ8235301513"
   );
   const [deviceIp, setDeviceIp] = useState("192.168.1.201");
-  const [cloudApiUrl, setCloudApiUrl] = useState(
-    typeof window !== "undefined" ? window.location.origin : getBackendUrl()
-  );
+  const [cloudApiUrl, setCloudApiUrl] = useState(() => {
+    const backend = getBackendUrl();
+    if (backend && backend.startsWith("http")) return backend;
+    if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      return window.location.origin;
+    }
+    return "https://attendance-backend-production-48ca.up.railway.app";
+  });
   const [isZipping, setIsZipping] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
@@ -342,7 +388,7 @@ export function HardwareBridgeModal({
       deviceIp: deviceIp.trim() || "192.168.1.201",
       devicePort: 4370,
       deviceSerial: selectedDeviceSn.trim() || "BIO-TERM-001",
-      cloudApiUrl: cloudApiUrl.trim() || (typeof window !== "undefined" ? window.location.origin : getBackendUrl()),
+      cloudApiUrl: cloudApiUrl.trim() || "https://attendance-backend-production-48ca.up.railway.app",
       pollIntervalSeconds: 3,
     },
     null,
