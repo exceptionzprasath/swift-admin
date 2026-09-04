@@ -56,8 +56,11 @@ export function HardwareBridgeModal({
   const [selectedDeviceSn, setSelectedDeviceSn] = useState(
     devices[0]?.serialNumber || "NFZ8235301513"
   );
+  const RAILWAY_BACKEND_URL = "https://attendance-backend-production-48ca.up.railway.app";
+  const targetBackendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || RAILWAY_BACKEND_URL;
+
   const [deviceIp, setDeviceIp] = useState("192.168.1.201");
-  const [cloudApiUrl, setCloudApiUrl] = useState(() => getBackendUrl());
+  const [cloudApiUrl, setCloudApiUrl] = useState(targetBackendUrl);
   const [isZipping, setIsZipping] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
@@ -66,13 +69,15 @@ export function HardwareBridgeModal({
 
   if (!isOpen) return null;
 
+  const resolvedCloudUrl = (cloudApiUrl && !cloudApiUrl.includes("swifthr.shop") ? cloudApiUrl.trim() : targetBackendUrl).replace(/\/$/, "");
+
   const agentConfigJson = JSON.stringify(
     {
       tenantId: tenantId,
       deviceIp: deviceIp.trim() || "192.168.1.201",
       devicePort: 4370,
       deviceSerial: selectedDeviceSn.trim() || "BIO-TERM-001",
-      cloudApiUrl: cloudApiUrl.trim() || "https://attendance-backend-production-48ca.up.railway.app",
+      cloudApiUrl: resolvedCloudUrl,
       pollIntervalSeconds: 3,
     },
     null,
@@ -119,7 +124,7 @@ SWIFT UNIVERSAL BIOMETRIC CLOUD SYNC AGENT
 Company: ${companyName}
 Configured for Terminal SN: ${selectedDeviceSn || "BIO-TERM-001"}
 Target Machine Local IP: ${deviceIp || "192.168.1.201"}:4370
-Cloud Endpoint: ${cloudApiUrl}
+Cloud Endpoint: ${resolvedCloudUrl}
 
 HOW TO RUN:
 1. Ensure this PC is connected to the same LAN / WiFi as the biometric machine.
