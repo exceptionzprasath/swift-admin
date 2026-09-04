@@ -473,17 +473,22 @@ async function pollAttendanceLogs() {
       let newPunches = 0;
 
       for (const log of logs.data) {
-        if (!log || !log.deviceUserId) continue;
-        const recordDate = log.recordTime ? new Date(log.recordTime) : null;
+        if (!log) continue;
+        const employeeId = String(log.deviceUserId || log.userId || log.pin || log.user_sn || log.uid || '').trim();
+        if (!employeeId) continue;
+
+        const recordDate = log.recordTime ? new Date(log.recordTime) : (log.timestamp ? new Date(log.timestamp) : null);
         if (!recordDate || isNaN(recordDate.getTime())) {
           continue; // Skip invalid timestamp
         }
 
-        const uniqueKey = `${config.deviceSerial}_${log.deviceUserId}_${recordDate.getTime()}`;
+        const uniqueKey = `${config.deviceSerial}_${employeeId}_${recordDate.getTime()}`;
 
         if (!syncedCache.has(uniqueKey)) {
           const success = await pushPunchToCloud({
             ...log,
+            deviceUserId: employeeId,
+            userId: employeeId,
             recordTime: recordDate
           });
           if (success) {
