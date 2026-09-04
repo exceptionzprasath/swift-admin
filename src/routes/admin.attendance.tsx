@@ -31,6 +31,7 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
+  Users,
   MapPin,
   Camera,
   CameraOff,
@@ -71,7 +72,10 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
-import { inr } from "@/lib/payroll";
+import { HardwareBridgeModal } from "@/components/biometric/HardwareBridgeModal";
+import { LiveBiometricFeed } from "@/components/biometric/LiveBiometricFeed";
+import { DeviceManagerHub } from "@/components/biometric/DeviceManagerHub";
+import { StaffBiometricDirectory } from "@/components/biometric/StaffBiometricDirectory";
 
 // Utility: Compute hours worked & OT from check-in/check-out time strings
 function computeWorkedHours(
@@ -147,6 +151,8 @@ function AttendancePage() {
   );
 
   // Biometric Hardware Devices State & Dialogs
+  const [hardwareSubTab, setHardwareSubTab] = useState<"terminals" | "employees" | "punch-feed">("terminals");
+  const [isBridgeModalOpen, setIsBridgeModalOpen] = useState(false);
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [deviceForm, setDeviceForm] = useState<{
@@ -165,79 +171,6 @@ function AttendancePage() {
 
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isAgentGuideOpen, setIsAgentGuideOpen] = useState(false);
-  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [simulatorForm, setSimulatorForm] = useState({
-    employeeId: employees[0]?.id || "",
-    deviceSerial: devices[0]?.serialNumber || "NFZ8235301513",
-    punchState: "CHECK_IN",
-    punchType: "FINGERPRINT",
-    timeStr: new Date().toTimeString().slice(0, 5),
-  });
-
-  // Live Biometric Logs State
-  const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
-  const [logsFilterSerial, setLogsFilterSerial] = useState("ALL");
-  const [logsFilterType, setLogsFilterType] = useState("ALL");
-  const [logsSearchText, setLogsSearchText] = useState("");
-  const [liveLogs, setLiveLogs] = useState<Array<{
-    id: string;
-    timestamp: string;
-    type: string;
-    serialNumber: string;
-    clientIp: string;
-    method: string;
-    path: string;
-    details: string;
-    rawPayload: string | null;
-    status: string;
-  }>>([]);
-  const [isLogsLoading, setIsLogsLoading] = useState(false);
-  const [autoRefreshLogs, setAutoRefreshLogs] = useState(true);
-  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
-
-  const fetchLiveLogs = useCallback(async (serial: string = logsFilterSerial) => {
-    setIsLogsLoading(true);
-    try {
-      const backendUrl = getBackendUrl();
-      const snParam = serial && serial !== "ALL" ? `&serialNumber=${encodeURIComponent(serial)}` : "";
-      const res = await fetch(`${backendUrl}/api/devices/live-logs?tenantId=${encodeURIComponent(activeTenantId || "company-demo")}${snParam}&limit=100`);
-      if (res.ok) {
-        const data = await res.json();
-        setLiveLogs(data.logs || []);
-      }
-    } catch (err) {
-      console.warn("Failed to fetch live logs:", err);
-    } finally {
-      setIsLogsLoading(false);
-    }
-  }, [activeTenantId, logsFilterSerial]);
-
-  const handleOpenLiveLogs = (serial: string = "ALL") => {
-    setLogsFilterSerial(serial);
-    setIsLogsModalOpen(true);
-    fetchLiveLogs(serial);
-  };
-
-  const handleClearLiveLogs = async () => {
-    try {
-      const backendUrl = getBackendUrl();
-      await fetch(`${backendUrl}/api/devices/clear-logs`, { method: "POST" });
-      setLiveLogs([]);
-      toast.success("Live request logs cleared!");
-    } catch (err) {
-      toast.error("Failed to clear logs");
-    }
-  };
-
-  // Auto-polling interval for live logs when modal is open
-  useEffect(() => {
-    if (!isLogsModalOpen || !autoRefreshLogs) return;
-    const interval = setInterval(() => {
-      fetchLiveLogs(logsFilterSerial);
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [isLogsModalOpen, autoRefreshLogs, logsFilterSerial, fetchLiveLogs]);
 
   const handleOpenAddDevice = (device?: Device) => {
     if (device) {
@@ -297,43 +230,6 @@ function AttendancePage() {
   const handleDeleteDeviceClick = (dev: Device) => {
     deleteDevice(dev.id);
     toast.success(`Unregistered terminal ${dev.name || dev.serialNumber}`);
-  };
-
-  const handleRunSimulator = async () => {
-    if (!simulatorForm.employeeId) {
-      toast.error("Please select an employee");
-      return;
-    }
-    setIsSimulating(true);
-    try {
-      const backendUrl = getBackendUrl();
-      const res = await fetch(`${backendUrl}/api/adms/simulate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tenantId: activeTenantId || "company-demo",
-          employeeId: simulatorForm.employeeId,
-          deviceSerial: simulatorForm.deviceSerial || "SIMULATOR-001",
-          punchState: simulatorForm.punchState,
-          punchType: simulatorForm.punchType,
-          timeStr: simulatorForm.timeStr,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.record) {
-          upsertAttendance(data.record);
-        }
-        toast.success(`Simulated ${simulatorForm.punchState} punch logged successfully in DynamoDB!`);
-        setIsSimulatorOpen(false);
-      } else {
-        toast.error("Failed to simulate hardware punch");
-      }
-    } catch (err: any) {
-      toast.error("Simulation error: " + err.message);
-    } finally {
-      setIsSimulating(false);
-    }
   };
 
   // Live Polling & Sync State
@@ -1803,286 +1699,87 @@ function AttendancePage() {
 
         {/* TAB 4: BIOMETRIC HARDWARE TERMINALS & ADMS HUB */}
         <TabsContent value="devices" className="space-y-4 m-0">
-          {/* Header Card with Cloud ADMS Listener Banner */}
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-gradient-to-r from-primary/10 via-background to-card p-5 rounded-2xl border border-primary/20 shadow-xs">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Cpu className="h-5 w-5 text-primary" />
-                <h3 className="font-bold text-base text-foreground">
-                  BioMax / eSSL / ZKTeco Biometric Terminal Hub
-                </h3>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
-                  ADMS Push Engine Active
+          {/* Sub-view switcher for Terminals vs Staff Directory vs Live Feed */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-2.5">
+            <div className="flex flex-wrap items-center gap-1.5 bg-muted/60 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setHardwareSubTab("terminals")}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  hardwareSubTab === "terminals"
+                    ? "bg-background text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Cpu className="w-3.5 h-3.5 text-primary" />
+                <span>Terminals & Machines</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary">
+                  {devices.length}
                 </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground max-w-2xl">
-                Connect physical fingerprint, face, and RFID time attendance machines over Cloud Direct ADMS protocol or local network LAN sync agent. Punches synchronize directly to AWS DynamoDB.
-              </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHardwareSubTab("employees")}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  hardwareSubTab === "employees"
+                    ? "bg-background text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Staff Biometric Directory</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-indigo-500/10 text-indigo-600">
+                  {employees.length}
+                </Badge>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHardwareSubTab("punch-feed")}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  hardwareSubTab === "punch-feed"
+                    ? "bg-background text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Live Biometric Punch Feed</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleOpenLiveLogs("ALL")}
-                className="h-8 text-xs rounded-xl gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 shadow-2xs font-semibold"
-              >
-                <Terminal className="h-3.5 w-3.5 text-emerald-500" />
-                <span>Live Logs</span>
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              </Button>
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIsGuideOpen(true)}
-                className="h-8 text-xs rounded-xl gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
-              >
-                <HelpCircle className="h-3.5 w-3.5" />
-                <span>ADMS Cloud Guide</span>
-              </Button>
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIsAgentGuideOpen(true)}
-                className="h-8 text-xs rounded-xl gap-1.5"
-              >
-                <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
-                <span>LAN Sync Agent</span>
-              </Button>
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIsSimulatorOpen(true)}
-                className="h-8 text-xs rounded-xl gap-1.5 border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
-              >
-                <Play className="h-3.5 w-3.5 text-amber-500" />
-                <span>Test Simulator</span>
-              </Button>
-
-              <Button
-                size="sm"
-                onClick={() => handleOpenAddDevice()}
-                className="h-8 text-xs rounded-xl gap-1.5 bg-primary text-primary-foreground font-semibold shadow-xs"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Register Terminal</span>
-              </Button>
-            </div>
+            <span className="text-xs text-muted-foreground hidden lg:inline-block">
+              {devices.length} hardware {devices.length === 1 ? "machine" : "machines"} mapped to <strong className="text-foreground">{company.name || "Head Office"}</strong>
+            </span>
           </div>
 
-          {/* Quick Metrics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card className="rounded-xl border-border bg-card p-4 shadow-xs">
-              <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
-                <span>Registered Devices</span>
-                <Server className="h-4 w-4 text-primary" />
-              </div>
-              <div className="text-2xl font-bold font-display text-foreground">
-                {devices.length}
-              </div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">
-                Physical Hardware Terminals
-              </div>
-            </Card>
-
-            <Card className="rounded-xl border-emerald-500/20 bg-emerald-500/5 p-4 shadow-xs">
-              <div className="flex items-center justify-between text-emerald-600 text-xs mb-1">
-                <span>Online / Active Now</span>
-                <Wifi className="h-4 w-4 text-emerald-600" />
-              </div>
-              <div className="text-2xl font-bold font-display text-emerald-600">
-                {devices.filter((d) => d.status !== "OFFLINE").length}
-              </div>
-              <div className="text-[11px] text-emerald-700/80 dark:text-emerald-300 mt-0.5">
-                Ready to receive live punches
-              </div>
-            </Card>
-
-            <Card className="rounded-xl border-blue-500/20 bg-blue-500/5 p-4 shadow-xs">
-              <div className="flex items-center justify-between text-blue-600 text-xs mb-1">
-                <span>Cloud Push Protocol</span>
-                <Radio className="h-4 w-4 text-blue-600" />
-              </div>
-              <div className="text-sm font-bold font-mono text-blue-600 truncate mt-1">
-                ADMS / iClock 2.4.1
-              </div>
-              <div className="text-[11px] text-muted-foreground mt-1">
-                Endpoint: <code className="bg-muted px-1 rounded">/iclock/cdata</code>
-              </div>
-            </Card>
-
-            <Card className="rounded-xl border-purple-500/20 bg-purple-500/5 p-4 shadow-xs">
-              <div className="flex items-center justify-between text-purple-600 text-xs mb-1">
-                <span>Live Logs Stream</span>
-                <HardDrive className="h-4 w-4 text-purple-600" />
-              </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-base font-bold text-purple-600">Real-Time Ingestion</span>
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-              <div className="text-[11px] text-muted-foreground mt-1">
-                Audit buffer & DynamoDB sync
-              </div>
-            </Card>
-          </div>
-
-          {/* Devices List Table */}
-          <Card className="rounded-2xl border-border shadow-xs overflow-hidden">
-            <CardHeader className="p-4 border-b border-border bg-muted/20 flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-sm font-bold flex items-center gap-2">
-                  <Cpu className="h-4 w-4 text-primary" />
-                  Registered Biometric Hardware Terminals ({devices.length})
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Terminals mapped to company branches for biometric attendance punching
-                </CardDescription>
-              </div>
-            </CardHeader>
-
-            <div className="overflow-x-auto">
-              {devices.length === 0 ? (
-                <div className="p-12 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary">
-                    <Cpu className="h-6 w-6" />
-                  </div>
-                  <div className="font-semibold text-foreground text-sm">No Biometric Terminals Registered Yet</div>
-                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                    Register your BioMax, eSSL, or ZKTeco machine serial number to begin receiving automatic live attendance punch streams.
-                  </p>
-                  <Button
-                    size="sm"
-                    onClick={() => handleOpenAddDevice()}
-                    className="h-8 text-xs rounded-xl gap-1.5 bg-primary text-primary-foreground font-semibold"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>Register First Terminal</span>
-                  </Button>
-                </div>
-              ) : (
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-muted/40 border-b border-border text-muted-foreground font-semibold">
-                      <th className="p-3">Terminal Info</th>
-                      <th className="p-3">Serial Number (SN)</th>
-                      <th className="p-3">Assigned Branch</th>
-                      <th className="p-3">Hardware Model</th>
-                      <th className="p-3">Protocol Status</th>
-                      <th className="p-3">IP / Port</th>
-                      <th className="p-3">Last Heartbeat</th>
-                      <th className="p-3 text-center">Live Logs</th>
-                      <th className="p-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {devices.map((dev) => (
-                      <tr key={dev.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="p-3">
-                          <div className="font-bold text-foreground text-sm flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                            {dev.name}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground font-mono">
-                            ID: {dev.id}
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono font-bold bg-muted px-2 py-0.5 rounded-md border border-border">
-                              {dev.serialNumber}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(dev.serialNumber);
-                                toast.success("Copied Serial Number to clipboard!");
-                              }}
-                              className="text-muted-foreground hover:text-primary p-1 rounded"
-                              title="Copy Serial Number"
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="p-3 font-medium text-foreground">
-                          {dev.branchName || company.branches?.find((b) => b.id === dev.branchId)?.name || "Head Office"}
-                        </td>
-                        <td className="p-3 text-muted-foreground">
-                          {dev.model || "BioMax / eSSL ADMS"}
-                        </td>
-                        <td className="p-3">
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] ${
-                              dev.status !== "OFFLINE"
-                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                                : "bg-muted text-muted-foreground border-border"
-                            }`}
-                          >
-                            {dev.status !== "OFFLINE" ? "ONLINE" : "OFFLINE"}
-                          </Badge>
-                        </td>
-                        <td className="p-3 font-mono text-[11px] text-muted-foreground">
-                          {dev.ipAddress || "127.0.0.1"}:4370
-                        </td>
-                        <td className="p-3 text-muted-foreground text-[11px]">
-                          {dev.lastHeartbeat ? new Date(dev.lastHeartbeat).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Recently"}
-                        </td>
-                        <td className="p-3 text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleOpenLiveLogs(dev.serialNumber)}
-                            className="h-7 px-2.5 text-[11px] rounded-lg gap-1 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 shadow-2xs font-medium"
-                          >
-                            <Terminal className="h-3 w-3 text-emerald-500" />
-                            <span>Logs</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
-                          </Button>
-                        </td>
-                        <td className="p-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSimulatorForm((p) => ({ ...p, deviceSerial: dev.serialNumber }));
-                                setIsSimulatorOpen(true);
-                              }}
-                              className="h-7 text-[11px] rounded-lg gap-1 border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
-                            >
-                              <Play className="h-3 w-3" />
-                              <span>Test Punch</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleOpenAddDevice(dev)}
-                              className="h-7 text-[11px] rounded-lg text-primary"
-                            >
-                              <Edit3 className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleDeleteDeviceClick(dev)}
-                              className="h-7 text-[11px] rounded-lg text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </Card>
+          {hardwareSubTab === "terminals" ? (
+            <DeviceManagerHub
+              devices={devices}
+              branches={branches}
+              onOpenRegisterDevice={handleOpenAddDevice}
+              onOpenHardwareBridge={() => setIsBridgeModalOpen(true)}
+              onDeleteDevice={handleDeleteDeviceClick}
+            />
+          ) : hardwareSubTab === "employees" ? (
+            <StaffBiometricDirectory
+              employees={employees}
+              departments={departments}
+              branches={branches}
+              onOpenDossierForEmployee={(emp) => {
+                setDossierEmployee(emp);
+              }}
+            />
+          ) : (
+            <LiveBiometricFeed
+              attendanceRecords={attendance}
+              employees={employees}
+              devices={devices}
+              selectedDate={selectedDate}
+              onRefresh={() => handleLiveSync(false)}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
@@ -2703,476 +2400,19 @@ function AttendancePage() {
       </Dialog>
 
       {/* ========================================================================= */}
-      {/* 8. ADMS CLOUD CONFIGURATION GUIDE MODAL                                    */}
+      {/* 8. HARDWARE CONNECTION BRIDGE & DRIVERS MODAL (JSZIP AGENT & ADMS PUSH)   */}
       {/* ========================================================================= */}
-      <Dialog open={isGuideOpen} onOpenChange={setIsGuideOpen}>
-        <DialogContent className="max-w-lg rounded-2xl p-6">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <HelpCircle className="h-5 w-5 text-primary" />
-              Physical Terminal Cloud ADMS Setup Guide
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Configure your physical BioMax, eSSL, or ZKTeco machine to stream attendance directly over the internet.
-            </DialogDescription>
-          </DialogHeader>
+      <HardwareBridgeModal
+        isOpen={isBridgeModalOpen || isGuideOpen || isAgentGuideOpen}
+        onClose={() => {
+          setIsBridgeModalOpen(false);
+          setIsGuideOpen(false);
+          setIsAgentGuideOpen(false);
+        }}
+        devices={devices}
+        companyName={company.name || "Head Office"}
+      />
 
-          <div className="space-y-4 py-2 text-xs">
-            <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 space-y-1.5">
-              <div className="font-bold text-foreground flex items-center justify-between">
-                <span>Cloud Server Parameters:</span>
-                <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30 text-[10px]">
-                  ADMS Push
-                </Badge>
-              </div>
-              <div className="font-mono text-[11px] space-y-1">
-                <div>Server Address / Domain: <strong>{getBackendUrl() || "http://localhost:5000"}</strong></div>
-                <div>Server Port: <strong>5000</strong> (or 80 / 443 on production domain)</div>
-                <div>Push Version: <strong>2.4.1</strong></div>
-                <div>Push Path: <strong>/iclock/cdata</strong></div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">Step-by-Step Machine Setup:</h4>
-              <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground">
-                <li>Press <strong className="text-foreground">M/OK</strong> on your biometric terminal to enter Admin Menu.</li>
-                <li>Go to <strong className="text-foreground">Comm. (Communication) → Cloud Server Setting / ADMS Setting</strong>.</li>
-                <li>Set <strong className="text-foreground">Server Address</strong> to your server domain or public IP.</li>
-                <li>Set <strong className="text-foreground">Server Port</strong> to <strong className="text-foreground">5000</strong> (or your cloud port).</li>
-                <li>Enable <strong className="text-foreground">Domain Name Mode</strong> if using a hostname instead of an IP address.</li>
-                <li>Save and restart the machine. The LCD screen will display a green globe/cloud icon once online!</li>
-              </ol>
-            </div>
-
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-              ✓ Once connected, all employee punches from the machine will immediately reflect in the Daily Live Roster, Employee Dossiers, Mobile App, and Payroll calculations.
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button onClick={() => setIsGuideOpen(false)}>
-              Got It
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ========================================================================= */}
-      {/* 9. LAN SYNC AGENT INSTRUCTIONS MODAL                                       */}
-      {/* ========================================================================= */}
-      <Dialog open={isAgentGuideOpen} onOpenChange={setIsAgentGuideOpen}>
-        <DialogContent className="max-w-lg rounded-2xl p-6">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <Terminal className="h-5 w-5 text-primary" />
-              Local Network (LAN) Sync Agent (node-zklib)
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              For on-premise biometric terminals that cannot access the cloud directly over WAN.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2 text-xs">
-            <p className="text-muted-foreground">
-              If your biometric machine is on a private local network without direct internet access, run our lightweight local sync agent on any office PC connected to the same WiFi/Ethernet switch.
-            </p>
-
-            <div className="p-3 rounded-xl bg-muted/60 border border-border space-y-2">
-              <div className="font-bold text-foreground">How to Start the Local Sync Agent:</div>
-              <pre className="p-2.5 rounded-lg bg-black text-emerald-400 font-mono text-[11px] overflow-x-auto">
-{`# 1. Open Terminal in the agent directory:
-cd Attendance/agent
-
-# 2. Start the automated polling agent:
-npm start
-
-# Or double-click start-agent.bat on Windows`}
-              </pre>
-            </div>
-
-            <div className="space-y-1 text-muted-foreground">
-              <div>• Scans local subnet on port <strong className="text-foreground">4370</strong> automatically.</div>
-              <div>• Pulls real-time fingerprint/face logs via <strong className="text-foreground">node-zklib</strong>.</div>
-              <div>• Streams punches securely to <strong className="text-foreground">/api/attendance/punch</strong> and AWS DynamoDB.</div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button onClick={() => setIsAgentGuideOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ========================================================================= */}
-      {/* 10. BIOMETRIC HARDWARE PUNCH SIMULATOR MODAL                               */}
-      {/* ========================================================================= */}
-      <Dialog open={isSimulatorOpen} onOpenChange={setIsSimulatorOpen}>
-        <DialogContent className="max-w-md rounded-2xl p-6">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <Play className="h-5 w-5 text-amber-500" />
-              Biometric Hardware Push Simulator
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Simulate real hardware punches from BioMax/eSSL machines to verify live ingestion into DynamoDB.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3.5 py-2 text-sm">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Select Employee</Label>
-              <Select
-                value={simulatorForm.employeeId}
-                onValueChange={(val) => setSimulatorForm((p) => ({ ...p, employeeId: val }))}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="Select employee" />
-                </SelectTrigger>
-                <SelectContent>
-                  {employees.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {e.name} ({e.empCode})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Device Serial Number</Label>
-                <Input
-                  value={simulatorForm.deviceSerial}
-                  onChange={(e) => setSimulatorForm((p) => ({ ...p, deviceSerial: e.target.value }))}
-                  className="h-9 text-xs font-mono font-bold"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Punch Time</Label>
-                <Input
-                  type="time"
-                  value={simulatorForm.timeStr}
-                  onChange={(e) => setSimulatorForm((p) => ({ ...p, timeStr: e.target.value }))}
-                  className="h-9 text-xs font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Punch State</Label>
-                <Select
-                  value={simulatorForm.punchState}
-                  onValueChange={(val) => setSimulatorForm((p) => ({ ...p, punchState: val }))}
-                >
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CHECK_IN">Check-In Punch (0)</SelectItem>
-                    <SelectItem value="CHECK_OUT">Check-Out Punch (1)</SelectItem>
-                    <SelectItem value="OVERTIME_IN">Overtime In (4)</SelectItem>
-                    <SelectItem value="OVERTIME_OUT">Overtime Out (5)</SelectItem>
-                    <SelectItem value="BREAK_OUT">Break Out (2)</SelectItem>
-                    <SelectItem value="BREAK_IN">Break In (3)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Verification Type</Label>
-                <Select
-                  value={simulatorForm.punchType}
-                  onValueChange={(val) => setSimulatorForm((p) => ({ ...p, punchType: val }))}
-                >
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="FINGERPRINT">Fingerprint (1)</SelectItem>
-                    <SelectItem value="FACE_RECOGNITION">Face Recognition (15)</SelectItem>
-                    <SelectItem value="CARD_RFID">RFID Card (3)</SelectItem>
-                    <SelectItem value="PIN_PASSWORD">PIN / Password (2)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300">
-              ⚡ Clicking "Simulate Machine Punch" sends the raw ADMS packet to our backend and immediately registers the attendance in DynamoDB.
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsSimulatorOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleRunSimulator}
-              disabled={isSimulating}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1.5"
-            >
-              {isSimulating ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-              <span>{isSimulating ? "Pushing Punch..." : "Simulate Machine Punch"}</span>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ========================================================================= */}
-      {/* 11. LIVE BIOMETRIC REQUEST LOGS & PACKET STREAM CONSOLE                   */}
-      {/* ========================================================================= */}
-      <Dialog open={isLogsModalOpen} onOpenChange={setIsLogsModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col rounded-2xl p-6 overflow-hidden">
-          <DialogHeader className="pb-2 border-b border-border">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div>
-                <DialogTitle className="flex items-center gap-2 text-lg">
-                  <Terminal className="h-5 w-5 text-emerald-500" />
-                  <span>Live Biometric Hardware Request Logs</span>
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] ml-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
-                    Live Stream
-                  </Badge>
-                </DialogTitle>
-                <DialogDescription className="text-xs">
-                  Real-time feed of all incoming ADMS pings, heartbeat handshakes, ATTLOG punches, and LAN agent forwardings.
-                </DialogDescription>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setAutoRefreshLogs(!autoRefreshLogs)}
-                  className={`h-8 text-xs rounded-xl gap-1.5 ${autoRefreshLogs ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/5" : "text-muted-foreground"}`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${autoRefreshLogs ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground"}`} />
-                  <span>{autoRefreshLogs ? "Auto (2.5s)" : "Paused"}</span>
-                </Button>
-
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => fetchLiveLogs(logsFilterSerial)}
-                  disabled={isLogsLoading}
-                  className="h-8 text-xs rounded-xl gap-1.5"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isLogsLoading ? "animate-spin text-primary" : ""}`} />
-                  <span>Refresh</span>
-                </Button>
-
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleClearLiveLogs}
-                  className="h-8 text-xs rounded-xl text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span>Clear</span>
-                </Button>
-              </div>
-            </div>
-          </DialogHeader>
-
-          {/* Filters Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 py-3 border-b border-border bg-muted/20 px-2 rounded-xl mt-2">
-            <div className="space-y-1">
-              <Label className="text-[11px] font-semibold text-muted-foreground">Filter by Device</Label>
-              <Select
-                value={logsFilterSerial}
-                onValueChange={(val) => {
-                  setLogsFilterSerial(val);
-                  fetchLiveLogs(val);
-                }}
-              >
-                <SelectTrigger className="h-8 text-xs bg-background">
-                  <SelectValue placeholder="All Devices" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All Hardware Terminals</SelectItem>
-                  {devices.map((d) => (
-                    <SelectItem key={d.id} value={d.serialNumber}>
-                      {d.name} ({d.serialNumber})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-[11px] font-semibold text-muted-foreground">Request Type</Label>
-              <Select value={logsFilterType} onValueChange={setLogsFilterType}>
-                <SelectTrigger className="h-8 text-xs bg-background">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All Request Types</SelectItem>
-                  <SelectItem value="HEARTBEAT">Heartbeats & Handshakes</SelectItem>
-                  <SelectItem value="PUNCH_PUSH">Punches (ATTLOG)</SelectItem>
-                  <SelectItem value="REST_PUNCH">LAN Agent Punches</SelectItem>
-                  <SelectItem value="SIMULATION">Simulator Test Punches</SelectItem>
-                  <SelectItem value="COMMAND_POLL">Command Polls</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-[11px] font-semibold text-muted-foreground">Search Logs</Label>
-              <div className="relative">
-                <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Search IP, details, PIN..."
-                  value={logsSearchText}
-                  onChange={(e) => setLogsSearchText(e.target.value)}
-                  className="pl-7 h-8 text-xs bg-background"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Logs Terminal Console Stream */}
-          <div className="flex-1 overflow-y-auto space-y-2 py-3 pr-1 font-mono text-xs max-h-[450px]">
-            {(() => {
-              const filtered = liveLogs.filter((log) => {
-                if (logsFilterType !== "ALL" && log.type !== logsFilterType) return false;
-                if (logsSearchText) {
-                  const s = logsSearchText.toLowerCase();
-                  const match =
-                    log.serialNumber?.toLowerCase().includes(s) ||
-                    log.clientIp?.toLowerCase().includes(s) ||
-                    log.details?.toLowerCase().includes(s) ||
-                    log.rawPayload?.toLowerCase().includes(s) ||
-                    log.path?.toLowerCase().includes(s);
-                  if (!match) return false;
-                }
-                return true;
-              });
-
-              if (filtered.length === 0) {
-                return (
-                  <div className="p-12 text-center space-y-3 bg-muted/20 rounded-xl border border-dashed border-border">
-                    <RadioTower className="h-8 w-8 text-muted-foreground mx-auto animate-pulse" />
-                    <div className="font-semibold text-foreground text-xs">
-                      {liveLogs.length === 0 ? "Listening for incoming requests..." : "No logs match the selected filter"}
-                    </div>
-                    <p className="text-[11px] text-muted-foreground max-w-sm mx-auto font-sans">
-                      Physical terminals pinging <code className="bg-muted px-1 py-0.5 rounded text-primary">/iclock/cdata</code> or simulator punches will appear here in real time.
-                    </p>
-                  </div>
-                );
-              }
-
-              return filtered.map((log) => {
-                const isExpanded = expandedLogId === log.id;
-                const timeFormatted = new Date(log.timestamp).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                  fractionalSecondDigits: 3,
-                });
-
-                return (
-                  <div
-                    key={log.id}
-                    className="p-3 rounded-xl border border-border bg-card/60 hover:bg-muted/30 transition-all space-y-1.5"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] font-bold px-1.5 py-0 ${
-                            log.method === "POST"
-                              ? "bg-blue-500/10 text-blue-600 border-blue-500/30"
-                              : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                          }`}
-                        >
-                          {log.method}
-                        </Badge>
-
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] ${
-                            log.type === "PUNCH_PUSH" || log.type === "REST_PUNCH"
-                              ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
-                              : log.type === "SIMULATION"
-                              ? "bg-purple-500/10 text-purple-600 border-purple-500/30"
-                              : log.type === "ERROR"
-                              ? "bg-destructive/10 text-destructive border-destructive/30"
-                              : "bg-muted text-muted-foreground border-border"
-                          }`}
-                        >
-                          {log.type}
-                        </Badge>
-
-                        <span className="font-bold text-foreground text-[11px] font-sans">
-                          SN: {log.serialNumber}
-                        </span>
-
-                        <span className="text-muted-foreground text-[11px]">
-                          IP: {log.clientIp}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground">
-                          {timeFormatted}
-                        </span>
-                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                          {log.status}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-foreground font-sans">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-muted-foreground font-mono">{log.path}</span>
-                        <span>•</span>
-                        <span className="font-medium text-foreground">{log.details}</span>
-                      </div>
-
-                      {log.rawPayload && (
-                        <button
-                          type="button"
-                          onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
-                          className="text-[10px] text-primary hover:underline flex items-center gap-0.5 ml-2 font-mono shrink-0"
-                        >
-                          <Code2 className="h-3 w-3" />
-                          <span>{isExpanded ? "Hide Packet" : "View Raw Packet"}</span>
-                          {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                        </button>
-                      )}
-                    </div>
-
-                    {isExpanded && log.rawPayload && (
-                      <pre className="p-2.5 rounded-lg bg-black text-emerald-400 font-mono text-[11px] overflow-x-auto border border-border mt-2 whitespace-pre-wrap">
-                        {log.rawPayload}
-                      </pre>
-                    )}
-                  </div>
-                );
-              });
-            })()}
-          </div>
-
-          <DialogFooter className="pt-2 border-t border-border flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">
-              Showing <strong>{liveLogs.length}</strong> recent incoming requests
-            </span>
-            <Button variant="outline" onClick={() => setIsLogsModalOpen(false)}>
-              Close Console
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

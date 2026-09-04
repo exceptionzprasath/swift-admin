@@ -1,0 +1,7 @@
+{
+  "deviceIp": "192.168.137.41",
+  "devicePort": 4370,
+  "deviceSerial": "TFEE261200765",
+  "cloudApiUrl": "https://attendance-backend-production-48ca.up.railway.app",
+  "pollIntervalSeconds": 3
+}
