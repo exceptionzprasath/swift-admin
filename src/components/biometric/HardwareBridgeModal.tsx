@@ -57,14 +57,7 @@ export function HardwareBridgeModal({
     devices[0]?.serialNumber || "NFZ8235301513"
   );
   const [deviceIp, setDeviceIp] = useState("192.168.1.201");
-  const [cloudApiUrl, setCloudApiUrl] = useState(() => {
-    const backend = getBackendUrl();
-    if (backend && backend.startsWith("http")) return backend;
-    if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      return window.location.origin;
-    }
-    return "https://attendance-backend-production-48ca.up.railway.app";
-  });
+  const [cloudApiUrl, setCloudApiUrl] = useState(() => getBackendUrl());
   const [isZipping, setIsZipping] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 

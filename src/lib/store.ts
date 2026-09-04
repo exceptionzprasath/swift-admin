@@ -31,22 +31,13 @@ import { type ThemePaletteId, applyThemePalette } from "./palettes";
 export function getBackendUrl(): string {
   const customUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL;
   if (customUrl) return customUrl.replace(/\/+$/, "");
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    if (host !== "localhost" && host !== "127.0.0.1" && host !== "0.0.0.0") {
-      return "";
-    }
-  }
-  return "http://localhost:5000";
+  return "https://attendance-backend-production-48ca.up.railway.app";
 }
 
 export async function safeFetch(path: string, options?: RequestInit): Promise<Response | null> {
   const baseUrl = getBackendUrl();
-  if (!baseUrl && typeof window !== "undefined") {
-    return null;
-  }
   try {
-    const fullUrl = path.startsWith("http") ? path : `${baseUrl}${path}`;
+    const fullUrl = path.startsWith("http") ? path : `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
     const res = await fetch(fullUrl, options);
     return res;
   } catch (_err) {
