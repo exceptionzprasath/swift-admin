@@ -2295,9 +2295,9 @@ export const useStore = create<State>()(
               .catch(() => null)
           ]);
 
-          const rawLogs = (logsRes && (logsRes.data || (Array.isArray(logsRes) ? logsRes : null))) || [];
+          const rawLogs = (logsRes && (logsRes.logs || logsRes.data || (Array.isArray(logsRes) ? logsRes : null))) || [];
           if (Array.isArray(rawLogs) && rawLogs.length > 0) {
-            const currentEmployees = get().employees;
+            let currentEmployees = [...get().employees];
             const currentAttendance = get().attendance;
             const recordsMap = new Map<string, AttendanceRecord>();
 
@@ -2313,15 +2313,37 @@ export const useStore = create<State>()(
               if (isNaN(dateObj.getTime())) continue;
 
               const dateStr = dateObj.toISOString().slice(0, 10);
-              const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+              const hours = String(dateObj.getHours()).padStart(2, '0');
+              const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+              const timeStr = `${hours}:${minutes}`;
               const rawPin = String(log.employeeId || log.userId || log.pin || '').trim();
 
-              const matchedEmp = currentEmployees.find(
+              let matchedEmp = currentEmployees.find(
                 (e) =>
                   e.id === rawPin ||
                   e.empCode === rawPin ||
                   String((e as any).biometricPin || (e as any).pin || '') === rawPin
               );
+
+              if (!matchedEmp && (log.employee?.name || rawPin)) {
+                const newEmpId = (log.employee && log.employee.id) || `EMP-${rawPin.padStart(3, '0')}`;
+                const newEmp: Employee = {
+                  id: newEmpId,
+                  empCode: (log.employee && log.employee.code) || `EMP-${rawPin.padStart(3, '0')}`,
+                  name: log.employee?.name || `Staff #${rawPin}`,
+                  email: `${(log.employee?.name || `staff${rawPin}`).toLowerCase().replace(/[^a-z0-9]/g, '.')}@swifthr.shop`,
+                  department: log.employee?.department || 'General',
+                  designation: log.employee?.designation || 'Staff',
+                  branchId: 'br-hq',
+                  branchIds: ['br-hq'],
+                  doj: dateStr,
+                  basic: 25000,
+                  status: 'active',
+                  phone: '+91 98765 43210',
+                };
+                currentEmployees.push(newEmp);
+                matchedEmp = newEmp;
+              }
 
               const empId = matchedEmp?.id || rawPin || 'EMP-001';
               const empName = matchedEmp?.name || log.employee?.name || `Staff #${rawPin}`;
@@ -2363,7 +2385,10 @@ export const useStore = create<State>()(
               }
             }
 
-            set({ attendance: Array.from(recordsMap.values()) });
+            set({
+              employees: currentEmployees,
+              attendance: Array.from(recordsMap.values())
+            });
           }
 
           const rawDevices = (devRes && (devRes.data || (Array.isArray(devRes) ? devRes : null))) || [];
