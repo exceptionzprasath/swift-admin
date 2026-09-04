@@ -88,9 +88,10 @@ export function LiveBiometricFeed({
       rawRecord: AttendanceRecord;
     }> = [];
 
-    attendanceRecords.forEach((rec) => {
-      const emp = employees.find((e) => e.id === rec.employeeId);
-      const name = rec.employeeName || emp?.name || `Staff #${rec.employeeId.slice(0, 6)}`;
+    (attendanceRecords || []).forEach((rec) => {
+      if (!rec) return;
+      const emp = (employees || []).find((e) => e.id === rec.employeeId);
+      const name = rec.employeeName || emp?.name || (rec.employeeId ? `Staff #${String(rec.employeeId).slice(0, 6)}` : "Staff Member");
       const empCode = rec.empCode || emp?.empCode || "EMP";
       const dept = rec.department || emp?.department || "Operations";
       const branch = rec.branchName || "Head Office";

@@ -30,6 +30,22 @@ import { type ThemePaletteId, applyThemePalette } from "./palettes";
 
 export function getBackendUrl(): string {
   const customUrl = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || "").trim();
+  if (customUrl) return customUrl.replace(/\/+$/, "");
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1" && host !== "0.0.0.0") {
+      return "";
+    }
+  }
+  return "http://localhost:5000";
+}
+
+export function getBiometricBackendUrl(): string {
+  const customUrl = (
+    import.meta.env.VITE_BIOMETRIC_API_URL ||
+    import.meta.env.VITE_ATTENDANCE_API_URL ||
+    ""
+  ).trim();
   if (
     customUrl &&
     customUrl.startsWith("http") &&
@@ -44,6 +60,20 @@ export function getBackendUrl(): string {
 
 export async function safeFetch(path: string, options?: RequestInit): Promise<Response | null> {
   const baseUrl = getBackendUrl();
+  if (!baseUrl && typeof window !== "undefined") {
+    return null;
+  }
+  try {
+    const fullUrl = path.startsWith("http") ? path : `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
+    const res = await fetch(fullUrl, options);
+    return res;
+  } catch (_err) {
+    return null;
+  }
+}
+
+export async function safeBiometricFetch(path: string, options?: RequestInit): Promise<Response | null> {
+  const baseUrl = getBiometricBackendUrl();
   try {
     const fullUrl = path.startsWith("http") ? path : `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
     const res = await fetch(fullUrl, options);
@@ -2257,10 +2287,10 @@ export const useStore = create<State>()(
         // 2. Also fetch live attendance logs and devices from dedicated REST endpoints
         try {
           const [logsRes, devRes] = await Promise.all([
-            safeFetch(`/api/attendance/logs?tenantId=${encodeURIComponent(tenantId)}&limit=500`)
+            safeBiometricFetch(`/api/attendance/logs?tenantId=${encodeURIComponent(tenantId)}&limit=500`)
               .then(r => r && r.ok ? r.json() : null)
               .catch(() => null),
-            safeFetch(`/api/devices?tenantId=${encodeURIComponent(tenantId)}`)
+            safeBiometricFetch(`/api/devices?tenantId=${encodeURIComponent(tenantId)}`)
               .then(r => r && r.ok ? r.json() : null)
               .catch(() => null)
           ]);

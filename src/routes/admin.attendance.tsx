@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { useStore, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device, getBackendUrl } from "@/lib/store";
+import { useStore, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -24,7 +24,7 @@ import {
   Code2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getBackendUrl, type Device } from "@/lib/store";
+import { getBiometricBackendUrl, type Device } from "@/lib/store";
 
 interface LiveAdmsLogsModalProps {
   isOpen: boolean;
@@ -67,7 +67,7 @@ export function LiveAdmsLogsModal({
     async (serial: string = filterSerial) => {
       setIsLoading(true);
       try {
-        const backendUrl = getBackendUrl();
+        const backendUrl = getBiometricBackendUrl();
         const snParam =
           serial && serial !== "ALL" ? `&serialNumber=${encodeURIComponent(serial)}` : "";
         const res = await fetch(
@@ -159,7 +159,7 @@ export function LiveAdmsLogsModal({
 
   const handleClearLogs = async () => {
     try {
-      const backendUrl = getBackendUrl();
+      const backendUrl = getBiometricBackendUrl();
       await fetch(`${backendUrl}/api/devices/clear-logs`, { method: "POST" });
       setLogs([]);
       toast.success("Live request logs cleared!");

@@ -28,7 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getBackendUrl, type Device } from "@/lib/store";
+import { getBiometricBackendUrl, type Device } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 
 import agentJsSource from "@/device_attendance/agent/agent.js?raw";
@@ -65,7 +65,7 @@ export function HardwareBridgeModal({
 
   if (!isOpen) return null;
 
-  const resolvedCloudUrl = getBackendUrl();
+  const resolvedCloudUrl = getBiometricBackendUrl();
 
   const agentConfigJson = JSON.stringify(
     {

@@ -25,7 +25,7 @@ import {
   User,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getBackendUrl, type Device, type Employee, type AttendanceRecord } from "@/lib/store";
+import { getBiometricBackendUrl, type Device, type Employee, type AttendanceRecord } from "@/lib/store";
 
 interface BiometricSimulatorModalProps {
   isOpen: boolean;
@@ -85,7 +85,7 @@ export function BiometricSimulatorModal({
     const punchTimeString = `${todayStr}T${timeStr}:00.000Z`;
 
     try {
-      const backendUrl = getBackendUrl();
+      const backendUrl = getBiometricBackendUrl();
       const res = await fetch(`${backendUrl}/api/adms/simulate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
