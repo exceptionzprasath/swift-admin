@@ -286,12 +286,12 @@ function AttendancePage() {
 
   // Real-time synchronization trigger
   const handleLiveSync = useCallback(async (quiet = false) => {
-    if (!activeTenantId) return;
+    const tid = activeTenantId || "company-demo";
     try {
       setIsSyncing(true);
-      await loadCompanyState(activeTenantId);
+      await loadCompanyState(tid);
       setLastSyncedTime(new Date().toLocaleTimeString());
-      if (!quiet) toast.success("Attendance synchronized with DynamoDB");
+      if (!quiet) toast.success("Attendance synchronized with Cloud & Biometric Terminals");
     } catch (_err) {
       if (!quiet) toast.error("Failed to sync live attendance records");
     } finally {

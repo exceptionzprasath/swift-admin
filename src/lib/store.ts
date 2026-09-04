@@ -2195,20 +2195,21 @@ export const useStore = create<State>()(
           };
         }),
       loadCompanyState: async (tenantId) => {
+        let loadedAttendance: AttendanceRecord[] = [];
+        let loadedDevices: Device[] = [];
+
+        // 1. Load company initial-state if available
         const res = await safeFetch(`/api/companies/initial-state?tenantId=${tenantId}`);
         if (res && res.ok) {
           try {
             const data = await res.json();
             let nextCompany = get().company;
             if (data.config) {
-              // Strip DynamoDB key fields that aren't part of the Company type
               const { id: _id, tenantId: _tid, ...backendConfig } = data.config;
               nextCompany = { ...get().company, ...backendConfig };
               if (nextCompany.themePalette) {
                 applyThemePalette(nextCompany.themePalette, get().theme === "dark");
               }
-              // Re-derive geofence from the head branch to ensure geo-coordinates
-              // stay consistent (mirrors admin-side updateBranch logic)
               const headBranch = (nextCompany.branches ?? []).find((b: any) => b.isHead)
                 || (nextCompany.branches ?? [])[0];
               if (headBranch && headBranch.lat != null && headBranch.lng != null) {
@@ -2222,11 +2223,13 @@ export const useStore = create<State>()(
                 };
               }
             }
+            loadedAttendance = data.attendance || [];
+            loadedDevices = data.devices || [];
             set({
               company: nextCompany,
               docAssets: data.docAssets || get().docAssets,
-              employees: data.employees || [],
-              attendance: data.attendance || [],
+              employees: data.employees && data.employees.length ? data.employees : get().employees,
+              attendance: loadedAttendance.length ? loadedAttendance : get().attendance,
               leaves: data.leaves || [],
               payrolls: data.payrolls || [],
               assets: data.assets || [],
@@ -2246,11 +2249,119 @@ export const useStore = create<State>()(
               vaultFiles: data.vaultFiles && data.vaultFiles.length ? data.vaultFiles : (get().vaultFiles?.length ? get().vaultFiles : DEFAULT_VAULT_FILES),
               grievances: data.grievances || [],
               requests: data.requests || [],
-              devices: data.devices || [],
+              devices: loadedDevices.length ? loadedDevices : get().devices,
               demoMode: false,
             });
           } catch (_err) {}
         }
+
+        // 2. Also fetch live attendance logs and devices from dedicated REST endpoints
+        try {
+          const [logsRes, devRes] = await Promise.all([
+            safeFetch(`/api/attendance/logs?tenantId=${encodeURIComponent(tenantId)}&limit=500`)
+              .then(r => r && r.ok ? r.json() : null)
+              .catch(() => null),
+            safeFetch(`/api/devices?tenantId=${encodeURIComponent(tenantId)}`)
+              .then(r => r && r.ok ? r.json() : null)
+              .catch(() => null)
+          ]);
+
+          const rawLogs = (logsRes && (logsRes.data || (Array.isArray(logsRes) ? logsRes : null))) || [];
+          if (Array.isArray(rawLogs) && rawLogs.length > 0) {
+            const currentEmployees = get().employees;
+            const currentAttendance = get().attendance;
+            const recordsMap = new Map<string, AttendanceRecord>();
+
+            for (const rec of currentAttendance) {
+              recordsMap.set(`${rec.employeeId}_${rec.date}`, { ...rec });
+            }
+
+            const sortedLogs = [...rawLogs].sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+            for (const log of sortedLogs) {
+              if (!log || !log.timestamp) continue;
+              const dateObj = new Date(log.timestamp);
+              if (isNaN(dateObj.getTime())) continue;
+
+              const dateStr = dateObj.toISOString().slice(0, 10);
+              const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+              const rawPin = String(log.employeeId || log.userId || log.pin || '').trim();
+
+              const matchedEmp = currentEmployees.find(
+                (e) =>
+                  e.id === rawPin ||
+                  e.empCode === rawPin ||
+                  String((e as any).biometricPin || (e as any).pin || '') === rawPin
+              );
+
+              const empId = matchedEmp?.id || rawPin || 'EMP-001';
+              const empName = matchedEmp?.name || log.employee?.name || `Staff #${rawPin}`;
+              const empCode = matchedEmp?.empCode || rawPin;
+              const dept = matchedEmp?.department || log.employee?.department || 'Operations';
+
+              const key = `${empId}_${dateStr}`;
+              const existing = recordsMap.get(key);
+              const state = String(log.state || 'CHECK_IN').toUpperCase();
+
+              if (!existing) {
+                recordsMap.set(key, {
+                  id: `bio-${log.id || `${empId}-${dateStr}`}`,
+                  tenantId,
+                  employeeId: empId,
+                  employeeName: empName,
+                  empCode: empCode,
+                  department: dept,
+                  date: dateStr,
+                  checkIn: timeStr,
+                  clockIn: timeStr,
+                  status: 'present',
+                  source: 'BIOMETRIC_TERMINAL',
+                  deviceSerial: log.deviceSerial || 'BIO-TERM-001',
+                  punchType: log.punchType || 'FINGERPRINT',
+                  hoursWorked: 8,
+                  otHours: 0
+                });
+              } else {
+                if (state === 'CHECK_OUT' || (existing.checkIn && existing.checkIn !== timeStr)) {
+                  existing.checkOut = timeStr;
+                  existing.clockOut = timeStr;
+                }
+                if (log.deviceSerial) existing.deviceSerial = log.deviceSerial;
+                if (log.punchType) existing.punchType = log.punchType;
+                existing.status = 'present';
+                existing.source = 'BIOMETRIC_TERMINAL';
+                recordsMap.set(key, existing);
+              }
+            }
+
+            set({ attendance: Array.from(recordsMap.values()) });
+          }
+
+          const rawDevices = (devRes && (devRes.data || (Array.isArray(devRes) ? devRes : null))) || [];
+          if (Array.isArray(rawDevices) && rawDevices.length > 0) {
+            const existingDevices = get().devices;
+            const mergedDevices = [...existingDevices];
+            for (const d of rawDevices) {
+              const idx = mergedDevices.findIndex(x => x.serialNumber === d.serialNumber || x.id === d.id);
+              if (idx >= 0) {
+                mergedDevices[idx] = { ...mergedDevices[idx], ...d, status: d.status || 'ONLINE' };
+              } else {
+                mergedDevices.push({
+                  id: d.id || `dev-${d.serialNumber}`,
+                  serialNumber: d.serialNumber,
+                  name: d.name || `Terminal (${d.serialNumber})`,
+                  branchId: d.branchId || 'br-hq',
+                  branchName: d.branchName || 'Head Office',
+                  model: d.model || 'BioMax / eSSL ADMS',
+                  status: d.status || 'ONLINE',
+                  lastHeartbeat: d.lastHeartbeat || d.lastSeen || new Date().toISOString(),
+                  ipAddress: d.ipAddress || '127.0.0.1'
+                });
+              }
+            }
+            set({ devices: mergedDevices });
+          }
+        } catch (_err) {}
       },
       resetTenantState: () => {
         set({

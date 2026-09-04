@@ -52,7 +52,7 @@ export function LiveBiometricFeed({
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilterMode, setDateFilterMode] = useState<
     "ALL" | "TODAY" | "YESTERDAY" | "THIS_WEEK" | "CUSTOM"
-  >("TODAY");
+  >("ALL");
   const [customDate, setCustomDate] = useState(
     selectedDate || new Date().toISOString().slice(0, 10)
   );
