@@ -29,8 +29,16 @@ import { type ThemePaletteId, applyThemePalette } from "./palettes";
 
 
 export function getBackendUrl(): string {
-  const customUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL;
-  if (customUrl) return customUrl.replace(/\/+$/, "");
+  const customUrl = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || "").trim();
+  if (
+    customUrl &&
+    customUrl.startsWith("http") &&
+    !customUrl.includes("swifthr.shop") &&
+    !customUrl.includes("vercel.app") &&
+    !customUrl.includes("5173")
+  ) {
+    return customUrl.replace(/\/+$/, "");
+  }
   return "https://attendance-backend-production-48ca.up.railway.app";
 }
 

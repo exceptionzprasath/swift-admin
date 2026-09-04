@@ -56,11 +56,7 @@ export function HardwareBridgeModal({
   const [selectedDeviceSn, setSelectedDeviceSn] = useState(
     devices[0]?.serialNumber || "NFZ8235301513"
   );
-  const RAILWAY_BACKEND_URL = "https://attendance-backend-production-48ca.up.railway.app";
-  const targetBackendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || RAILWAY_BACKEND_URL;
-
   const [deviceIp, setDeviceIp] = useState("192.168.1.201");
-  const [cloudApiUrl, setCloudApiUrl] = useState(targetBackendUrl);
   const [isZipping, setIsZipping] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
@@ -69,7 +65,7 @@ export function HardwareBridgeModal({
 
   if (!isOpen) return null;
 
-  const resolvedCloudUrl = (cloudApiUrl && !cloudApiUrl.includes("swifthr.shop") ? cloudApiUrl.trim() : targetBackendUrl).replace(/\/$/, "");
+  const resolvedCloudUrl = getBackendUrl();
 
   const agentConfigJson = JSON.stringify(
     {
@@ -320,7 +316,7 @@ HOW TO RUN:
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[11px] bg-background p-3 rounded-lg border border-border">
                   <div className="flex justify-between items-center py-1 border-b border-border sm:border-b-0 sm:border-r sm:pr-2">
                     <span className="text-muted-foreground">Server Address:</span>
-                    <strong className="text-foreground">{typeof window !== "undefined" ? window.location.hostname : "localhost"}</strong>
+                    <strong className="text-foreground">attendance-backend-production-48ca.up.railway.app</strong>
                   </div>
                   <div className="flex justify-between items-center py-1 sm:pl-2">
                     <span className="text-muted-foreground">Server Port:</span>
