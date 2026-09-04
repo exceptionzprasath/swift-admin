@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getBackendUrl, type Device } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 
 import agentJsSource from "@/device_attendance/agent/agent.js?raw";
 import packageJsonSource from "@/device_attendance/agent/package.json?raw";
@@ -67,10 +68,14 @@ export function HardwareBridgeModal({
   const [isZipping, setIsZipping] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
+  const { activeTenantId } = useAuth();
+  const tenantId = activeTenantId || "company-demo";
+
   if (!isOpen) return null;
 
   const agentConfigJson = JSON.stringify(
     {
+      tenantId: tenantId,
       deviceIp: deviceIp.trim() || "192.168.1.201",
       devicePort: 4370,
       deviceSerial: selectedDeviceSn.trim() || "BIO-TERM-001",

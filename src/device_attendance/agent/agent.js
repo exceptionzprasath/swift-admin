@@ -195,6 +195,7 @@ const CACHE_PATH = path.join(__dirname, 'synced_cache.json');
 
 // Load Configuration
 let config = {
+  tenantId: 'company-demo',
   deviceIp: '192.168.137.41',
   devicePort: 4370,
   deviceSerial: 'NFZ8235301513',
@@ -364,9 +365,13 @@ async function pushPunchToCloud(record) {
     };
     const verifyCode = String(record.verifyType || 1);
 
+    const tenantId = String(config.tenantId || config.companyId || 'company-demo').trim();
     const payload = {
+      tenantId: tenantId,
       deviceSerial: config.deviceSerial,
       employeeId,
+      userId: employeeId,
+      pin: employeeId,
       timestamp: recordDate.toISOString(),
       state: stateMap[stateCode] || 'CHECK_IN',
       punchType: verifyMap[verifyCode] || 'FINGERPRINT',
@@ -375,7 +380,10 @@ async function pushPunchToCloud(record) {
 
     const response = await axios.post(`${config.cloudApiUrl.replace(/\/$/, '')}/api/attendance/punch`, payload, {
       timeout: 15000,
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'x-tenant-id': tenantId
+      }
     });
 
     if (response.data && response.data.success) {
@@ -386,7 +394,7 @@ async function pushPunchToCloud(record) {
       return true;
     }
   } catch (err) {
-    const errMsg = (err.response && err.response.data && err.response.data.error) || err.message;
+    const errMsg = (err.response && err.response.data && (err.response.data.error || err.response.data.message)) || err.message;
     console.error(`❌ [CLOUD SYNC ERROR] Failed to push punch:`, errMsg);
     return false;
   }
@@ -414,12 +422,17 @@ async function syncUsersFromDevice() {
       })).filter(u => u.employeeId);
 
       if (usersToSync.length > 0) {
+        const tenantId = String(config.tenantId || config.companyId || 'company-demo').trim();
         const response = await axios.post(`${config.cloudApiUrl.replace(/\/$/, '')}/api/attendance/sync-users`, {
+          tenantId: tenantId,
           deviceSerial: config.deviceSerial,
           users: usersToSync
         }, {
           timeout: 15000,
-          headers: { 'Content-Type': 'application/json' }
+          headers: {
+            'Content-Type': 'application/json',
+            'x-tenant-id': tenantId
+          }
         });
 
         if (response.data && response.data.success) {
@@ -435,8 +448,10 @@ async function syncUsersFromDevice() {
 // Function to send Heartbeat to Cloud Server
 async function sendHeartbeat() {
   try {
-    await axios.get(`${config.cloudApiUrl.replace(/\/$/, '')}/iclock/cdata?SN=${config.deviceSerial}`, {
-      timeout: 10000
+    const tenantId = String(config.tenantId || config.companyId || 'company-demo').trim();
+    await axios.get(`${config.cloudApiUrl.replace(/\/$/, '')}/iclock/cdata?SN=${encodeURIComponent(config.deviceSerial)}&tenantId=${encodeURIComponent(tenantId)}`, {
+      timeout: 10000,
+      headers: { 'x-tenant-id': tenantId }
     });
   } catch (err) {
     // Silent heartbeat fail
