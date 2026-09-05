@@ -68,11 +68,6 @@ export async function safeFetch(path: string, options?: RequestInit): Promise<Re
     const res = await fetch(fullUrl, {
       cache: "no-store",
       ...options,
-      headers: {
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        ...(options?.headers || {}),
-      },
     });
     return res;
   } catch (_err) {
@@ -87,11 +82,6 @@ export async function safeBiometricFetch(path: string, options?: RequestInit): P
     const res = await fetch(fullUrl, {
       cache: "no-store",
       ...options,
-      headers: {
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        ...(options?.headers || {}),
-      },
     });
     return res;
   } catch (_err) {
