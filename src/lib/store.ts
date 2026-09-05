@@ -55,7 +55,7 @@ export function getBiometricBackendUrl(): string {
   ) {
     return customUrl.replace(/\/+$/, "");
   }
-  return "https://attendance-backend-production-48ca.up.railway.app";
+  return getBackendUrl();
 }
 
 export async function safeFetch(path: string, options?: RequestInit): Promise<Response | null> {
