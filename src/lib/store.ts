@@ -65,7 +65,15 @@ export async function safeFetch(path: string, options?: RequestInit): Promise<Re
   }
   try {
     const fullUrl = path.startsWith("http") ? path : `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
-    const res = await fetch(fullUrl, options);
+    const res = await fetch(fullUrl, {
+      cache: "no-store",
+      ...options,
+      headers: {
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        ...(options?.headers || {}),
+      },
+    });
     return res;
   } catch (_err) {
     return null;
@@ -76,7 +84,15 @@ export async function safeBiometricFetch(path: string, options?: RequestInit): P
   const baseUrl = getBiometricBackendUrl();
   try {
     const fullUrl = path.startsWith("http") ? path : `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
-    const res = await fetch(fullUrl, options);
+    const res = await fetch(fullUrl, {
+      cache: "no-store",
+      ...options,
+      headers: {
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        ...(options?.headers || {}),
+      },
+    });
     return res;
   } catch (_err) {
     return null;
