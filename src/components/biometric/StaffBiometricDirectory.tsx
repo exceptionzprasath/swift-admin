@@ -6,14 +6,14 @@ import {
   Fingerprint,
   ScanFace,
   CreditCard,
-  KeyRound,
-  Play,
   Eye,
   Copy,
   MapPin,
-  Building2,
-  CheckCircle2,
-  ShieldCheck,
+  Trash2,
+  AlertTriangle,
+  CheckSquare,
+  Square,
+  ShieldAlert,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -22,14 +22,26 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { type Employee } from "@/lib/store";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useStore, type Employee } from "@/lib/store";
 import { toast } from "sonner";
 
 interface StaffBiometricDirectoryProps {
   employees: Employee[];
-  departments: string[];
-  branches: Array<{ id: string; name: string }>;
+  departments?: string[];
+  branches?: Array<{ id: string; name: string }>;
   onOpenDossierForEmployee?: (employee: Employee) => void;
+  onDeleteEmployee?: (employee: Employee) => void;
 }
 
 export function StaffBiometricDirectory({
@@ -37,10 +49,20 @@ export function StaffBiometricDirectory({
   departments = [],
   branches = [],
   onOpenDossierForEmployee,
+  onDeleteEmployee,
 }: StaffBiometricDirectoryProps) {
+  const { deleteEmployee } = useStore();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDept, setSelectedDept] = useState("all");
   const [selectedBranch, setSelectedBranch] = useState("all");
+
+  // Selection state for bulk operations
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // Dialog state for single or bulk employee deletion
+  const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
 
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
@@ -62,6 +84,67 @@ export function StaffBiometricDirectory({
       return matchesSearch && matchesDept && matchesBranch;
     });
   }, [employees, searchQuery, selectedDept, selectedBranch]);
+
+  // Handle single employee delete
+  const handleConfirmSingleDelete = () => {
+    if (!employeeToDelete) return;
+
+    try {
+      if (onDeleteEmployee) {
+        onDeleteEmployee(employeeToDelete);
+      } else {
+        deleteEmployee(employeeToDelete.id);
+      }
+
+      setSelectedIds((prev) => prev.filter((id) => id !== employeeToDelete.id));
+      toast.success(`Removed ${employeeToDelete.name} from Biometric Directory.`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to remove employee.");
+    } finally {
+      setEmployeeToDelete(null);
+    }
+  };
+
+  // Handle bulk delete
+  const handleConfirmBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+
+    try {
+      let count = 0;
+      for (const id of selectedIds) {
+        const emp = employees.find((e) => e.id === id);
+        if (emp) {
+          if (onDeleteEmployee) {
+            onDeleteEmployee(emp);
+          } else {
+            deleteEmployee(id);
+          }
+          count++;
+        }
+      }
+      setSelectedIds([]);
+      toast.success(`Successfully removed ${count} unwanted employee(s) from Biometric Directory.`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete selected employees.");
+    } finally {
+      setIsBulkDeleteOpen(false);
+    }
+  };
+
+  // Select / Deselect all visible
+  const handleToggleSelectAll = () => {
+    if (selectedIds.length === filteredEmployees.length && filteredEmployees.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredEmployees.map((e) => e.id));
+    }
+  };
+
+  const handleToggleSelectOne = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
 
   const handleExportCSV = () => {
     if (filteredEmployees.length === 0) {
@@ -154,6 +237,19 @@ export function StaffBiometricDirectory({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Bulk Delete Button when items selected */}
+          {selectedIds.length > 0 && (
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setIsBulkDeleteOpen(true)}
+              className="h-8 text-xs rounded-xl gap-1.5 font-medium animate-in fade-in"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected ({selectedIds.length})</span>
+            </Button>
+          )}
+
           <Button
             size="sm"
             variant="outline"
@@ -178,9 +274,16 @@ export function StaffBiometricDirectory({
               Staff members and their biometric device mappings for fingerprint, facial recognition, and RFID machines
             </CardDescription>
           </div>
-          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px]">
-            {filteredEmployees.length} of {employees.length} Enrolled
-          </Badge>
+          <div className="flex items-center gap-2">
+            {selectedIds.length > 0 && (
+              <Badge variant="secondary" className="text-[11px] font-semibold">
+                {selectedIds.length} Selected
+              </Badge>
+            )}
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px]">
+              {filteredEmployees.length} of {employees.length} Enrolled
+            </Badge>
+          </div>
         </CardHeader>
 
         <div className="overflow-x-auto">
@@ -198,6 +301,16 @@ export function StaffBiometricDirectory({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-muted/40 border-b border-border text-muted-foreground font-semibold">
+                  <th className="p-3 w-10 text-center">
+                    <Checkbox
+                      checked={
+                        selectedIds.length > 0 &&
+                        selectedIds.length === filteredEmployees.length
+                      }
+                      onCheckedChange={handleToggleSelectAll}
+                      aria-label="Select all employees"
+                    />
+                  </th>
                   <th className="p-3">Staff Member</th>
                   <th className="p-3">Machine PIN / User ID</th>
                   <th className="p-3">Department & Role</th>
@@ -209,6 +322,7 @@ export function StaffBiometricDirectory({
               <tbody className="divide-y divide-border">
                 {filteredEmployees.map((emp) => {
                   const pinCode = emp.empCode || emp.id?.slice(0, 6) || "101";
+                  const isSelected = selectedIds.includes(emp.id);
                   const initials = emp.name
                     ?.split(" ")
                     .map((n) => n[0])
@@ -217,7 +331,21 @@ export function StaffBiometricDirectory({
                     .toUpperCase() || "EM";
 
                   return (
-                    <tr key={emp.id} className="hover:bg-muted/20 transition-colors">
+                    <tr
+                      key={emp.id}
+                      className={`hover:bg-muted/20 transition-colors ${
+                        isSelected ? "bg-primary/5" : ""
+                      }`}
+                    >
+                      {/* Selection Checkbox */}
+                      <td className="p-3 text-center">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => handleToggleSelectOne(emp.id)}
+                          aria-label={`Select ${emp.name}`}
+                        />
+                      </td>
+
                       {/* Employee Info */}
                       <td className="p-3">
                         <div className="flex items-center gap-2.5">
@@ -315,10 +443,21 @@ export function StaffBiometricDirectory({
                             size="sm"
                             variant="ghost"
                             onClick={() => onOpenDossierForEmployee?.(emp)}
-                            className="h-7 px-2.5 text-[11px] rounded-lg gap-1.5 text-primary hover:bg-primary/10 font-medium"
+                            className="h-7 px-2.5 text-[11px] rounded-lg gap-1 text-primary hover:bg-primary/10 font-medium"
                           >
                             <Eye className="w-3.5 h-3.5" />
-                            <span>View Dossier</span>
+                            <span>View</span>
+                          </Button>
+
+                          {/* Delete Button for unwanted employee */}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEmployeeToDelete(emp)}
+                            className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            title={`Delete ${emp.name}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
                       </td>
@@ -330,6 +469,81 @@ export function StaffBiometricDirectory({
           )}
         </div>
       </Card>
+
+      {/* Single Employee Delete Confirmation Dialog */}
+      <AlertDialog
+        open={!!employeeToDelete}
+        onOpenChange={(open) => !open && setEmployeeToDelete(null)}
+      >
+        <AlertDialogContent className="rounded-2xl max-w-md">
+          <AlertDialogHeader>
+            <div className="w-10 h-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center mb-2">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <AlertDialogTitle className="text-base font-bold">
+              Delete Employee from Biometric Directory?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs space-y-2">
+              <p>
+                Are you sure you want to remove{" "}
+                <strong className="text-foreground">{employeeToDelete?.name}</strong>{" "}
+                (PIN/Code:{" "}
+                <strong className="text-foreground">
+                  {employeeToDelete?.empCode || employeeToDelete?.id}
+                </strong>
+                )?
+              </p>
+              <p className="text-destructive/90 font-medium">
+                This will unmap their biometric profile (fingerprint, facial recognition, RFID) and remove them from the staff roster.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="rounded-xl h-8 text-xs">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmSingleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl h-8 text-xs font-semibold"
+            >
+              Delete Employee
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+        <AlertDialogContent className="rounded-2xl max-w-md">
+          <AlertDialogHeader>
+            <div className="w-10 h-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center mb-2">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <AlertDialogTitle className="text-base font-bold">
+              Delete {selectedIds.length} Selected Employees?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs space-y-2">
+              <p>
+                You are about to delete <strong className="text-foreground">{selectedIds.length}</strong> unwanted staff members from the Biometric Directory.
+              </p>
+              <p className="text-destructive/90 font-medium">
+                Their device mappings and biometric enrollment credentials will be permanently removed.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="rounded-xl h-8 text-xs">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmBulkDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl h-8 text-xs font-semibold"
+            >
+              Delete {selectedIds.length} Employees
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
