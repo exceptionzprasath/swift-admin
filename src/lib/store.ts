@@ -70,7 +70,15 @@ export async function safeFetch(path: string, options?: RequestInit): Promise<Re
       ...options,
     });
     return res;
-  } catch (_err) {
+  } catch (err) {
+    if (baseUrl.includes("localhost:5000")) {
+      try {
+        const altUrl = path.startsWith("http") ? path : `http://127.0.0.1:5000${path.startsWith("/") ? "" : "/"}${path}`;
+        const res = await fetch(altUrl, { cache: "no-store", ...options });
+        return res;
+      } catch (_err2) {}
+    }
+    console.warn(`[SWIFT API] safeFetch failed for ${path}:`, err);
     return null;
   }
 }
@@ -84,7 +92,15 @@ export async function safeBiometricFetch(path: string, options?: RequestInit): P
       ...options,
     });
     return res;
-  } catch (_err) {
+  } catch (err) {
+    if (baseUrl.includes("localhost:5000")) {
+      try {
+        const altUrl = path.startsWith("http") ? path : `http://127.0.0.1:5000${path.startsWith("/") ? "" : "/"}${path}`;
+        const res = await fetch(altUrl, { cache: "no-store", ...options });
+        return res;
+      } catch (_err2) {}
+    }
+    console.warn(`[SWIFT API] safeBiometricFetch failed for ${path}:`, err);
     return null;
   }
 }
@@ -580,12 +596,23 @@ export type Employee = {
   probationDate?: string;
   leaveApplyEligible?: boolean;
   geofencingEnabled?: boolean;
+  biometricEnabled?: boolean;
+  biometricMappings?: BiometricDeviceMapping[];
   graceTime?: "always" | "10" | "15" | "20" | "25" | "30";
   afternoonGraceTime?: "always" | "10" | "15" | "20" | "25" | "30";
   allowHalfDayLogin?: boolean;
   halfDayLoginTime?: string;
   reportingManager?: string;
   approvalSettings?: EmployeeApprovalSettings;
+};
+
+export type BiometricDeviceMapping = {
+  id?: string;
+  deviceSn: string;
+  biometricEmpCode: string;
+  deviceName?: string;
+  branchId?: string;
+  notes?: string;
 };
 
 export type GraceTimeOption = "always" | "10" | "15" | "20" | "25" | "30";
@@ -742,7 +769,12 @@ export type AttendanceRecord = {
   graceTime?: string;
   punctuality?: "on-time" | "within-grace" | "late" | "half-day" | "absent" | "flexible";
   isAfternoonHalfDay?: boolean;
-  status: "present" | "absent" | "leave" | "half-day" | "late" | "holiday" | "weekly-off";
+  status: "present" | "absent" | "leave" | "half-day" | "halfday" | "late" | "holiday" | "weekly-off";
+  isMissedCheckout?: boolean;
+  isAutoClosed?: boolean;
+  autoCloseReason?: string;
+  lateBy?: number;
+  earlyOutBy?: number;
   deviceSerial?: string;
   punchType?: string;
   source?: "MOBILE_APP" | "BIOMETRIC_TERMINAL" | "MANUAL_ADMIN" | string;
@@ -983,6 +1015,56 @@ export type DocRequest = {
   employeeSignature?: string;
 };
 
+export type UnifiedRequestStep = {
+  id: string;
+  level: number;
+  approverId?: string;
+  approverName?: string;
+  roleName: string;
+  department?: string;
+  permission?: string;
+  embedSignature?: boolean;
+  status: "Pending" | "Approved" | "Rejected";
+  comment?: string;
+  actionAt?: string;
+};
+
+export type UnifiedRequest = {
+  id: string;
+  tenantId?: string;
+  employeeId: string;
+  employeeName: string;
+  empCode?: string;
+  department?: string;
+  branchName?: string;
+  category: "leave" | "attendance" | "document" | "loan" | "grievance" | "compoff" | "shift_swap" | "general" | string;
+  workflowId?: string;
+  workflowName?: string;
+  type: string;
+  title: string;
+  amount?: number;
+  amountOrDays?: string;
+  tenor?: string;
+  date?: string;
+  fromDate?: string;
+  toDate?: string;
+  details?: string;
+  reason?: string;
+  notes?: string;
+  status: "Pending" | "Approved" | "Rejected" | "In Progress" | "Escalated" | "pending" | "approved" | "rejected";
+  currentLevel?: number;
+  totalLevels?: number;
+  approvalType?: "sequential" | "any" | "all";
+  escalationDays?: number;
+  approvalSteps?: UnifiedRequestStep[];
+  metadata?: Record<string, any>;
+  attachments?: string[];
+  rejectionReason?: string;
+  approvedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
 type State = {
   company: Company;
   employees: Employee[];
@@ -1104,8 +1186,12 @@ type State = {
   addGrievanceMessage: (ticketId: string, msg: Omit<GrievanceMessage, "id" | "createdAt">) => void;
   updateEmployeeApprovalSettings: (employeeId: string, settings: Partial<EmployeeApprovalSettings>) => void;
   actOnLeaveApprovalStep: (leaveId: string, action: "approve" | "approve_forward" | "approve_close" | "reject" | "escalate", comment: string, actorName: string, actorRole: string) => void;
-  // Unified Requests (Advance Loans, Comp-offs, Grievances, etc.)
-  requests: any[];
+  // Unified Requests (Advance Loans, Comp-offs, Grievances, Attendance, Documents & General)
+  requests: UnifiedRequest[];
+  addRequest: (r: Omit<UnifiedRequest, "id" | "createdAt" | "updatedAt">) => Promise<UnifiedRequest>;
+  updateRequest: (id: string, patch: Partial<UnifiedRequest>) => void;
+  deleteRequest: (id: string) => void;
+  actOnUnifiedRequest: (id: string, action: "approve" | "reject" | "forward" | "escalate", comment: string, actorName: string, actorRole: string) => Promise<boolean>;
 };
 
 export interface VaultFolder {
@@ -3364,6 +3450,142 @@ export const useStore = create<State>()(
         if (tenantId && !get().demoMode) {
           syncItem("leaves", updatedLeave);
         }
+      },
+      addRequest: async (r) => {
+        const tenantId = typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null;
+        const now = new Date().toISOString();
+        const id = `${r.category || "req"}-${Date.now()}`;
+        const item: UnifiedRequest = {
+          ...r,
+          id,
+          tenantId: tenantId || undefined,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        set((s) => ({
+          requests: [item, ...s.requests.filter((x) => x.id !== id)],
+        }));
+
+        if (tenantId && !get().demoMode) {
+          try {
+            await safeFetch("/api/requests/submit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(item),
+            });
+          } catch (_e) {
+            syncItem("requests", item);
+          }
+        }
+        return item;
+      },
+      updateRequest: (id, patch) => {
+        const tenantId = typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null;
+        const now = new Date().toISOString();
+        set((s) => ({
+          requests: s.requests.map((r) => (r.id === id ? { ...r, ...patch, updatedAt: now } : r)),
+        }));
+        const updated = get().requests.find((r) => r.id === id);
+        if (updated && tenantId && !get().demoMode) {
+          syncItem("requests", updated);
+        }
+      },
+      deleteRequest: (id) => {
+        const tenantId = typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null;
+        set((s) => ({
+          requests: s.requests.filter((r) => r.id !== id),
+        }));
+        if (tenantId && !get().demoMode) {
+          syncDelete("requests", tenantId, id);
+        }
+      },
+      actOnUnifiedRequest: async (id, action, comment, actorName, actorRole) => {
+        const tenantId = typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null;
+        const targetReq = get().requests.find((r) => r.id === id);
+        if (!targetReq) return false;
+
+        const now = new Date().toISOString();
+        const currentLvl = targetReq.currentLevel || 1;
+        const totalLvls = targetReq.totalLevels || targetReq.approvalSteps?.length || 1;
+
+        let newStatus = targetReq.status;
+        let nextLvl = currentLvl;
+
+        if (action === "reject") {
+          newStatus = "Rejected";
+        } else if (action === "approve") {
+          if (currentLvl >= totalLvls) {
+            newStatus = "Approved";
+          } else {
+            nextLvl = currentLvl + 1;
+            newStatus = "In Progress";
+          }
+        } else if (action === "escalate") {
+          nextLvl = Math.min(totalLvls, currentLvl + 1);
+          newStatus = "Escalated";
+        }
+
+        const updatedSteps = (targetReq.approvalSteps || []).map((step: any) => {
+          if (step.level === currentLvl) {
+            return {
+              ...step,
+              status: action === "reject" ? "Rejected" : "Approved",
+              approverName: actorName,
+              comment: comment || (action === "reject" ? "Rejected" : "Approved"),
+              actionAt: now,
+            };
+          }
+          return step;
+        });
+
+        const updatedReq: UnifiedRequest = {
+          ...targetReq,
+          status: newStatus,
+          currentLevel: nextLvl,
+          approvedBy: newStatus === "Approved" ? actorName : targetReq.approvedBy,
+          rejectionReason: action === "reject" ? comment : targetReq.rejectionReason,
+          approvalSteps: updatedSteps,
+          updatedAt: now,
+        };
+
+        // If profile request is approved, merge updates into employee state
+        if (newStatus === "Approved" && (targetReq.category === "profile" || (targetReq as any).category === "profile_update") && targetReq.metadata?.profileUpdates) {
+          const empUpdates = targetReq.metadata.profileUpdates;
+          const targetEmpId = targetReq.employeeId;
+          const targetEmpCode = targetReq.empCode;
+          set((s) => ({
+            employees: s.employees.map((e) =>
+              (e.id === targetEmpId || (targetEmpCode && e.empCode === targetEmpCode))
+                ? { ...e, ...empUpdates, updatedAt: now }
+                : e
+            ),
+          }));
+        }
+
+        set((s) => ({
+          requests: s.requests.map((r) => (r.id === id ? updatedReq : r)),
+        }));
+
+        if (tenantId && !get().demoMode) {
+          try {
+            await safeFetch("/api/requests/act", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tenantId,
+                requestId: id,
+                action,
+                comment,
+                actorName,
+                actorRole,
+              }),
+            });
+          } catch (_e) {
+            syncItem("requests", updatedReq);
+          }
+        }
+        return true;
       },
       exitDemo: () => set({ currentUser: null, demoMode: false, demoSuper: false }),
     }),

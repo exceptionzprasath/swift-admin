@@ -116,11 +116,32 @@ function computeWorkedHours(
 }
 
 // Helper: get effective hours and OT for a record (uses stored value or computes from timestamps)
-function getRecordHours(rec?: { hoursWorked?: number; otHours?: number; checkIn?: string; checkOut?: string; clockIn?: string; clockOut?: string }, standardHours: number = 9) {
+function getRecordHours(
+  rec?: {
+    hoursWorked?: number;
+    otHours?: number;
+    checkIn?: string;
+    checkOut?: string;
+    clockIn?: string;
+    clockOut?: string;
+    isMissedCheckout?: boolean;
+    isAutoClosed?: boolean;
+    status?: string;
+  },
+  standardHours: number = 9
+) {
+  if (rec?.status === "absent") {
+    return { hoursWorked: 0, otHours: 0 };
+  }
+  if (rec?.status === "halfday" || rec?.status === "half-day") {
+    return { hoursWorked: standardHours / 2, otHours: 0 };
+  }
   if (rec?.hoursWorked && rec.hoursWorked > 0) {
     return { hoursWorked: rec.hoursWorked, otHours: rec.otHours || 0 };
   }
-  return computeWorkedHours(rec?.checkIn || rec?.clockIn, rec?.checkOut || rec?.clockOut, standardHours);
+  const isSynthetic22 = (rec?.clockOut === "22:00" || rec?.checkOut === "22:00") && Boolean(rec?.isAutoClosed || rec?.isMissedCheckout);
+  const outTime = isSynthetic22 ? undefined : (rec?.checkOut || rec?.clockOut);
+  return computeWorkedHours(rec?.checkIn || rec?.clockIn, outTime, standardHours);
 }
 
 export const Route = createFileRoute("/admin/attendance")({
@@ -416,8 +437,10 @@ function AttendancePage() {
         return { status: "weekly-off", label: "Weekly Off", color: "bg-slate-500/10 text-slate-500 border-slate-500/20" };
       }
 
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const isPast = dateStr < todayStr;
+
       if (!rec || (!rec.checkIn && !rec.clockIn)) {
-        const isPast = dateStr < new Date().toISOString().slice(0, 10);
         return isPast
           ? { status: "absent", label: "Absent / No Punch", color: "bg-destructive/10 text-destructive border-destructive/20" }
           : { status: "pending", label: "Not Punched Yet", color: "bg-muted text-muted-foreground border-border" };
@@ -445,8 +468,29 @@ function AttendancePage() {
       const [halfH, halfM] = halfDayCutoff.split(":").map((v) => parseInt(v, 10) || 0);
       const halfDayLimitTotal = halfH * 60 + halfM;
 
-      if (rec.status === "half-day" || punchMinutesTotal >= halfDayLimitTotal) {
-        return { status: "half-day", label: "Half-Day Session", color: "bg-amber-500/10 text-amber-600 border-amber-500/20" };
+      const isLateCheckIn = punchMinutesTotal > graceLimitTotal;
+      const isMissedOut = Boolean(
+        rec.isMissedCheckout ||
+        (rec.clockOut === "22:00" && (rec.isAutoClosed || (rec as any).autoCloseReason)) ||
+        ((!rec.checkOut && !rec.clockOut) && isPast)
+      );
+
+      // If record is marked absent or (checked in late + missed checkout)
+      if (rec.status === "absent" || (isLateCheckIn && isMissedOut)) {
+        return {
+          status: "absent",
+          label: isMissedOut ? "Absent (Late + Missed Out)" : "Absent",
+          color: "bg-destructive/10 text-destructive border-destructive/20",
+        };
+      }
+
+      // If record is marked half-day or missed checkout
+      if (rec.status === "halfday" || rec.status === "half-day" || isMissedOut || punchMinutesTotal >= halfDayLimitTotal) {
+        return {
+          status: "half-day",
+          label: isMissedOut ? "Half-Day (Missed Out)" : "Half-Day Session",
+          color: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+        };
       }
 
       if (punchMinutesTotal <= startMinutesTotal) {
@@ -1291,38 +1335,66 @@ function AttendancePage() {
 
                         {/* Check-Out Column */}
                         <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
-                          {rec?.checkOut || rec?.clockOut ? (
-                            <div className="space-y-1">
-                              <div className="font-semibold text-sm text-foreground flex items-center gap-1.5">
-                                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span>{rec.checkOut || rec.clockOut}</span>
-                              </div>
+                          {(() => {
+                            const isMissedOut = Boolean(
+                              rec?.isMissedCheckout ||
+                              (rec?.clockOut === "22:00" && (rec?.isAutoClosed || (rec as any)?.autoCloseReason)) ||
+                              ((!rec?.checkOut && !rec?.clockOut) && (rec?.checkIn || rec?.clockIn) && selectedDate < new Date().toISOString().slice(0, 10))
+                            );
+                            const hasValidOut = (rec?.checkOut || rec?.clockOut) && !isMissedOut;
 
-                              {/* Biometric Check-Out Pill */}
-                              <div className="flex flex-wrap items-center gap-1">
-                                {(rec.faceVerified || rec.checkOutPhoto) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setInspectPhotoTab("checkOut");
-                                      setInspectRecord({ emp, rec, date: selectedDate });
-                                    }}
-                                    className="inline-flex items-center gap-1 text-[11px] bg-primary/10 text-primary hover:bg-primary/20 px-1.5 py-0.5 rounded border border-primary/20 transition-colors"
-                                  >
-                                    <Camera className="h-3 w-3" />
-                                    <span>Face Verified</span>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ) : rec?.checkIn || rec?.clockIn ? (
-                            <Badge variant="outline" className="text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse" />
-                              Active On Duty
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
+                            if (hasValidOut) {
+                              return (
+                                <div className="space-y-1">
+                                  <div className="font-semibold text-sm text-foreground flex items-center gap-1.5">
+                                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                                    <span>{rec?.checkOut || rec?.clockOut}</span>
+                                  </div>
+
+                                  {/* Biometric Check-Out Pill */}
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {(rec?.faceVerified || rec?.checkOutPhoto) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setInspectPhotoTab("checkOut");
+                                          setInspectRecord({ emp, rec, date: selectedDate });
+                                        }}
+                                        className="inline-flex items-center gap-1 text-[11px] bg-primary/10 text-primary hover:bg-primary/20 px-1.5 py-0.5 rounded border border-primary/20 transition-colors"
+                                      >
+                                        <Camera className="h-3 w-3" />
+                                        <span>Face Verified</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (isMissedOut) {
+                              return (
+                                <div className="space-y-1">
+                                  <span className="text-sm font-semibold text-muted-foreground">—</span>
+                                  <div>
+                                    <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20">
+                                      Missed Out
+                                    </Badge>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (rec?.checkIn || rec?.clockIn) {
+                              return (
+                                <Badge variant="outline" className="text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse" />
+                                  Active On Duty
+                                </Badge>
+                              );
+                            }
+
+                            return <span className="text-xs text-muted-foreground">—</span>;
+                          })()}
                         </td>
 
                         {/* Work Hours & OT */}
@@ -2944,24 +3016,50 @@ function EmployeeAttendanceDossierModal({
                       </td>
 
                       <td className="p-3">
-                        {rec?.checkOut || rec?.clockOut ? (
-                          <div className="space-y-0.5">
-                            <div className="font-semibold text-sm text-foreground">
-                              {rec.checkOut || rec.clockOut}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {(rec.faceVerified || rec.checkOutPhoto) && (
-                                <span className="text-[10px] bg-primary/10 text-primary px-1 rounded">Face</span>
-                              )}
-                            </div>
-                          </div>
-                        ) : rec?.checkIn || rec?.clockIn ? (
-                          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600">
-                            Active
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
+                        {(() => {
+                          const isMissedOut = Boolean(
+                            rec?.isMissedCheckout ||
+                            (rec?.clockOut === "22:00" && (rec?.isAutoClosed || (rec as any)?.autoCloseReason)) ||
+                            ((!rec?.checkOut && !rec?.clockOut) && (rec?.checkIn || rec?.clockIn) && dateStr < new Date().toISOString().slice(0, 10))
+                          );
+                          const hasValidOut = (rec?.checkOut || rec?.clockOut) && !isMissedOut;
+
+                          if (hasValidOut) {
+                            return (
+                              <div className="space-y-0.5">
+                                <div className="font-semibold text-sm text-foreground">
+                                  {rec?.checkOut || rec?.clockOut}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {(rec?.faceVerified || rec?.checkOutPhoto) && (
+                                    <span className="text-[10px] bg-primary/10 text-primary px-1 rounded">Face</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (isMissedOut) {
+                            return (
+                              <div className="space-y-0.5">
+                                <div className="font-semibold text-sm text-muted-foreground">—</div>
+                                <span className="text-[10px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded border border-amber-500/20 font-medium">
+                                  Missed Out
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          if (rec?.checkIn || rec?.clockIn) {
+                            return (
+                              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600">
+                                Active
+                              </Badge>
+                            );
+                          }
+
+                          return <span className="text-muted-foreground">—</span>;
+                        })()}
                       </td>
 
                       <td className="p-3">

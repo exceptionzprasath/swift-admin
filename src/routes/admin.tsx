@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/theme";
 import {
   LayoutDashboard, Users, CalendarCheck, CalendarDays, Calculator, FileText, Settings,
   LogOut, Menu, Shield, Building2, ChevronDown, Network, Sparkles, BarChart3, Megaphone, Rocket, Package, ShieldCheck, CreditCard, BellRing, Scale, Clock, FolderLock, MessageSquareHeart,
-  SlidersHorizontal,
+  SlidersHorizontal, Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { SwiftAiCopilot } from "@/components/swift-ai-copilot";
-import { AiTriggerBell } from "@/components/ai-trigger-bell";
+import { LiveNotificationBell } from "@/components/live-notification-bell";
 import { AdminInternalChat } from "@/components/internal-chat";
 
 export const Route = createFileRoute("/admin")({
@@ -28,6 +28,7 @@ export const Route = createFileRoute("/admin")({
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; exact?: boolean; comingSoon?: boolean };
 const nav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox },
   { to: "/admin/ai", label: "SWIFT AI", icon: Sparkles },
   { to: "/admin/notices", label: "Notice Board", icon: Megaphone },
   { to: "/admin/employees", label: "Employees", icon: Users },
@@ -203,7 +204,7 @@ function AdminLayout() {
               />
             </div>
 
-            <AiTriggerBell />
+            <LiveNotificationBell />
             <ThemeToggle />
 
             <div className="flex items-center gap-2 pl-2 border-l border-navbar-border/60">

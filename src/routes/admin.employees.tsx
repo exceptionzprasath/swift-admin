@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStore, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole } from "@/lib/store";
+import { useStore, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { generateAppointmentPDF } from "@/lib/pdf";
 import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, type LetterKey } from "@/lib/documents";
@@ -24,7 +24,7 @@ import {
   FileSignature, CheckCircle2, Sparkles, Wand2, Camera, Home, Users as UsersIcon,
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
-  KeyRound, RefreshCw, Copy, Check,
+  KeyRound, RefreshCw, Copy, Check, Fingerprint,
 } from "lucide-react";
 import { downloadEmployeeTemplate, parseEmployeeCsvText, generateEmployeePassword } from "@/lib/bulk-employee";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
@@ -56,6 +56,8 @@ const empty: Omit<Employee, "id"> = {
   probationDate: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
   leaveApplyEligible: true,
   geofencingEnabled: true,
+  biometricEnabled: false,
+  biometricMappings: [],
   graceTime: "15",
   allowHalfDayLogin: true,
   halfDayLoginTime: "12:00",
@@ -107,7 +109,7 @@ const DOC_INSERT_AFTER: Record<string, FormStepKey> = {
 type FlowStep = { key: FormStepKey; title: string; icon: typeof User };
 
 function EmployeesPage() {
-  const { employees, addEmployee, deleteEmployee, company, docAssets, ensureJourney, docLibrary, advanceJourneyStep, registrationDrafts, saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, roles } = useStore();
+  const { employees, addEmployee, deleteEmployee, company, docAssets, ensureJourney, docLibrary, advanceJourneyStep, registrationDrafts, saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, roles, devices } = useStore();
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
@@ -315,7 +317,7 @@ function EmployeesPage() {
 function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?: string | null }) {
   const {
     addEmployee, company, ensureJourney,
-    saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, employees, roles,
+    saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, employees, roles, devices,
   } = useStore();
   // Read initial draft ONCE without subscribing to registrationDrafts — otherwise every
   // autosave re-renders the parent and the wizard flickers/appears to reload.
@@ -1070,6 +1072,181 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                     </div>
                   </div>
 
+                  {/* Biometric Attendance & Multi-Device Mapping */}
+                  <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-semibold flex items-center gap-2">
+                          <Fingerprint className="h-4 w-4 text-primary" />
+                          <span>Biometric Terminal Attendance</span>
+                          <Badge variant="outline" className={`text-[10px] ${form.biometricEnabled ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-muted text-muted-foreground"}`}>
+                            {form.biometricEnabled ? "Biometric Enabled" : "Disabled"}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Assign physical biometric hardware machines to this employee by Device Serial Number (SN) and Biometric User ID.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="biometric-toggle-wizard" className="text-xs font-semibold cursor-pointer">
+                          {form.biometricEnabled ? "Enabled" : "Disabled"}
+                        </Label>
+                        <Switch
+                          id="biometric-toggle-wizard"
+                          checked={form.biometricEnabled === true}
+                          onCheckedChange={(checked) => {
+                            const defaultMappings: BiometricDeviceMapping[] = (form.biometricMappings && form.biometricMappings.length > 0)
+                              ? form.biometricMappings
+                              : [{
+                                  id: "bm-" + Date.now(),
+                                  deviceSn: (devices && devices[0]?.serialNumber) || "",
+                                  biometricEmpCode: form.empCode || "",
+                                  deviceName: (devices && devices[0]?.name) || "",
+                                }];
+                            setForm({
+                              ...form,
+                              biometricEnabled: checked,
+                              biometricMappings: checked ? defaultMappings : form.biometricMappings,
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {form.biometricEnabled && (
+                      <div className="space-y-3 pt-2 border-t border-border/50">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            Assigned Biometric Terminals ({form.biometricMappings?.length || 0})
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                            onClick={() => {
+                              const newMapping: BiometricDeviceMapping = {
+                                id: "bm-" + Date.now(),
+                                deviceSn: (devices && devices[0]?.serialNumber) || "",
+                                biometricEmpCode: form.empCode || "",
+                                deviceName: (devices && devices[0]?.name) || "",
+                              };
+                              setForm({
+                                ...form,
+                                biometricMappings: [...(form.biometricMappings || []), newMapping],
+                              });
+                            }}
+                          >
+                            <Plus className="h-3 w-3" /> Add Another Biometric Device
+                          </Button>
+                        </div>
+
+                        {(!form.biometricMappings || form.biometricMappings.length === 0) ? (
+                          <div className="p-4 rounded-xl border border-dashed text-xs text-muted-foreground text-center">
+                            No biometric devices mapped yet. Click "+ Add Another Biometric Device" to link this employee to a terminal.
+                          </div>
+                        ) : (
+                          <div className="space-y-2.5">
+                            {form.biometricMappings.map((m, idx) => (
+                              <div key={m.id || idx} className="p-3 rounded-xl border border-border/80 bg-muted/20 hover:bg-muted/30 transition-all space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
+                                    <Fingerprint className="h-3.5 w-3.5 text-primary" /> Biometric Device #{idx + 1}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                    onClick={() => {
+                                      const next = (form.biometricMappings || []).filter((_, i) => i !== idx);
+                                      setForm({ ...form, biometricMappings: next });
+                                    }}
+                                    title="Remove Device Mapping"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                  <div>
+                                    <Label className="text-[11px] font-medium">Device Serial Number (SN) *</Label>
+                                    <div className="space-y-1">
+                                      <Input
+                                        placeholder="e.g. SN-ZK101"
+                                        value={m.deviceSn || ""}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          const matchedDev = (devices || []).find((d: Device) => d.serialNumber === val);
+                                          const next = [...(form.biometricMappings || [])];
+                                          next[idx] = {
+                                            ...next[idx],
+                                            deviceSn: val,
+                                            deviceName: matchedDev ? matchedDev.name : next[idx].deviceName,
+                                          };
+                                          setForm({ ...form, biometricMappings: next });
+                                        }}
+                                        className="h-8 text-xs font-mono"
+                                      />
+                                      {(devices || []).length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                          {(devices || []).slice(0, 3).map((d: Device) => (
+                                            <button
+                                              key={d.id}
+                                              type="button"
+                                              onClick={() => {
+                                                const next = [...(form.biometricMappings || [])];
+                                                next[idx] = { ...next[idx], deviceSn: d.serialNumber, deviceName: d.name };
+                                                setForm({ ...form, biometricMappings: next });
+                                              }}
+                                              className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-background hover:bg-muted font-mono"
+                                            >
+                                              {d.name ? `${d.name} (${d.serialNumber})` : d.serialNumber}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <Label className="text-[11px] font-medium">Employee Code on Biometric *</Label>
+                                    <Input
+                                      placeholder="e.g. 101 or User PIN"
+                                      value={m.biometricEmpCode || ""}
+                                      onChange={(e) => {
+                                        const next = [...(form.biometricMappings || [])];
+                                        next[idx] = { ...next[idx], biometricEmpCode: e.target.value };
+                                        setForm({ ...form, biometricMappings: next });
+                                      }}
+                                      className="h-8 text-xs font-mono font-semibold text-primary"
+                                    />
+                                    <p className="text-[9.5px] text-muted-foreground mt-0.5">Machine User ID / PIN</p>
+                                  </div>
+
+                                  <div>
+                                    <Label className="text-[11px] font-medium">Device Label / Location (Optional)</Label>
+                                    <Input
+                                      placeholder="e.g. Main Gate Terminal"
+                                      value={m.deviceName || ""}
+                                      onChange={(e) => {
+                                        const next = [...(form.biometricMappings || [])];
+                                        next[idx] = { ...next[idx], deviceName: e.target.value };
+                                        setForm({ ...form, biometricMappings: next });
+                                      }}
+                                      className="h-8 text-xs"
+                                    />
+                                    <p className="text-[9.5px] text-muted-foreground mt-0.5">Friendly machine name</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Grace Time & Shift Attendance Policy */}
                   <div className="rounded-xl border border-border bg-card p-4 space-y-4">
                     <div className="flex items-center justify-between">
@@ -1206,6 +1383,9 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                           })()}
                         </div>
                         <div>👤 Reports to: {employees.find((e) => e.id === form.managerId)?.name || "Top of company"}</div>
+                        <div>
+                          🖲️ Biometric: {form.biometricEnabled ? `Enabled (${form.biometricMappings?.length || 0} device${(form.biometricMappings?.length || 0) === 1 ? "" : "s"})` : "Disabled"}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1784,7 +1964,7 @@ function RepeatingList<T extends Record<string, unknown>>({
 }
 
 function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | null; open: boolean; onClose: () => void }) {
-  const { updateEmployee, company, roles, employees } = useStore();
+  const { updateEmployee, company, roles, employees, devices } = useStore();
   const [form, setForm] = useState<Partial<Employee>>({});
   const [activeTab, setActiveTab] = useState<"identity" | "employment" | "address_kyc" | "branches_policy" | "family_edu" | "experience_skills" | "compliance">("identity");
 
@@ -2452,6 +2632,181 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Biometric Attendance & Multi-Device Mapping */}
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-semibold flex items-center gap-2">
+                      <Fingerprint className="h-4 w-4 text-primary" />
+                      <span>Biometric Terminal Attendance</span>
+                      <Badge variant="outline" className={`text-[10px] ${form.biometricEnabled ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-muted text-muted-foreground"}`}>
+                        {form.biometricEnabled ? "Biometric Enabled" : "Disabled"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Map one or multiple physical biometric machines to this employee by Device Serial Number (SN) and Biometric User ID.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="biometric-toggle-edit" className="text-xs font-semibold cursor-pointer">
+                      {form.biometricEnabled ? "Enabled" : "Disabled"}
+                    </Label>
+                    <Switch
+                      id="biometric-toggle-edit"
+                      checked={form.biometricEnabled === true}
+                      onCheckedChange={(checked) => {
+                        const defaultMappings: BiometricDeviceMapping[] = (form.biometricMappings && form.biometricMappings.length > 0)
+                          ? form.biometricMappings
+                          : [{
+                              id: "bm-" + Date.now(),
+                              deviceSn: (devices && devices[0]?.serialNumber) || "",
+                              biometricEmpCode: form.empCode || "",
+                              deviceName: (devices && devices[0]?.name) || "",
+                            }];
+                        setForm({
+                          ...form,
+                          biometricEnabled: checked,
+                          biometricMappings: checked ? defaultMappings : form.biometricMappings,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {form.biometricEnabled && (
+                  <div className="space-y-3 pt-2 border-t border-border/50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Assigned Biometric Terminals ({form.biometricMappings?.length || 0})
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                        onClick={() => {
+                          const newMapping: BiometricDeviceMapping = {
+                            id: "bm-" + Date.now(),
+                            deviceSn: (devices && devices[0]?.serialNumber) || "",
+                            biometricEmpCode: form.empCode || "",
+                            deviceName: (devices && devices[0]?.name) || "",
+                          };
+                          setForm({
+                            ...form,
+                            biometricMappings: [...(form.biometricMappings || []), newMapping],
+                          });
+                        }}
+                      >
+                        <Plus className="h-3 w-3" /> Add Another Biometric Device
+                      </Button>
+                    </div>
+
+                    {(!form.biometricMappings || form.biometricMappings.length === 0) ? (
+                      <div className="p-4 rounded-xl border border-dashed text-xs text-muted-foreground text-center">
+                        No biometric devices mapped yet. Click "+ Add Another Biometric Device" to link this employee to a terminal.
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {form.biometricMappings.map((m, idx) => (
+                          <div key={m.id || idx} className="p-3 rounded-xl border border-border/80 bg-muted/20 hover:bg-muted/30 transition-all space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
+                                <Fingerprint className="h-3.5 w-3.5 text-primary" /> Biometric Device #{idx + 1}
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => {
+                                  const next = (form.biometricMappings || []).filter((_, i) => i !== idx);
+                                  setForm({ ...form, biometricMappings: next });
+                                }}
+                                title="Remove Device Mapping"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                              <div>
+                                <Label className="text-[11px] font-medium">Device Serial Number (SN) *</Label>
+                                <div className="space-y-1">
+                                  <Input
+                                    placeholder="e.g. SN-ZK101"
+                                    value={m.deviceSn || ""}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      const matchedDev = (devices || []).find((d: Device) => d.serialNumber === val);
+                                      const next = [...(form.biometricMappings || [])];
+                                      next[idx] = {
+                                        ...next[idx],
+                                        deviceSn: val,
+                                        deviceName: matchedDev ? matchedDev.name : next[idx].deviceName,
+                                      };
+                                      setForm({ ...form, biometricMappings: next });
+                                    }}
+                                    className="h-8 text-xs font-mono"
+                                  />
+                                  {(devices || []).length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      {(devices || []).slice(0, 3).map((d: Device) => (
+                                        <button
+                                          key={d.id}
+                                          type="button"
+                                          onClick={() => {
+                                            const next = [...(form.biometricMappings || [])];
+                                            next[idx] = { ...next[idx], deviceSn: d.serialNumber, deviceName: d.name };
+                                            setForm({ ...form, biometricMappings: next });
+                                          }}
+                                          className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-background hover:bg-muted font-mono"
+                                        >
+                                          {d.name ? `${d.name} (${d.serialNumber})` : d.serialNumber}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div>
+                                <Label className="text-[11px] font-medium">Employee Code on Biometric *</Label>
+                                <Input
+                                  placeholder="e.g. 101 or User PIN"
+                                  value={m.biometricEmpCode || ""}
+                                  onChange={(e) => {
+                                    const next = [...(form.biometricMappings || [])];
+                                    next[idx] = { ...next[idx], biometricEmpCode: e.target.value };
+                                    setForm({ ...form, biometricMappings: next });
+                                  }}
+                                  className="h-8 text-xs font-mono font-semibold text-primary"
+                                />
+                                <p className="text-[9.5px] text-muted-foreground mt-0.5">Machine User ID / PIN</p>
+                              </div>
+
+                              <div>
+                                <Label className="text-[11px] font-medium">Device Label / Location (Optional)</Label>
+                                <Input
+                                  placeholder="e.g. Main Gate Terminal"
+                                  value={m.deviceName || ""}
+                                  onChange={(e) => {
+                                    const next = [...(form.biometricMappings || [])];
+                                    next[idx] = { ...next[idx], deviceName: e.target.value };
+                                    setForm({ ...form, biometricMappings: next });
+                                  }}
+                                  className="h-8 text-xs"
+                                />
+                                <p className="text-[9.5px] text-muted-foreground mt-0.5">Friendly machine name</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="rounded-2xl border border-border bg-card p-4 space-y-3">

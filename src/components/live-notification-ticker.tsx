@@ -13,17 +13,55 @@ export type LiveTickerItem = {
   timestamp?: number;
 };
 
-function formatRelativeTime(dateStr?: string | number): string {
+function formatRelativeTime(dateStr?: string | number, fallbackTimeStr?: string): string {
   if (!dateStr) return "Just now";
-  const now = Date.now();
-  const time = typeof dateStr === "number" ? dateStr : new Date(dateStr).getTime();
-  if (isNaN(time)) return "Recently";
-  const diffMinutes = Math.max(1, Math.round((now - time) / 60000));
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.round(diffHours / 24);
-  return `${diffDays}d ago`;
+  let ts = typeof dateStr === "number" ? dateStr : 0;
+  if (!ts) {
+    const trimmed = String(dateStr).trim();
+    if (trimmed.includes("T")) {
+      const d = new Date(trimmed);
+      ts = !isNaN(d.getTime()) ? d.getTime() : 0;
+    } else {
+      const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (match) {
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1;
+        const day = parseInt(match[3], 10);
+        let hours = 10;
+        let minutes = 0;
+        if (fallbackTimeStr && fallbackTimeStr.includes(":")) {
+          const parts = fallbackTimeStr.split(":");
+          hours = parseInt(parts[0], 10) || 10;
+          minutes = parseInt(parts[1], 10) || 0;
+        }
+        const d = new Date(year, month, day, hours, minutes, 0, 0);
+        ts = d.getTime();
+      } else {
+        const d = new Date(trimmed);
+        ts = !isNaN(d.getTime()) ? d.getTime() : Date.now();
+      }
+    }
+  }
+
+  const d = new Date(ts);
+  const now = new Date();
+  const startOfNow = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfItem = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffCalendarDays = Math.round((startOfNow - startOfItem) / (1000 * 60 * 60 * 24));
+
+  const diffMs = Math.max(0, now.getTime() - d.getTime());
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+  if (diffCalendarDays === 0) {
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    return `${diffHours}h ago`;
+  }
+  if (diffCalendarDays === 1) return "Yesterday";
+  if (diffCalendarDays < 7) return `${diffCalendarDays}d ago`;
+  if (diffCalendarDays < 30) return `${Math.floor(diffCalendarDays / 7)}w ago`;
+  return `${Math.floor(diffCalendarDays / 30)}mo ago`;
 }
 
 export function LiveNotificationTicker() {
@@ -56,17 +94,18 @@ export function LiveNotificationTicker() {
   const liveItems = useMemo<LiveTickerItem[]>(() => {
     const items: LiveTickerItem[] = [];
 
-    // 1. Recent Employee Joiners
+    // 1. Recent Employee Joiners (if joined within the last 30 days)
     const sortedEmployees = [...employees].sort((a, b) => {
       const dateA = new Date((a as any).doj || (a as any).joiningDate || "2024-01-01").getTime();
       const dateB = new Date((b as any).doj || (b as any).joiningDate || "2024-01-01").getTime();
       return dateB - dateA;
     });
-    if (sortedEmployees[0]) {
+    if (sortedEmployees[0] && ((sortedEmployees[0] as any).doj || (sortedEmployees[0] as any).joiningDate)) {
+      const joinDate = (sortedEmployees[0] as any).doj || (sortedEmployees[0] as any).joiningDate;
       items.push({
         id: `emp-${sortedEmployees[0].id}`,
         title: `${sortedEmployees[0].name} joined the ${sortedEmployees[0].department || "Core"} Team`,
-        timeAgo: "2m ago",
+        timeAgo: formatRelativeTime(joinDate),
         link: "/admin/employees",
         type: "employee",
       });
@@ -88,53 +127,36 @@ export function LiveNotificationTicker() {
       });
     });
 
-    // 3. Processed Payroll or Advance
-    items.push({
-      id: "payroll-cycle-status",
-      title: "Payroll for current cycle processed & verified",
-      timeAgo: "8m ago",
-      link: "/admin/payroll",
-      type: "payroll",
-    });
-
-    // 4. Real-time Loans / Comp-Offs / Unified Requests
+    // 3. Real-time Loans / Comp-Offs / Unified Requests
     const sortedRequests = [...(requests || [])].reverse();
     sortedRequests.slice(0, 3).forEach((r) => {
       const emp = employees.find((e) => e.id === r.employeeId);
       const isApproved = (r.status || "").toLowerCase() === "approved";
-      const reqLabel = r.type === "compoff" ? "Comp-Off" : r.type === "loan" ? "Loan/Advance" : "Grievance";
+      const reqLabel = r.type === "compoff" ? "Comp-Off" : r.type === "loan" ? "Loan/Advance" : (r.type || "Request");
       items.push({
         id: `req-${r.id}`,
         title: isApproved
           ? `${reqLabel} approved for ${emp?.name || "Employee"}`
           : `New ${reqLabel} request from ${emp?.name || "Employee"}`,
         timeAgo: formatRelativeTime((r as any).createdAt || (r as any).date),
-        link: "/admin/approval-settings",
+        link: "/admin/requests",
         type: "request",
       });
     });
 
-    // 5. Notices / Company Policy Updates
+    // 4. Notices / Company Policy Updates
     const sortedNotices = [...(notices || [])].reverse();
-    if (sortedNotices[0]) {
+    sortedNotices.slice(0, 3).forEach((n) => {
       items.push({
-        id: `notice-${sortedNotices[0].id}`,
-        title: sortedNotices[0].title || "New HR policy published",
-        timeAgo: formatRelativeTime((sortedNotices[0] as any).createdAt || (sortedNotices[0] as any).date),
+        id: `notice-${n.id}`,
+        title: n.title || "Company Announcement",
+        timeAgo: formatRelativeTime((n as any).createdAt || (n as any).date),
         link: "/admin/notices",
         type: "notice",
       });
-    } else {
-      items.push({
-        id: "notice-default",
-        title: "New HR policy & quarterly guidelines published",
-        timeAgo: "15m ago",
-        link: "/admin/notices",
-        type: "notice",
-      });
-    }
+    });
 
-    // 6. Real-time Document Requests
+    // 5. Real-time Document Requests
     const sortedDocs = [...(docRequests || [])].reverse();
     sortedDocs.slice(0, 2).forEach((d) => {
       const emp = employees.find((e) => e.id === d.employeeId);
@@ -150,24 +172,16 @@ export function LiveNotificationTicker() {
       });
     });
 
-    // 7. General Holidays / Shift Roster
-    items.push({
-      id: "general-holiday-update",
-      title: "Upcoming company holiday & shift roster updated",
-      timeAgo: "25m ago",
-      link: "/admin/leave-calendar",
-      type: "notice",
-    });
-
     return items;
-  }, [employees, leaves, docRequests, notices, requests, payrolls]);
+  }, [employees, leaves, docRequests, notices, requests]);
 
   // Infinite duplicate list for seamless circular ticker loop
   const tickerItems = useMemo(() => {
+    if (liveItems.length === 0) return [];
     return [...liveItems, ...liveItems];
   }, [liveItems]);
 
-  if (!isEnabled) return null;
+  if (!isEnabled || liveItems.length === 0) return null;
 
   return (
     <div
