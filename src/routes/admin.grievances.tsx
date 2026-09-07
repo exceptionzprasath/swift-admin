@@ -311,6 +311,12 @@ function GrievancesPage() {
                 <div className="mt-3">
                   <h4 className="font-semibold text-sm text-foreground line-clamp-1">{t.subject}</h4>
                   <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{t.description}</p>
+                  {(t.fromDate || t.toDate || t.incidentDate) && (
+                    <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-primary/10 text-primary border border-primary/20">
+                      <Calendar className="h-3 w-3" />
+                      <span>Incident: {t.fromDate === t.toDate ? t.fromDate : `${t.fromDate || t.incidentDate} to ${t.toDate || t.incidentDate}`}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -370,12 +376,20 @@ function GrievancesPage() {
                 {selectedTicket.subject}
               </h3>
 
-              <div className="text-xs text-muted-foreground mt-1 flex items-center gap-3">
+              <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-3">
                 <span>Raised by <b className="text-foreground">{selectedTicket.employeeName}</b> ({selectedTicket.empCode})</span>
                 <span>•</span>
                 <span>{selectedTicket.department}</span>
                 <span>•</span>
-                <span>{new Date(selectedTicket.createdAt).toLocaleDateString()}</span>
+                <span>Raised: {new Date(selectedTicket.createdAt).toLocaleDateString()}</span>
+                {(selectedTicket.fromDate || selectedTicket.toDate || selectedTicket.incidentDate) && (
+                  <>
+                    <span>•</span>
+                    <span className="font-semibold text-primary">
+                      Incident: {selectedTicket.fromDate === selectedTicket.toDate ? selectedTicket.fromDate : `${selectedTicket.fromDate || selectedTicket.incidentDate} to ${selectedTicket.toDate || selectedTicket.incidentDate}`}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 

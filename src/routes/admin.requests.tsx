@@ -178,6 +178,17 @@ function UnifiedRequestsHubPage() {
 
     // 1. Unified Engine Requests (Loans, Comp-off, General, etc.)
     (requests || []).forEach((r) => {
+      // Avoid duplicate entries if grievance/leave/document is already in its dedicated table
+      if (r.category === "grievance") {
+        return;
+      }
+      if (r.category === "leave" && leaves.some((l) => l.id === r.id)) {
+        return;
+      }
+      if (r.category === "document" && docRequests.some((d) => d.id === r.id)) {
+        return;
+      }
+
       const emp = empMap.get(r.employeeId) || empMap.get(r.empCode || "");
       let normStatus: NormalizedRequest["status"] = "Pending";
       const rawStatus = (r.status || "Pending").toLowerCase();
@@ -320,8 +331,8 @@ function UnifiedRequestsHubPage() {
         type: `Grievance: ${g.category || "General"}`,
         title: g.subject || g.ticketNumber || "Helpdesk Ticket",
         amountOrDays: g.priority || "Medium",
-        details: g.description || "",
-        dateStr: g.createdAt ? g.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        details: `${g.description || ""}${g.fromDate ? ` • Incident: ${g.fromDate === g.toDate ? g.fromDate : `${g.fromDate} to ${g.toDate}`}` : ""}`,
+        dateStr: g.fromDate || (g.createdAt ? g.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10)),
         status: normStatus,
         currentLevel: 1,
         totalLevels: 1,

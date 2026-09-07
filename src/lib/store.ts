@@ -922,6 +922,9 @@ export type GrievanceTicket = {
   assignedToName?: string;
   subject: string;
   description: string;
+  fromDate?: string;
+  toDate?: string;
+  incidentDate?: string;
   attachments?: string[];
   status: "Open" | "In Progress" | "Resolved" | "Rejected";
   resolutionNote?: string;

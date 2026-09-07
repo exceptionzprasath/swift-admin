@@ -498,7 +498,7 @@ export function PayrollPage() {
 
       // Salary is prorated strictly on present/worked days (Weekoff is purely informative metadata on payslip)
       const basePresentDays = rawPresentDays + daysLeave;
-      const effectiveDaysWorked = ov.daysWorked !== undefined ? ov.daysWorked : (basePresentDays > 0 ? basePresentDays : wd);
+      const effectiveDaysWorked = ov.daysWorked !== undefined ? ov.daysWorked : basePresentDays;
 
       const effectiveCompany: Company = {
         ...company,
