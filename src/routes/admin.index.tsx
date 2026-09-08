@@ -1,11 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { useStore } from "@/lib/store";
+import { useStore, isMockEmployee } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { motion } from "framer-motion";
 import {
   Users,
-  CalendarCheck,
   IndianRupee,
   Clock,
   ArrowUpRight,
@@ -17,11 +16,17 @@ import {
   Building2,
   Calendar,
   Filter,
+  UserX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NoticeBoard } from "@/components/notice-board";
 import { LiveNotificationTicker } from "@/components/live-notification-ticker";
 import { DashboardHeroCarousel } from "@/components/dashboard-hero-carousel";
+import {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+} from "@/components/ui/hover-card";
 import {
   ResponsiveContainer,
   BarChart,
@@ -41,13 +46,79 @@ export const Route = createFileRoute("/admin/")({
 });
 
 function Dashboard() {
-  const { employees, attendance, company, payrolls, currentUser, leaves, docRequests } = useStore();
+  const { employees: rawEmployees, attendance, company, payrolls, currentUser, leaves, docRequests } = useStore();
   const [ticketFilter, setTicketFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
 
+  const employees = (rawEmployees || []).filter((e) => !isMockEmployee(e));
+
   const today = new Date().toISOString().slice(0, 10);
-  const todaysAtt = attendance.filter((a) => a.date === today);
-  const present = todaysAtt.filter((a) => a.status === "present" || a.status === "half-day").length;
-  const attendanceRate = employees.length > 0 ? Math.round((present / employees.length) * 100) : 100;
+  const todaysAtt = (attendance || []).filter((a) => a.date === today);
+
+  // Present employees today: punched in or status present/half-day
+  const presentEmpIds = new Set(
+    todaysAtt
+      .filter((a) => a.status === "present" || a.status === "half-day" || a.status === "halfday" || a.checkIn || a.clockIn)
+      .map((a) => a.employeeId || a.employeeName)
+  );
+
+  // Approved leave employees today:
+  const todayApprovedLeaves = (leaves || []).filter((l) => {
+    const isApproved = (l.status || "").toLowerCase() === "approved";
+    const from = l.from || (l as any).startDate || "";
+    const to = l.to || (l as any).endDate || "";
+    return isApproved && today >= from && today <= to;
+  });
+  const leaveEmpMap = new Map(todayApprovedLeaves.map((l) => [l.employeeId, l]));
+
+  // Absent employees list with full real metadata
+  const todayAbsentees = employees
+    .filter((emp) => {
+      const isPresent =
+        presentEmpIds.has(emp.id) ||
+        presentEmpIds.has(emp.name) ||
+        todaysAtt.some(
+          (a) =>
+            (a.employeeId === emp.id || (a.employeeName && a.employeeName.toLowerCase() === emp.name.toLowerCase())) &&
+            (a.status === "present" || a.status === "half-day" || a.status === "halfday" || a.checkIn || a.clockIn)
+        );
+      return !isPresent;
+    })
+    .map((emp) => {
+      const leave = leaveEmpMap.get(emp.id);
+      const att = todaysAtt.find(
+        (a) => a.employeeId === emp.id || (a.employeeName && a.employeeName.toLowerCase() === emp.name.toLowerCase())
+      );
+
+      let statusText = "Not Clocked In";
+      let badgeStyle = "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20";
+
+      if (leave) {
+        statusText = `On Leave (${leave.type || "Approved"})`;
+        badgeStyle = "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+      } else if (att?.status === "absent") {
+        statusText = "Marked Absent";
+        badgeStyle = "bg-destructive/10 text-destructive border-destructive/20";
+      }
+
+      return {
+        id: emp.id,
+        name: emp.name,
+        empCode: emp.empCode || emp.id,
+        department: emp.department || "General",
+        designation: emp.designation || emp.role || "Staff",
+        avatar: emp.avatar,
+        statusText,
+        badgeStyle,
+        isLeave: Boolean(leave),
+      };
+    });
+
+  const formattedDate = new Date().toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
   const pendingLeaves = (leaves || []).filter(
     (l) => (l.status || "pending").toLowerCase() === "pending"
@@ -80,6 +151,7 @@ function Dashboard() {
       bgClass: "bg-kpi-1 text-kpi-1-foreground",
       icon: IndianRupee,
       link: "/admin/payroll",
+      isAbsentees: false,
     },
     {
       label: "Total Employees",
@@ -87,13 +159,15 @@ function Dashboard() {
       bgClass: "bg-kpi-2 text-kpi-2-foreground",
       icon: Users,
       link: "/admin/employees",
+      isAbsentees: false,
     },
     {
-      label: "Active Attendance",
-      value: `${attendanceRate}%`,
+      label: "Today's Absentees",
+      value: todayAbsentees.length.toString(),
       bgClass: "bg-kpi-3 text-kpi-3-foreground",
-      icon: CalendarCheck,
+      icon: UserX,
       link: "/admin/attendance",
+      isAbsentees: true,
     },
     {
       label: "Pending Requests",
@@ -101,6 +175,7 @@ function Dashboard() {
       bgClass: "bg-kpi-4 text-kpi-4-foreground",
       icon: Clock,
       link: "/admin/leave-calendar",
+      isAbsentees: false,
     },
   ];
 
@@ -218,27 +293,138 @@ function Dashboard() {
 
       {/* TOP ROW: 4 Distinctive Palette KPI Cards matching NexaVerse reference */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpiCards.map((c, i) => (
-          <motion.div
-            key={c.label}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className={`rounded-none p-5 sm:p-6 shadow-xs flex flex-col justify-between min-h-[135px] transition-transform hover:-translate-y-0.5 cursor-pointer ${c.bgClass}`}
-          >
-            <Link to={c.link} className="flex flex-col justify-between h-full">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold tracking-wide uppercase opacity-85">
-                  {c.label}
-                </span>
-                <c.icon className="h-4 w-4 opacity-75" />
-              </div>
-              <div className="font-display text-3xl sm:text-4xl font-bold tracking-tight mt-3">
-                {c.value}
-              </div>
-            </Link>
-          </motion.div>
-        ))}
+        {kpiCards.map((c, i) => {
+          const cardContent = (
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+              className={`group relative rounded-none p-5 sm:p-6 shadow-xs flex flex-col justify-between min-h-[135px] transition-transform hover:-translate-y-0.5 cursor-pointer ${c.bgClass}`}
+            >
+              <Link to={c.link} className="flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold tracking-wide uppercase opacity-85">
+                    {c.label}
+                  </span>
+                  <div className="flex items-center gap-1.5 opacity-75">
+                    {c.isAbsentees && (
+                      <span className="text-[10px] font-medium tracking-normal opacity-90 underline decoration-dotted underline-offset-2">
+                        Hover details
+                      </span>
+                    )}
+                    <c.icon className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="flex items-baseline justify-between mt-3">
+                  <div className="font-display text-3xl sm:text-4xl font-bold tracking-tight">
+                    {c.value}
+                  </div>
+                  {c.isAbsentees && (
+                    <span className="text-xs opacity-80 font-medium">
+                      {employees.length - todayAbsentees.length}/{employees.length} present
+                    </span>
+                  )}
+                </div>
+              </Link>
+            </motion.div>
+          );
+
+          if (c.isAbsentees) {
+            return (
+              <HoverCard key={c.label} openDelay={100} closeDelay={200}>
+                <HoverCardTrigger asChild>
+                  {cardContent}
+                </HoverCardTrigger>
+                <HoverCardContent
+                  side="bottom"
+                  align="start"
+                  sideOffset={8}
+                  className="w-80 sm:w-96 p-0 overflow-hidden rounded-xl border border-border/80 bg-popover/95 backdrop-blur-md shadow-2xl z-50 text-popover-foreground"
+                >
+                  {/* Header */}
+                  <div className="p-3.5 bg-muted/40 border-b border-border/60 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center font-semibold text-xs">
+                        <UserX className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-foreground leading-tight">
+                          Today's Absentees
+                        </h4>
+                        <p className="text-[10px] text-muted-foreground">
+                          {formattedDate}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                      {todayAbsentees.length} Absent
+                    </span>
+                  </div>
+
+                  {/* List of absent employees */}
+                  <div className="max-h-72 overflow-y-auto divide-y divide-border/40 p-1">
+                    {todayAbsentees.length === 0 ? (
+                      <div className="py-6 px-4 text-center">
+                        <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-1.5 opacity-90" />
+                        <p className="text-xs font-semibold text-foreground">100% Attendance Today!</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          All {employees.length} employees are present or checked in.
+                        </p>
+                      </div>
+                    ) : (
+                      todayAbsentees.map((emp) => {
+                        const initials = (emp.name || "E")
+                          .split(" ")
+                          .map((n: string) => n[0])
+                          .slice(0, 2)
+                          .join("")
+                          .toUpperCase();
+
+                        return (
+                          <div
+                            key={emp.id}
+                            className="flex items-center justify-between gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-semibold text-xs flex items-center justify-center shrink-0 border border-primary/20">
+                                {initials}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-foreground truncate">
+                                  {emp.name}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground truncate">
+                                  <span className="font-mono">{emp.empCode}</span> · {emp.department}
+                                </p>
+                              </div>
+                            </div>
+                            <span
+                              className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-md border ${emp.badgeStyle}`}
+                            >
+                              {emp.statusText}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Footer link to attendance page */}
+                  <div className="p-2.5 bg-muted/20 border-t border-border/60 text-center">
+                    <Link
+                      to="/admin/attendance"
+                      className="text-[11px] font-medium text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      Open Live Attendance Dossier <ChevronRight className="h-3 w-3" />
+                    </Link>
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
+            );
+          }
+
+          return <div key={c.label}>{cardContent}</div>;
+        })}
       </div>
 
       {/* MIDDLE ROW: 3-Column Architecture matching NexaVerse (Trend, Donut, Recent Transactions) */}
