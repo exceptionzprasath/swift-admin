@@ -64,6 +64,8 @@ function SwiftAiCommandCenter() {
 
   const hasConversation = messages.some((m) => m.role === "user");
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement>(null);
+  const latestMessageRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const checkStatus = useServerFn(checkOpenAiStatus);
 
@@ -93,11 +95,46 @@ function SwiftAiCommandCenter() {
     };
   }, [checkStatus, setApiStatus]);
 
-  // Auto-scroll to latest message
+  // Smooth ChatGPT-style Auto-scroll to AI answer
   useEffect(() => {
-    if (hasConversation) {
-      scrollerRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
-    }
+    if (!hasConversation) return;
+
+    const performSmoothScroll = () => {
+      // 1. Scroll inner container so the bottom anchor is in view
+      if (bottomAnchorRef.current) {
+        bottomAnchorRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
+      } else if (scrollerRef.current) {
+        scrollerRef.current.scrollTo({
+          top: scrollerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+
+      // 2. Prevent page-level scroll drift on outer <main> container
+      const mainEl = scrollerRef.current?.closest("main");
+      if (mainEl && mainEl.scrollTop > 0) {
+        mainEl.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    };
+
+    // Trigger immediate smooth scroll
+    performSmoothScroll();
+
+    // Multi-frame timeouts to follow markdown tables, badges, and cards as they paint
+    const t1 = setTimeout(performSmoothScroll, 50);
+    const t2 = setTimeout(performSmoothScroll, 160);
+    const t3 = setTimeout(performSmoothScroll, 320);
+    const t4 = setTimeout(performSmoothScroll, 600);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
   }, [messages, busy, hasConversation]);
 
   const pingOpenAi = async () => {
@@ -342,9 +379,9 @@ function SwiftAiCommandCenter() {
   };
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-100px)] max-w-7xl mx-auto">
+    <div className="flex flex-col h-[calc(100vh-5.5rem)] max-w-7xl mx-auto">
       {/* Minimal Top Navigation Bar */}
-      <header className="flex items-center justify-between gap-4 py-3 px-2 mb-2 border-b border-border/40">
+      <header className="flex items-center justify-between gap-4 py-3 px-2 mb-2 border-b border-border/40 shrink-0">
         <div className="flex items-center gap-3">
           <div className="h-9 w-9 rounded-2xl bg-gradient-brand flex items-center justify-center p-1 shadow-sm shrink-0">
             <Lottie animationData={chatbotAnimation} loop={true} className="w-full h-full object-contain scale-110" />
@@ -443,14 +480,17 @@ function SwiftAiCommandCenter() {
         </div>
       ) : (
         /* ==================== Active Conversation View ==================== */
-        <div className="flex-1 flex flex-col h-[calc(100vh-140px)] bg-card/40 border border-border/70 rounded-3xl overflow-hidden shadow-soft animate-in fade-in duration-200">
+        <div className="flex-1 min-h-0 flex flex-col bg-card/40 border border-border/70 rounded-3xl overflow-hidden shadow-soft animate-in fade-in duration-200">
           {/* Chat Scroller */}
-          <div ref={scrollerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 max-w-4xl mx-auto w-full">
-            {messages.map((msg) => {
+          <div ref={scrollerRef} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 max-w-4xl mx-auto w-full scroll-smooth">
+            {messages.map((msg, idx) => {
               const isUser = msg.role === "user";
+              const isLast = idx === messages.length - 1;
+
               return (
                 <motion.div
                   key={msg.id}
+                  ref={isLast ? latestMessageRef : undefined}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.2 }}
@@ -563,6 +603,9 @@ function SwiftAiCommandCenter() {
                 </div>
               </motion.div>
             )}
+
+            {/* Bottom Anchor for Smooth Scrolling */}
+            <div ref={bottomAnchorRef} className="h-6 w-full shrink-0" />
           </div>
 
           {/* Quick Suggestions Pills (Above bottom input) */}
