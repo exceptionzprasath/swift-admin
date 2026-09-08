@@ -367,15 +367,18 @@ function SwiftAiCommandCenter() {
                       </div>
                     )}
 
-                    {/* Download PDF button on report answers */}
-                    {msg.downloadQuery && !msg.isFormatPrompt && (
-                      <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between gap-3">
-                        <span className="text-[11px] text-muted-foreground">Export as official branded document</span>
+                    {/* Download as PDF format option on each and every AI response */}
+                    {!isUser && !msg.isFormatPrompt && (
+                      <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between gap-3 flex-wrap">
+                        <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                          <FileText className="h-3.5 w-3.5 text-primary/80" /> Export as official document
+                        </span>
                         <button
-                          onClick={() => handleGeneratePdfForQuery(msg.downloadQuery!, msg.content)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition cursor-pointer active:scale-95"
+                          onClick={() => handleGeneratePdfForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition cursor-pointer active:scale-95 border border-primary/20 shadow-2xs hover:shadow-xs"
+                          title="Download as PDF format"
                         >
-                          <Download className="h-3.5 w-3.5" /> Download PDF Report
+                          <Download className="h-3.5 w-3.5" /> Download as PDF format
                         </button>
                       </div>
                     )}

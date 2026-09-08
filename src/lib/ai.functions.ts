@@ -192,6 +192,53 @@ function getOpenAiKey(): string {
   return "";
 }
 
+// Compact serializer to keep payload size ultra-small (~1.5k chars vs 60k chars)
+function formatCompactSnapshot(snapshot: any): string {
+  if (!snapshot || typeof snapshot !== "object") return "";
+
+  const lines: string[] = [];
+  const tenant = snapshot.tenant;
+  if (tenant) {
+    lines.push(`TENANT: ${tenant.name || "Inkpen Erode"} (Legal: ${tenant.legalName || tenant.name || ""})`);
+  }
+  lines.push(`DATE: ${snapshot.today || new Date().toISOString().slice(0, 10)}`);
+
+  if (snapshot.headcount) {
+    lines.push(`HEADCOUNT: Total ${snapshot.headcount.total || 0}, Active ${snapshot.headcount.active || 0}, Inactive ${snapshot.headcount.inactive || 0}`);
+  }
+
+  if (snapshot.attendance) {
+    const today = snapshot.attendance.today || {};
+    lines.push(`TODAY ATTENDANCE: Present: ${today.present || 0}, Absent: ${today.absent || 0}, Late: ${today.late || 0}, On Leave: ${today.leave || 0}`);
+
+    const monthly = snapshot.attendance.monthlyReport;
+    if (monthly) {
+      lines.push(`MONTHLY ATTENDANCE: Period: ${monthly.period || "Last 30 Days"}, Rate: ${monthly.overallAttendanceRatePct || 0}%, Present Punches: ${monthly.totalPresentPunches || 0}, Overtime: ${monthly.totalOtHoursCompany || 0} hrs`);
+      if (monthly.topAttendanceEmployees?.length) {
+        lines.push(`TOP ATTENDEES: ${monthly.topAttendanceEmployees.map((t: any) => `${t.name} (${t.pct}%)`).join(", ")}`);
+      }
+      if (monthly.frequentLateEmployees?.length) {
+        lines.push(`FREQUENT LATE: ${monthly.frequentLateEmployees.map((l: any) => `${l.name} (${l.count} late)`).join(", ")}`);
+      }
+      if (monthly.employeeBreakdown?.length) {
+        lines.push(`MONTHLY ATTENDANCE BREAKDOWN:`);
+        for (const b of monthly.employeeBreakdown) {
+          lines.push(`- ${b.name} (${b.empCode}) | Dept: ${b.department || "General"} | Working: ${b.workingDays} | Present: ${b.presentDays} | Absent: ${b.absentDays} | Leave: ${b.leaveDays} | Late: ${b.lateDays} | Rate: ${b.attendancePercentage}%`);
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(snapshot.employees) && snapshot.employees.length > 0) {
+    lines.push(`EMPLOYEES LIST:`);
+    for (const e of snapshot.employees) {
+      lines.push(`- ${e.name} (${e.empCode}) | Dept: ${e.department || "General"} | Desig: ${e.designation || "Staff"} | Monthly CTC: ₹${e.monthlyCtc || e.basicSalary || 0} | Status: ${e.status || "active"}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 export const askSwiftAi = createServerFn({ method: "POST" })
   .validator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }) => {
@@ -218,9 +265,9 @@ export const askSwiftAi = createServerFn({ method: "POST" })
 
     const selectedModel = data.model || "gpt-4o-mini";
 
-    // 2. Data Protection: Sanitize snapshot to strip any passwords, tokens, or secret keys
+    // 2. Data Protection & Speed: Sanitize snapshot and build compact context
     const cleanSnapshot = sanitizeSnapshotData(data.snapshot);
-    const snapshotJson = JSON.stringify(cleanSnapshot).slice(0, 60000);
+    const compactContext = formatCompactSnapshot(cleanSnapshot);
 
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -233,10 +280,10 @@ export const askSwiftAi = createServerFn({ method: "POST" })
           model: selectedModel,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
-            { role: "system", content: `Tenant snapshot (JSON):\n${snapshotJson}` },
+            { role: "system", content: `Tenant Context:\n${compactContext}` },
             ...data.messages,
           ],
-          temperature: 0.3, // Lower temperature for high factual accuracy
+          temperature: 0.2, // Low temperature for high factual accuracy and speed
         }),
       });
 

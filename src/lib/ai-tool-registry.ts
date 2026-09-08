@@ -121,7 +121,7 @@ export class AIToolRegistry {
     }
     if (actionId) this.executedActionIds.add(actionId);
 
-    const lower = query.toLowerCase();
+    const lower = `${query} ${rawContent || ""}`.toLowerCase();
     const snapshot = buildEnterpriseSnapshot({
       company: context.company,
       employees: context.employees,
@@ -137,15 +137,15 @@ export class AIToolRegistry {
     let filename = `SWIFT_AI_Report_${Date.now()}.pdf`;
     let title = "SWIFT AI HRMS Report";
 
-    if (lower.includes("attendance")) {
+    if (lower.includes("attendance") || lower.includes("absent") || lower.includes("present punches") || lower.includes("punctuality")) {
       blob = generateAttendancePdf(context.company, snapshot.attendance.monthlyReport, snapshot.attendance.todayLiveRoster);
       filename = `Attendance_Report_${snapshot.today}.pdf`;
       title = `Attendance Report — ${snapshot.today}`;
-    } else if (lower.includes("salary") || lower.includes("ctc") || lower.includes("payroll")) {
+    } else if (lower.includes("salary") || lower.includes("ctc") || lower.includes("payroll") || lower.includes("compensation")) {
       blob = generateSalaryPdf(context.company, snapshot.employees);
       filename = `Salary_Summary_${snapshot.today}.pdf`;
       title = `Salary & Payroll Summary — ${snapshot.today}`;
-    } else if (lower.includes("employee") || lower.includes("staff")) {
+    } else if (lower.includes("employee") || lower.includes("staff") || lower.includes("directory")) {
       blob = generateEmployeesPdf(context.company, snapshot.employees);
       filename = `Employee_Master_Registry_${snapshot.today}.pdf`;
       title = `Employee Master Registry — ${snapshot.today}`;

@@ -27,6 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface AIResponseRendererProps {
   message: AIMessage;
@@ -526,15 +527,19 @@ function NoDataCard({
 /* 9. SANITIZED MARKDOWN WITH CLEAN TABLES                                   */
 /* ========================================================================= */
 function MarkdownMessageContent({ content, isUser }: { content: string; isUser: boolean }) {
-  // Pre-process raw pipe tables if malformed with double pipes
-  const cleanedContent = (content || "").replace(/\|\|+/g, " | ");
+  // 1. Separate table rows: whenever two pipes meet (closing of previous row and opening of next), insert newline
+  let cleanedContent = (content || "").replace(/\|\s*\|/g, "|\n|");
+
+  // 2. Ensure bullet points on the same line have newlines before them
+  cleanedContent = cleanedContent.replace(/([^\n])\s*[•●]\s+/g, (_m, prefix) => `${prefix}\n\n• `);
 
   return (
     <div className={`prose prose-sm max-w-none ${isUser ? "prose-invert" : "dark:prose-invert"}`}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           table: ({ children }) => (
-            <div className="overflow-x-auto my-3 rounded-2xl border border-border/80 bg-background/90 shadow-xs">
+            <div className="overflow-x-auto my-3 rounded-xl border border-border/80 bg-background/95 shadow-xs">
               <table className="w-full text-left text-xs border-collapse divide-y divide-border/60">
                 {children}
               </table>
@@ -542,7 +547,7 @@ function MarkdownMessageContent({ content, isUser }: { content: string; isUser: 
           ),
           thead: ({ children }) => <thead className="bg-muted/80">{children}</thead>,
           th: ({ children }) => (
-            <th className="font-semibold px-3.5 py-2 text-foreground text-[11px] whitespace-nowrap">
+            <th className="font-semibold px-3.5 py-2 text-foreground text-[11px] whitespace-nowrap bg-muted/60">
               {children}
             </th>
           ),

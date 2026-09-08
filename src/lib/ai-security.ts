@@ -151,8 +151,9 @@ export function sanitizeModelOutput(output: string): string {
   }
 
   // Auto-correct concatenated table pipes into clean multiline table rows
-  sanitized = sanitized.replace(/\|\s*\|\s*([-\w\u0900-\u0DFF])/g, "|\n| $1");
-  sanitized = sanitized.replace(/\|\s*\|\s*---/g, "|\n|---");
+  sanitized = sanitized.replace(/\|\s*\|/g, "|\n|");
+  // Ensure bullets break cleanly onto newlines
+  sanitized = sanitized.replace(/([^\n])\s*[•●]\s+/g, (_m, p1) => `${p1}\n\n• `);
 
   return sanitized;
 }

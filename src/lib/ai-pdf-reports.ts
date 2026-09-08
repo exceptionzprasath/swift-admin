@@ -130,7 +130,7 @@ export function generateAttendancePdf(company: CompanyContext, monthlyReport: an
     e.name || "N/A",
     e.empCode || "N/A",
     e.department || "General",
-    e.totalWorkingDays ?? 26,
+    e.workingDays ?? e.totalWorkingDays ?? 26,
     e.presentDays ?? (e.isPresent ? 1 : 0),
     e.absentDays ?? (e.isAbsentOrNotPunched ? 1 : 0),
     e.leaveDays ?? 0,
@@ -204,7 +204,23 @@ export function generateAiReportPdf(title: string, markdownContent: string, comp
 
   const lines = markdownContent.split("\n");
   const tableLines = lines.filter((l) => l.trim().startsWith("|") && l.includes("|"));
+  const nonTableLines = lines.filter((l) => !l.trim().startsWith("|") || !l.includes("|"));
 
+  let currentY = 50;
+
+  // Render text before/around table
+  const cleanIntro = nonTableLines.join("\n").replace(/[*_#`]/g, "").trim();
+  if (cleanIntro) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(30, 41, 59);
+    const splitLines = doc.splitTextToSize(cleanIntro, 180);
+    const linesToPrint = tableLines.length >= 3 ? splitLines.slice(0, 18) : splitLines;
+    doc.text(linesToPrint, 14, currentY);
+    currentY += linesToPrint.length * 5 + 6;
+  }
+
+  // Render table if present
   if (tableLines.length >= 3) {
     const rawHead = tableLines[0].split("|").map((c) => c.trim()).filter(Boolean);
     const rawRows = tableLines.slice(2).map((row) =>
@@ -212,7 +228,7 @@ export function generateAiReportPdf(title: string, markdownContent: string, comp
     );
 
     autoTable(doc, {
-      startY: 52,
+      startY: Math.min(currentY, 120),
       head: [rawHead],
       body: rawRows,
       theme: "grid",
@@ -221,13 +237,6 @@ export function generateAiReportPdf(title: string, markdownContent: string, comp
       alternateRowStyles: { fillColor: [248, 250, 252] },
       margin: { left: 14, right: 14 },
     });
-  } else {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9.5);
-    doc.setTextColor(30, 41, 59);
-    const cleanText = markdownContent.replace(/[*_#`|]/g, "").replace(/\n{2,}/g, "\n\n");
-    const splitLines = doc.splitTextToSize(cleanText, 180);
-    doc.text(splitLines, 14, 55);
   }
 
   drawFooter(doc, title);

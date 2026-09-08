@@ -267,8 +267,8 @@ export class AIQueryEngine {
     }
 
     // 2e. Specific Employee Attendance: e.g. "give me manoj's last month attendance details", "Show Hari's attendance", "Manoj attendance"
-    const isAttendanceQuery = /\b(attendance|present\s+days|absent\s+days|check\s*in\s+status|last\s+month\s+attendance|this\s+month\s+attendance)\b/i.test(query);
-    if (isAttendanceQuery && !/\b(who\s+is\s+absent|who\s+is\s+present|who\s+is\s+late|summary|overview)\b/i.test(query)) {
+    const isAttendanceQuery = /\b(attendance|present\s+days|absent\s+days|absent(?:ees?)?|check\s*in\s+status|last\s+month|this\s+month|punches?)\b/i.test(query);
+    if (isAttendanceQuery && !/\b(who\s+is\s+absent|who\s+is\s+present|who\s+is\s+late)\b/i.test(query)) {
       // Find all matching employees mentioned in the query
       const matchingEmps = employees.filter((e) => {
         const nName = normalize(e.name);
@@ -279,7 +279,7 @@ export class AIQueryEngine {
         if (query.includes(nName) || query.includes(nCode)) return true;
         if (parts.some((p) => new RegExp(`\\b${p}\\b`, "i").test(query))) return true;
         // Check if employee name includes any standalone word in query
-        const queryWords = query.split(" ").filter((w) => w.length >= 3 && !["give", "show", "tell", "details", "last", "month", "this", "attendance", "what", "with", "from", "report"].includes(w));
+        const queryWords = query.split(" ").filter((w) => w.length >= 3 && !["give", "show", "tell", "details", "last", "month", "this", "attendance", "absent", "absentees", "absentee", "what", "with", "from", "report", "please"].includes(w));
         return queryWords.some((w) => nName.includes(w) || nCode.includes(w));
       });
 
@@ -316,17 +316,22 @@ export class AIQueryEngine {
       if (matchingEmps.length === 1) {
         const emp = matchingEmps[0];
         const empRoster = roster.find((r) => r.employeeId === emp.id || r.empCode === emp.empCode);
-        const todayStatus = empRoster?.punctuality || (empRoster?.isPresent ? "Present" : "Present");
+        const todayStatus = empRoster?.punctuality || (empRoster?.isPresent ? "Present" : "Not Punched Yet");
 
-        // Calculate attendance from live records
+        // Calculate attendance from live monthly breakdown
         const allAtt = context.attendance || [];
         const empRecords = allAtt.filter((a) => a.employeeId === emp.id || a.empCode === emp.empCode);
-        const presentDays = empRecords.length > 0 ? empRecords.filter((a) => (a.status || "").toLowerCase() === "present").length : 22;
-        const absentDays = empRecords.length > 0 ? empRecords.filter((a) => (a.status || "").toLowerCase() === "absent").length : 2;
-        const leaveDays = 1;
-        const lateDays = empRoster?.isLate ? 1 : 0;
-        const totalWorkingDays = presentDays + absentDays + leaveDays;
-        const attendancePct = totalWorkingDays > 0 ? Math.round((presentDays / totalWorkingDays) * 100) : 92;
+        const breakdownItem = monthlyOverview?.employeeBreakdown?.find(
+          (b) => b.employeeId === emp.id || b.empCode === emp.empCode
+        );
+        const presentDays = breakdownItem ? breakdownItem.presentDays : empRecords.filter((a) => (a.status || "").toLowerCase() === "present").length;
+        const absentDays = breakdownItem ? breakdownItem.absentDays : empRecords.filter((a) => (a.status || "").toLowerCase() === "absent").length;
+        const leaveDays = breakdownItem ? breakdownItem.leaveDays : 0;
+        const lateDays = breakdownItem ? breakdownItem.lateDays : (empRoster?.isLate ? 1 : 0);
+        const totalWorkingDays = breakdownItem?.workingDays || (context.company?.workingDaysPerMonth || 26);
+        const attendancePct = breakdownItem ? breakdownItem.attendancePercentage : (totalWorkingDays > 0 ? Math.round((presentDays / totalWorkingDays) * 100) : 0);
+
+        const summaryText = `👤 **${emp.name} (${emp.empCode}) — Attendance Summary**\n*Period: ${monthlyOverview?.period || "Last 30 Days"}*\n\n• **Total Working Days:** ${totalWorkingDays}\n• **Present Days:** ${presentDays}\n• **Absent Days:** ${absentDays}\n• **Leave Days:** ${leaveDays}\n• **Late Check-ins:** ${lateDays}\n• **Attendance Rate:** ${attendancePct}%\n\n| Metric | Status |\n|---|---|\n| Department | ${emp.department || "General"} |\n| Designation | ${emp.designation || "Staff"} |\n| Today Status | ${todayStatus} |\n| Check-In Punch | ${empRoster?.checkIn || "Not Punched Today"} |\n| Monthly Attendance | ${attendancePct}% |`;
 
         return {
           handled: true,
@@ -347,9 +352,48 @@ export class AIQueryEngine {
               attendanceRatePct: attendancePct,
             },
           },
-          summaryText: `${emp.name} — Attendance\n\n**Today:**\n${todayStatus}\n\n**This Month:**\n• **Present:** ${presentDays}\n• **Absent:** ${absentDays}\n• **Leave:** ${leaveDays}`,
+          summaryText,
         };
       }
+    }
+
+    // 2e-company. Company-wide Monthly Attendance & Absentees Overview:
+    // e.g. "give me last month's absentees details", "last month attendance details", "show monthly absentees", "absentee details"
+    const isMonthlyOverviewQuery =
+      /\b(last\s+month(?:'?s)?\s+(?:absent(?:ees?)?|attendance)|monthly\s+(?:attendance|absent(?:ees?)?)|absentee(?:s)?\s+(?:details|report|summary|list)|attendance\s+(?:details|report|summary|overview)|last\s+30\s+days?\s+attendance)\b/i.test(
+        query
+      );
+
+    if (isMonthlyOverviewQuery) {
+      const standardWorkingDays = context.company?.workingDaysPerMonth || 26;
+      const period = monthlyOverview?.period || `${snapshot.today.slice(0, 7)} (Last 30 Days)`;
+      const totalPresent = monthlyOverview?.totalPresentPunches || 0;
+      const overallRate = monthlyOverview?.overallAttendanceRatePct || 0;
+      const totalOt = monthlyOverview?.totalOtHoursCompany || 0;
+
+      const topAttendeesStr = (monthlyOverview?.topAttendanceEmployees || [])
+        .map((t) => `${t.name} (${t.pct}%)`)
+        .join(", ") || "None recorded";
+
+      const frequentLateStr = (monthlyOverview?.frequentLateEmployees || [])
+        .map((l) => `${l.name} (${l.count} late instances)`)
+        .join(", ") || "None recorded";
+
+      const breakdown = monthlyOverview?.employeeBreakdown || [];
+
+      // Clean Markdown Table rows
+      const tableRows = breakdown.map((b) =>
+        `| ${b.name} | ${b.department || "General"} | ${b.workingDays} | ${b.presentDays} | ${b.absentDays} | ${b.leaveDays} | ${b.lateDays} | ${b.attendancePercentage}% |`
+      ).join("\n");
+
+      const summaryText = `📊 **Attendance Summary** *Period: ${period}*\n\n• **Total Working Days:** ${standardWorkingDays}\n• **Total Present Punches:** ${totalPresent}\n• **Company Attendance Rate:** ${overallRate}%\n• **Total Overtime:** ${totalOt} hrs\n\n🏆 **Attendance Highlights**\n• **Top Attendees:** ${topAttendeesStr}\n• **Frequent Late Check-ins:** ${frequentLateStr}\n\n| Employee | Dept | Working Days | Present | Absent | Leave | Late | Attendance % |\n|---|---|---|---|---|---|---|---|\n${tableRows}\n\n*Note: Absenteeism is calculated based on the number of days employees were scheduled to work but did not punch in.*`;
+
+      return {
+        handled: true,
+        toolName: "Monthly Attendance Engine",
+        model: "SWIFT HR Database",
+        summaryText,
+      };
     }
 
     // 2f. "Show all employees" / "All employees" / "Employee directory" / "List employees"
