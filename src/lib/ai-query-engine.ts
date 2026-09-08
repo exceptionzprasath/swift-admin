@@ -336,16 +336,16 @@ export class AIQueryEngine {
             type: "ATTENDANCE_SUMMARY",
             title: `${emp.name} (${emp.empCode}) — Attendance`,
             date: snapshot.today,
-            employeeName: emp.name,
             metrics: {
-              todayStatus,
-              checkIn: empRoster?.checkIn || "09:15 AM",
+              totalScheduled: presentDays + absentDays + leaveDays || 1,
               present: presentDays,
               absent: absentDays,
               late: lateDays,
               onLeave: leaveDays,
               attendanceRatePct: attendancePct,
             },
+            absentEmployees: [],
+            lateEmployees: [],
           },
           summaryText: `${emp.name} — Attendance\n\n**Today:**\n${todayStatus}\n\n**This Month:**\n• **Present:** ${presentDays}\n• **Absent:** ${absentDays}\n• **Leave:** ${leaveDays}`,
         };
@@ -391,7 +391,7 @@ export class AIQueryEngine {
           title: "Employees Eligible for Confirmation",
           subtitle: "Probation review completed",
           count: list.length,
-          category: "general",
+          category: "all",
           employees: list.map((e) => ({
             id: e.id,
             name: e.name,

@@ -568,6 +568,20 @@ const INITIAL_WORKFLOWS: Record<MainCategoryTab, WorkflowTypeItem[]> = {
       emailDelivery: true,
       manualSteps: [],
     },
+    {
+      id: "att-lop-leave",
+      name: "Loss of Pay (LOP) Leave",
+      category: "Attendance",
+      description: "Unpaid absence / Loss of Pay leave application submitted when paid leave is exhausted or unpaid leave is requested.",
+      active: true,
+      approvalType: "sequential",
+      escalationDays: 2,
+      escalationAction: "Move to next approver",
+      workflowMode: "auto",
+      finalLevelAction: "approve_only",
+      emailDelivery: true,
+      manualSteps: [],
+    },
   ],
   loan: [
     {

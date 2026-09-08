@@ -422,15 +422,22 @@ function AttendancePage() {
       dateStr: string
     ) => {
       // If approved leave exists
-      const hasLeave = (leaves || []).some(
+      const matchingLeave = (leaves || []).find(
         (l) =>
-          l.employeeId === emp.id &&
-          l.status === "approved" &&
+          (l.employeeId === emp.id || (emp.empCode && (l as any).empCode === emp.empCode) || l.employeeName === emp.name) &&
+          (l.status || "").toLowerCase() === "approved" &&
+          !l.type?.toLowerCase().includes("permission") &&
+          !l.type?.toLowerCase().includes("short") &&
           dateStr >= (l.from || (l as any).startDate || "") &&
           dateStr <= (l.to || (l as any).endDate || "")
       );
-      if (hasLeave) {
-        return { status: "leave", label: "Approved Leave", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" };
+      if (matchingLeave) {
+        const isLop = matchingLeave.type?.toLowerCase().includes("lop") || matchingLeave.type?.toLowerCase().includes("loss");
+        return {
+          status: isLop ? "absent" : "leave",
+          label: isLop ? "LOP Leave" : "Approved Leave",
+          color: isLop ? "bg-rose-500/10 text-rose-600 border-rose-500/20" : "bg-blue-500/10 text-blue-500 border-blue-500/20",
+        };
       }
 
       if (scheduled.isHoliday) {
