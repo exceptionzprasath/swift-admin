@@ -13,23 +13,19 @@ import { aiOrchestrator } from "@/lib/ai-orchestrator";
 import { AIResponseRenderer } from "@/components/ai/AIResponseRenderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Sparkles,
   Send,
   Loader2,
   Bot,
-  Zap,
   RotateCcw,
   Copy,
   Check,
   FileText,
-  Calculator,
-  ShieldCheck,
-  Building2,
-  Activity,
   Download,
+  Plus,
+  ArrowUp,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
@@ -43,45 +39,6 @@ export const Route = createFileRoute("/admin/ai")({
   component: SwiftAiCommandCenter,
 });
 
-const PROMPT_CATEGORIES = [
-  {
-    category: "Payroll & Salary",
-    icon: Calculator,
-    prompts: [
-      "Summarize current month payroll budget, gross liability and PF deductions",
-      "Are there any salary or deduction anomalies across our employees?",
-      "Explain the PF and ESI contribution rules configured for our company",
-    ],
-  },
-  {
-    category: "Attendance & Leaves",
-    icon: Activity,
-    prompts: [
-      "Who has pending leave requests that need urgent admin approval?",
-      "Show attendance overview and identify frequent late check-ins",
-      "Which department has highest leave utilization this quarter?",
-    ],
-  },
-  {
-    category: "HR Letters & Templates",
-    icon: FileText,
-    prompts: [
-      "Draft a formal Promotion & Salary Increment letter for Aarav Sharma with 15% hike",
-      "Generate an Official Relieving and Experience Certificate template",
-      "Draft a company-wide Notice for upcoming national holiday and remote work policy",
-    ],
-  },
-  {
-    category: "Indian Compliance & Filings",
-    icon: ShieldCheck,
-    prompts: [
-      "List all statutory compliance filings (PF, ESI, TDS) due in the next 30 days",
-      "Check our company profile against Factories Act and POSH compliance rules",
-      "Generate compliance documents bundle for this quarter",
-    ],
-  },
-];
-
 function SwiftAiCommandCenter() {
   const { user, isSuperAdmin, activeTenantId } = useAuth();
   const { company, employees, attendance, payrolls, leaves, docRequests } = useStore();
@@ -91,6 +48,7 @@ function SwiftAiCommandCenter() {
 
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
 
   // Unified Store
   const {
@@ -104,7 +62,9 @@ function SwiftAiCommandCenter() {
     setTenant,
   } = useUnifiedAiStore();
 
+  const hasConversation = messages.some((m) => m.role === "user");
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const checkStatus = useServerFn(checkOpenAiStatus);
 
   // Sync tenant session
@@ -135,8 +95,10 @@ function SwiftAiCommandCenter() {
 
   // Auto-scroll to latest message
   useEffect(() => {
-    scrollerRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
-  }, [messages, busy]);
+    if (hasConversation) {
+      scrollerRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
+    }
+  }, [messages, busy, hasConversation]);
 
   const pingOpenAi = async () => {
     setApiStatus({ ...apiStatus, status: "Pinging..." });
@@ -198,8 +160,50 @@ function SwiftAiCommandCenter() {
     });
   };
 
+  const startVoiceInput = () => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Voice recognition is not supported in this browser. Please use Chrome or Edge.");
+      return;
+    }
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "en-US";
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        toast.info("Listening... Speak now");
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0]?.[0]?.transcript;
+        if (transcript) {
+          setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+          inputRef.current?.focus();
+        }
+      };
+
+      recognition.onerror = () => {
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+    } catch {
+      setIsListening(false);
+    }
+  };
+
   const exportChat = () => {
-    const text = messages.map((m) => `[${m.timestamp}] ${m.role.toUpperCase()} (${m.source || "SWIFT AI"}):\n${m.content}\n`).join("\n---\n\n");
+    const text = messages
+      .map((m) => `[${m.timestamp}] ${m.role.toUpperCase()} (${m.source || "SWIFT AI"}):\n${m.content}\n`)
+      .join("\n---\n\n");
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -210,55 +214,159 @@ function SwiftAiCommandCenter() {
     toast.success("Chat transcript downloaded");
   };
 
+  // Reusable ChatGPT Floating Search Capsule
+  const renderChatGptSearchBox = (isHero = false) => {
+    const hasText = Boolean(input.trim());
+
+    return (
+      <div className={`relative w-full ${isHero ? "max-w-2xl" : "max-w-3xl"} mx-auto transition-all`}>
+        {/* Soft Ambient Halo Glow */}
+        <div className="absolute -inset-1.5 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-emerald-500/10 rounded-full blur-xl opacity-70 pointer-events-none" />
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSend();
+          }}
+          className="relative flex items-center gap-2 bg-card/95 dark:bg-card/95 border border-border/80 hover:border-primary/40 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10 rounded-full p-2 pl-3 pr-2.5 shadow-lg shadow-black/5 hover:shadow-xl transition-all"
+        >
+          {/* Plus Action Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const randomPrompt = suggestions[Math.floor(Math.random() * suggestions.length)];
+              if (randomPrompt) setInput(randomPrompt);
+              inputRef.current?.focus();
+            }}
+            className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 transition cursor-pointer shrink-0"
+            title="Insert suggested prompt"
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+
+          {/* Search Input Field */}
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask anything"
+            disabled={busy}
+            className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/70 text-sm sm:text-base px-2 py-1"
+            autoFocus={isHero}
+          />
+
+          {/* Right Tools: Think, Mic, Blue Circular Voice/Send Button */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Think Button */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextModel = selectedModel === "gpt-4o" ? "gpt-4o-mini" : "gpt-4o";
+                setSelectedModel(nextModel);
+                toast.success(
+                  nextModel === "gpt-4o" ? "Deep reasoning enabled (GPT-4o)" : "Fast reasoning enabled (GPT-4o Mini)"
+                );
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer ${
+                selectedModel === "gpt-4o"
+                  ? "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shadow-xs"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+              title="Toggle Think / Deep Reasoning"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+                <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+                <path d="M12 3v18" />
+              </svg>
+              <span className="hidden sm:inline">Think</span>
+            </button>
+
+            {/* Microphone Button */}
+            <button
+              type="button"
+              onClick={startVoiceInput}
+              className={`h-9 w-9 rounded-full flex items-center justify-center transition cursor-pointer ${
+                isListening
+                  ? "bg-red-500/15 text-red-600 animate-pulse"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/80"
+              }`}
+              title={isListening ? "Listening..." : "Voice input"}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="22" />
+              </svg>
+            </button>
+
+            {/* Blue Circular Voice / Send Button */}
+            <button
+              type={hasText ? "submit" : "button"}
+              onClick={hasText ? undefined : startVoiceInput}
+              disabled={busy}
+              className={`h-9 w-9 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
+                hasText
+                  ? "bg-gradient-brand text-white hover:opacity-95 active:scale-95"
+                  : "bg-[#0A84FF] text-white hover:bg-blue-600 active:scale-95"
+              }`}
+              title={hasText ? "Send message" : "Voice Mode"}
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin text-white" />
+              ) : hasText ? (
+                <ArrowUp className="h-4 w-4" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                  <rect x="4" y="9" width="2.5" height="6" rx="1.25" />
+                  <rect x="9" y="5" width="2.5" height="14" rx="1.25" />
+                  <rect x="14" y="7" width="2.5" height="10" rx="1.25" />
+                  <rect x="19" y="10" width="2.5" height="4" rx="1.25" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  };
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Top Banner & Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-primary/10 via-purple-500/10 to-sky-500/10 p-5 rounded-3xl border border-primary/20 backdrop-blur">
-        <div className="flex items-center gap-4">
-          <div className="h-16 w-16 rounded-2xl bg-gradient-brand flex items-center justify-center p-1 shadow-lg shadow-primary/20 shrink-0">
+    <div className="flex flex-col min-h-[calc(100vh-100px)] max-w-7xl mx-auto">
+      {/* Minimal Top Navigation Bar */}
+      <header className="flex items-center justify-between gap-4 py-3 px-2 mb-2 border-b border-border/40">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-2xl bg-gradient-brand flex items-center justify-center p-1 shadow-sm shrink-0">
             <Lottie animationData={chatbotAnimation} loop={true} className="w-full h-full object-contain scale-110" />
           </div>
           <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-bold font-display tracking-tight">SWIFT AI Copilot</h1>
-              <Badge variant="outline" className="bg-primary/15 text-primary border-primary/30 gap-1.5 font-medium">
-                <Sparkles className="h-3 w-3 animate-pulse" /> OpenAI ChatGPT
-              </Badge>
-              <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 font-medium">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" /> Live Tenant Graph
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-base tracking-tight font-display">SWIFT AI Copilot</span>
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] py-0 px-2 font-medium">
+                ChatGPT
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Connected to <strong>{company.name}</strong> · {employees.length} active employees · Real-time attendance & payroll intelligence
-            </p>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span>{company.name} · {employees.length} employees</span>
+            </div>
           </div>
         </div>
 
-        {/* API Connection & Model Controls */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* OpenAI Status Pill */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-card border border-border text-xs">
+        {/* Controls */}
+        <div className="flex items-center gap-2.5">
+          {/* OpenAI Status Indicator */}
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-card border border-border text-[11px]">
             <div className={`h-2 w-2 rounded-full ${apiStatus.ok ? "bg-emerald-500" : "bg-amber-500"}`} />
-            <span className="font-medium text-foreground">OpenAI API:</span>
-            <span className={apiStatus.ok ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-amber-600"}>
-              {apiStatus.ok ? `Connected (${apiStatus.latencyMs ?? 210}ms)` : apiStatus.status}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 rounded-full hover:bg-muted"
-              onClick={pingOpenAi}
-              title="Test OpenAI Connection"
-            >
-              <RotateCcw className="h-3 w-3" />
-            </Button>
+            <span className="text-muted-foreground">{apiStatus.ok ? "OpenAI Connected" : apiStatus.status}</span>
           </div>
 
           {/* Model Switcher */}
           <div className="flex items-center rounded-xl bg-card border border-border p-0.5 text-xs">
             <button
               onClick={() => setSelectedModel("gpt-4o-mini")}
-              className={`px-3 py-1 rounded-lg font-medium transition-all ${
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
                 selectedModel === "gpt-4o-mini"
                   ? "bg-primary text-white shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -268,7 +376,7 @@ function SwiftAiCommandCenter() {
             </button>
             <button
               onClick={() => setSelectedModel("gpt-4o")}
-              className={`px-3 py-1 rounded-lg font-medium transition-all ${
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
                 selectedModel === "gpt-4o"
                   ? "bg-primary text-white shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -278,22 +386,57 @@ function SwiftAiCommandCenter() {
             </button>
           </div>
 
-          <Button variant="outline" size="sm" onClick={() => clearConversation(company.name)} className="rounded-xl text-xs gap-1.5">
-            <RotateCcw className="h-3.5 w-3.5" /> Clear
-          </Button>
+          {hasConversation && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => clearConversation(company.name)}
+              className="rounded-xl text-xs gap-1.5 cursor-pointer"
+              title="Reset conversation and return to search screen"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> New Chat
+            </Button>
+          )}
 
-          <Button variant="outline" size="sm" onClick={exportChat} className="rounded-xl text-xs gap-1.5">
-            <Download className="h-3.5 w-3.5" /> Export
-          </Button>
+          {hasConversation && (
+            <Button variant="outline" size="sm" onClick={exportChat} className="rounded-xl text-xs gap-1.5 cursor-pointer">
+              <Download className="h-3.5 w-3.5" /> Export
+            </Button>
+          )}
         </div>
-      </div>
+      </header>
 
-      {/* Main Grid: Chat Arena + Knowledge Context Panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-        {/* Chat Area (3 cols) */}
-        <div className="lg:col-span-3 flex flex-col h-[680px] bg-card border border-border/80 rounded-3xl shadow-soft overflow-hidden">
+      {/* Main Body */}
+      {!hasConversation ? (
+        /* ==================== ChatGPT Centered Hero View ==================== */
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-12 -mt-10 animate-in fade-in duration-300">
+          {/* Centered Heading */}
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-foreground mb-8">
+            What’s on the agenda today?
+          </h1>
+
+          {/* Centered ChatGPT Search Capsule */}
+          {renderChatGptSearchBox(true)}
+
+          {/* Prompt Suggestion Pills */}
+          <div className="flex flex-wrap items-center justify-center gap-2.5 mt-7 max-w-2xl mx-auto">
+            {suggestions.slice(0, 5).map((s) => (
+              <button
+                key={s}
+                onClick={() => handleSend(s)}
+                disabled={busy}
+                className="text-xs px-3.5 py-1.5 rounded-full border border-border/70 bg-card/70 hover:bg-primary/10 hover:border-primary/40 transition-all text-muted-foreground hover:text-foreground cursor-pointer shadow-2xs hover:shadow-xs"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        /* ==================== Active Conversation View ==================== */
+        <div className="flex-1 flex flex-col h-[calc(100vh-140px)] bg-card/40 border border-border/70 rounded-3xl overflow-hidden shadow-soft animate-in fade-in duration-200">
           {/* Chat Scroller */}
-          <div ref={scrollerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-gradient-to-b from-background/40 to-muted/20">
+          <div ref={scrollerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 max-w-4xl mx-auto w-full">
             {messages.map((msg) => {
               const isUser = msg.role === "user";
               return (
@@ -310,11 +453,13 @@ function SwiftAiCommandCenter() {
                     </div>
                   )}
 
-                  <div className={`group relative max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-xs ${
-                    isUser
-                      ? "bg-gradient-brand text-white rounded-br-xs"
-                      : "bg-background border border-border/90 text-foreground rounded-bl-xs"
-                  }`}>
+                  <div
+                    className={`group relative max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-xs ${
+                      isUser
+                        ? "bg-gradient-brand text-white rounded-br-xs"
+                        : "bg-background border border-border/90 text-foreground rounded-bl-xs"
+                    }`}
+                  >
                     {/* Message Header */}
                     <div className="flex items-center justify-between gap-4 mb-1.5 text-[11px] opacity-75">
                       <div className="flex items-center gap-1.5">
@@ -411,8 +556,8 @@ function SwiftAiCommandCenter() {
             )}
           </div>
 
-          {/* Quick Suggestions Pills */}
-          <div className="px-4 py-2 border-t border-border/50 bg-background/60 backdrop-blur overflow-x-auto flex gap-2 no-scrollbar">
+          {/* Quick Suggestions Pills (Above bottom input) */}
+          <div className="px-4 py-2 border-t border-border/40 bg-background/50 backdrop-blur overflow-x-auto flex items-center justify-center gap-2 no-scrollbar">
             <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1 shrink-0">
               <Sparkles className="h-3 w-3 text-primary" /> Quick:
             </span>
@@ -428,111 +573,12 @@ function SwiftAiCommandCenter() {
             ))}
           </div>
 
-          {/* Input Box */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSend();
-            }}
-            className="p-3 bg-card border-t border-border flex items-center gap-2.5"
-          >
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask anything about employees, payroll, leaves, policies, or Indian labour compliance..."
-              disabled={busy}
-              className="flex-1 rounded-2xl border-border bg-background py-5 px-4 text-sm focus-visible:ring-primary"
-            />
-            <Button
-              type="submit"
-              disabled={busy || !input.trim()}
-              className="h-11 px-5 rounded-2xl bg-gradient-brand text-white shadow-soft hover:shadow-glow transition-all cursor-pointer"
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
-          </form>
+          {/* Bottom Docked ChatGPT Search Capsule */}
+          <div className="p-4 bg-card/60 border-t border-border/40 backdrop-blur">
+            {renderChatGptSearchBox(false)}
+          </div>
         </div>
-
-        {/* Right Intelligence Sidebar (1 col) */}
-        <div className="space-y-4">
-          {/* Live Context Card */}
-          <Card className="rounded-3xl border-border shadow-xs">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-primary" /> Live Context
-                </CardTitle>
-                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                  Synced
-                </Badge>
-              </div>
-              <CardDescription className="text-xs">
-                Data fed automatically to OpenAI prompt
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2.5 text-xs">
-              <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted-foreground">Company:</span>
-                <span className="font-semibold truncate max-w-[130px]">{company.name}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted-foreground">Headcount:</span>
-                <span className="font-semibold">{employees.length} employees</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted-foreground">Payrolls Run:</span>
-                <span className="font-semibold">{payrolls.length} months</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted-foreground">Pending Leaves:</span>
-                <span className="font-semibold text-amber-600">
-                  {leaves.filter((l) => l.status === "pending").length} requests
-                </span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-muted-foreground">PF Ceiling:</span>
-                <span className="font-semibold">₹15,000 (12%)</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Prompt Playbook Accordion */}
-          <Card className="rounded-3xl border-border shadow-xs">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Zap className="h-4 w-4 text-amber-500" /> Prompt Playbook
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Click any prompt to run against OpenAI
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-2">
-              {PROMPT_CATEGORIES.map((cat) => {
-                const Icon = cat.icon;
-                return (
-                  <div key={cat.category} className="space-y-1.5">
-                    <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                      <Icon className="h-3.5 w-3.5 text-primary" /> {cat.category}
-                    </div>
-                    <div className="space-y-1">
-                      {cat.prompts.map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => handleSend(p)}
-                          disabled={busy}
-                          className="w-full text-left p-2 rounded-xl text-xs border border-border/60 bg-muted/30 hover:bg-primary/10 hover:border-primary/40 text-foreground transition-all line-clamp-2 cursor-pointer"
-                        >
-                          "{p}"
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
