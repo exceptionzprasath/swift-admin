@@ -160,7 +160,15 @@ function SwiftAiCommandCenter() {
     });
   };
 
-  const startVoiceInput = () => {
+  const recognitionRef = useRef<any>(null);
+
+  const toggleVoiceMode = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -172,22 +180,27 @@ function SwiftAiCommandCenter() {
       recognition.lang = "en-US";
       recognition.continuous = false;
       recognition.interimResults = false;
+      recognitionRef.current = recognition;
 
       recognition.onstart = () => {
         setIsListening(true);
-        toast.info("Listening... Speak now");
+        toast.info("Voice Mode Active · Speak your question...");
       };
 
       recognition.onresult = (event: any) => {
         const transcript = event.results[0]?.[0]?.transcript;
-        if (transcript) {
-          setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
-          inputRef.current?.focus();
+        if (transcript && transcript.trim()) {
+          const cleanText = transcript.trim();
+          setInput(cleanText);
+          handleSend(cleanText);
         }
       };
 
-      recognition.onerror = () => {
+      recognition.onerror = (e: any) => {
         setIsListening(false);
+        if (e.error !== "no-speech") {
+          toast.error(`Voice error: ${e.error}`);
+        }
       };
 
       recognition.onend = () => {
@@ -250,14 +263,14 @@ function SwiftAiCommandCenter() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask anything"
+            placeholder={isListening ? "Listening to your voice... Speak now" : "Ask anything"}
             disabled={busy}
             className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/70 text-sm sm:text-base px-2 py-1"
             autoFocus={isHero}
           />
 
-          {/* Right Tools: Think, Mic, Blue Circular Voice/Send Button */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Right Tools: Think Button & Blue Circular Voice/Send Button */}
+          <div className="flex items-center gap-2 shrink-0">
             {/* Think Button */}
             <button
               type="button"
@@ -283,40 +296,36 @@ function SwiftAiCommandCenter() {
               <span className="hidden sm:inline">Think</span>
             </button>
 
-            {/* Microphone Button */}
-            <button
-              type="button"
-              onClick={startVoiceInput}
-              className={`h-9 w-9 rounded-full flex items-center justify-center transition cursor-pointer ${
-                isListening
-                  ? "bg-red-500/15 text-red-600 animate-pulse"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/80"
-              }`}
-              title={isListening ? "Listening..." : "Voice input"}
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" x2="12" y1="19" y2="22" />
-              </svg>
-            </button>
-
-            {/* Blue Circular Voice / Send Button */}
+            {/* Blue Circular Voice Mode / Send Button */}
             <button
               type={hasText ? "submit" : "button"}
-              onClick={hasText ? undefined : startVoiceInput}
+              onClick={hasText ? undefined : toggleVoiceMode}
               disabled={busy}
               className={`h-9 w-9 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
                 hasText
                   ? "bg-gradient-brand text-white hover:opacity-95 active:scale-95"
+                  : isListening
+                  ? "bg-red-500 text-white ring-4 ring-red-500/25 animate-pulse"
                   : "bg-[#0A84FF] text-white hover:bg-blue-600 active:scale-95"
               }`}
-              title={hasText ? "Send message" : "Voice Mode"}
+              title={
+                hasText
+                  ? "Send message"
+                  : isListening
+                  ? "Voice Mode Active: Listening... Click to cancel"
+                  : "Voice Mode (Click to speak)"
+              }
             >
               {busy ? (
                 <Loader2 className="h-4 w-4 animate-spin text-white" />
               ) : hasText ? (
                 <ArrowUp className="h-4 w-4" />
+              ) : isListening ? (
+                <div className="flex items-center gap-0.5">
+                  <span className="w-0.5 h-3 bg-white rounded-full animate-bounce [animation-delay:0ms]" />
+                  <span className="w-0.5 h-4 bg-white rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-0.5 h-2.5 bg-white rounded-full animate-bounce [animation-delay:300ms]" />
+                </div>
               ) : (
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
                   <rect x="4" y="9" width="2.5" height="6" rx="1.25" />
