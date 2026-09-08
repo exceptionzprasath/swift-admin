@@ -28,6 +28,21 @@ import { type ThemePaletteId, applyThemePalette } from "./palettes";
 
 
 
+export function isMockEmployee(emp: Partial<Employee> | null | undefined): boolean {
+  if (!emp) return false;
+  const name = String(emp.name || "").trim();
+  const id = String(emp.id || "").trim();
+  const empCode = String(emp.empCode || "").trim();
+  const email = String(emp.email || "").trim().toLowerCase();
+
+  return (
+    name.startsWith("Staff #") ||
+    id.startsWith("EMP-") ||
+    empCode.startsWith("EMP-") ||
+    email.endsWith("@swifthr.shop")
+  );
+}
+
 export function getBackendUrl(): string {
   const customUrl = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || "").trim();
   if (customUrl) return customUrl.replace(/\/+$/, "");
@@ -1122,9 +1137,8 @@ type State = {
   updateNotice: (id: string, patch: Partial<Notice>) => void;
   deleteNotice: (id: string) => void;
   markNoticeRead: (id: string, userKey: string) => void;
-  addBranch: (b: Omit<Branch, "id">) => Branch;
-  updateBranch: (id: string, patch: Partial<Branch>) => void;
   deleteBranch: (id: string) => void;
+  purgeMockEmployees: () => void;
   loadCompanyState: (tenantId: string) => Promise<void>;
   resetTenantState: () => void;
   setTheme: (t: "light" | "dark") => void;
@@ -2349,11 +2363,16 @@ export const useStore = create<State>()(
             }
             loadedAttendance = data.attendance || [];
             loadedDevices = data.devices || [];
+
+            // Authoritative employee list from database (purging any legacy mock employees)
+            const rawEmployees: Employee[] = Array.isArray(data.employees) ? data.employees : get().employees;
+            const cleanEmployees = rawEmployees.filter((e) => !isMockEmployee(e));
+
             set({
               company: nextCompany,
               docAssets: data.docAssets || get().docAssets,
-              employees: data.employees && data.employees.length ? data.employees : get().employees,
-              attendance: loadedAttendance.length ? loadedAttendance : get().attendance,
+              employees: cleanEmployees,
+              attendance: Array.isArray(loadedAttendance) ? loadedAttendance : get().attendance,
               leaves: data.leaves || [],
               payrolls: data.payrolls || [],
               assets: data.assets || [],
@@ -2365,15 +2384,15 @@ export const useStore = create<State>()(
                 readBy: Array.isArray(n.readBy) ? n.readBy : [],
                 audience: n.audience ? { ...n.audience, values: Array.isArray(n.audience.values) ? n.audience.values : [] } : { scope: "company", values: [] },
               })),
-              roles: data.roles && data.roles.length ? data.roles : get().roles,
+              roles: Array.isArray(data.roles) && data.roles.length ? data.roles : get().roles,
               docRequests: data.docRequests || [],
-              holidays: data.holidays && data.holidays.length ? data.holidays : (get().holidays?.length ? get().holidays : defaultCompanyHolidaysList),
+              holidays: Array.isArray(data.holidays) && data.holidays.length ? data.holidays : (get().holidays?.length ? get().holidays : defaultCompanyHolidaysList),
               roster: data.roster || [],
-              vaultFolders: data.vaultFolders && data.vaultFolders.length ? data.vaultFolders : (get().vaultFolders?.length ? get().vaultFolders : DEFAULT_VAULT_FOLDERS),
-              vaultFiles: data.vaultFiles && data.vaultFiles.length ? data.vaultFiles : (get().vaultFiles?.length ? get().vaultFiles : DEFAULT_VAULT_FILES),
+              vaultFolders: Array.isArray(data.vaultFolders) && data.vaultFolders.length ? data.vaultFolders : (get().vaultFolders?.length ? get().vaultFolders : DEFAULT_VAULT_FOLDERS),
+              vaultFiles: Array.isArray(data.vaultFiles) && data.vaultFiles.length ? data.vaultFiles : (get().vaultFiles?.length ? get().vaultFiles : DEFAULT_VAULT_FILES),
               grievances: data.grievances || [],
               requests: data.requests || [],
-              devices: loadedDevices.length ? loadedDevices : get().devices,
+              devices: Array.isArray(loadedDevices) ? loadedDevices : get().devices,
               demoMode: false,
             });
           } catch (_err) {}
@@ -2392,7 +2411,8 @@ export const useStore = create<State>()(
 
           const rawLogs = (logsRes && (logsRes.logs || logsRes.data || (Array.isArray(logsRes) ? logsRes : null))) || [];
           if (Array.isArray(rawLogs) && rawLogs.length > 0) {
-            let currentEmployees = [...get().employees];
+            // Strictly preserve only real employees - NEVER push synthetic mock employees!
+            const currentEmployees = get().employees.filter((e) => !isMockEmployee(e));
             const currentAttendance = get().attendance;
             const recordsMap = new Map<string, AttendanceRecord>();
 
@@ -2413,37 +2433,20 @@ export const useStore = create<State>()(
               const timeStr = `${hours}:${minutes}`;
               const rawPin = String(log.employeeId || log.userId || log.pin || '').trim();
 
-              let matchedEmp = currentEmployees.find(
+              const matchedEmp = currentEmployees.find(
                 (e) =>
                   e.id === rawPin ||
                   e.empCode === rawPin ||
-                  String((e as any).biometricPin || (e as any).pin || '') === rawPin
+                  String((e as any).biometricPin || (e as any).pin || '') === rawPin ||
+                  (log.employeeDbId && e.id === log.employeeDbId) ||
+                  (log.employeeName && e.name.toLowerCase() === log.employeeName.toLowerCase())
               );
 
-              if (!matchedEmp && (log.employee?.name || rawPin)) {
-                const newEmpId = (log.employee && log.employee.id) || `EMP-${rawPin.padStart(3, '0')}`;
-                const newEmp: Employee = {
-                  id: newEmpId,
-                  empCode: (log.employee && log.employee.code) || `EMP-${rawPin.padStart(3, '0')}`,
-                  name: log.employee?.name || `Staff #${rawPin}`,
-                  email: `${(log.employee?.name || `staff${rawPin}`).toLowerCase().replace(/[^a-z0-9]/g, '.')}@swifthr.shop`,
-                  department: log.employee?.department || 'General',
-                  designation: log.employee?.designation || 'Staff',
-                  branchId: 'br-hq',
-                  branchIds: ['br-hq'],
-                  doj: dateStr,
-                  basic: 25000,
-                  status: 'active',
-                  phone: '+91 98765 43210',
-                };
-                currentEmployees.push(newEmp);
-                matchedEmp = newEmp;
-              }
-
-              const empId = matchedEmp?.id || rawPin || 'EMP-001';
-              const empName = matchedEmp?.name || log.employee?.name || `Staff #${rawPin}`;
+              // Do NOT create mock employees. Attribute punch to matchedEmp or record with raw log details.
+              const empId = matchedEmp?.id || (log.employeeDbId || rawPin || 'unassigned');
+              const empName = matchedEmp?.name || (log.employeeName || (log.employee && log.employee.name) || `Staff #${rawPin}`);
               const empCode = matchedEmp?.empCode || rawPin;
-              const dept = matchedEmp?.department || log.employee?.department || 'Operations';
+              const dept = matchedEmp?.department || (log.employee && log.employee.department) || 'Operations';
 
               const key = `${empId}_${dateStr}`;
               const existing = recordsMap.get(key);
@@ -2511,6 +2514,11 @@ export const useStore = create<State>()(
             set({ devices: mergedDevices });
           }
         } catch (_err) {}
+      },
+      purgeMockEmployees: () => {
+        set((s) => ({
+          employees: (s.employees || []).filter((e) => !isMockEmployee(e)),
+        }));
       },
       resetTenantState: () => {
         set({

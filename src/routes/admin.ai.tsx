@@ -6,12 +6,11 @@ import chatbotAnimationRaw from "@/assets/chatbot.json";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { type Role } from "@/lib/ai-context";
-import { buildEnterpriseSnapshot, suggestionsFor } from "@/lib/ai-knowledge";
-import { askSwiftAi, checkOpenAiStatus } from "@/lib/ai.functions";
-import { aiGuide } from "@/lib/ai-guide-bus";
-import { parseComplianceCommand, renderComplianceDocPDF } from "@/lib/compliance-docs";
-import { useComplianceDocs, blobToDataUrl } from "@/lib/compliance-docs-store";
-import JSZip from "jszip";
+import { suggestionsFor } from "@/lib/ai-knowledge";
+import { checkOpenAiStatus } from "@/lib/ai.functions";
+import { useUnifiedAiStore } from "@/lib/ai-unified-store";
+import { aiOrchestrator } from "@/lib/ai-orchestrator";
+import { AIResponseRenderer } from "@/components/ai/AIResponseRenderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -25,28 +24,16 @@ import {
   RotateCcw,
   Copy,
   Check,
-  CheckCircle2,
-  AlertTriangle,
   FileText,
-  Users,
   Calculator,
   ShieldCheck,
   Building2,
   Activity,
-  Sliders,
   Download,
-  Share2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  generateEmployeesPdf,
-  generateAttendancePdf,
-  generateSalaryPdf,
-  generateAiReportPdf,
-  downloadPdfBlob,
-} from "@/lib/ai-pdf-reports";
+import { motion } from "framer-motion";
 
 const Lottie = (LottieRaw as any)?.default || LottieRaw;
 const chatbotAnimation = (chatbotAnimationRaw as any)?.default || chatbotAnimationRaw;
@@ -55,18 +42,6 @@ export const Route = createFileRoute("/admin/ai")({
   head: () => ({ meta: [{ title: "SWIFT AI Copilot · OpenAI ChatGPT" }] }),
   component: SwiftAiCommandCenter,
 });
-
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-  model?: string;
-  tokens?: number;
-  isFormatPrompt?: boolean;
-  originalQuery?: string;
-  downloadQuery?: string;
-};
 
 const PROMPT_CATEGORIES = [
   {
@@ -108,38 +83,36 @@ const PROMPT_CATEGORIES = [
 ];
 
 function SwiftAiCommandCenter() {
-  const { user, isSuperAdmin } = useAuth();
-  const { company, employees, attendance, payrolls, leaves, docRequests, notices } = useStore();
-  const archive = useComplianceDocs((s) => s.archive);
+  const { user, isSuperAdmin, activeTenantId } = useAuth();
+  const { company, employees, attendance, payrolls, leaves, docRequests } = useStore();
 
   const role: Role = isSuperAdmin ? "super_admin" : "admin";
   const suggestions = useMemo(() => suggestionsFor(role), [role]);
 
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<"gpt-4o-mini" | "gpt-4o">("gpt-4o-mini");
-  const [apiStatus, setApiStatus] = useState<{
-    ok: boolean;
-    status: string;
-    configured: boolean;
-    latencyMs?: number;
-  }>({ ok: true, status: "Checking...", configured: true });
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [totalTokensUsed, setTotalTokensUsed] = useState(0);
-  const [pendingReportQuery, setPendingReportQuery] = useState<string | null>(null);
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome-1",
-      role: "assistant",
-      content: `### 👋 Welcome to SWIFT AI Copilot\n\nI am your **OpenAI-powered Enterprise Copilot**, embedded directly with live visibility into **${company.name || "your organization"}**.\n\nHere's what I can do for you right now:\n- 📊 **Query Real-time Data**: Ask about employee details, attendance metrics, leaves, payroll calculations & branch heads.\n- 📝 **Generate HR Documents**: Draft customized offer letters, promotion orders, experience certificates, or company policies.\n- ⚖️ **Statutory Compliance**: Check PF/ESI rules, tax brackets, filing deadlines, and generate regulatory filings.\n- ⚡ **Automated Actions**: Type *"Generate compliance documents"* to instantly compile and download complete PDF statutory bundles.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    },
-  ]);
+  // Unified Store
+  const {
+    messages,
+    isGenerating: busy,
+    selectedModel,
+    setSelectedModel,
+    apiStatus,
+    setApiStatus,
+    clearConversation,
+    setTenant,
+  } = useUnifiedAiStore();
 
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const ask = useServerFn(askSwiftAi);
   const checkStatus = useServerFn(checkOpenAiStatus);
+
+  // Sync tenant session
+  useEffect(() => {
+    if (activeTenantId) {
+      setTenant(activeTenantId, company.name);
+    }
+  }, [activeTenantId, company.name, setTenant]);
 
   // Check OpenAI connection status on mount
   useEffect(() => {
@@ -158,7 +131,7 @@ function SwiftAiCommandCenter() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [checkStatus, setApiStatus]);
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -166,7 +139,7 @@ function SwiftAiCommandCenter() {
   }, [messages, busy]);
 
   const pingOpenAi = async () => {
-    setApiStatus((prev) => ({ ...prev, status: "Pinging..." }));
+    setApiStatus({ ...apiStatus, status: "Pinging..." });
     try {
       const res = await checkStatus();
       setApiStatus(res as any);
@@ -188,139 +161,27 @@ function SwiftAiCommandCenter() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const tryComplianceCommand = async (text: string): Promise<string | null> => {
-    const specs = parseComplianceCommand(text);
-    if (!specs.length) return null;
-    const zip = new JSZip();
-    const lines: string[] = [];
-    for (const s of specs) {
-      const { blob, filename, ref } = await renderComplianceDocPDF(s, { company, employees });
-      zip.file(filename, blob);
-      const dataUrl = await blobToDataUrl(blob);
-      archive({
-        specId: s.id,
-        code: s.code,
-        title: s.title,
-        ref,
-        filename,
-        dataUrl,
-        size: blob.size,
-        createdBy: "swift-ai-openai",
-        approvals: [],
-        signed: false,
-        sealed: !!s.requiresSeal,
-        watermark: s.watermark,
-        tags: [s.act, s.kind],
-      });
-      lines.push(`- **${s.code}** — ${s.title} · ${(blob.size / 1024).toFixed(1)} KB · Ref \`${ref}\``);
-    }
-    const bundle = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(bundle);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `SWIFT_AI_Docs_${Date.now()}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-    return `✅ Generated **${specs.length}** compliance document(s), auto-filled from your live tenant data. Bundle downloaded and archived in **Compliance Docs**.\n\n${lines.join("\n")}`;
-  };
-
-  const isReportQuery = (text: string): boolean => {
-    const lower = text.toLowerCase().trim();
-    if (/^(?:hi|hello|hey|thanks|thank you|ok|okay|bye)$/i.test(lower)) return false;
-    if (/(?:api\s*key|password|\.env|credential|token|system\s*prompt)/i.test(lower)) return false;
-    return /(?:employee|staff|team|attendance|present|absent|late|punch|roster|salary|payroll|ctc|leave|holiday|company|overview|department|branch|report|details|summary|who|list|all)/i.test(
-      lower
-    );
-  };
-
   const handleGeneratePdfForQuery = (query: string, rawContent?: string) => {
-    const lower = query.toLowerCase();
-    const snapshot = buildEnterpriseSnapshot({ company, employees, attendance, payrolls, leaves, docRequests, role });
-    let blob: Blob;
-    let filename = `SWIFT_AI_Report_${Date.now()}.pdf`;
-
-    if (lower.includes("attendance")) {
-      blob = generateAttendancePdf(company, snapshot.attendance.monthlyReport, snapshot.attendance.todayLiveRoster);
-      filename = `Attendance_Report_${snapshot.today}.pdf`;
-    } else if (lower.includes("salary") || lower.includes("ctc") || lower.includes("payroll")) {
-      blob = generateSalaryPdf(company, snapshot.employees);
-      filename = `Salary_Summary_${snapshot.today}.pdf`;
-    } else if (lower.includes("employee") || lower.includes("staff")) {
-      blob = generateEmployeesPdf(company, snapshot.employees);
-      filename = `Employee_Master_Registry_${snapshot.today}.pdf`;
-    } else {
-      blob = generateAiReportPdf("SWIFT HRMS Report", rawContent || query, company);
-      filename = `HRMS_Report_${snapshot.today}.pdf`;
-    }
-
-    downloadPdfBlob(blob, filename);
-    toast.success(`PDF downloaded: ${filename}`);
+    aiOrchestrator.downloadQueryReport(query, rawContent, {
+      company,
+      employees,
+      attendance,
+      payrolls,
+      leaves,
+      docRequests,
+      role,
+    });
   };
 
   const handleSend = async (queryText?: string, forceFormat?: "pdf" | "text") => {
     const text = (queryText ?? input).trim();
     if (!text || busy) return;
-    const lower = text.toLowerCase();
 
-    const wantsPdf = forceFormat === "pdf" || /\b(pdf|download\s*pdf|in\s*pdf)\b/i.test(lower);
-    const wantsText = forceFormat === "text" || /\b(text|in\s*text|chat|here)\b/i.test(lower);
-
-    // If it's a report query without format preference, ask format first!
-    if (!forceFormat && !wantsPdf && !wantsText && isReportQuery(text) && !pendingReportQuery) {
-      setPendingReportQuery(text);
-      const userMsg: Message = {
-        id: `usr-${Date.now()}`,
-        role: "user",
-        content: text,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      const promptMsg: Message = {
-        id: `asst-${Date.now()}`,
-        role: "assistant",
-        content: `📄 **Format Selection Required**\n\nWould you like the **${text.trim()}** in **PDF Document format** (downloadable file) or **Text format** (view directly in dashboard)?\n\nPlease choose an option below:`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        isFormatPrompt: true,
-        originalQuery: text,
-      };
-      setMessages((prev) => [...prev, userMsg, promptMsg]);
-      setInput("");
-      return;
-    }
-
-    const queryToExecute = pendingReportQuery || text;
-    setPendingReportQuery(null);
-
-    const userMsg: Message = {
-      id: `usr-${Date.now()}`,
-      role: "user",
-      content: text,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    setBusy(true);
-
-    try {
-      // Check for local compliance commands first
-      const cmdResult = await tryComplianceCommand(queryToExecute);
-      if (cmdResult) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `asst-${Date.now()}`,
-            role: "assistant",
-            content: cmdResult,
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            model: "Local Compliance Engine",
-          },
-        ]);
-        setBusy(false);
-        return;
-      }
-
-      // Build real-time enterprise snapshot
-      const snapshot = buildEnterpriseSnapshot({
+    await aiOrchestrator.dispatchUserMessage(text, {
+      source: "COPILOT",
+      forceFormat,
+      context: {
         company,
         employees,
         attendance,
@@ -328,98 +189,12 @@ function SwiftAiCommandCenter() {
         leaves,
         docRequests,
         role,
-      });
-
-      if (wantsPdf) {
-        handleGeneratePdfForQuery(queryToExecute);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `asst-${Date.now()}`,
-            role: "assistant",
-            content: `📄 **PDF Generated & Downloaded**\n\nYour formatted PDF report for **"${queryToExecute}"** has been generated and downloaded to your device with official company branding.\n\n*Click below if you need to re-download.*`,
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            downloadQuery: queryToExecute,
-          },
-        ]);
-        setBusy(false);
-        return;
-      }
-
-      const formattedHistory = [...messages, userMsg].map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      const res = await ask({
-        data: {
-          messages: formattedHistory,
-          snapshot,
-          model: selectedModel,
-        },
-      });
-
-      if (res.ok) {
-        if (res.usage?.total_tokens) {
-          setTotalTokensUsed((prev) => prev + res.usage!.total_tokens!);
-        }
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `asst-${Date.now()}`,
-            role: "assistant",
-            content: res.content,
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            model: res.model || selectedModel,
-            tokens: res.usage?.total_tokens,
-            downloadQuery: queryToExecute,
-          },
-        ]);
-
-        if (/rule\s*(?:added|captured|created)/i.test(res.content)) {
-          aiGuide.notify.emit({ title: "Rule captured", body: res.content.slice(0, 120), kind: "rule" });
-        }
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `asst-${Date.now()}`,
-            role: "assistant",
-            content: `⚠️ **OpenAI Error**: ${res.error}\n\nPlease verify your OpenAI API key in settings or check your API quota.`,
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          },
-        ]);
-      }
-    } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `asst-${Date.now()}`,
-          role: "assistant",
-          content: `⚠️ **Error**: ${err?.message || "Failed to reach AI service"}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        },
-      ]);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const clearChat = () => {
-    setMessages([
-      {
-        id: `welcome-${Date.now()}`,
-        role: "assistant",
-        content: `Chat session reset. Ask me anything about **${company.name}** or pick a prompt from the sidebar!`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       },
-    ]);
-    toast.info("Conversation cleared");
+    });
   };
 
   const exportChat = () => {
-    const text = messages.map((m) => `[${m.timestamp}] ${m.role.toUpperCase()}:\n${m.content}\n`).join("\n---\n\n");
+    const text = messages.map((m) => `[${m.timestamp}] ${m.role.toUpperCase()} (${m.source || "SWIFT AI"}):\n${m.content}\n`).join("\n---\n\n");
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -498,7 +273,7 @@ function SwiftAiCommandCenter() {
             </button>
           </div>
 
-          <Button variant="outline" size="sm" onClick={clearChat} className="rounded-xl text-xs gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => clearConversation(company.name)} className="rounded-xl text-xs gap-1.5">
             <RotateCcw className="h-3.5 w-3.5" /> Clear
           </Button>
 
@@ -537,7 +312,14 @@ function SwiftAiCommandCenter() {
                   }`}>
                     {/* Message Header */}
                     <div className="flex items-center justify-between gap-4 mb-1.5 text-[11px] opacity-75">
-                      <span className="font-semibold">{isUser ? "You" : "SWIFT AI"}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold">{isUser ? "You" : "SWIFT AI"}</span>
+                        {msg.source && (
+                          <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 opacity-70 font-mono">
+                            {msg.source === "LIVE_BRAIN" ? "Live Brain" : "Copilot"}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         {msg.model && <span className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 text-[10px]">{msg.model}</span>}
                         <span>{msg.timestamp}</span>
@@ -553,35 +335,13 @@ function SwiftAiCommandCenter() {
                       </div>
                     </div>
 
-                    {/* Markdown Content */}
-                    <div className={`prose prose-sm max-w-none ${isUser ? "prose-invert" : "dark:prose-invert"}`}>
-                      <ReactMarkdown
-                        components={{
-                          table: ({ children }) => (
-                            <div className="overflow-x-auto my-3 rounded-2xl border border-border/80 bg-background/80 shadow-xs">
-                              <table className="w-full text-left text-xs border-collapse divide-y divide-border/60">
-                                {children}
-                              </table>
-                            </div>
-                          ),
-                          thead: ({ children }) => <thead className="bg-muted/80">{children}</thead>,
-                          th: ({ children }) => (
-                            <th className="font-semibold px-3.5 py-2.5 text-foreground text-[11px] whitespace-nowrap">
-                              {children}
-                            </th>
-                          ),
-                          td: ({ children }) => (
-                            <td className="px-3.5 py-2.5 text-foreground/90 text-xs border-t border-border/40 whitespace-nowrap">
-                              {children}
-                            </td>
-                          ),
-                          ul: ({ children }) => <ul className="my-1.5 space-y-1 pl-4 list-disc marker:text-primary/70">{children}</ul>,
-                          p: ({ children }) => <p className="my-1.5 leading-relaxed">{children}</p>,
-                          strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                        }}
-                      >
-                        {msg.content}
-                      </ReactMarkdown>
+                    {/* Unified Structured AI Response Renderer */}
+                    <div className="my-1">
+                      <AIResponseRenderer
+                        message={msg}
+                        onRunQuery={(q) => handleSend(q)}
+                        onDownloadPdf={(q, c) => handleGeneratePdfForQuery(q, c)}
+                      />
                     </div>
 
                     {/* Interactive Format Selection Buttons */}
@@ -653,7 +413,7 @@ function SwiftAiCommandCenter() {
                 key={s}
                 onClick={() => handleSend(s)}
                 disabled={busy}
-                className="shrink-0 text-xs px-3 py-1 rounded-full border border-border bg-card hover:border-primary/40 hover:bg-primary/5 transition-all text-muted-foreground hover:text-foreground"
+                className="shrink-0 text-xs px-3 py-1 rounded-full border border-border bg-card hover:border-primary/40 hover:bg-primary/5 transition-all text-muted-foreground hover:text-foreground cursor-pointer"
               >
                 {s}
               </button>
@@ -678,7 +438,7 @@ function SwiftAiCommandCenter() {
             <Button
               type="submit"
               disabled={busy || !input.trim()}
-              className="h-11 px-5 rounded-2xl bg-gradient-brand text-white shadow-soft hover:shadow-glow transition-all"
+              className="h-11 px-5 rounded-2xl bg-gradient-brand text-white shadow-soft hover:shadow-glow transition-all cursor-pointer"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
@@ -752,7 +512,7 @@ function SwiftAiCommandCenter() {
                           key={p}
                           onClick={() => handleSend(p)}
                           disabled={busy}
-                          className="w-full text-left p-2 rounded-xl text-xs border border-border/60 bg-muted/30 hover:bg-primary/10 hover:border-primary/40 text-foreground transition-all line-clamp-2"
+                          className="w-full text-left p-2 rounded-xl text-xs border border-border/60 bg-muted/30 hover:bg-primary/10 hover:border-primary/40 text-foreground transition-all line-clamp-2 cursor-pointer"
                         >
                           "{p}"
                         </button>

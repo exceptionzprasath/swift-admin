@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { useStore, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device } from "@/lib/store";
+import { useStore, isMockEmployee, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,7 +151,7 @@ export const Route = createFileRoute("/admin/attendance")({
 
 function AttendancePage() {
   const {
-    employees,
+    employees: rawEmployees,
     attendance,
     upsertAttendance,
     company,
@@ -164,6 +164,7 @@ function AttendancePage() {
     deleteDevice,
     loadCompanyState,
   } = useStore();
+  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e)), [rawEmployees]);
   const { activeTenantId } = useAuth();
 
   // Primary Selected Date for Daily View

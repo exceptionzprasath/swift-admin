@@ -22,7 +22,7 @@ const CreateTenantSchema = z.object({
  * Returns a successfully simulated tenant metadata structure.
  */
 export const createOwnedTenant = createServerFn({ method: "POST" })
-  .inputValidator((i: unknown) => CreateTenantSchema.parse(i))
+  .validator((i: unknown) => CreateTenantSchema.parse(i))
   .handler(async ({ data }) => {
     const tenant = {
       id: crypto.randomUUID(),
