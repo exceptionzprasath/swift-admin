@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import type { AIStructuredData } from "./ai-unified-types";
 
 export type CompanyContext = {
   name: string;
@@ -130,7 +131,7 @@ export function generateAttendancePdf(company: CompanyContext, monthlyReport: an
     e.name || "N/A",
     e.empCode || "N/A",
     e.department || "General",
-    e.totalWorkingDays ?? 26,
+    e.workingDays ?? e.totalWorkingDays ?? 26,
     e.presentDays ?? (e.isPresent ? 1 : 0),
     e.absentDays ?? (e.isAbsentOrNotPunched ? 1 : 0),
     e.leaveDays ?? 0,
@@ -204,7 +205,23 @@ export function generateAiReportPdf(title: string, markdownContent: string, comp
 
   const lines = markdownContent.split("\n");
   const tableLines = lines.filter((l) => l.trim().startsWith("|") && l.includes("|"));
+  const nonTableLines = lines.filter((l) => !l.trim().startsWith("|") || !l.includes("|"));
 
+  let currentY = 50;
+
+  // Render text before/around table
+  const cleanIntro = nonTableLines.join("\n").replace(/[*_#`]/g, "").trim();
+  if (cleanIntro) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(30, 41, 59);
+    const splitLines = doc.splitTextToSize(cleanIntro, 180);
+    const linesToPrint = tableLines.length >= 3 ? splitLines.slice(0, 18) : splitLines;
+    doc.text(linesToPrint, 14, currentY);
+    currentY += linesToPrint.length * 5 + 6;
+  }
+
+  // Render table if present
   if (tableLines.length >= 3) {
     const rawHead = tableLines[0].split("|").map((c) => c.trim()).filter(Boolean);
     const rawRows = tableLines.slice(2).map((row) =>
@@ -212,7 +229,7 @@ export function generateAiReportPdf(title: string, markdownContent: string, comp
     );
 
     autoTable(doc, {
-      startY: 52,
+      startY: Math.min(currentY, 120),
       head: [rawHead],
       body: rawRows,
       theme: "grid",
@@ -221,13 +238,273 @@ export function generateAiReportPdf(title: string, markdownContent: string, comp
       alternateRowStyles: { fillColor: [248, 250, 252] },
       margin: { left: 14, right: 14 },
     });
-  } else {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9.5);
-    doc.setTextColor(30, 41, 59);
-    const cleanText = markdownContent.replace(/[*_#`|]/g, "").replace(/\n{2,}/g, "\n\n");
-    const splitLines = doc.splitTextToSize(cleanText, 180);
-    doc.text(splitLines, 14, 55);
+  }
+
+  drawFooter(doc, title);
+  return doc.output("blob");
+}
+
+/**
+ * Generates and downloads Structured Employee List PDF (Absent list, Late list, Directory, etc.)
+ */
+export function generateStructuredEmployeeListPdf(
+  company: CompanyContext,
+  data: Extract<AIStructuredData, { type: "EMPLOYEE_LIST" }>
+): Blob {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const title = data.title || "Employee List";
+  const subtitle = data.subtitle || `Total: ${data.count ?? data.employees.length} employees`;
+  drawHeader(doc, title, subtitle, company);
+
+  const tableRows = data.employees.map((e, idx) => [
+    idx + 1,
+    e.name || "N/A",
+    e.empCode || "N/A",
+    e.department || "General",
+    e.designation || "Staff",
+    e.badge || e.status || (e.checkIn ? `Checked In: ${e.checkIn}` : "Active"),
+  ]);
+
+  autoTable(doc, {
+    startY: 52,
+    head: [["#", "Employee Name", "Employee ID", "Department", "Designation", "Status / Badge"]],
+    body: tableRows,
+    theme: "grid",
+    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
+    bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59] },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    margin: { left: 14, right: 14 },
+  });
+
+  drawFooter(doc, title);
+  return doc.output("blob");
+}
+
+/**
+ * Generates and downloads Structured Attendance Summary PDF (Today or Specific Employee)
+ */
+export function generateStructuredAttendanceSummaryPdf(
+  company: CompanyContext,
+  data: Extract<AIStructuredData, { type: "ATTENDANCE_SUMMARY" }>
+): Blob {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const title = data.title || "Attendance Summary";
+  const m = data.metrics;
+  const subtitle = `Date: ${data.date} · Overall Attendance Rate: ${m.attendanceRatePct ?? 0}%`;
+  drawHeader(doc, title, subtitle, company);
+
+  let currentY = 52;
+
+  // Render Metrics Overview Grid / Summary Table
+  autoTable(doc, {
+    startY: currentY,
+    head: [["Scheduled", "Present", "Absent", "Late", "On Leave", "Attendance Rate"]],
+    body: [[
+      String(m.totalScheduled ?? "-"),
+      String(m.present ?? 0),
+      String(m.absent ?? 0),
+      String(m.late ?? 0),
+      String(m.onLeave ?? 0),
+      `${m.attendanceRatePct ?? 0}%`
+    ]],
+    theme: "grid",
+    headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
+    bodyStyles: { fontSize: 8.5, fontStyle: "bold", textColor: [30, 41, 59] },
+    margin: { left: 14, right: 14 },
+  });
+
+  currentY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 8 : 75;
+
+  // If there are Absent Employees listed
+  if (data.absentEmployees && data.absentEmployees.length > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(225, 29, 72); // Rose-600
+    doc.text(`Absent Employees (${data.absentEmployees.length})`, 14, currentY);
+    currentY += 4;
+
+    const absentRows = data.absentEmployees.map((e, idx) => [
+      idx + 1,
+      e.name,
+      e.empCode,
+      e.department || "General",
+      e.designation || "Staff",
+      "Absent"
+    ]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [["#", "Employee Name", "ID", "Department", "Designation", "Status"]],
+      body: absentRows,
+      theme: "grid",
+      headStyles: { fillColor: [225, 29, 72], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+      bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+      margin: { left: 14, right: 14 },
+    });
+
+    currentY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 8 : currentY + 30;
+  }
+
+  // If there are Late Employees listed
+  if (data.lateEmployees && data.lateEmployees.length > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(217, 119, 6); // Amber-600
+    doc.text(`Late Check-Ins (${data.lateEmployees.length})`, 14, currentY);
+    currentY += 4;
+
+    const lateRows = data.lateEmployees.map((e, idx) => [
+      idx + 1,
+      e.name,
+      e.empCode,
+      e.department || "General",
+      e.checkIn || "Late"
+    ]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [["#", "Employee Name", "ID", "Department", "Check-In Recorded"]],
+      body: lateRows,
+      theme: "grid",
+      headStyles: { fillColor: [217, 119, 6], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+      bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+      margin: { left: 14, right: 14 },
+    });
+  }
+
+  drawFooter(doc, title);
+  return doc.output("blob");
+}
+
+/**
+ * Generates and downloads Structured Employee Details PDF (Single Employee Profile)
+ */
+export function generateStructuredEmployeeDetailsPdf(
+  company: CompanyContext,
+  data: Extract<AIStructuredData, { type: "EMPLOYEE_DETAILS" }>
+): Blob {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const emp = data.employee;
+  const att = data.attendanceSummary;
+  const title = `Employee Profile — ${emp.name}`;
+  const subtitle = `${emp.empCode} · ${emp.department || "General"} · ${emp.designation || "Staff"}`;
+  drawHeader(doc, title, subtitle, company);
+
+  const profileRows = [
+    ["Employee Name", emp.name, "Employee ID", emp.empCode],
+    ["Department", emp.department || "General", "Designation", emp.designation || "Staff"],
+    ["Branch", emp.branch || "Headquarters", "Employment Status", (emp.status || "Active").toUpperCase()],
+    ["Official Email", emp.email || "N/A", "Phone Number", emp.phone || "N/A"],
+    ["Date of Joining", emp.doj || "N/A", "Face Enrolled", emp.isFaceRegistered ? "Yes" : "Pending"],
+    ["Basic Salary", formatCurrency(emp.basicSalary || 15000), "Today Punctuality", att?.todayStatus || "Present"],
+    ["Check-In Punch", att?.checkIn || "N/A", "30-Day Rate", `${att?.attendancePct ?? 100}%`],
+    ["30-Day Present", `${att?.presentDays30d ?? "-"} days`, "30-Day Absent", `${att?.absentDays30d ?? "-"} days`],
+  ];
+
+  autoTable(doc, {
+    startY: 52,
+    head: [["Attribute", "Value", "Attribute", "Value"]],
+    body: profileRows,
+    theme: "grid",
+    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
+    bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59] },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    margin: { left: 14, right: 14 },
+  });
+
+  drawFooter(doc, title);
+  return doc.output("blob");
+}
+
+/**
+ * Generates and downloads Structured Leave Summary PDF
+ */
+export function generateStructuredLeaveSummaryPdf(
+  company: CompanyContext,
+  data: Extract<AIStructuredData, { type: "LEAVE_SUMMARY" }>
+): Blob {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const title = data.title || "Leave Requests Summary";
+  const subtitle = `Pending Approvals: ${data.pendingCount || 0}`;
+  drawHeader(doc, title, subtitle, company);
+
+  const tableRows = data.leaves.map((l, idx) => [
+    idx + 1,
+    l.employeeName,
+    l.empCode || "N/A",
+    l.type,
+    l.startDate,
+    l.endDate,
+    String(l.days),
+    l.status.toUpperCase(),
+    l.reason || "N/A"
+  ]);
+
+  autoTable(doc, {
+    startY: 52,
+    head: [["#", "Employee", "ID", "Leave Type", "Start Date", "End Date", "Days", "Status", "Reason"]],
+    body: tableRows,
+    theme: "grid",
+    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+    bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    margin: { left: 14, right: 14 },
+  });
+
+  drawFooter(doc, title);
+  return doc.output("blob");
+}
+
+/**
+ * Generates and downloads Structured Payroll Summary PDF
+ */
+export function generateStructuredPayrollSummaryPdf(
+  company: CompanyContext,
+  data: Extract<AIStructuredData, { type: "PAYROLL_SUMMARY" }>
+): Blob {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const title = data.title || "Payroll Liability Summary";
+  const subtitle = `Payroll Month: ${data.month} · Total Employees: ${data.totalEmployees}`;
+  drawHeader(doc, title, subtitle, company);
+
+  autoTable(doc, {
+    startY: 52,
+    head: [["Metric", "Amount / Count"]],
+    body: [
+      ["Total Gross Liability", formatCurrency(data.totalGrossLiability)],
+      ["Average Monthly CTC", formatCurrency(data.averageCtc)],
+      ["Total PF Liability", formatCurrency(data.pfDeductionTotal)],
+      ["Total ESI Liability", formatCurrency(data.esiDeductionTotal)],
+      ["Total Employees Covered", String(data.totalEmployees)],
+    ],
+    theme: "grid",
+    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
+    bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59] },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    margin: { left: 14, right: 14 },
+  });
+
+  if (data.employees && data.employees.length > 0) {
+    const finalY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 8 : 90;
+    const empRows = data.employees.map((e, idx) => [
+      idx + 1,
+      e.name,
+      e.empCode,
+      e.department,
+      formatCurrency(e.basic),
+      formatCurrency(e.ctc),
+    ]);
+
+    autoTable(doc, {
+      startY: finalY,
+      head: [["#", "Employee Name", "ID", "Department", "Basic Salary", "Monthly CTC"]],
+      body: empRows,
+      theme: "grid",
+      headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+      bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      margin: { left: 14, right: 14 },
+    });
   }
 
   drawFooter(doc, title);
