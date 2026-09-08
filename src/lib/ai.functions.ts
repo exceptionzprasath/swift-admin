@@ -1,14 +1,35 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import dns from "node:dns";
 import {
   inspectUserInput,
   sanitizeModelOutput,
   sanitizeSnapshotData,
 } from "./ai-security";
 
+// Prioritize IPv4 for stable TLS socket connections on Windows
+try {
+  if (typeof dns?.setDefaultResultOrder === "function") {
+    dns.setDefaultResultOrder("ipv4first");
+  }
+} catch {}
+
+const MessageContentPartSchema = z.union([
+  z.object({
+    type: z.literal("text"),
+    text: z.string().max(30000),
+  }),
+  z.object({
+    type: z.literal("image_url"),
+    image_url: z.object({
+      url: z.string(),
+    }),
+  }),
+]);
+
 const MessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]),
-  content: z.string().max(20000),
+  content: z.union([z.string().max(30000), z.array(MessageContentPartSchema)]),
 });
 
 const InputSchema = z.object({
@@ -19,6 +40,11 @@ const InputSchema = z.object({
 
 const SYSTEM_PROMPT = `You are an HRMS AI Assistant for SHIFT HRMS (SWIFT HRMS).
 Your job is to help authorized users with HR and employee-related information available through the HRMS application.
+
+When the user uploads a photo/image:
+- Thoroughly analyze the uploaded image and accurately answer the user's specific question.
+- Identify and extract text, numbers, faces, ID cards, receipts, attendance sheets, badges, or objects visible in the image.
+- Be precise, factual, and helpful.
 
 ==================================================
 RESPONSE DESIGN & PRESENTATION RULES
@@ -245,7 +271,11 @@ export const askSwiftAi = createServerFn({ method: "POST" })
     // 1. Guardrail Pre-check: Inspect user's last message for prompt injection or secret extraction
     const lastUserMessage = [...data.messages].reverse().find((m) => m.role === "user");
     if (lastUserMessage) {
-      const inspection = inspectUserInput(lastUserMessage.content);
+      const userText =
+        typeof lastUserMessage.content === "string"
+          ? lastUserMessage.content
+          : (lastUserMessage.content.find((p) => p.type === "text") as any)?.text || "";
+      const inspection = inspectUserInput(userText);
       if (!inspection.isSafe && inspection.refusalMessage) {
         return {
           ok: true as const,

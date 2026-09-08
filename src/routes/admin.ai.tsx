@@ -26,13 +26,60 @@ import {
   Download,
   Plus,
   ArrowUp,
+  X,
+  Paperclip,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import type { AIDocumentMeta } from "@/lib/ai-unified-types";
 
 const Lottie = (LottieRaw as any)?.default || LottieRaw;
 const chatbotAnimation = (chatbotAnimationRaw as any)?.default || chatbotAnimationRaw;
+
+function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+async function compressImageToDataUrl(file: File, maxDimension = 1200, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => resolve(e.target?.result as string);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export const Route = createFileRoute("/admin/ai")({
   head: () => ({ meta: [{ title: "SWIFT AI Copilot · OpenAI ChatGPT" }] }),
@@ -49,6 +96,15 @@ function SwiftAiCommandCenter() {
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [attachedPhoto, setAttachedPhoto] = useState<{
+    file: File;
+    name: string;
+    size: number;
+    sizeStr: string;
+    type: string;
+    dataUrl: string;
+  } | null>(null);
 
   // Unified Store
   const {
@@ -177,14 +233,63 @@ function SwiftAiCommandCenter() {
     );
   };
 
-  const handleSend = async (queryText?: string, forceFormat?: "pdf" | "text") => {
-    const text = (queryText ?? input).trim();
-    if (!text || busy) return;
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
+    // Reset value so identical photo can be selected again
+    e.target.value = "";
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image or photo (.png, .jpg, .jpeg, .webp)");
+      return;
+    }
+
+    const sizeStr = formatFileSize(file.size);
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      setAttachedPhoto({
+        file,
+        name: file.name,
+        size: file.size,
+        sizeStr,
+        type: file.type,
+        dataUrl,
+      });
+      toast.success(`Photo attached: "${file.name}"`);
+    } catch {
+      toast.error("Failed to process photo");
+    }
+
+    inputRef.current?.focus();
+  };
+
+  const handleSend = async (queryText?: string, forceFormat?: "pdf" | "text") => {
+    const rawText = (queryText ?? input).trim();
+    if ((!rawText && !attachedPhoto) || busy) return;
+
+    const currentPhoto = attachedPhoto;
+    setAttachedPhoto(null);
     setInput("");
+
+    const text = rawText || (currentPhoto ? "Please analyze this uploaded photo and answer my question." : "");
+
+    let docMeta: AIDocumentMeta | undefined = undefined;
+    if (currentPhoto) {
+      docMeta = {
+        title: currentPhoto.name,
+        filename: currentPhoto.name,
+        size: currentPhoto.size,
+        docType: "image",
+        imageUrl: currentPhoto.dataUrl,
+      };
+    }
+
     await aiOrchestrator.dispatchUserMessage(text, {
       source: "COPILOT",
       forceFormat,
+      documentMeta: docMeta,
+      imageUrl: currentPhoto?.dataUrl,
       context: {
         company,
         employees,
@@ -266,12 +371,50 @@ function SwiftAiCommandCenter() {
 
   // Reusable ChatGPT Floating Search Capsule
   const renderChatGptSearchBox = (isHero = false) => {
-    const hasText = Boolean(input.trim());
+    const hasContent = Boolean(input.trim()) || Boolean(attachedPhoto);
 
     return (
       <div className={`relative w-full ${isHero ? "max-w-2xl" : "max-w-3xl"} mx-auto transition-all`}>
         {/* Soft Ambient Halo Glow */}
         <div className="absolute -inset-1.5 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-emerald-500/10 rounded-full blur-xl opacity-70 pointer-events-none" />
+
+        {/* Hidden Photo Input for Image Upload Only */}
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*,.png,.jpg,.jpeg,.webp,.gif"
+          className="hidden"
+          onChange={handlePhotoSelect}
+        />
+
+        {/* Selected Photo Thumbnail Preview (ChatGPT style) */}
+        {attachedPhoto && (
+          <div className="mb-2.5 inline-flex items-center gap-2.5 p-1.5 pr-3 rounded-2xl bg-card border border-primary/40 shadow-sm animate-in fade-in slide-in-from-bottom-1 text-xs">
+            <div className="h-10 w-10 rounded-xl overflow-hidden bg-black/10 border border-border/80 shrink-0">
+              <img
+                src={attachedPhoto.dataUrl}
+                alt={attachedPhoto.name}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="flex flex-col text-left min-w-0">
+              <span className="font-semibold text-foreground truncate max-w-[180px] sm:max-w-[280px]">
+                {attachedPhoto.name}
+              </span>
+              <span className="text-[11px] text-muted-foreground font-mono">
+                Photo · {attachedPhoto.sizeStr}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAttachedPhoto(null)}
+              className="ml-1 h-6 w-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition cursor-pointer"
+              title="Remove photo"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
 
         <form
           onSubmit={(e) => {
@@ -280,16 +423,12 @@ function SwiftAiCommandCenter() {
           }}
           className="relative flex items-center gap-2 bg-card/95 dark:bg-card/95 border border-border/80 hover:border-primary/40 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10 rounded-full p-2 pl-3 pr-2.5 shadow-lg shadow-black/5 hover:shadow-xl transition-all"
         >
-          {/* Plus Action Button */}
+          {/* Plus Action Button -> Trigger Photo Upload */}
           <button
             type="button"
-            onClick={() => {
-              const randomPrompt = suggestions[Math.floor(Math.random() * suggestions.length)];
-              if (randomPrompt) setInput(randomPrompt);
-              inputRef.current?.focus();
-            }}
+            onClick={() => photoInputRef.current?.click()}
             className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 transition cursor-pointer shrink-0"
-            title="Insert suggested prompt"
+            title="Upload photo"
           >
             <Plus className="h-5 w-5" />
           </button>
@@ -300,7 +439,13 @@ function SwiftAiCommandCenter() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isListening ? "Listening to your voice... Speak now" : "Ask anything"}
+            placeholder={
+              isListening
+                ? "Listening to your voice... Speak now"
+                : attachedPhoto
+                ? "Ask anything about this photo..."
+                : "Ask anything"
+            }
             disabled={busy}
             className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/70 text-sm sm:text-base px-2 py-1"
             autoFocus={isHero}
@@ -335,18 +480,18 @@ function SwiftAiCommandCenter() {
 
             {/* Blue Circular Voice Mode / Send Button */}
             <button
-              type={hasText ? "submit" : "button"}
-              onClick={hasText ? undefined : toggleVoiceMode}
+              type={hasContent ? "submit" : "button"}
+              onClick={hasContent ? undefined : toggleVoiceMode}
               disabled={busy}
               className={`h-9 w-9 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
-                hasText
+                hasContent
                   ? "bg-gradient-brand text-white hover:opacity-95 active:scale-95"
                   : isListening
                   ? "bg-red-500 text-white ring-4 ring-red-500/25 animate-pulse"
                   : "bg-[#0A84FF] text-white hover:bg-blue-600 active:scale-95"
               }`}
               title={
-                hasText
+                hasContent
                   ? "Send message"
                   : isListening
                   ? "Voice Mode Active: Listening... Click to cancel"
@@ -355,7 +500,7 @@ function SwiftAiCommandCenter() {
             >
               {busy ? (
                 <Loader2 className="h-4 w-4 animate-spin text-white" />
-              ) : hasText ? (
+              ) : hasContent ? (
                 <ArrowUp className="h-4 w-4" />
               ) : isListening ? (
                 <div className="flex items-center gap-0.5">
@@ -533,6 +678,40 @@ function SwiftAiCommandCenter() {
                         )}
                       </div>
                     </div>
+
+                    {/* Attached Photo Preview in User Message */}
+                    {isUser && msg.documentMeta?.imageUrl && (
+                      <div className="mb-2.5 max-w-[280px] rounded-2xl overflow-hidden border border-white/25 bg-black/25 shadow-xs">
+                        <img
+                          src={msg.documentMeta.imageUrl}
+                          alt={msg.documentMeta.filename || "Uploaded photo"}
+                          className="w-full max-h-[220px] object-cover"
+                        />
+                        <div className="px-3 py-1.5 text-[11px] text-white/90 bg-black/40 flex items-center justify-between">
+                          <span className="truncate font-medium">{msg.documentMeta.filename || "Photo"}</span>
+                          {msg.documentMeta.size ? (
+                            <span className="text-[10px] opacity-80 font-mono ml-2 shrink-0">
+                              {formatFileSize(msg.documentMeta.size)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+                    {isUser && msg.documentMeta && !msg.documentMeta.imageUrl && (
+                      <div className="mb-2 flex items-center gap-2 p-2 px-3 rounded-xl bg-white/20 border border-white/25 backdrop-blur-xs text-xs text-white">
+                        <FileText className="h-4 w-4 shrink-0 text-white" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold truncate leading-tight">
+                            {msg.documentMeta.filename || msg.documentMeta.title}
+                          </p>
+                          {msg.documentMeta.size ? (
+                            <p className="text-[10px] text-white/80 leading-tight">
+                              {formatFileSize(msg.documentMeta.size)}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Unified Structured AI Response Renderer */}
                     <div className="my-1">

@@ -16,6 +16,9 @@ export interface SendMessageOptions {
   viewerEmployeeId?: string;
   context: ToolExecutionContext;
   serverFnAsk?: (args: { data: any }) => Promise<any>;
+  documentMeta?: AIDocumentMeta;
+  documentContent?: string;
+  imageUrl?: string;
 }
 
 class AIOrchestrator {
@@ -61,6 +64,7 @@ class AIOrchestrator {
     // 1. Format Selection Prompt Check
     if (
       !options.forceFormat &&
+      !options.documentMeta &&
       !wantsPdf &&
       !wantsText &&
       isReportQuery(text) &&
@@ -93,6 +97,7 @@ class AIOrchestrator {
       role: "user",
       content: text,
       source: options.source,
+      documentMeta: options.documentMeta,
     });
 
     store.setGenerating(true, requestId);
@@ -214,6 +219,24 @@ class AIOrchestrator {
         queryToExecute,
         { maxRecentMessages: 18 }
       );
+
+      // If photo/image was uploaded, structure multimodal content for OpenAI Vision
+      if (options.imageUrl && messageHistory.length > 0) {
+        const lastIdx = messageHistory.length - 1;
+        if (messageHistory[lastIdx].role === "user") {
+          const originalText = messageHistory[lastIdx].content || "Please analyze this uploaded photo and answer my question.";
+          (messageHistory[lastIdx] as any).content = [
+            { type: "text", text: originalText },
+            { type: "image_url", image_url: { url: options.imageUrl } },
+          ];
+        }
+      } else if (options.documentContent && messageHistory.length > 0) {
+        // If documentContent was attached, enrich the user message in prompt sent to OpenAI
+        const lastIdx = messageHistory.length - 1;
+        if (messageHistory[lastIdx].role === "user") {
+          messageHistory[lastIdx].content += `\n\n[Attached Document: ${options.documentMeta?.filename || "document"}]\n\`\`\`\n${options.documentContent}\n\`\`\``;
+        }
+      }
 
       const askFn = options.serverFnAsk || askSwiftAi;
       const res = await askFn({
