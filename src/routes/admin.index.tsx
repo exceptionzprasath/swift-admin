@@ -28,6 +28,7 @@ import {
   Banknote,
   MessageSquareHeart,
   UserCheck,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NoticeBoard } from "@/components/notice-board";
@@ -215,8 +216,8 @@ function Dashboard() {
         name: emp.name,
         empCode: emp.empCode || emp.id,
         department: emp.department || "General",
-        designation: emp.designation || emp.role || "Staff",
-        avatar: emp.avatar,
+        designation: emp.designation || (emp as any).role || "Staff",
+        avatar: (emp as any).avatar || emp.photoDataUrl,
         statusText,
         badgeStyle,
         isLeave: Boolean(leave),

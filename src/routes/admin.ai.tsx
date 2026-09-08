@@ -161,16 +161,21 @@ function SwiftAiCommandCenter() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleGeneratePdfForQuery = (query: string, rawContent?: string) => {
-    aiOrchestrator.downloadQueryReport(query, rawContent, {
-      company,
-      employees,
-      attendance,
-      payrolls,
-      leaves,
-      docRequests,
-      role,
-    });
+  const handleGeneratePdfForQuery = (query: string, rawContent?: string, structuredData?: any) => {
+    aiOrchestrator.downloadQueryReport(
+      query,
+      rawContent,
+      {
+        company,
+        employees,
+        attendance,
+        payrolls,
+        leaves,
+        docRequests,
+        role,
+      },
+      structuredData
+    );
   };
 
   const handleSend = async (queryText?: string, forceFormat?: "pdf" | "text") => {
@@ -340,7 +345,7 @@ function SwiftAiCommandCenter() {
                       <AIResponseRenderer
                         message={msg}
                         onRunQuery={(q) => handleSend(q)}
-                        onDownloadPdf={(q, c) => handleGeneratePdfForQuery(q, c)}
+                        onDownloadPdf={(q, c) => handleGeneratePdfForQuery(q, c, msg.structuredData)}
                       />
                     </div>
 
@@ -374,7 +379,7 @@ function SwiftAiCommandCenter() {
                           <FileText className="h-3.5 w-3.5 text-primary/80" /> Export as official document
                         </span>
                         <button
-                          onClick={() => handleGeneratePdfForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content)}
+                          onClick={() => handleGeneratePdfForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content, msg.structuredData)}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition cursor-pointer active:scale-95 border border-primary/20 shadow-2xs hover:shadow-xs"
                           title="Download as PDF format"
                         >

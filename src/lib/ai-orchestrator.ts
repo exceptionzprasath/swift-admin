@@ -274,9 +274,14 @@ class AIOrchestrator {
   /**
    * Triggers download of a previously generated query document.
    */
-  downloadQueryReport(query: string, rawContent?: string, context?: ToolExecutionContext): void {
+  downloadQueryReport(
+    query: string,
+    rawContent?: string,
+    context?: ToolExecutionContext,
+    structuredData?: any
+  ): void {
     if (!context) return;
-    AIToolRegistry.executePdfReport(query, context, rawContent);
+    AIToolRegistry.executePdfReport(query, context, rawContent, structuredData);
     toast.success("Downloading PDF report...");
   }
 }

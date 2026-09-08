@@ -68,17 +68,22 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
     };
   }, []);
 
-  const handleGeneratePdfForQuery = (query: string, rawContent?: string) => {
-    aiOrchestrator.downloadQueryReport(query, rawContent, {
-      company,
-      employees,
-      attendance,
-      payrolls,
-      leaves,
-      docRequests,
-      role,
-      viewerEmployeeId,
-    });
+  const handleGeneratePdfForQuery = (query: string, rawContent?: string, structuredData?: any) => {
+    aiOrchestrator.downloadQueryReport(
+      query,
+      rawContent,
+      {
+        company,
+        employees,
+        attendance,
+        payrolls,
+        leaves,
+        docRequests,
+        role,
+        viewerEmployeeId,
+      },
+      structuredData
+    );
   };
 
   const send = async (text: string, forceFormat?: "pdf" | "text") => {
@@ -184,7 +189,7 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
                         message={m}
                         compact
                         onRunQuery={(q) => send(q)}
-                        onDownloadPdf={(q, c) => handleGeneratePdfForQuery(q, c)}
+                        onDownloadPdf={(q, c) => handleGeneratePdfForQuery(q, c, m.structuredData)}
                       />
                     </div>
 
@@ -218,7 +223,7 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
                           <FileText className="h-3 w-3 text-primary/80" /> PDF Document
                         </span>
                         <button
-                          onClick={() => handleGeneratePdfForQuery(m.downloadQuery || "SWIFT AI Report", m.content)}
+                          onClick={() => handleGeneratePdfForQuery(m.downloadQuery || "SWIFT AI Report", m.content, m.structuredData)}
                           className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-semibold transition cursor-pointer active:scale-95 border border-primary/20 shadow-2xs hover:shadow-xs"
                           title="Download as PDF format"
                         >
