@@ -56,14 +56,15 @@ function AdminLayout() {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { user, loading, isSuperAdmin, memberships, activeTenantId, setActiveTenant, signOut } = useAuth();
-  const { company, demoMode, exitDemo, loadCompanyState } = useStore();
+  const { company, demoMode, exitDemo, loadCompanyState, purgeMockEmployees } = useStore();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
+    purgeMockEmployees();
     if (!demoMode && activeTenantId) {
       loadCompanyState(activeTenantId);
     }
-  }, [activeTenantId, demoMode, loadCompanyState]);
+  }, [activeTenantId, demoMode, loadCompanyState, purgeMockEmployees]);
 
   useEffect(() => {
     if (demoMode) return;

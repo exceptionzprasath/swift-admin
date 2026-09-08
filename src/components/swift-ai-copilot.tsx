@@ -1,55 +1,52 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useServerFn } from "@tanstack/react-start";
-import JSZip from "jszip";
 import LottieRaw from "lottie-react";
 import chatbotAnimationRaw from "@/assets/chatbot.json";
 import { useStore } from "@/lib/store";
-
-const Lottie = (LottieRaw as any)?.default || LottieRaw;
-const chatbotAnimation = (chatbotAnimationRaw as any)?.default || chatbotAnimationRaw;
+import { useAuth } from "@/lib/auth";
 import { type Role } from "@/lib/ai-context";
-import { buildEnterpriseSnapshot, suggestionsFor } from "@/lib/ai-knowledge";
-import { askSwiftAi } from "@/lib/ai.functions";
+import { suggestionsFor } from "@/lib/ai-knowledge";
 import { aiGuide } from "@/lib/ai-guide-bus";
-import { parseComplianceCommand, renderComplianceDocPDF } from "@/lib/compliance-docs";
-import { useComplianceDocs, blobToDataUrl } from "@/lib/compliance-docs-store";
+import { useUnifiedAiStore } from "@/lib/ai-unified-store";
+import { aiOrchestrator } from "@/lib/ai-orchestrator";
+import { AIResponseRenderer } from "@/components/ai/AIResponseRenderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sparkles, X, Send, Loader2, Bot, Zap, FileText, MessageSquare, Download } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  generateEmployeesPdf,
-  generateAttendancePdf,
-  generateSalaryPdf,
-  generateAiReportPdf,
-  downloadPdfBlob,
-} from "@/lib/ai-pdf-reports";
 
-type Msg = {
-  role: "user" | "assistant";
-  content: string;
-  isFormatPrompt?: boolean;
-  originalQuery?: string;
-  downloadQuery?: string;
-};
+const Lottie = (LottieRaw as any)?.default || LottieRaw;
+const chatbotAnimation = (chatbotAnimationRaw as any)?.default || chatbotAnimationRaw;
 
 export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Role; viewerEmployeeId?: string }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
   const [guideActive, setGuideActive] = useState(false);
   const [pulse, setPulse] = useState(false);
-  const [messages, setMessages] = useState<Msg[]>([
-    { role: "assistant", content: "Hi — I'm **SWIFT AI**, your enterprise intelligence copilot. I know your company's branches, employees, attendance, payroll, compliance, assets and documents. Ask me anything, or pick a suggestion below." },
-  ]);
   const scroller = useRef<HTMLDivElement>(null);
-  const ask = useServerFn(askSwiftAi);
+
+  const { activeTenantId } = useAuth();
   const { company, employees, attendance, payrolls, leaves, docRequests } = useStore();
   const suggestions = useMemo(() => suggestionsFor(role), [role]);
 
-  useEffect(() => { scroller.current?.scrollTo({ top: 1e9, behavior: "smooth" }); }, [messages, busy]);
+  // Unified Store
+  const {
+    messages,
+    isGenerating: busy,
+    setTenant,
+  } = useUnifiedAiStore();
+
+  // Sync tenant session
+  useEffect(() => {
+    if (activeTenantId) {
+      setTenant(activeTenantId, company.name);
+    }
+  }, [activeTenantId, company.name, setTenant]);
+
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: 1e9, behavior: "smooth" });
+  }, [messages, busy]);
 
   // Live notifications & guide-mode subscription
   useEffect(() => {
@@ -63,157 +60,46 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
       setGuideActive(!!m.active);
       if (m.active) {
         setOpen(true);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `🎯 **Guide mode enabled.** I'll walk you through **${m.scope?.replace(/-/g, " ")}** and turn what you tell me into company rules. Ask me anything as we go.` },
-        ]);
       }
     });
-    return () => { off1(); off2(); };
+    return () => {
+      off1();
+      off2();
+    };
   }, []);
 
-  const archive = useComplianceDocs((s) => s.archive);
-
-  const tryComplianceCommand = async (text: string): Promise<string | null> => {
-    const specs = parseComplianceCommand(text);
-    if (!specs.length) return null;
-    const zip = new JSZip();
-    const lines: string[] = [];
-    for (const s of specs) {
-      const { blob, filename, ref } = await renderComplianceDocPDF(s, { company, employees });
-      zip.file(filename, blob);
-      const dataUrl = await blobToDataUrl(blob);
-      archive({
-        specId: s.id, code: s.code, title: s.title, ref, filename, dataUrl, size: blob.size,
-        createdBy: "swift-ai", approvals: [], signed: false, sealed: !!s.requiresSeal,
-        watermark: s.watermark, tags: [s.act, s.kind],
-      });
-      lines.push(`- **${s.code}** — ${s.title} · ${(blob.size / 1024).toFixed(1)} KB · Ref \`${ref}\``);
-    }
-    const bundle = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(bundle);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `SWIFT_AI_Docs_${Date.now()}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-    return `✅ Generated **${specs.length}** compliance document(s), auto-filled from your tenant data. Bundle downloaded and archived at **/admin/compliance-docs**.\n\n${lines.join("\n")}`;
-  };
-
-  const [pendingReportQuery, setPendingReportQuery] = useState<string | null>(null);
-
-  const isReportQuery = (text: string): boolean => {
-    const lower = text.toLowerCase().trim();
-    if (/^(?:hi|hello|hey|thanks|thank you|ok|okay|bye)$/i.test(lower)) return false;
-    if (/(?:api\s*key|password|\.env|credential|token|system\s*prompt)/i.test(lower)) return false;
-    return /(?:employee|staff|team|attendance|present|absent|late|punch|roster|salary|payroll|ctc|leave|holiday|company|overview|department|branch|report|details|summary|who|list|all)/i.test(
-      lower
-    );
-  };
-
   const handleGeneratePdfForQuery = (query: string, rawContent?: string) => {
-    const lower = query.toLowerCase();
-    const snapshot = buildEnterpriseSnapshot({ company, employees, attendance, payrolls, leaves, docRequests, role, viewerEmployeeId });
-    let blob: Blob;
-    let filename = `SWIFT_AI_Report_${Date.now()}.pdf`;
-
-    if (lower.includes("attendance")) {
-      blob = generateAttendancePdf(company, snapshot.attendance.monthlyReport, snapshot.attendance.todayLiveRoster);
-      filename = `Attendance_Report_${snapshot.today}.pdf`;
-    } else if (lower.includes("salary") || lower.includes("ctc") || lower.includes("payroll")) {
-      blob = generateSalaryPdf(company, snapshot.employees);
-      filename = `Salary_Summary_${snapshot.today}.pdf`;
-    } else if (lower.includes("employee") || lower.includes("staff")) {
-      blob = generateEmployeesPdf(company, snapshot.employees);
-      filename = `Employee_Master_Registry_${snapshot.today}.pdf`;
-    } else {
-      blob = generateAiReportPdf("SWIFT HRMS Report", rawContent || query, company);
-      filename = `HRMS_Report_${snapshot.today}.pdf`;
-    }
-
-    downloadPdfBlob(blob, filename);
-    toast.success(`PDF downloaded: ${filename}`);
+    aiOrchestrator.downloadQueryReport(query, rawContent, {
+      company,
+      employees,
+      attendance,
+      payrolls,
+      leaves,
+      docRequests,
+      role,
+      viewerEmployeeId,
+    });
   };
 
   const send = async (text: string, forceFormat?: "pdf" | "text") => {
     if (!text.trim() || busy) return;
-    const lower = text.toLowerCase();
 
-    // Check if user is asking for a report without format preference
-    const wantsPdf = forceFormat === "pdf" || /\b(pdf|download\s*pdf|in\s*pdf)\b/i.test(lower);
-    const wantsText = forceFormat === "text" || /\b(text|in\s*text|chat|here)\b/i.test(lower);
-
-    // If it's a fresh report query and no format is specified yet, ask the user first!
-    if (!forceFormat && !wantsPdf && !wantsText && isReportQuery(text) && !pendingReportQuery) {
-      setPendingReportQuery(text);
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: text },
-        {
-          role: "assistant",
-          content: `📄 **Format Selection Required**\n\nWould you like the **${text.trim()}** in **PDF Document format** (downloadable file) or **Text format** (view directly in chat)?\n\nPlease select an option below:`,
-          isFormatPrompt: true,
-          originalQuery: text,
-        },
-      ]);
-      setInput("");
-      return;
-    }
-
-    const queryToExecute = pendingReportQuery || text;
-    setPendingReportQuery(null);
-
-    const next: Msg[] = [...messages, { role: "user", content: text }];
-    setMessages(next);
     setInput("");
-    setBusy(true);
-
-    try {
-      const cmdResult = await tryComplianceCommand(queryToExecute);
-      if (cmdResult) {
-        setMessages((m) => [...m, { role: "assistant", content: cmdResult }]);
-        toast.success("Compliance documents generated");
-        return;
-      }
-
-      const snapshot = buildEnterpriseSnapshot({ company, employees, attendance, payrolls, leaves, docRequests, role, viewerEmployeeId });
-
-      if (wantsPdf) {
-        // Generate and download PDF directly
-        handleGeneratePdfForQuery(queryToExecute);
-        setMessages((m) => [
-          ...m,
-          {
-            role: "assistant",
-            content: `📄 **PDF Generated & Downloaded**\n\nYour formatted PDF report for **"${queryToExecute}"** has been generated and downloaded to your device with official company headers.\n\n*Click the button below if you need to download it again.*`,
-            downloadQuery: queryToExecute,
-          },
-        ]);
-        setBusy(false);
-        return;
-      }
-
-      const res = await ask({ data: { messages: next, snapshot } });
-      if (res.ok) {
-        setMessages((m) => [
-          ...m,
-          {
-            role: "assistant",
-            content: res.content,
-            downloadQuery: queryToExecute,
-          },
-        ]);
-        if (/rule\s*(?:added|captured|created)/i.test(res.content)) {
-          aiGuide.notify.emit({ title: "Rule captured", body: res.content.slice(0, 120), kind: "rule" });
-        }
-      } else {
-        setMessages((m) => [...m, { role: "assistant", content: `⚠️ ${res.error}` }]);
-      }
-    } catch (e) {
-      setMessages((m) => [...m, { role: "assistant", content: `⚠️ ${(e as Error).message}` }]);
-    } finally {
-      setBusy(false);
-    }
+    await aiOrchestrator.dispatchUserMessage(text, {
+      source: "LIVE_BRAIN",
+      forceFormat,
+      viewerEmployeeId,
+      context: {
+        company,
+        employees,
+        attendance,
+        payrolls,
+        leaves,
+        docRequests,
+        role,
+        viewerEmployeeId,
+      },
+    });
   };
 
   return (
@@ -266,7 +152,7 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
                   Live Brain · {company.name}
                 </div>
               </div>
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 relative" onClick={() => setOpen(false)}>
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 relative cursor-pointer" onClick={() => setOpen(false)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -274,7 +160,7 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
             <div ref={scroller} className="flex-1 overflow-y-auto p-3 space-y-3 bg-gradient-to-b from-background/50 to-muted/30">
               {messages.map((m, i) => (
                 <motion.div
-                  key={i}
+                  key={m.id || i}
                   initial={{ opacity: 0, y: 8, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ type: "spring", stiffness: 320, damping: 26 }}
@@ -286,34 +172,20 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
                     </div>
                   )}
                   <div className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm shadow-xs ${m.role === "user" ? "bg-gradient-brand text-white rounded-br-xs shadow-soft" : "bg-card border border-border/90 rounded-bl-xs text-foreground"}`}>
-                    <div className={`prose prose-sm max-w-none ${m.role === "user" ? "prose-invert" : "dark:prose-invert"}`}>
-                      <ReactMarkdown
-                        components={{
-                          table: ({ children }) => (
-                            <div className="overflow-x-auto my-2.5 rounded-xl border border-border/80 bg-background/70 shadow-xs">
-                              <table className="w-full text-left text-xs border-collapse divide-y divide-border/60">
-                                {children}
-                              </table>
-                            </div>
-                          ),
-                          thead: ({ children }) => <thead className="bg-muted/80">{children}</thead>,
-                          th: ({ children }) => (
-                            <th className="font-semibold px-3 py-2 text-foreground text-[11px] whitespace-nowrap">
-                              {children}
-                            </th>
-                          ),
-                          td: ({ children }) => (
-                            <td className="px-3 py-2 text-foreground/90 text-xs border-t border-border/40 whitespace-nowrap">
-                              {children}
-                            </td>
-                          ),
-                          ul: ({ children }) => <ul className="my-1.5 space-y-1 pl-4 list-disc marker:text-primary/70">{children}</ul>,
-                          p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
-                          strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                        }}
-                      >
-                        {m.content}
-                      </ReactMarkdown>
+                    {/* Subtle Source indicator if originated from Copilot */}
+                    {m.role === "user" && m.source && (
+                      <div className="text-[9px] opacity-75 mb-1 text-right font-mono">
+                        via {m.source === "LIVE_BRAIN" ? "Live Brain" : "Copilot"}
+                      </div>
+                    )}
+                    {/* Unified Structured AI Response Renderer */}
+                    <div className="my-1">
+                      <AIResponseRenderer
+                        message={m}
+                        compact
+                        onRunQuery={(q) => send(q)}
+                        onDownloadPdf={(q, c) => handleGeneratePdfForQuery(q, c)}
+                      />
                     </div>
 
                     {/* Interactive Format Selection Buttons */}
@@ -378,7 +250,7 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.1 + idx * 0.06 }}
                       onClick={() => send(s)}
-                      className="block w-full text-left text-xs rounded-xl border border-border px-3 py-2 hover:bg-primary/5 hover:border-primary/40 hover:translate-x-0.5 transition-all"
+                      className="block w-full text-left text-xs rounded-xl border border-border px-3 py-2 hover:bg-primary/5 hover:border-primary/40 hover:translate-x-0.5 transition-all cursor-pointer"
                     >
                       {s}
                     </motion.button>
@@ -393,9 +265,9 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={guideActive ? "Tell me the rule (e.g. 'Sunday = 2× pay')" : "Ask about your company…"}
                 disabled={busy}
-                className="flex-1 rounded-full"
+                className="flex-1 rounded-full text-xs"
               />
-              <Button type="submit" size="icon" disabled={busy || !input.trim()} className="bg-gradient-brand text-white rounded-full shadow-soft hover:shadow-glow transition-shadow">
+              <Button type="submit" size="icon" disabled={busy || !input.trim()} className="bg-gradient-brand text-white rounded-full shadow-soft hover:shadow-glow transition-shadow cursor-pointer">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </form>

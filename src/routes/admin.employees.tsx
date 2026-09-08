@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStore, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
+import { useStore, isMockEmployee, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { generateAppointmentPDF } from "@/lib/pdf";
 import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, type LetterKey } from "@/lib/documents";
@@ -109,7 +109,31 @@ const DOC_INSERT_AFTER: Record<string, FormStepKey> = {
 type FlowStep = { key: FormStepKey; title: string; icon: typeof User };
 
 function EmployeesPage() {
-  const { employees, addEmployee, deleteEmployee, company, docAssets, ensureJourney, docLibrary, advanceJourneyStep, registrationDrafts, saveRegistrationDraft, deleteRegistrationDraft, addAudit, currentUser, roles, devices } = useStore();
+  const {
+    employees: rawEmployees,
+    addEmployee,
+    deleteEmployee,
+    company,
+    docAssets,
+    ensureJourney,
+    docLibrary,
+    advanceJourneyStep,
+    registrationDrafts,
+    saveRegistrationDraft,
+    deleteRegistrationDraft,
+    addAudit,
+    currentUser,
+    roles,
+    devices,
+    purgeMockEmployees,
+  } = useStore();
+
+  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e)), [rawEmployees]);
+
+  useEffect(() => {
+    purgeMockEmployees();
+  }, [purgeMockEmployees]);
+
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
