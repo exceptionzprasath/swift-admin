@@ -1,7 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useStore, isMockEmployee } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 import { computePayroll, inr } from "@/lib/payroll";
+import { getNormalizedRequests, type NormalizedRequest } from "@/lib/requests-normalizer";
+import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
   Users,
@@ -17,6 +20,14 @@ import {
   Calendar,
   Filter,
   UserX,
+  Inbox,
+  Eye,
+  Check,
+  X,
+  Layers,
+  Banknote,
+  MessageSquareHeart,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NoticeBoard } from "@/components/notice-board";
@@ -27,6 +38,14 @@ import {
   HoverCardTrigger,
   HoverCardContent,
 } from "@/components/ui/hover-card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   ResponsiveContainer,
   BarChart,
@@ -46,10 +65,101 @@ export const Route = createFileRoute("/admin/")({
 });
 
 function Dashboard() {
-  const { employees: rawEmployees, attendance, company, payrolls, currentUser, leaves, docRequests } = useStore();
-  const [ticketFilter, setTicketFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const { activeTenantId, user } = useAuth();
+  const {
+    employees: rawEmployees,
+    attendance,
+    company,
+    payrolls,
+    currentUser,
+    leaves = [],
+    docRequests = [],
+    requests = [],
+    grievances = [],
+    loadCompanyState,
+    actOnUnifiedRequest,
+    actOnLeaveApprovalStep,
+    actOnDocStep,
+    updateGrievance,
+  } = useStore();
 
-  const employees = (rawEmployees || []).filter((e) => !isMockEmployee(e));
+  const [ticketFilter, setTicketFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [inspectItem, setInspectItem] = useState<NormalizedRequest | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Live Sync on Mount / Tenant Switch
+  useEffect(() => {
+    if (activeTenantId) {
+      loadCompanyState(activeTenantId);
+    }
+  }, [activeTenantId, loadCompanyState]);
+
+  const employees = useMemo(
+    () => (rawEmployees || []).filter((e) => !isMockEmployee(e)),
+    [rawEmployees]
+  );
+
+  // Unified live normalized requests identical to Side Panel (/admin/requests)
+  const normalizedRequests: NormalizedRequest[] = useMemo(() => {
+    return getNormalizedRequests({
+      requests,
+      leaves,
+      docRequests,
+      grievances,
+      employees,
+    });
+  }, [requests, leaves, docRequests, grievances, employees]);
+
+  const pendingRequestsList = useMemo(
+    () => normalizedRequests.filter((r) => r.status === "Pending" || r.status === "In Progress" || r.status === "Escalated"),
+    [normalizedRequests]
+  );
+  const pendingCount = pendingRequestsList.length;
+  const approvedCount = useMemo(
+    () => normalizedRequests.filter((r) => r.status === "Approved").length,
+    [normalizedRequests]
+  );
+  const rejectedCount = useMemo(
+    () => normalizedRequests.filter((r) => r.status === "Rejected").length,
+    [normalizedRequests]
+  );
+  const allCount = normalizedRequests.length;
+
+  const filteredRequests = useMemo(() => {
+    if (ticketFilter === "all") return normalizedRequests;
+    if (ticketFilter === "pending") {
+      return normalizedRequests.filter((r) => r.status === "Pending" || r.status === "In Progress" || r.status === "Escalated");
+    }
+    return normalizedRequests.filter((r) => r.status.toLowerCase() === ticketFilter.toLowerCase());
+  }, [normalizedRequests, ticketFilter]);
+
+  const handleQuickAction = async (item: NormalizedRequest, action: "approve" | "reject") => {
+    setActionLoading(true);
+    const actorName = user?.email?.split("@")[0] || currentUser?.name || "Admin";
+    const actorRole = "Administrator";
+    try {
+      if (item.sourceType === "unified") {
+        await actOnUnifiedRequest(item.id, action, `${action === "approve" ? "Approved" : "Rejected"} via Dashboard`, actorName, actorRole);
+      } else if (item.sourceType === "leave") {
+        actOnLeaveApprovalStep(item.id, action === "approve" ? "approve_close" : "reject", `${action === "approve" ? "Approved" : "Rejected"} via Dashboard`, actorName, actorRole);
+      } else if (item.sourceType === "document") {
+        actOnDocStep(item.id, action, `${action === "approve" ? "Approved" : "Rejected"} via Dashboard`, actorName);
+      } else if (item.sourceType === "grievance") {
+        updateGrievance(item.id, {
+          status: action === "approve" ? "Resolved" : "Rejected",
+          resolutionNote: `${action === "approve" ? "Resolved" : "Rejected"} via Dashboard`,
+          resolvedAt: new Date().toISOString(),
+          resolvedBy: actorName,
+        });
+      }
+      toast.success(`Request ${action === "approve" ? "Approved" : "Rejected"} successfully.`);
+      setInspectItem(null);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update request.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const today = new Date().toISOString().slice(0, 10);
   const todaysAtt = (attendance || []).filter((a) => a.date === today);
@@ -120,14 +230,6 @@ function Dashboard() {
     year: "numeric",
   });
 
-  const pendingLeaves = (leaves || []).filter(
-    (l) => (l.status || "pending").toLowerCase() === "pending"
-  );
-  const pendingDocs = (docRequests || []).filter(
-    (d) => d.status === "pending"
-  );
-  const totalPending = pendingLeaves.length + pendingDocs.length;
-
   const totalMonthlyCTC = employees.reduce((sum, e) => {
     const p = computePayroll({
       company,
@@ -171,10 +273,10 @@ function Dashboard() {
     },
     {
       label: "Pending Requests",
-      value: totalPending.toString(),
+      value: pendingCount.toString(),
       bgClass: "bg-kpi-4 text-kpi-4-foreground",
       icon: Clock,
-      link: "/admin/leave-calendar",
+      link: "/admin/requests",
       isAbsentees: false,
     },
   ];
@@ -212,23 +314,20 @@ function Dashboard() {
     "var(--palette-c1)",
   ];
 
-  // Recent transactions / activity list
+  // Recent transactions / activity list from merged live feed
   const recentActivities = [
-    ...pendingLeaves.slice(0, 3).map((l) => ({
-      id: l.id,
-      title: employees.find((e) => e.id === l.employeeId)?.name || "Employee",
-      type: `${l.type} Leave`,
-      tag: "LEAVE",
-      date: l.startDate,
-      badgeColor: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
-    })),
-    ...pendingDocs.slice(0, 2).map((d) => ({
-      id: d.id,
-      title: employees.find((e) => e.id === d.employeeId)?.name || "Employee",
-      type: `${d.letterTitle || d.letterKey || "Doc"} Request`,
-      tag: "DOC",
-      date: today,
-      badgeColor: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
+    ...normalizedRequests.slice(0, 3).map((r) => ({
+      id: r.id,
+      title: r.employeeName,
+      type: r.type,
+      tag: r.categoryLabel.toUpperCase().slice(0, 8),
+      date: r.dateStr,
+      badgeColor:
+        r.status === "Approved"
+          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+          : r.status === "Rejected"
+          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30"
+          : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
     })),
     ...employees.slice(0, 2).map((e) => ({
       id: e.id,
@@ -239,29 +338,6 @@ function Dashboard() {
       badgeColor: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
     })),
   ].slice(0, 5);
-
-  // All combined requests for the bottom approval card
-  const allRequests = [
-    ...(leaves || []).map((l) => ({
-      id: l.id,
-      name: employees.find((e) => e.id === l.employeeId)?.name || "Employee",
-      email: employees.find((e) => e.id === l.employeeId)?.email || "employee@company.com",
-      topic: `${l.type} Leave Request (${l.days} days)`,
-      status: (l.status || "pending").toLowerCase(),
-    })),
-    ...(docRequests || []).map((d) => ({
-      id: d.id,
-      name: employees.find((e) => e.id === d.employeeId)?.name || "Employee",
-      email: employees.find((e) => e.id === d.employeeId)?.email || "employee@company.com",
-      topic: `${d.letterTitle || d.letterKey || "Document"} Approval`,
-      status: (d.status || "pending").toLowerCase(),
-    })),
-  ];
-
-  const filteredRequests = allRequests.filter((r) => {
-    if (ticketFilter === "all") return true;
-    return r.status === ticketFilter;
-  });
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-8">
@@ -571,30 +647,42 @@ function Dashboard() {
 
       {/* BOTTOM ROW: Support Tickets / Approvals + Demographic/Notices matching NexaVerse */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Support Tickets / Approvals (7 cols) */}
+        {/* Support Tickets / Approvals (7 cols) - Live Unified Feed */}
         <div className="lg:col-span-7 rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="font-display text-base sm:text-lg font-bold text-foreground">
-                Approval Requests
-              </h3>
-              <p className="text-xs text-muted-foreground">Manage pending employee leaves and document approvals.</p>
+              <div className="flex items-center gap-2">
+                <h3 className="font-display text-base sm:text-lg font-bold text-foreground">
+                  Approval Requests
+                </h3>
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Merged live feed from side panel Requests & Approvals hub.
+              </p>
             </div>
 
-            {/* Filter Pills matching NexaVerse */}
-            <div className="flex items-center gap-1.5 p-1 rounded-full bg-muted/60 border border-border/80 self-start sm:self-auto">
-              {(["all", "pending", "approved", "rejected"] as const).map((filter) => (
+            {/* Filter Pills matching NexaVerse with live counts */}
+            <div className="flex items-center gap-1 p-1 rounded-full bg-muted/60 border border-border/80 self-start sm:self-auto overflow-x-auto">
+              {[
+                { key: "all", label: "All", count: allCount },
+                { key: "pending", label: "Pending", count: pendingCount },
+                { key: "approved", label: "Approved", count: approvedCount },
+                { key: "rejected", label: "Rejected", count: rejectedCount },
+              ].map((filter) => (
                 <button
-                  key={filter}
+                  key={filter.key}
                   type="button"
-                  onClick={() => setTicketFilter(filter)}
-                  className={`px-3 py-1 rounded-full text-xs font-semibold capitalize transition-all ${
-                    ticketFilter === filter
+                  onClick={() => setTicketFilter(filter.key as any)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${
+                    ticketFilter === filter.key
                       ? "bg-foreground text-background shadow-xs"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {filter}
+                  {filter.label} ({filter.count})
                 </button>
               ))}
             </div>
@@ -602,35 +690,119 @@ function Dashboard() {
 
           <div className="divide-y divide-border/60">
             {filteredRequests.length === 0 ? (
-              <div className="py-8 text-center text-xs text-muted-foreground">
-                No {ticketFilter === "all" ? "" : ticketFilter} requests found.
+              <div className="py-10 text-center text-xs text-muted-foreground">
+                <Inbox className="h-7 w-7 mx-auto mb-2 text-muted-foreground/60" />
+                No {ticketFilter === "all" ? "" : ticketFilter} requests found in the system.
               </div>
             ) : (
-              filteredRequests.slice(0, 5).map((req) => (
-                <div key={req.id} className="py-3 flex items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-8 w-8 rounded-full bg-primary/10 border border-primary/20 text-primary font-bold flex items-center justify-center shrink-0">
-                      {req.name[0]}
+              filteredRequests.slice(0, 6).map((req) => {
+                const initials = (req.employeeName || "E")
+                  .split(" ")
+                  .map((n: string) => n[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase();
+
+                const isPending = req.status === "Pending" || req.status === "In Progress" || req.status === "Escalated";
+
+                return (
+                  <div
+                    key={req.id}
+                    onClick={() => setInspectItem(req)}
+                    className="py-3 px-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-muted/40 rounded-xl transition-colors cursor-pointer group"
+                  >
+                    {/* Employee Profile */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {req.avatarUrl ? (
+                        <img
+                          src={req.avatarUrl}
+                          alt={req.employeeName}
+                          className="h-9 w-9 rounded-full object-cover border border-border shrink-0"
+                        />
+                      ) : (
+                        <div className="h-9 w-9 rounded-full bg-primary/10 border border-primary/20 text-primary font-bold text-xs flex items-center justify-center shrink-0">
+                          {initials}
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                            {req.employeeName}
+                          </span>
+                          <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.2 rounded border border-border/60">
+                            {req.empCode}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground hidden md:inline">
+                            · {req.department}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground truncate">
+                          <span className="font-medium text-foreground/90 truncate">
+                            {req.type}
+                          </span>
+                          <span>·</span>
+                          <span className="truncate">{req.details || req.title}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <div className="font-medium text-foreground truncate">{req.email}</div>
-                      <div className="text-[11px] text-muted-foreground truncate">{req.topic}</div>
+
+                    {/* Meta: Duration/Date & Status badge & Action */}
+                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pl-12 sm:pl-0">
+                      <div className="text-right hidden sm:block">
+                        <div className="text-[11px] font-medium text-foreground">
+                          {req.amountOrDays || "—"}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {req.dateStr}
+                        </div>
+                      </div>
+
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 border ${
+                          req.status === "Approved"
+                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                            : req.status === "Rejected"
+                            ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/25"
+                            : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25"
+                        }`}
+                      >
+                        {req.status === "Approved" && "✓ "}
+                        {req.status === "Rejected" && "✕ "}
+                        {isPending && "⏱ "}
+                        {req.status}
+                        {req.totalLevels > 1 ? ` (L${req.currentLevel}/${req.totalLevels})` : ""}
+                      </span>
+
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground opacity-60 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setInspectItem(req);
+                        }}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
-                  <span
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
-                      req.status === "approved"
-                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25"
-                        : req.status === "rejected"
-                        ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25"
-                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25"
-                    }`}
-                  >
-                    {req.status}
-                  </span>
-                </div>
-              ))
+                );
+              })
             )}
+          </div>
+
+          <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
+            <span className="text-[11px]">
+              Showing {Math.min(filteredRequests.length, 6)} of {normalizedRequests.length} total requests
+            </span>
+            <Link
+              to="/admin/requests"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+            >
+              Open Requests & Approvals Hub <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
         </div>
 
@@ -658,6 +830,143 @@ function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Quick Inspection & Action Dialog for Merged Approval Requests */}
+      <Dialog open={Boolean(inspectItem)} onOpenChange={(open) => !open && setInspectItem(null)}>
+        <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl border-border bg-card">
+          {inspectItem && (
+            <>
+              <div className="p-5 border-b border-border bg-muted/30">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
+                    {inspectItem.categoryLabel}
+                  </span>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                      inspectItem.status === "Approved"
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                        : inspectItem.status === "Rejected"
+                        ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/25"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25"
+                    }`}
+                  >
+                    {inspectItem.status}
+                    {inspectItem.totalLevels > 1 ? ` (Level ${inspectItem.currentLevel}/${inspectItem.totalLevels})` : ""}
+                  </span>
+                </div>
+
+                <DialogTitle className="text-base font-bold text-foreground">
+                  {inspectItem.type}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  Applied on {inspectItem.dateStr}
+                </DialogDescription>
+              </div>
+
+              <div className="p-5 space-y-4 max-h-[65vh] overflow-y-auto">
+                {/* Employee Card */}
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border/60">
+                  {inspectItem.avatarUrl ? (
+                    <img
+                      src={inspectItem.avatarUrl}
+                      alt={inspectItem.employeeName}
+                      className="h-10 w-10 rounded-full object-cover border border-border shrink-0"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 rounded-full bg-primary/15 text-primary font-bold text-xs flex items-center justify-center shrink-0 border border-primary/20">
+                      {(inspectItem.employeeName || "E").slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-semibold text-xs text-foreground truncate">
+                      {inspectItem.employeeName}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      <span className="font-mono">{inspectItem.empCode}</span> · {inspectItem.department}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground/80">
+                      {inspectItem.branchName}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Request Details */}
+                <div className="space-y-2 text-xs">
+                  {inspectItem.amountOrDays && (
+                    <div className="flex items-center justify-between py-1.5 border-b border-border/50">
+                      <span className="text-muted-foreground">Value / Duration</span>
+                      <span className="font-semibold text-foreground">{inspectItem.amountOrDays}</span>
+                    </div>
+                  )}
+
+                  <div className="py-1.5 border-b border-border/50">
+                    <span className="text-muted-foreground block mb-1">Subject / Summary</span>
+                    <span className="font-medium text-foreground">{inspectItem.title}</span>
+                  </div>
+
+                  {inspectItem.details && (
+                    <div className="py-1.5">
+                      <span className="text-muted-foreground block mb-1">Details & Reason</span>
+                      <p className="p-2.5 rounded-lg bg-muted/30 border border-border/50 text-[11px] text-foreground leading-relaxed">
+                        {inspectItem.details}
+                      </p>
+                    </div>
+                  )}
+
+                  {inspectItem.rejectionReason && (
+                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-600 dark:text-rose-400">
+                      <span className="font-semibold block">Decision / Note:</span>
+                      {inspectItem.rejectionReason}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter className="p-4 bg-muted/30 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2">
+                <Link
+                  to="/admin/requests"
+                  className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1"
+                >
+                  Open in Requests Hub <ExternalLink className="h-3 w-3" />
+                </Link>
+
+                {(inspectItem.status === "Pending" || inspectItem.status === "In Progress") ? (
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={actionLoading}
+                      onClick={() => handleQuickAction(inspectItem, "reject")}
+                      className="border-rose-500/30 text-rose-600 hover:bg-rose-500/10 gap-1 text-xs h-8"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      <span>Reject</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={actionLoading}
+                      onClick={() => handleQuickAction(inspectItem, "approve")}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs h-8 shadow-xs"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Approve</span>
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setInspectItem(null)}
+                    className="text-xs h-8"
+                  >
+                    Close
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
