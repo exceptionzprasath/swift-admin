@@ -133,15 +133,18 @@ function getRecordHours(
   if (rec?.status === "absent") {
     return { hoursWorked: 0, otHours: 0 };
   }
+  const isSynthetic22 = (rec?.clockOut === "22:00" || rec?.checkOut === "22:00") && Boolean(rec?.isAutoClosed || rec?.isMissedCheckout);
+  const inTime = rec?.checkIn || rec?.clockIn;
+  const outTime = isSynthetic22 ? undefined : (rec?.checkOut || rec?.clockOut);
+  const computed = computeWorkedHours(inTime, outTime, standardHours);
+
   if (rec?.status === "halfday" || rec?.status === "half-day") {
-    return { hoursWorked: standardHours / 2, otHours: 0 };
+    return { hoursWorked: Math.min(standardHours / 2, computed.hoursWorked > 0 ? computed.hoursWorked : standardHours / 2), otHours: 0 };
   }
-  if (rec?.hoursWorked && rec.hoursWorked > 0) {
+  if (rec?.hoursWorked != null && rec.hoursWorked > 0) {
     return { hoursWorked: rec.hoursWorked, otHours: rec.otHours || 0 };
   }
-  const isSynthetic22 = (rec?.clockOut === "22:00" || rec?.checkOut === "22:00") && Boolean(rec?.isAutoClosed || rec?.isMissedCheckout);
-  const outTime = isSynthetic22 ? undefined : (rec?.checkOut || rec?.clockOut);
-  return computeWorkedHours(rec?.checkIn || rec?.clockIn, outTime, standardHours);
+  return computed;
 }
 
 export const Route = createFileRoute("/admin/attendance")({
@@ -475,6 +478,18 @@ function AttendancePage() {
         ((!rec.checkOut && !rec.clockOut) && isPast)
       );
 
+      const [endH, endM] = (scheduled.shift.end || "18:00").split(":").map((v) => parseInt(v, 10) || 0);
+      const shiftEndMinutesTotal = endH * 60 + endM;
+
+      // 1. Post-Shift Punch: Checked in at or after scheduled shift end time (e.g., 9:26 PM for a 09:00 - 18:00 shift)
+      if (punchMinutesTotal >= shiftEndMinutesTotal) {
+        return {
+          status: "absent",
+          label: "Invalid (Post-Shift Punch)",
+          color: "bg-destructive/10 text-destructive border-destructive/20",
+        };
+      }
+
       // If record is marked absent or (checked in late + missed checkout)
       if (rec.status === "absent" || (isLateCheckIn && isMissedOut)) {
         return {
@@ -503,9 +518,63 @@ function AttendancePage() {
       }
 
       const lateBy = punchMinutesTotal - startMinutesTotal;
+
+      // Check for approved/pending permission on this date
+      const activePerm = (leaves || []).find(
+        (l) =>
+          (l.employeeId === emp.id || (emp.empCode && (l as any).empCode === emp.empCode) || l.employeeName === emp.name) &&
+          (l.type?.toLowerCase().includes("permission") || l.type?.toLowerCase().includes("short")) &&
+          dateStr >= (l.from || (l as any).startDate || "") &&
+          dateStr <= (l.to || (l as any).endDate || "")
+      );
+
+      if (activePerm) {
+        const isApproved = (activePerm.status || "").toLowerCase() === "approved";
+        const isPending = (activePerm.status || "").toLowerCase() === "pending" || (activePerm.status || "").toLowerCase() === "open";
+
+        if (isApproved) {
+          const permConfig = company?.permissionTypes?.[0] || { maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true };
+          const monthPrefix = dateStr.slice(0, 7);
+
+          const monthPerms = (leaves || []).filter(
+            (l) =>
+              (l.employeeId === emp.id || (emp.empCode && (l as any).empCode === emp.empCode)) &&
+              (l.status || "").toLowerCase() === "approved" &&
+              (l.type?.toLowerCase().includes("permission") || l.type?.toLowerCase().includes("short")) &&
+              (l.from || (l as any).startDate || "").startsWith(monthPrefix)
+          );
+          const usedHours = monthPerms.reduce((sum, l) => sum + (parseFloat((l as any).days) || parseFloat((l as any).hours) || 1), 0);
+          const maxAllowedHours = permConfig.maxHours || 2;
+          const maxAllowedRequests = permConfig.maxRequestsPerMonth || 2;
+          const isPaid = permConfig.paid !== false;
+
+          // If within quota and paid -> Permission Applied
+          if (isPaid && usedHours <= maxAllowedHours && monthPerms.length <= maxAllowedRequests) {
+            return {
+              status: "present",
+              label: `Permission Applied (${lateBy}m)`,
+              color: "bg-teal-500/10 text-teal-600 border-teal-500/20",
+            };
+          } else {
+            // Exceeded quota or unpaid -> LOP for Permission
+            return {
+              status: "absent",
+              label: "LOP for Permission",
+              color: "bg-rose-500/10 text-rose-600 border-rose-500/20",
+            };
+          }
+        } else if (isPending) {
+          return {
+            status: "late",
+            label: `Late (${lateBy}m · Perm Pending)`,
+            color: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+          };
+        }
+      }
+
       return { status: "late", label: `Late (${lateBy}m)`, color: "bg-orange-500/10 text-orange-600 border-orange-500/20" };
     },
-    [leaves]
+    [leaves, company]
   );
 
   // Daily Rows with Real-time Resolution
