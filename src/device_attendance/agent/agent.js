@@ -184,6 +184,18 @@ try {
       }
       recordData = recordData.subarray(RECORD_PACKET_SIZE);
     }
+
+    // Sort descending by timestamp (newest records first) and retain only recent 100 records
+    records.sort((a, b) => {
+      const timeA = a.recordTime ? new Date(a.recordTime).getTime() : 0;
+      const timeB = b.recordTime ? new Date(b.recordTime).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    if (records.length > 100) {
+      records = records.slice(0, 100);
+    }
+
     return { data: records, err: data.err };
   };
 } catch (patchErr) {
@@ -200,7 +212,8 @@ let config = {
   devicePort: 4370,
   deviceSerial: 'NFZ8235301513',
   cloudApiUrl: 'https://attendance-backend-production-48ca.up.railway.app',
-  pollIntervalSeconds: 3
+  pollIntervalSeconds: 3,
+  maxRecentLogs: 100
 };
 
 if (fs.existsSync(CONFIG_PATH)) {
@@ -472,15 +485,35 @@ async function pollAttendanceLogs() {
     if (logs && logs.data && Array.isArray(logs.data)) {
       let newPunches = 0;
 
-      for (const log of logs.data) {
-        if (!log) continue;
+      // Filter valid punches
+      const validLogs = logs.data.filter((log) => {
+        if (!log) return false;
         const employeeId = String(log.deviceUserId || log.userId || log.pin || log.user_sn || log.uid || '').trim();
-        if (!employeeId) continue;
-
         const recordDate = log.recordTime ? new Date(log.recordTime) : (log.timestamp ? new Date(log.timestamp) : null);
-        if (!recordDate || isNaN(recordDate.getTime())) {
-          continue; // Skip invalid timestamp
-        }
+        return employeeId && recordDate && !isNaN(recordDate.getTime());
+      });
+
+      // Sort by newest timestamp first to select only recent records
+      validLogs.sort((a, b) => {
+        const timeA = new Date(a.recordTime || a.timestamp).getTime();
+        const timeB = new Date(b.recordTime || b.timestamp).getTime();
+        return timeB - timeA;
+      });
+
+      // Only fetch the most recent 100 data records registered in biometric machine, ignore older ones
+      const maxRecent = config.maxRecentLogs || 100;
+      const recentLogs = validLogs.slice(0, maxRecent);
+
+      // Sort back to chronological order (oldest to newest among the 100) for sequential processing
+      recentLogs.sort((a, b) => {
+        const timeA = new Date(a.recordTime || a.timestamp).getTime();
+        const timeB = new Date(b.recordTime || b.timestamp).getTime();
+        return timeA - timeB;
+      });
+
+      for (const log of recentLogs) {
+        const employeeId = String(log.deviceUserId || log.userId || log.pin || log.user_sn || log.uid || '').trim();
+        const recordDate = log.recordTime ? new Date(log.recordTime) : (log.timestamp ? new Date(log.timestamp) : null);
 
         const uniqueKey = `${config.deviceSerial}_${employeeId}_${recordDate.getTime()}`;
 

@@ -4,5 +4,6 @@
   "devicePort": 4370,
   "deviceSerial": "OIN7060067060600011",
   "cloudApiUrl": "http://localhost:5000",
-  "pollIntervalSeconds": 3
+  "pollIntervalSeconds": 3,
+  "maxRecentLogs": 100
 }
