@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   MessageSquareHeart, Search, Filter, Plus, Send, CheckCircle2,
   Clock, AlertTriangle, XCircle, ArrowUpRight, UserCheck, ShieldAlert,
-  Calendar, Building2, Tag, FileText, Paperclip, MessageSquare
+  Calendar, Building2, Tag, FileText, Paperclip, MessageSquare, Download, Eye
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -52,6 +52,7 @@ function GrievancesPage() {
 
   // Selected ticket for chat / details
   const [selectedTicket, setSelectedTicket] = useState<GrievanceTicket | null>(null);
+  const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
   const [replyMessage, setReplyMessage] = useState("");
   const [resolutionNote, setResolutionNote] = useState("");
 
@@ -327,9 +328,17 @@ function GrievancesPage() {
                   </div>
                   <span className="font-medium text-foreground truncate max-w-[120px]">{t.employeeName}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  <span>{t.thread?.length || 1} msgs</span>
+                <div className="flex items-center gap-2">
+                  {t.attachments && t.attachments.length > 0 && (
+                    <span className="flex items-center gap-1 text-[11px] text-primary font-medium">
+                      <Paperclip className="h-3 w-3" />
+                      <span>{t.attachments.length}</span>
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    <span>{t.thread?.length || 1} msgs</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -391,6 +400,54 @@ function GrievancesPage() {
                   </>
                 )}
               </div>
+
+              {/* Attached Evidence Bar */}
+              {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
+                <div className="mt-3 p-3 bg-muted/40 rounded-xl border border-border">
+                  <div className="text-[11px] font-semibold text-primary flex items-center justify-between mb-2">
+                    <span className="flex items-center gap-1.5">
+                      <Paperclip className="h-3.5 w-3.5" />
+                      <span>Attached Evidence / Supporting Documents ({selectedTicket.attachments.length})</span>
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Click to enlarge</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {selectedTicket.attachments.map((att, idx) => {
+                      const isImg =
+                        att.startsWith("data:image") ||
+                        att.startsWith("http") ||
+                        att.endsWith(".png") ||
+                        att.endsWith(".jpg") ||
+                        att.endsWith(".jpeg");
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setPreviewAttachmentUrl(att)}
+                          className="group relative cursor-pointer border border-border hover:border-primary/50 rounded-xl overflow-hidden bg-background p-2 flex flex-col items-center gap-1.5 text-xs shadow-xs hover:shadow-md transition-all"
+                        >
+                          {isImg ? (
+                            <img
+                              src={att}
+                              alt={`Proof ${idx + 1}`}
+                              className="h-16 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                          ) : (
+                            <div className="h-16 w-full rounded-lg bg-muted flex items-center justify-center">
+                              <FileText className="h-8 w-8 text-primary/70" />
+                            </div>
+                          )}
+                          <div className="w-full flex items-center justify-between text-[11px] px-0.5">
+                            <span className="font-semibold text-foreground truncate">Evidence #{idx + 1}</span>
+                            <span className="text-[10px] text-primary flex items-center gap-0.5">
+                              <Eye className="h-3 w-3" /> View
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Conversation Thread */}
@@ -505,6 +562,58 @@ function GrievancesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Lightbox Attachment Preview Modal */}
+      {previewAttachmentUrl && (
+        <Dialog open={!!previewAttachmentUrl} onOpenChange={(open) => !open && setPreviewAttachmentUrl(null)}>
+          <DialogContent className="max-w-2xl p-4 sm:p-6 rounded-3xl">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold flex items-center gap-2">
+                <Paperclip className="h-4 w-4 text-primary" />
+                <span>Supporting Evidence Preview</span>
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Ticket {selectedTicket?.ticketNumber} • {selectedTicket?.employeeName} ({selectedTicket?.category})
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-3 flex items-center justify-center bg-muted/30 rounded-2xl overflow-hidden max-h-[65vh] border border-border p-3">
+              {previewAttachmentUrl.startsWith("data:image") || previewAttachmentUrl.startsWith("http") ? (
+                <img
+                  src={previewAttachmentUrl}
+                  alt="Evidence Preview"
+                  className="max-h-[60vh] max-w-full object-contain rounded-xl shadow-sm"
+                />
+              ) : (
+                <div className="p-8 text-center space-y-3">
+                  <FileText className="h-16 w-16 mx-auto text-primary" />
+                  <p className="text-sm font-semibold text-foreground">Official Attachment File</p>
+                  <p className="text-xs text-muted-foreground break-all max-w-md">{previewAttachmentUrl}</p>
+                </div>
+              )}
+            </div>
+            <DialogFooter className="mt-4 flex sm:flex-row items-center justify-between gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs"
+                onClick={() => setPreviewAttachmentUrl(null)}
+              >
+                Close
+              </Button>
+              <a
+                href={previewAttachmentUrl}
+                download={`Evidence-${selectedTicket?.ticketNumber || "ticket"}.png`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download / Open Original
+              </a>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

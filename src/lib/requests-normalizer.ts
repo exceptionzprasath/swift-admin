@@ -28,6 +28,7 @@ export type NormalizedRequest = {
   totalLevels: number;
   approvalSteps: any[];
   priority?: "Low" | "Medium" | "High" | "Critical";
+  attachments?: string[];
   rejectionReason?: string;
   approvedBy?: string;
   updatedAt: string;
@@ -109,6 +110,7 @@ export function getNormalizedRequests(params: {
       currentLevel: r.currentLevel || 1,
       totalLevels: r.totalLevels || (r.approvalSteps ? r.approvalSteps.length : 1),
       approvalSteps: r.approvalSteps || [],
+      attachments: r.attachments || (Array.isArray(r.metadata?.attachments) ? r.metadata.attachments : []),
       rejectionReason: r.rejectionReason,
       approvedBy: r.approvedBy,
       updatedAt: r.updatedAt || r.createdAt || new Date().toISOString(),
@@ -146,6 +148,7 @@ export function getNormalizedRequests(params: {
       currentLevel: l.currentLevel || 1,
       totalLevels: l.totalLevels || (l.approvalSteps ? l.approvalSteps.length : 2),
       approvalSteps: l.approvalSteps || [],
+      attachments: (l as any).attachments || [],
       rejectionReason: l.rejectedReason,
       approvedBy: l.approvedBy || l.actedBy,
       updatedAt: l.appliedAt || new Date().toISOString(),
@@ -181,6 +184,7 @@ export function getNormalizedRequests(params: {
       currentLevel: d.currentStep || 1,
       totalLevels: d.steps ? d.steps.length : 2,
       approvalSteps: d.steps || [],
+      attachments: [],
       updatedAt: d.requestedAt || new Date().toISOString(),
     });
   });
@@ -215,6 +219,7 @@ export function getNormalizedRequests(params: {
       currentLevel: 1,
       totalLevels: 1,
       approvalSteps: g.approvalSteps || [],
+      attachments: g.attachments || (Array.isArray((g as any).metadata?.attachments) ? (g as any).metadata.attachments : []),
       priority: g.priority,
       rejectionReason: g.resolutionNote,
       approvedBy: g.resolvedBy,

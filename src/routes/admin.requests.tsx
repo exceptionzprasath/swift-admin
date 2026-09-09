@@ -112,6 +112,7 @@ function UnifiedRequestsHubPage() {
 
   // Inspection Drawer / Dialog
   const [inspectItem, setInspectItem] = useState<NormalizedRequest | null>(null);
+  const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
   const [approvalActionModal, setApprovalActionModal] = useState<{
     open: boolean;
     item: NormalizedRequest | null;
@@ -823,9 +824,17 @@ function UnifiedRequestsHubPage() {
                               {item.category === "compoff" && <Coffee className="h-3.5 w-3.5 text-teal-500" />}
                               <span className="font-medium text-xs text-foreground">{item.type}</span>
                             </div>
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                              {item.categoryLabel}
-                            </Badge>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                                {item.categoryLabel}
+                              </Badge>
+                              {item.attachments && item.attachments.length > 0 && (
+                                <Badge variant="secondary" className="gap-1 text-[10px] bg-primary/10 text-primary border-primary/20">
+                                  <Paperclip className="h-3 w-3" />
+                                  {item.attachments.length} {item.attachments.length === 1 ? "Proof" : "Proofs"}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </td>
 
@@ -1117,6 +1126,59 @@ function UnifiedRequestsHubPage() {
               </div>
             </div>
 
+            {/* Attached Proof Documents Section */}
+            {inspectItem.attachments && inspectItem.attachments.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold flex items-center gap-1.5 text-primary">
+                    <Paperclip className="h-3.5 w-3.5" />
+                    <span>Attached Proof & Verification Documents ({inspectItem.attachments.length})</span>
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">Click to inspect full size</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {inspectItem.attachments.map((att, idx) => {
+                    const isImg =
+                      att.startsWith("data:image") ||
+                      att.startsWith("http") ||
+                      att.endsWith(".png") ||
+                      att.endsWith(".jpg") ||
+                      att.endsWith(".jpeg");
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => setPreviewAttachmentUrl(att)}
+                        className="group relative border border-border rounded-xl overflow-hidden bg-muted/20 hover:border-primary/50 transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col items-center justify-center p-2 text-center"
+                      >
+                        {isImg ? (
+                          <div className="w-full h-24 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                            <img
+                              src={att}
+                              alt={`Proof Attachment ${idx + 1}`}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-full h-24 rounded-lg bg-muted flex flex-col items-center justify-center text-muted-foreground">
+                            <FileText className="h-8 w-8 text-primary/70 mb-1" />
+                            <span className="text-[10px] font-medium">Document {idx + 1}</span>
+                          </div>
+                        )}
+                        <div className="mt-1.5 flex items-center justify-between w-full px-1">
+                          <span className="text-[11px] font-medium text-foreground truncate">
+                            Evidence #{idx + 1}
+                          </span>
+                          <span className="text-[10px] text-primary flex items-center gap-0.5">
+                            <Eye className="h-3 w-3" /> View
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Multi-Level Approval Stepper */}
             <div className="space-y-3">
               <Label className="text-xs font-semibold flex items-center gap-1.5">
@@ -1399,6 +1461,58 @@ function UnifiedRequestsHubPage() {
               >
                 Submit Request
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Lightbox / Attachment Preview Modal */}
+      {previewAttachmentUrl && (
+        <Dialog open={!!previewAttachmentUrl} onOpenChange={(open) => !open && setPreviewAttachmentUrl(null)}>
+          <DialogContent className="max-w-2xl p-4 sm:p-6 rounded-3xl">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold flex items-center gap-2">
+                <Paperclip className="h-4 w-4 text-primary" />
+                <span>Verification Document Preview</span>
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Attached by {inspectItem?.employeeName} for {inspectItem?.type}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-3 flex items-center justify-center bg-muted/30 rounded-2xl overflow-hidden max-h-[65vh] border border-border p-3">
+              {previewAttachmentUrl.startsWith("data:image") || previewAttachmentUrl.startsWith("http") ? (
+                <img
+                  src={previewAttachmentUrl}
+                  alt="Attachment Preview"
+                  className="max-h-[60vh] max-w-full object-contain rounded-xl shadow-sm"
+                />
+              ) : (
+                <div className="p-8 text-center space-y-3">
+                  <FileText className="h-16 w-16 mx-auto text-primary" />
+                  <p className="text-sm font-semibold text-foreground">Official Attachment File</p>
+                  <p className="text-xs text-muted-foreground break-all max-w-md">{previewAttachmentUrl}</p>
+                </div>
+              )}
+            </div>
+            <DialogFooter className="mt-4 flex sm:flex-row items-center justify-between gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs"
+                onClick={() => setPreviewAttachmentUrl(null)}
+              >
+                Close
+              </Button>
+              <a
+                href={previewAttachmentUrl}
+                download={`Attachment-${inspectItem?.id || "doc"}.png`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download / Open Original
+              </a>
             </DialogFooter>
           </DialogContent>
         </Dialog>
