@@ -26,6 +26,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
+} from "@/components/ui/tooltip";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/approval-settings")({
@@ -1200,22 +1203,22 @@ function CentralizedApprovalSettingsPage() {
   }, [currentCategoryList, typeSearch]);
 
   return (
-    <div className="space-y-6 pb-20 max-w-[1520px] mx-auto">
+    <div className="space-y-6 pb-20 max-w-[1520px] mx-auto w-full min-w-0">
       {/* Top Breadcrumb & Actions Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 min-w-0">
+        <div className="space-y-1 min-w-0">
           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
             <span className="hover:text-foreground cursor-pointer">Approval Settings</span>
-            <ChevronRight className="h-3.5 w-3.5" />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
             <span className="text-foreground capitalize">{activeTab === "loan" ? "Advance Loan Request" : activeTab}</span>
           </div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight capitalize text-foreground flex items-center gap-2.5">
-            {activeTab === "documents" && <FileText className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />}
-            {activeTab === "grievance" && <MessageSquareHeart className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />}
-            {activeTab === "attendance" && <CalendarCheck className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />}
-            {activeTab === "loan" && <Banknote className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />}
-            {activeTab === "compoff" && <Coffee className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />}
-            {activeTab === "loan" ? "Advance Loan Request" : activeTab === "compoff" ? "Comp-Off" : activeTab} Approval Settings
+            {activeTab === "documents" && <FileText className="h-7 w-7 text-primary shrink-0" />}
+            {activeTab === "grievance" && <MessageSquareHeart className="h-7 w-7 text-primary shrink-0" />}
+            {activeTab === "attendance" && <CalendarCheck className="h-7 w-7 text-primary shrink-0" />}
+            {activeTab === "loan" && <Banknote className="h-7 w-7 text-primary shrink-0" />}
+            {activeTab === "compoff" && <Coffee className="h-7 w-7 text-primary shrink-0" />}
+            <span>{activeTab === "loan" ? "Advance Loan Request" : activeTab === "compoff" ? "Comp-Off" : activeTab} Approval Settings</span>
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
             Configure approval workflow, escalation and final level action for {activeTab === "documents" ? "documents" : activeTab === "grievance" ? "grievance requests" : activeTab === "attendance" ? "attendance related requests" : activeTab === "loan" ? "employee advance loan requests" : "compensatory off leave credit requests"}.
@@ -1233,7 +1236,7 @@ function CentralizedApprovalSettingsPage() {
           </Button>
           <Button
             size="sm"
-            className="h-9 px-4 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-soft"
+            className="h-9 px-4 rounded-xl text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-soft"
             onClick={handleSaveAllSettings}
           >
             <Save className="h-3.5 w-3.5 mr-1.5" /> Save Settings
@@ -1242,73 +1245,73 @@ function CentralizedApprovalSettingsPage() {
       </div>
 
       {/* Top 5 Primary Category Tabs */}
-      <div className="flex items-center gap-2 border-b border-border pb-2 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-border pb-2 overflow-x-auto no-scrollbar w-full min-w-0">
         <button
           onClick={() => handleTabChange("attendance")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
             activeTab === "attendance"
-              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shadow-xs"
+              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <CalendarCheck className="h-4 w-4" /> Attendance
+          <CalendarCheck className="h-4 w-4 shrink-0" /> Attendance
         </button>
         <button
           onClick={() => handleTabChange("grievance")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
             activeTab === "grievance"
-              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shadow-xs"
+              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <MessageSquareHeart className="h-4 w-4" /> Grievance
+          <MessageSquareHeart className="h-4 w-4 shrink-0" /> Grievance
         </button>
         <button
           onClick={() => handleTabChange("documents")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
             activeTab === "documents"
-              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shadow-xs"
+              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <FileText className="h-4 w-4" /> Documents
+          <FileText className="h-4 w-4 shrink-0" /> Documents
         </button>
         <button
           onClick={() => handleTabChange("loan")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
             activeTab === "loan"
-              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shadow-xs"
+              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Banknote className="h-4 w-4" /> Advance Loan Request
+          <Banknote className="h-4 w-4 shrink-0" /> Advance Loan Request
         </button>
         <button
           onClick={() => handleTabChange("compoff")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
             activeTab === "compoff"
-              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shadow-xs"
+              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
-          <Coffee className="h-4 w-4" /> Comp-Off
+          <Coffee className="h-4 w-4 shrink-0" /> Comp-Off
         </button>
       </div>
 
-      {/* Main 2-Panel / 3-Column Studio Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      {/* Main 2-Panel Studio Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start w-full min-w-0">
         {/* Left Column: Type Selector (3 cols) */}
-        <div className="lg:col-span-3 rounded-2xl border border-border bg-card p-4 space-y-4 shadow-soft">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-foreground">
-              Select {activeTab === "documents" ? "Document" : activeTab === "grievance" ? "Grievance" : activeTab === "attendance" ? "Attendance Request" : activeTab === "loan" ? "Loan Request" : "Comp-Off Request"}
+        <div className="lg:col-span-3 min-w-0 rounded-2xl border border-border bg-card p-4 space-y-4 shadow-soft">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-bold text-foreground truncate">
+              Select {activeTab === "documents" ? "Document" : activeTab === "grievance" ? "Grievance" : activeTab === "attendance" ? "Attendance" : activeTab === "loan" ? "Loan" : "Comp-Off"}
             </span>
             <Button
               size="sm"
-              className="h-8 px-3 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl shadow-xs"
+              className="h-8 px-2.5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-xs shrink-0"
               onClick={() => setAddTypeModalOpen(true)}
             >
-              <Plus className="h-3.5 w-3.5 mr-1" /> Add {activeTab === "documents" ? "Document" : "Type"}
+              <Plus className="h-3.5 w-3.5 mr-1" /> Add {activeTab === "documents" ? "Doc" : "Type"}
             </Button>
           </div>
 
@@ -1325,234 +1328,265 @@ function CentralizedApprovalSettingsPage() {
           {/* DOCUMENTS TAB: Grouped Accordion Categories */}
           {activeTab === "documents" ? (
             <div className="space-y-2 max-h-[640px] overflow-y-auto pr-1">
-              {documentGroups.map(({ groupName, totalCount, items }) => {
-                const isOpen = openGroups[groupName] ?? false;
-                const hasMatch = items.length > 0;
-                if (!hasMatch && typeSearch.trim()) return null;
+              <TooltipProvider delayDuration={150}>
+                {documentGroups.map(({ groupName, totalCount, items }) => {
+                  const isOpen = openGroups[groupName] ?? false;
+                  const hasMatch = items.length > 0;
+                  if (!hasMatch && typeSearch.trim()) return null;
 
-                return (
-                  <div key={groupName} className="rounded-xl border border-border/80 bg-muted/10 overflow-hidden shadow-2xs">
-                    <button
-                      onClick={() => toggleGroup(groupName)}
-                      className="w-full px-3 py-2.5 flex items-center justify-between text-left text-xs font-bold text-foreground hover:bg-muted/40 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        {isOpen ? (
-                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                        )}
-                        <span className="truncate">{groupName}</span>
-                      </div>
-                      <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-bold rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20">
-                        {totalCount}
-                      </Badge>
-                    </button>
+                  return (
+                    <div key={groupName} className="rounded-xl border border-border/80 bg-muted/10 overflow-hidden shadow-2xs">
+                      <button
+                        onClick={() => toggleGroup(groupName)}
+                        className="w-full px-3 py-2.5 flex items-center justify-between text-left text-xs font-bold text-foreground hover:bg-muted/40 transition-colors"
+                        title={groupName}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {isOpen ? (
+                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          )}
+                          <span className="truncate">{groupName}</span>
+                        </div>
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-bold rounded-full bg-primary/10 text-primary border-primary/20 shrink-0">
+                          {totalCount}
+                        </Badge>
+                      </button>
 
-                    {isOpen && (
-                      <div className="p-1 space-y-1 bg-card border-t border-border/50">
-                        {items.map((typeItem) => {
-                          const isSelected = typeItem.id === activeItem?.id;
-                          return (
-                            <div
-                              key={typeItem.id}
-                              onClick={() => setSelectedTypeId(typeItem.id)}
-                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border ${
-                                isSelected
-                                  ? "bg-emerald-500/10 border-emerald-500/40 text-foreground font-semibold shadow-xs"
-                                  : "bg-card hover:bg-muted/50 border-transparent text-muted-foreground hover:text-foreground"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <FileText className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} />
-                                <span className="text-[11.5px] truncate">{typeItem.name}</span>
+                      {isOpen && (
+                        <div className="p-1 space-y-1 bg-card border-t border-border/50">
+                          {items.map((typeItem) => {
+                            const isSelected = typeItem.id === activeItem?.id;
+                            return (
+                              <div
+                                key={typeItem.id}
+                                onClick={() => setSelectedTypeId(typeItem.id)}
+                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border ${
+                                  isSelected
+                                    ? "bg-primary/10 border-primary/40 text-foreground font-semibold shadow-xs"
+                                    : "bg-card hover:bg-muted/50 border-transparent text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                      <FileText className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                                      <span className="text-[11.5px] truncate">{typeItem.name}</span>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" align="start" className="bg-foreground text-background text-xs font-semibold px-2.5 py-1.5 shadow-xl max-w-xs break-words z-50">
+                                    {typeItem.name}
+                                  </TooltipContent>
+                                </Tooltip>
+
+                                <div className="flex items-center gap-1.5 shrink-0 ml-1.5" onClick={(e) => e.stopPropagation()}>
+                                  <span className={`text-[10px] font-bold ${typeItem.active !== false ? "text-primary" : "text-muted-foreground"}`}>
+                                    {typeItem.active !== false ? "Shown" : "Hidden"}
+                                  </span>
+                                  <Switch
+                                    checked={typeItem.active !== false}
+                                    onCheckedChange={(checked) => toggleItemActive(typeItem.id, checked)}
+                                    className="scale-75 origin-right data-[state=checked]:bg-primary"
+                                    title={typeItem.active !== false ? "Visible in Employee App (Click to hide)" : "Hidden in Employee App (Click to show)"}
+                                  />
+                                </div>
                               </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                <span className={`text-[10px] font-bold ${typeItem.active !== false ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
-                                  {typeItem.active !== false ? "Shown" : "Hidden"}
-                                </span>
-                                <Switch
-                                  checked={typeItem.active !== false}
-                                  onCheckedChange={(checked) => toggleItemActive(typeItem.id, checked)}
-                                  className="scale-75 origin-right data-[state=checked]:bg-emerald-600"
-                                  title={typeItem.active !== false ? "Visible in Employee App (Click to hide)" : "Hidden in Employee App (Click to show)"}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </TooltipProvider>
             </div>
           ) : (
             /* NON-DOCUMENTS TABS: Standard List */
             <div className="space-y-1.5 max-h-[640px] overflow-y-auto pr-1">
               <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground px-1 pb-1">
-                <span>All {activeTab === "grievance" ? "Grievance Types" : activeTab === "attendance" ? "Attendance Requests" : activeTab === "compoff" ? "Comp-Off Request Types" : "Loan Request Types"}</span>
-                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-bold">
+                <span className="truncate">All {activeTab === "grievance" ? "Grievances" : activeTab === "attendance" ? "Attendance" : activeTab === "compoff" ? "Comp-Off" : "Loans"}</span>
+                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-bold shrink-0">
                   {currentCategoryList.length}
                 </Badge>
               </div>
 
-              {filteredTypeList.map((typeItem) => {
-                const isSelected = typeItem.id === activeItem?.id;
-                return (
-                  <div
-                    key={typeItem.id}
-                    onClick={() => setSelectedTypeId(typeItem.id)}
-                    className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
-                      isSelected
-                        ? "bg-emerald-500/10 border-emerald-500/40 text-foreground font-semibold shadow-xs"
-                        : "bg-card hover:bg-muted/50 border-transparent text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <FileText className={`h-4 w-4 shrink-0 ${isSelected ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} />
-                      <span className="text-xs truncate">{typeItem.name}</span>
-                    </div>
+              <TooltipProvider delayDuration={150}>
+                {filteredTypeList.map((typeItem) => {
+                  const isSelected = typeItem.id === activeItem?.id;
+                  return (
+                    <div
+                      key={typeItem.id}
+                      onClick={() => setSelectedTypeId(typeItem.id)}
+                      className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
+                        isSelected
+                          ? "bg-primary/10 border-primary/40 text-foreground font-semibold shadow-xs"
+                          : "bg-card hover:bg-muted/50 border-transparent text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <FileText className={`h-4 w-4 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                            <span className="text-xs truncate">{typeItem.name}</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="start" className="bg-foreground text-background text-xs font-semibold px-2.5 py-1.5 shadow-xl max-w-xs break-words z-50">
+                          {typeItem.name}
+                        </TooltipContent>
+                      </Tooltip>
 
-                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <span className={`text-[10px] font-bold ${typeItem.active !== false ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
-                        {typeItem.active !== false ? "Shown" : "Hidden"}
-                      </span>
-                      <Switch
-                        checked={typeItem.active !== false}
-                        onCheckedChange={(checked) => toggleItemActive(typeItem.id, checked)}
-                        className="scale-75 origin-right data-[state=checked]:bg-emerald-600"
-                        title={typeItem.active !== false ? "Visible in Employee App (Click to hide)" : "Hidden in Employee App (Click to show)"}
-                      />
+                      <div className="flex items-center gap-1.5 shrink-0 ml-1.5" onClick={(e) => e.stopPropagation()}>
+                        <span className={`text-[10px] font-bold ${typeItem.active !== false ? "text-primary" : "text-muted-foreground"}`}>
+                          {typeItem.active !== false ? "Shown" : "Hidden"}
+                        </span>
+                        <Switch
+                          checked={typeItem.active !== false}
+                          onCheckedChange={(checked) => toggleItemActive(typeItem.id, checked)}
+                          className="scale-75 origin-right data-[state=checked]:bg-primary"
+                          title={typeItem.active !== false ? "Visible in Employee App (Click to hide)" : "Hidden in Employee App (Click to show)"}
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </TooltipProvider>
             </div>
           )}
         </div>
 
         {/* Right Area: Selected Type Configuration Studio (9 cols) */}
         {activeItem ? (
-          <div className="lg:col-span-9 space-y-4">
+          <div className="lg:col-span-9 min-w-0 space-y-4">
             {/* Header of selected type */}
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-soft flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-bold font-display text-foreground">{activeItem.name}</h2>
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-xl border border-border bg-muted/20 shadow-2xs">
-                    <span className={`text-xs font-bold ${activeItem.active !== false ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
-                      {activeItem.active !== false ? "👁️ Visible in App" : "🚫 Hidden from App"}
-                    </span>
-                    <Switch
-                      checked={activeItem.active !== false}
-                      onCheckedChange={(checked) => {
-                        updateActiveItem({ active: checked });
-                        toggleItemActive(activeItem.id, checked);
-                      }}
-                      className="data-[state=checked]:bg-emerald-600"
-                    />
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-soft space-y-4 min-w-0">
+              {/* Row 1: Title, Visibility & Main Actions */}
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 min-w-0">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h2 className="text-xl font-bold font-display text-foreground">{activeItem.name}</h2>
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-xl border border-border bg-muted/20 shadow-2xs shrink-0">
+                      <span className={`text-xs font-bold ${activeItem.active !== false ? "text-primary" : "text-muted-foreground"}`}>
+                        {activeItem.active !== false ? "👁️ Visible in App" : "🚫 Hidden from App"}
+                      </span>
+                      <Switch
+                        checked={activeItem.active !== false}
+                        onCheckedChange={(checked) => {
+                          updateActiveItem({ active: checked });
+                          toggleItemActive(activeItem.id, checked);
+                        }}
+                        className="data-[state=checked]:bg-primary"
+                      />
+                    </div>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Category: <span className="font-semibold text-foreground">{activeItem.name}</span> · {activeItem.description}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Category: <span className="font-semibold text-foreground">{activeItem.name}</span> · {activeItem.description}
-                </p>
-              </div>
 
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                {activeTab === "documents" && (
-                  <>
-                    {/* Can be downloaded? Toggle */}
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card shadow-2xs">
-                      <span className="text-xs font-semibold text-foreground whitespace-nowrap">Can be downloaded?</span>
-                      <Switch
-                        checked={activeItem.allowDownload !== false}
-                        onCheckedChange={(checked) => {
-                          updateActiveItem({ allowDownload: checked });
-                          const updatedDocs = ((company as any)?.approvalWorkflows?.documents || []).map((d: any) =>
-                            d.id === activeItem.id ? { ...d, allowDownload: checked } : d
-                          );
-                          setCompany({
-                            ...company,
-                            approvalWorkflows: { ...((company as any)?.approvalWorkflows || {}), documents: updatedDocs } as any,
-                          });
-                          toast.success(checked ? "Document download enabled for employees" : "Document download disabled");
-                        }}
-                        className="data-[state=checked]:bg-emerald-600 scale-90"
-                        title="Allow employee to download this document/letter directly in the app"
-                      />
-                    </div>
-
-                    {/* Request by employee Toggle */}
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card shadow-2xs">
-                      <span className="text-xs font-semibold text-foreground whitespace-nowrap">Request by employee</span>
-                      <Switch
-                        checked={activeItem.allowEmployeeRequest !== false}
-                        onCheckedChange={(checked) => {
-                          updateActiveItem({ allowEmployeeRequest: checked });
-                          const updatedDocs = ((company as any)?.approvalWorkflows?.documents || []).map((d: any) =>
-                            d.id === activeItem.id ? { ...d, allowEmployeeRequest: checked } : d
-                          );
-                          setCompany({
-                            ...company,
-                            approvalWorkflows: { ...((company as any)?.approvalWorkflows || {}), documents: updatedDocs } as any,
-                          });
-                          toast.success(checked ? "Employee requesting enabled for this document" : "Employee requesting disabled");
-                        }}
-                        className="data-[state=checked]:bg-emerald-600 scale-90"
-                        title="Allow employee to submit a formal request for this document in the app"
-                      />
-                    </div>
-
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {activeTab === "documents" && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 px-3 rounded-xl text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-2xs"
+                      className="h-8.5 px-3.5 rounded-xl text-xs font-bold bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 shadow-2xs"
                       onClick={() => handleOpenDocTemplateModal(activeItem)}
                     >
-                      <Edit3 className="h-3.5 w-3.5 mr-1.5" /> Edit Document Template 📝
+                      <Edit3 className="h-3.5 w-3.5 mr-1.5" /> Edit Template 📝
                     </Button>
-                  </>
-                )}
+                  )}
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-3 rounded-xl text-xs font-semibold bg-card border-border hover:bg-muted"
-                  onClick={() => {
-                    setEmailSubject(activeItem.emailSubjectTemplate || `Notification: ${activeItem.name} Approved`);
-                    setEmailBody(activeItem.emailBodyTemplate || `Hello {{employee_name}},\n\nYour request for "${activeItem.name}" has been officially approved and processed.\n\nBest regards,\nHR & Management Team`);
-                    setEmailTemplateOpen(true);
-                  }}
-                >
-                  <Eye className="h-3.5 w-3.5 mr-1.5 text-primary" /> View / Edit Email Template
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8.5 px-3.5 rounded-xl text-xs font-semibold bg-card border-border hover:bg-muted shadow-2xs"
+                    onClick={() => {
+                      setEmailSubject(activeItem.emailSubjectTemplate || `Notification: ${activeItem.name} Approved`);
+                      setEmailBody(activeItem.emailBodyTemplate || `Hello {{employee_name}},\n\nYour request for "${activeItem.name}" has been officially approved and processed.\n\nBest regards,\nHR & Management Team`);
+                      setEmailTemplateOpen(true);
+                    }}
+                  >
+                    <Eye className="h-3.5 w-3.5 mr-1.5 text-primary" /> View / Edit Email Template
+                  </Button>
+                </div>
               </div>
+
+              {/* Row 2 (if Documents): Document Specific Toggles in a clean sub-strip */}
+              {activeTab === "documents" && (
+                <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-border/60">
+                  <span className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Document Options:</span>
+                  
+                  {/* Can be downloaded? Toggle */}
+                  <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/30 transition-all shadow-2xs">
+                    <span className="text-xs font-medium text-foreground whitespace-nowrap">Can download?</span>
+                    <Switch
+                      checked={activeItem.allowDownload !== false}
+                      onCheckedChange={(checked) => {
+                        updateActiveItem({ allowDownload: checked });
+                        const updatedDocs = ((company as any)?.approvalWorkflows?.documents || []).map((d: any) =>
+                          d.id === activeItem.id ? { ...d, allowDownload: checked } : d
+                        );
+                        setCompany({
+                          ...company,
+                          approvalWorkflows: { ...((company as any)?.approvalWorkflows || {}), documents: updatedDocs } as any,
+                        });
+                        toast.success(checked ? "Document download enabled for employees" : "Document download disabled");
+                      }}
+                      className="data-[state=checked]:bg-primary scale-90"
+                      title="Allow employee to download this document/letter directly in the app"
+                    />
+                  </div>
+
+                  {/* Request by employee Toggle */}
+                  <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/30 transition-all shadow-2xs">
+                    <span className="text-xs font-medium text-foreground whitespace-nowrap">Employee request</span>
+                    <Switch
+                      checked={activeItem.allowEmployeeRequest !== false}
+                      onCheckedChange={(checked) => {
+                        updateActiveItem({ allowEmployeeRequest: checked });
+                        const updatedDocs = ((company as any)?.approvalWorkflows?.documents || []).map((d: any) =>
+                          d.id === activeItem.id ? { ...d, allowEmployeeRequest: checked } : d
+                        );
+                        setCompany({
+                          ...company,
+                          approvalWorkflows: { ...((company as any)?.approvalWorkflows || {}), documents: updatedDocs } as any,
+                        });
+                        toast.success(checked ? "Employee requesting enabled for this document" : "Employee requesting disabled");
+                      }}
+                      className="data-[state=checked]:bg-primary scale-90"
+                      title="Allow employee to submit a formal request for this document in the app"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Top Settings Row: Approval Type & Escalation Settings */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 min-w-0">
               {/* Approval Type Radio Cards (7 cols) */}
-              <div className="md:col-span-7 rounded-2xl border border-border bg-card p-4 space-y-3 shadow-soft">
+              <div className="xl:col-span-7 min-w-0 rounded-2xl border border-border bg-card p-4 space-y-3 shadow-soft">
                 <div className="space-y-0.5">
                   <div className="text-xs font-bold text-foreground">Approval Type</div>
                   <div className="text-[11px] text-muted-foreground">Choose how approvals should be handled.</div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   {/* Sequential */}
                   <div
                     onClick={() => updateActiveItem({ approvalType: "sequential" })}
                     className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                       activeItem.approvalType === "sequential"
-                        ? "bg-emerald-500/10 border-emerald-500/40 text-foreground"
+                        ? "bg-primary/10 border-primary/40 text-foreground"
                         : "bg-muted/30 hover:bg-muted/60 border-border text-muted-foreground"
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <div className={`h-3.5 w-3.5 rounded-full border grid place-items-center ${activeItem.approvalType === "sequential" ? "border-emerald-600 bg-emerald-600" : "border-muted-foreground"}`}>
-                        {activeItem.approvalType === "sequential" && <div className="h-1.5 w-1.5 rounded-full bg-white"></div>}
+                      <div className={`h-4 w-4 shrink-0 aspect-square rounded-full border-2 flex items-center justify-center transition-all ${
+                        activeItem.approvalType === "sequential"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-muted-foreground/50 bg-background/50"
+                      }`}>
+                        {activeItem.approvalType === "sequential" && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground shrink-0 aspect-square"></div>}
                       </div>
                       <span className="text-xs font-bold">Sequential</span>
                     </div>
@@ -1564,13 +1598,17 @@ function CentralizedApprovalSettingsPage() {
                     onClick={() => updateActiveItem({ approvalType: "all" })}
                     className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                       activeItem.approvalType === "all"
-                        ? "bg-emerald-500/10 border-emerald-500/40 text-foreground"
+                        ? "bg-primary/10 border-primary/40 text-foreground"
                         : "bg-muted/30 hover:bg-muted/60 border-border text-muted-foreground"
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <div className={`h-3.5 w-3.5 rounded-full border grid place-items-center ${activeItem.approvalType === "all" ? "border-emerald-600 bg-emerald-600" : "border-muted-foreground"}`}>
-                        {activeItem.approvalType === "all" && <div className="h-1.5 w-1.5 rounded-full bg-white"></div>}
+                      <div className={`h-4 w-4 shrink-0 aspect-square rounded-full border-2 flex items-center justify-center transition-all ${
+                        activeItem.approvalType === "all"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-muted-foreground/50 bg-background/50"
+                      }`}>
+                        {activeItem.approvalType === "all" && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground shrink-0 aspect-square"></div>}
                       </div>
                       <span className="text-xs font-bold">All Must Approve</span>
                     </div>
@@ -1582,13 +1620,17 @@ function CentralizedApprovalSettingsPage() {
                     onClick={() => updateActiveItem({ approvalType: "any" })}
                     className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                       activeItem.approvalType === "any"
-                        ? "bg-emerald-500/10 border-emerald-500/40 text-foreground"
+                        ? "bg-primary/10 border-primary/40 text-foreground"
                         : "bg-muted/30 hover:bg-muted/60 border-border text-muted-foreground"
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <div className={`h-3.5 w-3.5 rounded-full border grid place-items-center ${activeItem.approvalType === "any" ? "border-emerald-600 bg-emerald-600" : "border-muted-foreground"}`}>
-                        {activeItem.approvalType === "any" && <div className="h-1.5 w-1.5 rounded-full bg-white"></div>}
+                      <div className={`h-4 w-4 shrink-0 aspect-square rounded-full border-2 flex items-center justify-center transition-all ${
+                        activeItem.approvalType === "any"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-muted-foreground/50 bg-background/50"
+                      }`}>
+                        {activeItem.approvalType === "any" && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground shrink-0 aspect-square"></div>}
                       </div>
                       <span className="text-xs font-bold">Any One Approve</span>
                     </div>
@@ -1598,100 +1640,104 @@ function CentralizedApprovalSettingsPage() {
               </div>
 
               {/* Escalation Settings (5 cols) */}
-              <div className="md:col-span-5 rounded-2xl border border-border bg-card p-4 space-y-3 shadow-soft">
+              <div className="xl:col-span-5 min-w-0 rounded-2xl border border-border bg-card p-4 space-y-3 shadow-soft flex flex-col justify-between">
                 <div className="space-y-0.5">
                   <div className="text-xs font-bold text-foreground">Escalation Settings</div>
-                  <div className="text-[11px] text-muted-foreground">If no action is taken.</div>
+                  <div className="text-[11px] text-muted-foreground">If no action is taken within threshold.</div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={activeItem.escalationDays}
-                    onChange={(e) => updateActiveItem({ escalationDays: parseInt(e.target.value) || 2 })}
-                    className="w-16 h-9 text-xs font-bold text-center bg-muted/30"
-                  />
-                  <Select defaultValue="days">
-                    <SelectTrigger className="w-20 h-9 text-xs"><SelectValue placeholder="Days" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="days">Days</SelectItem>
-                      <SelectItem value="hours">Hours</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-2.5 pt-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground font-medium shrink-0">Threshold:</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={activeItem.escalationDays}
+                      onChange={(e) => updateActiveItem({ escalationDays: parseInt(e.target.value) || 2 })}
+                      className="w-16 h-8.5 text-xs font-bold text-center bg-muted/30 shrink-0"
+                    />
+                    <Select defaultValue="days">
+                      <SelectTrigger className="w-22 h-8.5 text-xs shrink-0"><SelectValue placeholder="Days" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="days">Days</SelectItem>
+                        <SelectItem value="hours">Hours</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                  <span className="text-xs text-muted-foreground font-medium">then</span>
-
-                  <Select
-                    value={activeItem.escalationAction}
-                    onValueChange={(val) => updateActiveItem({ escalationAction: val })}
-                  >
-                    <SelectTrigger className="flex-1 h-9 text-xs font-semibold">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Move to next approver">Move to next approver</SelectItem>
-                      <SelectItem value="Send to HR Manager">Send to HR Manager</SelectItem>
-                      <SelectItem value="Auto Approve">Auto Approve</SelectItem>
-                      <SelectItem value="Auto Decline">Auto Decline</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground font-medium shrink-0">Then:</span>
+                    <Select
+                      value={activeItem.escalationAction}
+                      onValueChange={(val) => updateActiveItem({ escalationAction: val })}
+                    >
+                      <SelectTrigger className="w-full h-8.5 text-xs font-semibold">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Move to next approver">Move to next approver</SelectItem>
+                        <SelectItem value="Send to HR Manager">Send to HR Manager</SelectItem>
+                        <SelectItem value="Auto Approve">Auto Approve</SelectItem>
+                        <SelectItem value="Auto Decline">Auto Decline</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Workflow Mode Tabs (Auto Hierarchical vs Manual Drag & Drop) */}
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-soft space-y-5">
-              <div className="flex items-center border-b border-border pb-3 gap-6">
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-soft space-y-5 min-w-0">
+              <div className="flex items-center border-b border-border pb-3 gap-4 sm:gap-6 overflow-x-auto no-scrollbar w-full min-w-0">
                 <button
                   onClick={() => updateActiveItem({ workflowMode: "auto" })}
-                  className={`flex items-center gap-2 pb-2 text-xs sm:text-sm font-bold transition-all relative ${
+                  className={`flex items-center gap-2 pb-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 relative ${
                     activeItem.workflowMode === "auto"
-                      ? "text-emerald-700 dark:text-emerald-400 after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-emerald-600"
+                      ? "text-primary after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <ShieldCheck className="h-4 w-4" />
+                  <ShieldCheck className="h-4 w-4 shrink-0" />
                   <span>Auto Approval Flow (Hierarchical)</span>
-                  <span className="hidden sm:inline text-[11px] font-normal text-muted-foreground">· Follows employee reporting hierarchy automatically</span>
+                  <span className="hidden sm:inline text-[11px] font-normal text-muted-foreground">· Dynamic Reporting Hierarchy</span>
                 </button>
 
                 <button
                   onClick={() => updateActiveItem({ workflowMode: "manual" })}
-                  className={`flex items-center gap-2 pb-2 text-xs sm:text-sm font-bold transition-all relative ${
+                  className={`flex items-center gap-2 pb-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 relative ${
                     activeItem.workflowMode === "manual"
-                      ? "text-emerald-700 dark:text-emerald-400 after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-emerald-600"
+                      ? "text-primary after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <UsersIcon className="h-4 w-4" />
+                  <UsersIcon className="h-4 w-4 shrink-0" />
                   <span>Manual Approval Flow</span>
-                  <span className="hidden sm:inline text-[11px] font-normal text-muted-foreground">· Drag and drop to create your custom flow</span>
+                  <span className="hidden sm:inline text-[11px] font-normal text-muted-foreground">· Custom Multi-Stage Flow</span>
                 </button>
               </div>
 
               {/* TAB 1 CONTENT: AUTO APPROVAL FLOW (HIERARCHICAL) */}
               {activeItem.workflowMode === "auto" && (
-                <div className="space-y-4 pt-2">
+                <div className="space-y-4 pt-2 min-w-0">
                   {/* Live Simulation Top Employee Selector */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-muted/20 border border-border">
-                    <div className="flex items-center gap-2.5">
-                      <div className="h-8 w-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 grid place-items-center shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-muted/20 border border-border min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
                         <UsersIcon className="h-4 w-4" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="text-xs font-bold text-foreground">Live Organization Hierarchy Simulation</div>
-                        <div className="text-[11px] text-muted-foreground">Select any employee to view their real-time upward reporting hierarchy from Organization Structure.</div>
+                        <div className="text-[11px] text-muted-foreground truncate">Select any employee to view their real-time upward reporting hierarchy.</div>
                       </div>
                     </div>
 
-                    <div className="w-full sm:w-80">
+                    <div className="w-full sm:w-80 shrink-0">
                       <Select
                         value={sampleEmployee?.id || ""}
                         onValueChange={(val) => setSelectedHierarchyEmpId(val)}
                       >
-                        <SelectTrigger className="h-9 text-xs font-semibold bg-card border-border">
+                        <SelectTrigger className="h-9 text-xs font-semibold bg-card border-border w-full">
                           <SelectValue placeholder="Select employee to preview chain..." />
                         </SelectTrigger>
                         <SelectContent className="max-h-72">
@@ -1705,13 +1751,13 @@ function CentralizedApprovalSettingsPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start min-w-0">
                     {/* Left Flow Stack (7 cols) */}
-                    <div className="lg:col-span-7 space-y-4">
+                    <div className="xl:col-span-7 min-w-0 space-y-4">
                       {/* Requesting Employee Card */}
                       {sampleEmployee && (
-                        <div className="p-3.5 rounded-2xl border border-border bg-card flex items-center justify-between shadow-2xs">
-                          <div className="flex items-center gap-3">
+                        <div className="p-3.5 rounded-2xl border border-border bg-card flex items-center justify-between shadow-2xs min-w-0">
+                          <div className="flex items-center gap-3 min-w-0">
                             <div className="h-9 w-9 rounded-full bg-primary/10 text-primary grid place-items-center font-bold text-xs shrink-0 overflow-hidden">
                               {sampleEmployee.photoDataUrl ? (
                                 <img src={sampleEmployee.photoDataUrl} className="h-full w-full object-cover" alt="" />
@@ -1719,19 +1765,19 @@ function CentralizedApprovalSettingsPage() {
                                 sampleEmployee.name.slice(0, 2).toUpperCase()
                               )}
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <div className="text-xs font-bold text-foreground flex items-center gap-2">
-                                <span>{sampleEmployee.name}</span>
-                                <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground">
+                                <span className="truncate">{sampleEmployee.name}</span>
+                                <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground shrink-0">
                                   {sampleEmployee.empCode}
                                 </Badge>
                               </div>
-                              <div className="text-[11px] text-muted-foreground">
+                              <div className="text-[11px] text-muted-foreground truncate">
                                 Requester / Applicant · {sampleEmployee.designation} ({sampleEmployee.department})
                               </div>
                             </div>
                           </div>
-                          <Badge variant="secondary" className="text-[10px] font-bold">
+                          <Badge variant="secondary" className="text-[10px] font-bold shrink-0">
                             Applicant
                           </Badge>
                         </div>
@@ -1739,37 +1785,37 @@ function CentralizedApprovalSettingsPage() {
 
                       {/* Dynamic Upward Levels */}
                       {upwardChain.length > 0 ? (
-                        <div className="space-y-3">
+                        <div className="space-y-3 min-w-0">
                           {upwardChain.map((mgr, idx) => {
                             const isDirect = idx === 0;
                             const isTop = idx === upwardChain.length - 1;
                             return (
-                              <div key={mgr.id} className="space-y-3">
+                              <div key={mgr.id} className="space-y-3 min-w-0">
                                 <div className="grid place-items-center text-muted-foreground py-0.5">
-                                  <ArrowDown className="h-4 w-4 text-emerald-600" />
+                                  <ArrowDown className="h-4 w-4 text-primary" />
                                 </div>
-                                <div className="p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between shadow-2xs">
-                                  <div className="flex items-center gap-3">
-                                    <div className="h-9 w-9 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 grid place-items-center font-bold text-xs shrink-0 overflow-hidden">
+                                <div className="p-3.5 rounded-2xl border border-primary/30 bg-primary/5 flex items-center justify-between shadow-2xs min-w-0">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="h-9 w-9 rounded-full bg-primary/20 text-primary grid place-items-center font-bold text-xs shrink-0 overflow-hidden">
                                       {mgr.photoDataUrl ? (
                                         <img src={mgr.photoDataUrl} className="h-full w-full object-cover" alt="" />
                                       ) : (
                                         mgr.name.slice(0, 2).toUpperCase()
                                       )}
                                     </div>
-                                    <div>
+                                    <div className="min-w-0">
                                       <div className="text-xs font-bold text-foreground flex items-center gap-2">
-                                        <span>{mgr.name}</span>
-                                        <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground">
+                                        <span className="truncate">{mgr.name}</span>
+                                        <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground shrink-0">
                                           {mgr.empCode}
                                         </Badge>
                                       </div>
-                                      <div className="text-[11px] text-muted-foreground">
+                                      <div className="text-[11px] text-muted-foreground truncate">
                                         {isDirect ? "Direct Reporting Manager (Level 1)" : isTop ? "Top Level Authority / Executive" : `Reporting Manager (Level ${idx + 1})`} · {mgr.designation} ({mgr.department})
                                       </div>
                                     </div>
                                   </div>
-                                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] font-bold">
+                                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold shrink-0">
                                     {isTop ? "Final Stage" : `Level ${idx + 1}`}
                                   </Badge>
                                 </div>
@@ -1779,7 +1825,7 @@ function CentralizedApprovalSettingsPage() {
                         </div>
                       ) : (
                         <div className="p-5 rounded-2xl border border-blue-500/30 bg-blue-500/5 text-center space-y-1.5">
-                          <ShieldCheck className="h-7 w-7 text-blue-600 mx-auto" />
+                          <ShieldCheck className="h-7 w-7 text-blue-600 dark:text-blue-400 mx-auto" />
                           <div className="text-xs font-bold text-foreground">Direct Approval / Top Level Executive</div>
                           <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
                             {sampleEmployee ? sampleEmployee.name : "This member"} has no higher reporting manager assigned in Organization Structure. Requests submitted will route directly to final approval action.
@@ -1788,23 +1834,23 @@ function CentralizedApprovalSettingsPage() {
                       )}
 
                       {/* Final Level Action Radio selector */}
-                      <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
+                      <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3 min-w-0">
                         <div className="space-y-0.5">
                           <div className="text-xs font-bold text-foreground">Final Level Action (MD / CEO)</div>
                           <div className="text-[11px] text-muted-foreground">Choose action at the final level.</div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           {/* Approve Manually */}
                           <div
                             onClick={() => updateActiveItem({ finalLevelAction: "approve_send" })}
                             className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
                               activeItem.finalLevelAction === "approve_send" || activeItem.finalLevelAction === "approve_only"
-                                ? "bg-emerald-500/15 border-emerald-500 text-foreground"
+                                ? "bg-primary/15 border-primary text-foreground font-semibold"
                                 : "bg-card hover:bg-muted/50 border-border text-muted-foreground"
                             }`}
                           >
-                            <div className="h-6 w-6 rounded-full bg-emerald-600 text-white mx-auto grid place-items-center mb-1.5">
+                            <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground mx-auto grid place-items-center mb-1.5">
                               <Check className="h-3.5 w-3.5" />
                             </div>
                             <div className="text-xs font-bold">Approve Manually</div>
@@ -1816,7 +1862,7 @@ function CentralizedApprovalSettingsPage() {
                             onClick={() => updateActiveItem({ finalLevelAction: "auto_approve" })}
                             className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
                               activeItem.finalLevelAction === "auto_approve"
-                                ? "bg-blue-500/15 border-blue-500 text-foreground"
+                                ? "bg-blue-500/15 border-blue-500 text-foreground font-semibold"
                                 : "bg-card hover:bg-muted/50 border-border text-muted-foreground"
                             }`}
                           >
@@ -1832,7 +1878,7 @@ function CentralizedApprovalSettingsPage() {
                             onClick={() => updateActiveItem({ finalLevelAction: "auto_decline" })}
                             className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
                               activeItem.finalLevelAction === "auto_decline"
-                                ? "bg-red-500/15 border-red-500 text-foreground"
+                                ? "bg-red-500/15 border-red-500 text-foreground font-semibold"
                                 : "bg-card hover:bg-muted/50 border-border text-muted-foreground"
                             }`}
                           >
@@ -1854,24 +1900,24 @@ function CentralizedApprovalSettingsPage() {
                     </div>
 
                     {/* Right Preview & Email Delivery (5 cols) */}
-                    <div className="lg:col-span-5 space-y-4">
+                    <div className="xl:col-span-5 min-w-0 space-y-4">
                       {/* Live Preview Stepper */}
-                      <div className="rounded-2xl border border-border bg-card p-4 space-y-3.5 shadow-soft">
+                      <div className="rounded-2xl border border-border bg-card p-4 space-y-3.5 shadow-soft min-w-0">
                         <div className="space-y-0.5">
                           <div className="text-xs font-bold text-foreground">Real-Time Approval Flow Preview</div>
-                          <div className="text-[11px] text-muted-foreground">
+                          <div className="text-[11px] text-muted-foreground truncate">
                             {sampleEmployee ? `Active pipeline for ${sampleEmployee.name}` : "Organization upward route"}
                           </div>
                         </div>
 
-                        <div className="space-y-3 pt-1">
+                        <div className="space-y-3 pt-1 min-w-0">
                           {upwardChain.length > 0 ? (
                             upwardChain.map((mgr, idx) => {
                               const isTop = idx === upwardChain.length - 1;
                               return (
-                                <div key={mgr.id} className="flex items-center justify-between p-2 rounded-xl bg-muted/20 border border-border/50">
+                                <div key={mgr.id} className="flex items-center justify-between p-2 rounded-xl bg-muted/20 border border-border/50 min-w-0">
                                   <div className="flex items-center gap-2.5 min-w-0">
-                                    <span className="h-6 w-6 rounded-full bg-emerald-600 text-white text-[11px] font-bold grid place-items-center shrink-0">
+                                    <span className="h-6 w-6 rounded-full bg-primary text-primary-foreground text-[11px] font-bold grid place-items-center shrink-0">
                                       {idx + 1}
                                     </span>
                                     <div className="min-w-0">
@@ -1879,7 +1925,7 @@ function CentralizedApprovalSettingsPage() {
                                       <div className="text-[10.5px] text-muted-foreground truncate">{mgr.designation}</div>
                                     </div>
                                   </div>
-                                  <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 font-bold shrink-0">
+                                  <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-bold shrink-0">
                                     {isTop ? "Final Level" : `Stage ${idx + 1}`}
                                   </Badge>
                                 </div>
@@ -1901,17 +1947,17 @@ function CentralizedApprovalSettingsPage() {
                       </div>
 
                       {/* Email Delivery Card */}
-                      <div className="rounded-2xl border border-border bg-card p-4 flex items-center justify-between shadow-soft">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary grid place-items-center">
+                      <div className="rounded-2xl border border-border bg-card p-4 flex items-center justify-between shadow-soft min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
                             <Mail className="h-4 w-4" />
                           </div>
-                          <div>
-                            <div className="text-xs font-bold">Email Delivery</div>
-                            <div className="text-[11px] text-muted-foreground">Sent to employee mail after final approval.</div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold truncate">Email Delivery</div>
+                            <div className="text-[11px] text-muted-foreground truncate">Sent to employee mail after final approval.</div>
                           </div>
                         </div>
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold text-[10px]">
+                        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-bold text-[10px] shrink-0">
                           Active
                         </Badge>
                       </div>
@@ -1920,20 +1966,20 @@ function CentralizedApprovalSettingsPage() {
                 </div>
               )}
 
-              {/* TAB 2 CONTENT: MANUAL APPROVAL FLOW (DRAG & DROP / STEP BUILDER) */}
+              {/* TAB 2 CONTENT: MANUAL APPROVAL FLOW (STEP BUILDER) */}
               {activeItem.workflowMode === "manual" && (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2">
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 pt-2 min-w-0">
                   {/* Left Canvas: Step List Builder (7 cols) */}
-                  <div className="lg:col-span-7 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-xs font-bold text-foreground">Configure Manual Approval Flow</h3>
-                        <p className="text-[11px] text-muted-foreground">Drag and drop approvers from the right panel to add workflow steps.</p>
+                  <div className="xl:col-span-7 min-w-0 space-y-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="text-xs font-bold text-foreground truncate">Configure Manual Approval Flow</h3>
+                        <p className="text-[11px] text-muted-foreground truncate">Add and configure customized multi-level approval steps.</p>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 px-2.5 text-[11px] text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg"
+                        className="h-7 px-2.5 text-[11px] text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg shrink-0"
                         onClick={handleClearFlow}
                       >
                         <Trash2 className="h-3 w-3 mr-1" /> Clear Flow
@@ -1941,7 +1987,7 @@ function CentralizedApprovalSettingsPage() {
                     </div>
 
                     {/* Steps list */}
-                    <div className="space-y-2.5 min-h-[220px]">
+                    <div className="space-y-2.5 min-h-[220px] min-w-0">
                       {activeItem.manualSteps.length === 0 ? (
                         <div className="rounded-2xl border-2 border-dashed border-border p-8 text-center bg-muted/10 space-y-2">
                           <UsersIcon className="h-8 w-8 mx-auto text-muted-foreground/60" />
@@ -1954,83 +2000,98 @@ function CentralizedApprovalSettingsPage() {
                         activeItem.manualSteps.map((step, idx) => (
                           <div
                             key={step.id}
-                            className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-3 shadow-xs hover:border-primary/40 transition-all"
+                            className="rounded-xl border border-border bg-card shadow-xs hover:border-primary/40 transition-all min-w-0 overflow-hidden"
                           >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="flex flex-col gap-0.5">
-                                <button
-                                  disabled={idx === 0}
-                                  onClick={() => handleMoveStepUp(idx)}
-                                  className="text-muted-foreground hover:text-foreground disabled:opacity-20 text-[10px]"
-                                >
-                                  ▲
-                                </button>
-                                <button
-                                  disabled={idx === activeItem.manualSteps.length - 1}
-                                  onClick={() => handleMoveStepDown(idx)}
-                                  className="text-muted-foreground hover:text-foreground disabled:opacity-20 text-[10px]"
-                                >
-                                  ▼
-                                </button>
+                            {/* Top / Approver Header Row */}
+                            <div className="p-3 flex items-center justify-between gap-2.5 min-w-0">
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className="flex flex-col gap-0.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={() => handleMoveStepUp(idx)}
+                                    className="text-muted-foreground hover:text-foreground disabled:opacity-20 text-[10px] leading-none p-0.5"
+                                    title="Move Up"
+                                  >
+                                    ▲
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === activeItem.manualSteps.length - 1}
+                                    onClick={() => handleMoveStepDown(idx)}
+                                    className="text-muted-foreground hover:text-foreground disabled:opacity-20 text-[10px] leading-none p-0.5"
+                                    title="Move Down"
+                                  >
+                                    ▼
+                                  </button>
+                                </div>
+
+                                <span className="h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold grid place-items-center shrink-0">
+                                  {idx + 1}
+                                </span>
+
+                                <div className="h-8 w-8 rounded-full bg-primary/10 text-primary grid place-items-center font-bold text-xs shrink-0 border border-primary/20">
+                                  {step.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-bold text-foreground truncate" title={step.name}>{step.name}</div>
+                                  <div className="text-[10.5px] text-muted-foreground truncate" title={`${step.role} · ${step.department}`}>
+                                    {step.role} · <span className="text-muted-foreground/80">{step.department}</span>
+                                  </div>
+                                </div>
                               </div>
 
-                              <span className="h-6 w-6 rounded-full bg-emerald-600 text-white text-xs font-bold grid place-items-center shrink-0">
-                                {idx + 1}
-                              </span>
-
-                              <div className="h-8 w-8 rounded-full bg-muted/60 grid place-items-center font-bold text-xs shrink-0">
-                                {step.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                              </div>
-
-                              <div className="min-w-0">
-                                <div className="text-xs font-bold text-foreground truncate">{step.name}</div>
-                                <div className="text-[10.5px] text-muted-foreground truncate">{step.role} · {step.department}</div>
-                              </div>
+                              {/* Delete Step Button */}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg shrink-0"
+                                onClick={() => handleRemoveStep(step.id)}
+                                title="Remove Step"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
                             </div>
 
-                            <div className="flex items-center gap-2.5 shrink-0">
-                              {/* Permission Select */}
-                              <Select
-                                value={step.permission}
-                                onValueChange={(val: any) => {
-                                  const updated = activeItem.manualSteps.map((s) => s.id === step.id ? { ...s, permission: val } : s);
-                                  updateActiveItem({ manualSteps: updated });
-                                }}
-                              >
-                                <SelectTrigger className="h-7 w-28 text-[11px] font-semibold bg-muted/30">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="approve_edit">Approve + Edit</SelectItem>
-                                  <SelectItem value="approve_only">Approve Only</SelectItem>
-                                  <SelectItem value="can_edit">Can Edit</SelectItem>
-                                  <SelectItem value="view_only">View Only</SelectItem>
-                                  <SelectItem value="final_approve">Final Approve</SelectItem>
-                                </SelectContent>
-                              </Select>
+                            {/* Controls Row: Permission Select & Signature Switch */}
+                            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 px-3 py-2 bg-muted/20 border-t border-border/60">
+                              <div className="flex items-center gap-2 flex-1 min-w-[140px]">
+                                <span className="text-[10.5px] font-semibold text-muted-foreground whitespace-nowrap">Action:</span>
+                                <Select
+                                  value={step.permission}
+                                  onValueChange={(val: any) => {
+                                    const updated = activeItem.manualSteps.map((s) => s.id === step.id ? { ...s, permission: val } : s);
+                                    updateActiveItem({ manualSteps: updated });
+                                  }}
+                                >
+                                  <SelectTrigger className="h-7.5 w-full sm:w-36 text-xs font-semibold bg-card border-border shadow-2xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="approve_edit">Approve + Edit</SelectItem>
+                                    <SelectItem value="approve_only">Approve Only</SelectItem>
+                                    <SelectItem value="can_edit">Can Edit</SelectItem>
+                                    <SelectItem value="view_only">View Only</SelectItem>
+                                    <SelectItem value="final_approve">Final Approve</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
 
                               {/* Embed Signature Toggle */}
-                              <div className="flex items-center gap-1.5 bg-muted/20 px-2 py-1 rounded-lg">
-                                <span className="text-[10.5px] font-medium text-muted-foreground hidden sm:inline">Embed Signature</span>
+                              <div className="flex items-center gap-2 bg-card border border-border px-2.5 py-1 rounded-lg shadow-2xs shrink-0">
+                                <span className="text-[10.5px] font-medium text-foreground whitespace-nowrap">Embed Signature</span>
                                 <Switch
                                   checked={step.embedSignature}
                                   onCheckedChange={(checked) => {
                                     const updated = activeItem.manualSteps.map((s) => s.id === step.id ? { ...s, embedSignature: checked } : s);
                                     updateActiveItem({ manualSteps: updated });
                                   }}
+                                  className="data-[state=checked]:bg-primary scale-90"
+                                  title="Embed digital signature upon approval"
                                 />
                                 <span className="text-xs">✍</span>
                               </div>
-
-                              {/* Delete Button */}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-red-600 rounded-lg"
-                                onClick={() => handleRemoveStep(step.id)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
                             </div>
                           </div>
                         ))
@@ -2039,7 +2100,7 @@ function CentralizedApprovalSettingsPage() {
 
                     <Button
                       variant="outline"
-                      className="w-full h-9 rounded-xl text-xs font-bold border-dashed border-border hover:border-emerald-600 hover:bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
+                      className="w-full h-9 rounded-xl text-xs font-bold border-dashed border-border hover:border-primary hover:bg-primary/5 text-primary"
                       onClick={() => handleAddApproverToFlow({ name: "Department Manager", role: "Management Reviewer", department: "Operations" })}
                     >
                       <Plus className="h-3.5 w-3.5 mr-1" /> Add Another Step
@@ -2047,9 +2108,9 @@ function CentralizedApprovalSettingsPage() {
                   </div>
 
                   {/* Right Panel: Add Approvers Directory & Final Level Action (5 cols) */}
-                  <div className="lg:col-span-5 space-y-4">
+                  <div className="xl:col-span-5 min-w-0 space-y-4">
                     {/* Approvers Directory */}
-                    <div className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-soft">
+                    <div className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-soft min-w-0">
                       <div className="flex items-center justify-between">
                         <div className="text-xs font-bold text-foreground">Add Approvers</div>
                         <Button
@@ -2076,21 +2137,21 @@ function CentralizedApprovalSettingsPage() {
                         {filteredApprovers.map((person) => (
                           <div
                             key={person.name}
-                            className="p-2 rounded-xl border border-border/60 bg-muted/15 flex items-center justify-between gap-2 hover:bg-muted/40 transition-all"
+                            className="p-2 rounded-xl border border-border/60 bg-muted/15 flex items-center justify-between gap-2 hover:bg-muted/40 transition-all min-w-0"
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
                               <div className="h-7 w-7 rounded-full bg-primary/10 text-primary font-bold text-[10px] grid place-items-center shrink-0">
                                 {person.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
                               </div>
                               <div className="min-w-0">
-                                <div className="text-xs font-semibold truncate">{person.name}</div>
+                                <div className="text-xs font-semibold truncate text-foreground">{person.name}</div>
                                 <div className="text-[10px] text-muted-foreground truncate">{person.role}</div>
                               </div>
                             </div>
 
                             <Button
                               size="icon"
-                              className="h-6 w-6 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 shadow-xs"
+                              className="h-6 w-6 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shrink-0 shadow-xs"
                               onClick={() => handleAddApproverToFlow(person)}
                             >
                               <Plus className="h-3 w-3" />
@@ -2101,23 +2162,23 @@ function CentralizedApprovalSettingsPage() {
                     </div>
 
                     {/* Final Level Action (MD / CEO) */}
-                    <div className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-soft">
+                    <div className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-soft min-w-0">
                       <div className="space-y-0.5">
                         <div className="text-xs font-bold text-foreground">Final Level Action (MD / CEO)</div>
                         <div className="text-[11px] text-muted-foreground">Choose action at the final level.</div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         {/* Approve & Send */}
                         <div
                           onClick={() => updateActiveItem({ finalLevelAction: "approve_send" })}
                           className={`p-2.5 rounded-xl border text-center cursor-pointer transition-all ${
                             activeItem.finalLevelAction === "approve_send"
-                              ? "bg-emerald-500/15 border-emerald-500 text-foreground"
+                              ? "bg-primary/15 border-primary text-foreground font-semibold"
                               : "bg-muted/20 hover:bg-muted/40 border-border text-muted-foreground"
                           }`}
                         >
-                          <div className="h-6 w-6 rounded-full bg-emerald-600 text-white mx-auto grid place-items-center mb-1">
+                          <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground mx-auto grid place-items-center mb-1">
                             <Check className="h-3.5 w-3.5" />
                           </div>
                           <div className="text-[11px] font-bold">Approve & Send</div>
@@ -2129,7 +2190,7 @@ function CentralizedApprovalSettingsPage() {
                           onClick={() => updateActiveItem({ finalLevelAction: "approve_only" })}
                           className={`p-2.5 rounded-xl border text-center cursor-pointer transition-all ${
                             activeItem.finalLevelAction === "approve_only"
-                              ? "bg-blue-500/15 border-blue-500 text-foreground"
+                              ? "bg-blue-500/15 border-blue-500 text-foreground font-semibold"
                               : "bg-muted/20 hover:bg-muted/40 border-border text-muted-foreground"
                           }`}
                         >
@@ -2145,7 +2206,7 @@ function CentralizedApprovalSettingsPage() {
                           onClick={() => updateActiveItem({ finalLevelAction: "reject" })}
                           className={`p-2.5 rounded-xl border text-center cursor-pointer transition-all ${
                             activeItem.finalLevelAction === "reject"
-                              ? "bg-red-500/15 border-red-500 text-foreground"
+                              ? "bg-red-500/15 border-red-500 text-foreground font-semibold"
                               : "bg-muted/20 hover:bg-muted/40 border-border text-muted-foreground"
                           }`}
                         >
@@ -2165,8 +2226,8 @@ function CentralizedApprovalSettingsPage() {
             {/* Bottom Status Legend & Mandatory Sign Notice */}
             <div className="rounded-xl bg-muted/30 border border-border p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-muted-foreground">
               <div className="flex items-center gap-4 flex-wrap">
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500"></span> Approved</span>
-                <span className="flex items-center gap-1.5"><span className="text-emerald-600">✍</span> Signature Embedded</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary"></span> Approved</span>
+                <span className="flex items-center gap-1.5"><span className="text-primary font-bold">✍</span> Signature Embedded</span>
                 <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-muted-foreground"></span> Pending</span>
                 <span className="flex items-center gap-1.5"><span className="text-muted-foreground">✍</span> Signature Not Embedded</span>
               </div>
@@ -2233,7 +2294,7 @@ function CentralizedApprovalSettingsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddTypeModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateNewType} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+            <Button onClick={handleCreateNewType} className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold">
               Add {activeTab === "documents" ? "Document" : "Type"}
             </Button>
           </DialogFooter>
@@ -2254,7 +2315,7 @@ function CentralizedApprovalSettingsPage() {
             </p>
             <div className="space-y-2 rounded-xl bg-muted/40 p-3">
               <div className="font-bold text-foreground">1. Auto Approval Flow (Hierarchical)</div>
-              <p>Follows the dynamic upward reporting manager chain of the requesting employee (Level 1 $\rightarrow$ Level 2 $\rightarrow$ Level 3 $\rightarrow$ MD/CEO) automatically.</p>
+              <p>Follows the dynamic upward reporting manager chain of the requesting employee (Level 1 → Level 2 → Level 3 → MD/CEO) automatically.</p>
               
               <div className="font-bold text-foreground mt-2">2. Manual Approval Flow</div>
               <p>Allows precise custom stage configurations by dragging & dropping specific approvers (HR, Finance, HOD, MD) and specifying custom permissions (Approve + Edit, Approve Only, Final Approve) with optional digital signature embedding.</p>
@@ -2309,7 +2370,7 @@ function CentralizedApprovalSettingsPage() {
                 setEmailTemplateOpen(false);
                 toast.success("Email template saved!");
               }}
-              className="bg-primary text-primary-foreground font-bold"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
             >
               Save Template
             </Button>
@@ -2340,7 +2401,7 @@ function CentralizedApprovalSettingsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setExternalApproverModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddExternalApprover} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+            <Button onClick={handleAddExternalApprover} className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold">
               Add External Approver
             </Button>
           </DialogFooter>
@@ -2354,14 +2415,14 @@ function CentralizedApprovalSettingsPage() {
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  <FileText className="h-5 w-5 text-primary" />
                   <span>Edit Document Template: {activeItem?.name}</span>
                 </DialogTitle>
                 <DialogDescription className="text-xs">
                   Customize the official letter format and use dynamic placeholders to auto-populate employee information upon download.
                 </DialogDescription>
               </div>
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-xs font-bold">
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-xs font-bold">
                 {activeItem?.group || "Official Document"}
               </Badge>
             </div>
@@ -2381,10 +2442,10 @@ function CentralizedApprovalSettingsPage() {
               </div>
 
               {/* AI Auto-Inject & Refine Banner */}
-              <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3.5 space-y-2.5 shadow-2xs">
+              <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3.5 space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <div className="h-6 w-6 rounded-lg bg-emerald-600 text-white grid place-items-center shrink-0">
+                    <div className="h-6 w-6 rounded-lg bg-primary text-primary-foreground grid place-items-center shrink-0">
                       <Sparkles className="h-3.5 w-3.5" />
                     </div>
                     <div>
@@ -2396,7 +2457,7 @@ function CentralizedApprovalSettingsPage() {
                   <Button
                     type="button"
                     size="sm"
-                    className="h-8 px-3 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-soft shrink-0"
+                    className="h-8 px-3 rounded-xl text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-soft shrink-0"
                     onClick={() => handleAiAutoTagDocument()}
                     disabled={isAiProcessing}
                   >
@@ -2412,7 +2473,7 @@ function CentralizedApprovalSettingsPage() {
                   </Button>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1 border-t border-emerald-500/20">
+                <div className="flex items-center gap-2 pt-1 border-t border-primary/20">
                   <Input
                     value={aiInstruction}
                     onChange={(e) => setAiInstruction(e.target.value)}
@@ -2438,8 +2499,8 @@ function CentralizedApprovalSettingsPage() {
                 </div>
 
                 {aiSummary && (
-                  <div className="text-[11px] text-emerald-800 dark:text-emerald-300 bg-emerald-500/15 p-2 rounded-xl border border-emerald-500/30 flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                  <div className="text-[11px] text-primary bg-primary/10 p-2 rounded-xl border border-primary/30 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
                     <span>{aiSummary}</span>
                   </div>
                 )}
@@ -2449,7 +2510,7 @@ function CentralizedApprovalSettingsPage() {
               <div className="space-y-2 rounded-2xl border border-border bg-muted/20 p-3.5 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <Sparkles className="h-3.5 w-3.5 text-primary" />
                     <span>Dynamic Placeholders (Click to insert)</span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -2460,7 +2521,7 @@ function CentralizedApprovalSettingsPage() {
                         onClick={() => setPlaceholderCategory(cat)}
                         className={`text-[10.5px] px-2 py-0.5 rounded-lg font-semibold capitalize transition-all ${
                           placeholderCategory === cat
-                            ? "bg-emerald-600 text-white shadow-2xs"
+                            ? "bg-primary text-primary-foreground shadow-2xs"
                             : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
@@ -2479,10 +2540,10 @@ function CentralizedApprovalSettingsPage() {
                         type="button"
                         onClick={() => handleInsertPlaceholder(variable.key)}
                         title={`Sample: ${variable.sample}`}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-mono bg-card hover:bg-emerald-500/10 hover:border-emerald-500/40 border border-border text-foreground transition-all shadow-2xs cursor-pointer group"
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-mono bg-card hover:bg-primary/10 hover:border-primary/40 border border-border text-foreground transition-all shadow-2xs cursor-pointer group"
                       >
-                        <Plus className="h-2.5 w-2.5 text-muted-foreground group-hover:text-emerald-600" />
-                        <span className="font-semibold text-emerald-700 dark:text-emerald-400">{variable.key}</span>
+                        <Plus className="h-2.5 w-2.5 text-muted-foreground group-hover:text-primary" />
+                        <span className="font-semibold text-primary">{variable.key}</span>
                         <span className="text-[10px] text-muted-foreground">({variable.label})</span>
                       </button>
                     ))}
@@ -2500,7 +2561,7 @@ function CentralizedApprovalSettingsPage() {
                   value={editingDocContent}
                   onChange={(e) => setEditingDocContent(e.target.value)}
                   placeholder="Enter official letter text with {{placeholders}}..."
-                  className="w-full p-3.5 text-xs rounded-xl border border-border bg-card font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                  className="w-full p-3.5 text-xs rounded-xl border border-border bg-card font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-primary shadow-2xs"
                 />
               </div>
 
@@ -2554,16 +2615,16 @@ function CentralizedApprovalSettingsPage() {
               {/* Rendered Letter Box */}
               <div className="rounded-2xl border-2 border-border/80 bg-card p-5 shadow-soft space-y-3 min-h-[460px] max-h-[520px] overflow-y-auto font-serif text-foreground/90">
                 {/* Simulated Letterhead */}
-                <div className="border-b-2 border-emerald-600 pb-2 flex items-center justify-between">
+                <div className="border-b-2 border-primary pb-2 flex items-center justify-between">
                   <div>
-                    <div className="font-sans font-bold text-sm text-emerald-800 dark:text-emerald-400">
+                    <div className="font-sans font-bold text-sm text-foreground">
                       {(company as any)?.legalName || company?.name || "SWIFT HRMS ENTERPRISE"}
                     </div>
                     <div className="font-sans text-[10px] text-muted-foreground">
                       {company?.address || "Technology Hub, Tamil Nadu, India"}
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-[9px] font-mono text-emerald-700 dark:text-emerald-400 border-emerald-500/40">
+                  <Badge variant="outline" className="text-[9px] font-mono text-primary border-primary/40">
                     OFFICIAL
                   </Badge>
                 </div>
@@ -2591,7 +2652,7 @@ function CentralizedApprovalSettingsPage() {
                     <div className="text-muted-foreground text-[10px]">{editingDocSignatoryRole}</div>
                   </div>
                   <div className="text-right">
-                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-[9px] font-bold">
+                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[9px] font-bold">
                       ✓ DIGITALLY VERIFIED
                     </Badge>
                   </div>
@@ -2601,7 +2662,7 @@ function CentralizedApprovalSettingsPage() {
               {/* Download Test PDF Action */}
               <Button
                 variant="outline"
-                className="w-full h-9 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-soft"
+                className="w-full h-9 rounded-xl text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-soft"
                 onClick={handleDownloadTestPDF}
                 disabled={isDownloadingPdf}
               >
@@ -2627,7 +2688,7 @@ function CentralizedApprovalSettingsPage() {
               <Button
                 size="sm"
                 onClick={handleSaveDocTemplate}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-soft"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-soft"
               >
                 <Save className="h-3.5 w-3.5 mr-1.5" /> Save Document Template
               </Button>
