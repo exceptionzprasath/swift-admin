@@ -369,6 +369,11 @@ export type Notice = {
   expiresAt?: string;
   pinned?: boolean;
   readBy: string[];
+  imageUrl?: string;
+  sendPush?: boolean;
+  showPopup?: boolean;
+  popupTitle?: string;
+  popupCta?: string;
 };
 
 export type Company = {

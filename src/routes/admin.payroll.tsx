@@ -191,7 +191,7 @@ interface EditingPayrollRecord extends MonthlyOverrideData {
   notes: string;
 }
 
-export function PayrollPage() {
+function PayrollPage() {
   const {
     employees,
     company,

@@ -117,7 +117,7 @@ function getConfidentialityBadge(conf: VaultFile["confidentiality"]) {
   }
 }
 
-export function VaultPage() {
+function VaultPage() {
   const {
     company,
     vaultFolders,

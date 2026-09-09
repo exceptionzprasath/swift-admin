@@ -125,6 +125,11 @@ export function NoticeBoard({
                         <span className="text-[10px] text-muted-foreground">· {audienceLabel(n)}</span>
                       </div>
                       <p className="text-xs mt-1 whitespace-pre-wrap text-foreground/80">{n.body}</p>
+                      {n.imageUrl && (
+                        <div className="mt-2 rounded-lg overflow-hidden border border-border/50 max-h-36 bg-muted/20">
+                          <img src={n.imageUrl} alt={n.title} className="w-full h-full object-cover" />
+                        </div>
+                      )}
                       <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
                         <span>By {n.createdBy} · {new Date(n.createdAt).toLocaleString()}{n.expiresAt ? ` · until ${new Date(n.expiresAt).toLocaleDateString()}` : ""}</span>
                         {!isRead && (

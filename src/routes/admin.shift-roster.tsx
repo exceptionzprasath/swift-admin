@@ -55,7 +55,7 @@ function getShiftIcon(startStr: string) {
   return Moon;
 }
 
-export function ShiftRosterPage() {
+function ShiftRosterPage() {
   const {
     company,
     employees,
