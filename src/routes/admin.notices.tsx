@@ -84,7 +84,7 @@ function NoticesPage() {
           )}
         </div>
 
-        <NoticeBoard viewer={{ role: "admin" }} userKey={"admin:" + (currentUser?.name || "admin")} compact />
+        <NoticeBoard viewer={{ role: "admin" }} userKey={"admin:" + (currentUser?.name || "admin")} />
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>

@@ -145,7 +145,7 @@ class AIOrchestrator {
           description: `Compiling PDF document for: ${queryToExecute}`,
         });
 
-        const pdfResult = AIToolRegistry.executePdfReport(queryToExecute, options.context, undefined, requestId);
+        const pdfResult = AIToolRegistry.executePdfReport(queryToExecute, options.context, undefined, undefined, requestId);
 
         aiEventBus.emit("AI_TOOL_COMPLETED", {
           requestId,

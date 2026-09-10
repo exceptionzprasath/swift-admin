@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useStore, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
 import { computePayroll, inr, type PayrollComputation } from "@/lib/payroll";
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
+import { PayslipTemplateView } from "@/components/payroll/PayslipTemplateView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,15 @@ import {
   RotateCcw,
   Check,
   Clock,
+  Users,
+  DollarSign,
+  CreditCard,
+  ArrowUpRight,
+  Search,
+  Calendar,
+  SlidersHorizontal,
+  ArrowRight,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { type RevisionTarget, type RevisionReason } from "@/lib/salary-revision";
@@ -203,6 +213,7 @@ export function PayrollPage() {
     currentUser,
     saveAllCompanySettings,
     lockPayrollMonth,
+    docAssets,
   } = useStore();
 
   // Active Main Tab
@@ -237,6 +248,9 @@ export function PayrollPage() {
     otHours: number;
     comp: PayrollComputation;
   } | null>(null);
+
+  // Live Benchmark Payslip Preview Modal State
+  const [showLivePayslipModal, setShowLivePayslipModal] = useState(false);
 
   // Edit Specific Employee Modal State
   const [editingRecord, setEditingRecord] = useState<EditingPayrollRecord | null>(null);
@@ -442,6 +456,24 @@ export function PayrollPage() {
       }
     );
   }, [employees, benchmarkSalary]);
+
+  // Live Benchmark Sample Payroll Computation
+  const liveBenchmarkComp: PayrollComputation = useMemo(() => {
+    const wd = company.workingDaysPerMonth || 26;
+    return computePayroll({
+      company,
+      employee: { ...sampleEmployee, basic: benchmarkSalary },
+      daysWorked: wd,
+      otHours: 0,
+      incentive: 0,
+      shiftDays: wd,
+      loan: 0,
+      advance: 0,
+      bonus:
+        (benchmarkCalc.attBonusEnabled ? benchmarkCalc.attendanceBonus : 0) +
+        (benchmarkCalc.yrBonusEnabled ? benchmarkCalc.yearlyBonus : 0),
+    });
+  }, [company, sampleEmployee, benchmarkSalary, benchmarkCalc]);
 
   // Monthly Register Calculations for all employees (reflecting per-employee overrides)
   const monthlyRegister = useMemo(() => {
@@ -690,40 +722,51 @@ export function PayrollPage() {
       otherEarnings: editingRecord.otherEarnings,
     });
   }, [editingRecord, company]);
+  // Computed summaries for Tab 2 (Monthly Payroll Run)
+  const runTotals = useMemo(() => {
+    return monthlyRegister.reduce(
+      (acc, item) => ({
+        totalNet: acc.totalNet + item.comp.net,
+        totalGross: acc.totalGross + item.comp.gross,
+        totalDeductions: acc.totalDeductions + item.comp.totalDeductions,
+        totalCtc: acc.totalCtc + item.comp.monthlyCTC,
+        count: acc.count + 1,
+      }),
+      { totalNet: 0, totalGross: 0, totalDeductions: 0, totalCtc: 0, count: 0 }
+    );
+  }, [monthlyRegister]);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-5 animate-in fade-in duration-300">
       {/* Top Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-gradient-to-r from-card via-card to-muted/30 p-6 rounded-2xl border border-border shadow-xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
-              <Calculator className="h-6 w-6" />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/80 backdrop-blur-sm p-5 rounded-2xl border border-border/80 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+            <Calculator className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+                Payroll Management
+              </h1>
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[11px] font-semibold px-2 py-0.5">
+                Statutory Compliant
+              </Badge>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl lg:text-3xl font-bold tracking-tight">
-                  Payroll Master & Processing
-                </h1>
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs px-2 py-0.5">
-                  Statutory Compliant
-                </Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Customize salary fields, toggle components, preview payslips, edit individual payrolls, and process monthly runs.
-              </p>
-            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Configure salary structures, simulate CTC allocations, review live payslips, and process monthly registers.
+            </p>
           </div>
         </div>
 
         {/* Global Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex items-center gap-2.5 shrink-0">
           <Button
             onClick={handleSavePayrollSettings}
             disabled={savingSettings}
-            className="gap-1.5 h-9 rounded-xl shadow-xs bg-primary text-primary-foreground font-semibold"
+            className="h-9 px-4 rounded-xl shadow-xs bg-primary text-primary-foreground font-semibold text-xs gap-1.5"
           >
-            <Save className="h-4 w-4" />
+            <Save className="h-3.5 w-3.5" />
             <span>{savingSettings ? "Saving..." : "Save Settings to DB"}</span>
           </Button>
         </div>
@@ -731,19 +774,24 @@ export function PayrollPage() {
 
       {/* Main Navigation Tabs */}
       <Tabs value={mainTab} onValueChange={(v: any) => setMainTab(v)} className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-2">
-          <TabsList className="bg-muted/60 p-1 rounded-xl">
-            <TabsTrigger value="structure" className="rounded-lg gap-1.5 text-xs font-semibold">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-2.5">
+          <TabsList className="bg-muted/60 p-1 rounded-xl h-auto">
+            <TabsTrigger value="structure" className="rounded-lg gap-2 text-xs font-semibold py-1.5 px-3">
               <Coins className="h-3.5 w-3.5" />
-              Salary Structure & Live Payslip Receipt
+              <span>Salary Structure & Live Payslip</span>
             </TabsTrigger>
-            <TabsTrigger value="run" className="rounded-lg gap-1.5 text-xs font-semibold">
+            <TabsTrigger value="run" className="rounded-lg gap-2 text-xs font-semibold py-1.5 px-3">
               <Calculator className="h-3.5 w-3.5" />
-              Monthly Payroll Run
+              <span>Monthly Payroll Run</span>
+              {monthlyRegister.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-mono">
+                  {monthlyRegister.length}
+                </Badge>
+              )}
             </TabsTrigger>
-            <TabsTrigger value="revision" className="rounded-lg gap-1.5 text-xs font-semibold">
+            <TabsTrigger value="revision" className="rounded-lg gap-2 text-xs font-semibold py-1.5 px-3">
               <Sparkles className="h-3.5 w-3.5" />
-              AI Salary Revisions
+              <span>AI Salary Revisions</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -751,47 +799,63 @@ export function PayrollPage() {
         {/* ========================================================================= */}
         {/* TAB 1: SPLIT SCREEN (CONFIGURATION ON LEFT + REAL PAYSLIP RECEIPT ON RIGHT) */}
         {/* ========================================================================= */}
-        <TabsContent value="structure" className="space-y-6 m-0">
+        <TabsContent value="structure" className="space-y-5 m-0">
           {/* Top Live Benchmark & CTC Simulator Card */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-card p-5 rounded-2xl border border-border shadow-xs">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Salary Given in Employee (Monthly Gross)
-              </Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-muted-foreground font-bold">₹</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* Benchmark Monthly Gross Input */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Monthly Gross Benchmark</span>
+                <DollarSign className="h-3.5 w-3.5 text-primary/70" />
+              </div>
+              <div className="relative mt-1">
+                <span className="absolute left-3 top-2 text-muted-foreground font-bold text-base">₹</span>
                 <Input
                   type="number"
                   value={benchmarkSalary}
                   onChange={(e) => setBenchmarkSalary(Number(e.target.value) || 0)}
-                  className="pl-7 h-10 font-bold text-lg text-primary rounded-xl"
+                  className="pl-7 h-9 font-bold text-base text-foreground rounded-xl bg-muted/20 border-border"
                 />
               </div>
+              <span className="text-[11px] text-muted-foreground">Base salary baseline for formulas</span>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-muted/40 border border-border flex flex-col justify-center">
-              <div className="text-xs text-muted-foreground font-medium">Annual Fixed CTC</div>
-              <div className="text-xl font-extrabold font-display text-foreground mt-0.5">
+            {/* Annual Fixed CTC */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Annual Fixed CTC</span>
+                <Badge variant="secondary" className="text-[9px] px-1.5 py-0">Fixed</Badge>
+              </div>
+              <div className="text-2xl font-bold font-display text-foreground tracking-tight">
                 {benchmarkSalary ? `${benchmarkCalc.ctcLpa} LPA` : "0.00 LPA"}
               </div>
-              <span className="text-[11px] text-muted-foreground">Fixed Gross × 12</span>
+              <span className="text-[11px] text-muted-foreground">Fixed Gross × 12 months</span>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col justify-center">
-              <div className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">Estimated In-Hand Salary</div>
-              <div className="text-xl font-extrabold font-display text-emerald-600 dark:text-emerald-400 mt-0.5">
+            {/* Estimated In-Hand Salary */}
+            <div className="p-4 rounded-2xl bg-card border border-emerald-500/30 bg-emerald-500/[0.03] shadow-xs flex flex-col justify-between space-y-1">
+              <div className="flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-400 font-semibold uppercase tracking-wider">
+                <span>Estimated In-Hand</span>
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[9px] px-1.5 py-0 font-bold">
+                  Take-Home
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400 tracking-tight">
                 {inr(benchmarkCalc.salaryInHand)}
               </div>
-              <span className="text-[11px] text-muted-foreground">After active bonuses & deductions</span>
+              <span className="text-[11px] text-muted-foreground">After active statutory deductions</span>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-primary/10 border border-primary/20 flex flex-col justify-center">
-              <div className="text-xs text-primary font-medium">Total Cost to Company (CTC)</div>
-              <div className="text-xl font-extrabold font-display text-primary mt-0.5">
-                {inr(benchmarkCalc.totalMonthlyCtc)}{" "}
-                <span className="text-xs font-semibold">({benchmarkCalc.totalYearlyCtcLpa} LPA)</span>
+            {/* Total Cost to Company (CTC) */}
+            <div className="p-4 rounded-2xl bg-card border border-primary/30 bg-primary/[0.03] shadow-xs flex flex-col justify-between space-y-1">
+              <div className="flex items-center justify-between text-xs text-primary font-semibold uppercase tracking-wider">
+                <span>Total Monthly CTC</span>
+                <span className="text-xs font-bold text-primary font-mono">{benchmarkCalc.totalYearlyCtcLpa} LPA</span>
               </div>
-              <span className="text-[11px] text-muted-foreground">Gross + Bonus + Employer PF/ESI</span>
+              <div className="text-2xl font-bold font-display text-primary tracking-tight">
+                {inr(benchmarkCalc.totalMonthlyCtc)}
+              </div>
+              <span className="text-[11px] text-muted-foreground">Gross + Bonuses + Employer PF/ESI</span>
             </div>
           </div>
 
@@ -799,7 +863,7 @@ export function PayrollPage() {
           {benchmarkCalc.isExceeded && (
             <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-4 flex items-start gap-3.5 text-destructive shadow-xs animate-in fade-in slide-in-from-top-2 duration-200">
               <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-destructive" />
-              <div className="space-y-1">
+              <div className="space-y-1 flex-1">
                 <div className="font-bold text-sm tracking-tight flex flex-wrap items-center gap-2">
                   <span>Warning: Total Earnings ({benchmarkCalc.totalEarningsPct}%) Exceeds Total Fixed Gross!</span>
                   <Badge variant="destructive" className="text-[10px] font-mono font-bold uppercase">
@@ -816,1044 +880,837 @@ export function PayrollPage() {
                 </p>
               </div>
             </div>
-          )}
-
-          {/* SPLIT SCREEN GRID: LEFT = CONFIGURATION CONTROLS, RIGHT = REAL PAYSLIP RECEIPT */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* LEFT COLUMN: PAYROLL CONTROLS & FIELD TOGGLES (7 Cols) */}
-            <div className="lg:col-span-7 space-y-5">
-              <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
-                <div className="bg-muted/60 p-4 border-b border-border flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 className="font-display font-bold text-base text-foreground">
-                      FIELD SELECTION & SALARY FORMULAS
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      Toggle fields ON/OFF to include or exclude them from payroll calculations and payslips.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {benchmarkCalc.isExceeded ? (
-                      <Badge variant="destructive" className="gap-1 font-bold text-xs">
-                        <AlertTriangle className="h-3 w-3" /> Total: {benchmarkCalc.totalEarningsPct}%
-                      </Badge>
-                    ) : benchmarkCalc.totalEarningsPct === 100 ? (
-                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold text-xs gap-1">
-                        <CheckCircle2 className="h-3 w-3" /> 100% Balanced
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 font-bold text-xs gap-1">
-                        <Info className="h-3 w-3" /> {benchmarkCalc.totalEarningsPct}% ({(100 - benchmarkCalc.totalEarningsPct).toFixed(1)}% unallocated)
-                      </Badge>
-                    )}
-                  </div>
+          )}          {/* FULL WIDTH FIELD SELECTION & SALARY FORMULAS */}
+          <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-xs">
+            {/* Section Header */}
+            <div className="bg-muted/40 px-5 py-4 border-b border-border/80 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-display font-bold text-base text-foreground">
+                    FIELD SELECTION &amp; SALARY FORMULAS
+                  </h3>
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-semibold">
+                    Master Blueprint
+                  </Badge>
                 </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Toggle components ON/OFF and adjust rate percentages to define the organization's standard salary structure.
+                </p>
+              </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-collapse">
-                    <thead className="bg-muted/40 border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
-                      <tr>
-                        <th className="p-3 text-left w-[42%]">Component &amp; Toggle</th>
-                        <th className="p-3 text-left w-[36%]">Formula / Rate</th>
-                        <th className="p-3 text-right w-[22%]">Value (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {/* Fixed Benchmark Row */}
-                      <tr className="bg-primary/5 font-semibold text-primary">
-                        <td className="p-3 text-destructive font-bold">Salary Give in Employee</td>
-                        <td className="p-3 font-bold text-destructive">Fixed Monthly Benchmark</td>
-                        <td className="p-3 text-right font-bold text-primary text-sm">{inr(benchmarkCalc.gross)}</td>
-                      </tr>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                {benchmarkCalc.isExceeded ? (
+                  <Badge variant="destructive" className="gap-1.5 font-bold text-xs px-2.5 py-1">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Total: {benchmarkCalc.totalEarningsPct}% (Over 100%)
+                  </Badge>
+                ) : benchmarkCalc.totalEarningsPct === 100 ? (
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-bold text-xs px-2.5 py-1 gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> 100% Balanced Allocation
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 font-bold text-xs px-2.5 py-1 gap-1.5">
+                    <Info className="h-3.5 w-3.5" /> {benchmarkCalc.totalEarningsPct}% allocated ({(100 - benchmarkCalc.totalEarningsPct).toFixed(1)}% unallocated)
+                  </Badge>
+                )}
 
-                      {/* 1. Basic + DA (MANDATORY CORE WAGE - EDITABLE %) */}
-                      <tr>
-                        <td className="p-3 font-semibold">
-                          <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                            <span>Basic + DA</span>
-                            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-bold">
-                              Mandatory Core Wage
-                            </Badge>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground pl-4">
-                            Statutory wage base for EPF &amp; Gratuity
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.1"
-                              value={company.basicPct ?? 33.33}
-                              onChange={(e) => setCompany({ basicPct: Number(e.target.value) || 0 })}
-                              className="h-8 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% of Gross</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-semibold">{inr(benchmarkCalc.basic)}</td>
-                      </tr>
-
-                      {/* ALLOWANCES SUB-HEADER */}
-                      <tr className="bg-muted/40 font-bold text-xs uppercase text-muted-foreground">
-                        <td colSpan={3} className="p-2 pl-3">Allowances</td>
-                      </tr>
-
-                      {/* HRA (TOGGLEABLE) */}
-                      <tr className={benchmarkCalc.hraEnabled ? "bg-transparent" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 pl-5 font-medium">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.hraEnabled}
-                              onCheckedChange={(checked) => setCompany({ hraEnabled: checked })}
-                            />
-                            <span>HRA</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.1"
-                              disabled={!benchmarkCalc.hraEnabled}
-                              value={company.hraPct ?? 16.67}
-                              onChange={(e) => setCompany({ hraPct: Number(e.target.value) || 0 })}
-                              className="h-8 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% of Gross</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {benchmarkCalc.hraEnabled ? inr(benchmarkCalc.hra) : <span className="text-xs text-muted-foreground">Excluded</span>}
-                        </td>
-                      </tr>
-
-                      {/* OA (TOGGLEABLE) */}
-                      <tr className={benchmarkCalc.oaEnabled ? "bg-transparent" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 pl-5 font-medium">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.oaEnabled}
-                              onCheckedChange={(checked) => setCompany({ oaEnabled: checked })}
-                            />
-                            <span>OA (Other Allowance)</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.1"
-                              disabled={!benchmarkCalc.oaEnabled}
-                              value={company.oaPct ?? 16.67}
-                              onChange={(e) => setCompany({ oaPct: Number(e.target.value) || 0 })}
-                              className="h-8 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% of Gross</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {benchmarkCalc.oaEnabled ? inr(benchmarkCalc.oa) : <span className="text-xs text-muted-foreground">Excluded</span>}
-                        </td>
-                      </tr>
-
-                      {/* CA (TOGGLEABLE) */}
-                      <tr className={benchmarkCalc.caEnabled ? "bg-transparent" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 pl-5 font-medium">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.caEnabled}
-                              onCheckedChange={(checked) => setCompany({ caEnabled: checked })}
-                            />
-                            <span>CA (Conveyance)</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.1"
-                              disabled={!benchmarkCalc.caEnabled}
-                              value={company.caPct ?? 16.67}
-                              onChange={(e) => setCompany({ caPct: Number(e.target.value) || 0 })}
-                              className="h-8 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% of Gross</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {benchmarkCalc.caEnabled ? inr(benchmarkCalc.ca) : <span className="text-xs text-muted-foreground">Excluded</span>}
-                        </td>
-                      </tr>
-
-                      {/* LTA (TOGGLEABLE) */}
-                      <tr className={benchmarkCalc.ltaEnabled ? "bg-transparent" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 pl-5 font-medium">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.ltaEnabled}
-                              onCheckedChange={(checked) => setCompany({ ltaEnabled: checked })}
-                            />
-                            <span>LTA (Leave Travel)</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.1"
-                              disabled={!benchmarkCalc.ltaEnabled}
-                              value={company.ltaPct ?? 16.67}
-                              onChange={(e) => setCompany({ ltaPct: Number(e.target.value) || 0 })}
-                              className="h-8 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% of Gross</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {benchmarkCalc.ltaEnabled ? inr(benchmarkCalc.lta) : <span className="text-xs text-muted-foreground">Excluded</span>}
-                        </td>
-                      </tr>
-
-                      {/* Custom Allowances (WITH TOGGLES & EDITABLE NAMES) */}
-                      {(company.earnings || [])
-                        .filter((e) => !["basic", "da", "hra", "oa", "ca", "lta", "ot", "shift", "incentive", "bonus", "arrears"].includes(e.id))
-                        .map((item) => {
-                          const isItemActive = (item as any).enabled !== false;
-                          const calculatedVal =
-                            item.formula === "pctOfBasic"
-                              ? Math.round(benchmarkCalc.basic * (item.value / 100))
-                              : (item as any).formula === "pctOfGross"
-                              ? Math.round(benchmarkCalc.gross * (item.value / 100))
-                              : item.value;
-
-                          return (
-                            <tr key={item.id} className={isItemActive ? "bg-transparent" : "opacity-50 bg-muted/20"}>
-                              <td className="p-2.5 pl-5 font-medium">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2 flex-1 max-w-[200px]">
-                                    <Switch
-                                      checked={isItemActive}
-                                      onCheckedChange={(checked) => {
-                                        const next = [...(company.earnings || [])];
-                                        const targetIdx = next.findIndex((x) => x.id === item.id);
-                                        if (targetIdx >= 0) {
-                                          next[targetIdx] = { ...next[targetIdx], enabled: checked } as any;
-                                          setCompany({ earnings: next });
-                                        }
-                                      }}
-                                    />
-                                    <Input
-                                      type="text"
-                                      value={item.name}
-                                      onChange={(e) => {
-                                        const next = [...(company.earnings || [])];
-                                        const targetIdx = next.findIndex((x) => x.id === item.id);
-                                        if (targetIdx >= 0) {
-                                          next[targetIdx] = { ...next[targetIdx], name: e.target.value };
-                                          setCompany({ earnings: next });
-                                        }
-                                      }}
-                                      placeholder="Allowance Name"
-                                      className="h-7 text-xs font-semibold px-2 rounded-lg bg-background border-border"
-                                    />
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-destructive hover:bg-destructive/10 shrink-0"
-                                    onClick={() => {
-                                      const next = (company.earnings || []).filter((x) => x.id !== item.id);
-                                      setCompany({ earnings: next });
-                                    }}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </td>
-                              <td className="p-2.5">
-                                <div className="flex items-center gap-1.5">
-                                  <Input
-                                    type="number"
-                                    disabled={!isItemActive}
-                                    value={item.value}
-                                    onChange={(ev) => {
-                                      const next = [...(company.earnings || [])];
-                                      const targetIdx = next.findIndex((x) => x.id === item.id);
-                                      if (targetIdx >= 0) next[targetIdx] = { ...next[targetIdx], value: Number(ev.target.value) || 0 };
-                                      setCompany({ earnings: next });
-                                    }}
-                                    className="h-7 w-16 text-xs font-semibold px-1.5"
-                                  />
-                                  <Select
-                                    disabled={!isItemActive}
-                                    value={
-                                      item.formula === "pctOfBasic"
-                                        ? "pctOfBasic"
-                                        : (item as any).formula === "pctOfGross"
-                                        ? "pctOfGross"
-                                        : "flatMonthly"
-                                    }
-                                    onValueChange={(val: any) => {
-                                      const next = [...(company.earnings || [])];
-                                      const targetIdx = next.findIndex((x) => x.id === item.id);
-                                      if (targetIdx >= 0) {
-                                        next[targetIdx] = { ...next[targetIdx], formula: val };
-                                        setCompany({ earnings: next });
-                                      }
-                                    }}
-                                  >
-                                    <SelectTrigger className="h-7 text-[10px] w-24 px-1.5">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="pctOfGross">% Gross</SelectItem>
-                                      <SelectItem value="pctOfBasic">% Basic</SelectItem>
-                                      <SelectItem value="flatMonthly">₹ Flat</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </td>
-                              <td className="p-2.5 text-right font-medium">
-                                {isItemActive ? inr(calculatedVal) : <span className="text-xs text-muted-foreground">Excluded</span>}
-                              </td>
-                            </tr>
-                          );
-                        })}
-
-                      {/* Add Custom Allowance */}
-                      <tr>
-                        <td colSpan={3} className="p-2.5 bg-muted/20">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const newAllowance: EarningComponent & { enabled?: boolean } = {
-                                id: `allow-${Date.now()}`,
-                                name: "Medical Allowance",
-                                formula: "pctOfGross" as any,
-                                value: 5,
-                                prorate: true,
-                                taxable: true,
-                                includeInPf: false,
-                                includeInEsi: true,
-                                includeInGratuity: false,
-                                enabled: true,
-                              };
-                              setCompany({ earnings: [...(company.earnings || []), newAllowance] });
-                            }}
-                            className="h-7 text-xs rounded-lg gap-1"
-                          >
-                            <Plus className="h-3 w-3" />
-                            <span>Add Custom Allowance</span>
-                          </Button>
-                        </td>
-                      </tr>
-
-                      {/* TOTAL EARNINGS ROW */}
-                      <tr
-                        className={`font-bold border-t-2 transition-colors ${
-                          benchmarkCalc.isExceeded
-                            ? "bg-destructive/15 border-destructive/40 text-destructive"
-                            : benchmarkCalc.totalEarningsPct === 100
-                            ? "bg-primary/10 border-primary/30 text-primary"
-                            : "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
-                        }`}
-                      >
-                        <td className="p-3 font-bold flex items-center gap-2">
-                          <span>TOTAL</span>
-                          {benchmarkCalc.isExceeded ? (
-                            <Badge variant="destructive" className="text-[10px] gap-1 font-bold">
-                              <AlertTriangle className="h-3 w-3" /> Exceeds 100% ({benchmarkCalc.totalEarningsPct}%)
-                            </Badge>
-                          ) : benchmarkCalc.totalEarningsPct === 100 ? (
-                            <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] font-bold">
-                              100% (Balanced)
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px] font-bold">
-                              {benchmarkCalc.totalEarningsPct}%
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="p-3 font-semibold text-xs">
-                          {benchmarkCalc.isExceeded ? "Exceeds 100% limit" : "Active Gross Components"}
-                        </td>
-                        <td className={`p-3 text-right font-extrabold text-sm ${benchmarkCalc.isExceeded ? "text-destructive" : "text-primary"}`}>
-                          {inr(benchmarkCalc.totalEarnings)}
-                        </td>
-                      </tr>
-
-                      {/* BONUSES HEADER */}
-                      <tr className="bg-emerald-500/10 font-bold text-xs uppercase text-emerald-800 dark:text-emerald-200">
-                        <td colSpan={3} className="p-2 pl-3">Bonuses &amp; Additions (Company Wish)</td>
-                      </tr>
-
-                      {/* Attendance Bonus */}
-                      <tr className={benchmarkCalc.attBonusEnabled ? "bg-emerald-500/5" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 font-semibold text-emerald-800 dark:text-emerald-200">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.attBonusEnabled}
-                              onCheckedChange={(checked) =>
-                                setCompany({
-                                  attendanceBonusRules: {
-                                    enabled: checked,
-                                    type: "flat",
-                                    value: company.attendanceBonusRules?.value ?? 500,
-                                    requireFullAttendance: true,
-                                  },
-                                })
-                              }
-                            />
-                            <span>Attendance Bonus</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              disabled={!benchmarkCalc.attBonusEnabled}
-                              value={company.attendanceBonusRules?.value ?? 500}
-                              onChange={(e) =>
-                                setCompany({
-                                  attendanceBonusRules: {
-                                    enabled: company.attendanceBonusRules?.enabled === true,
-                                    type: "flat",
-                                    value: Number(e.target.value) || 0,
-                                    requireFullAttendance: true,
-                                  },
-                                })
-                              }
-                              className="h-8 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">₹ Flat</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-bold text-emerald-600">
-                          {benchmarkCalc.attBonusEnabled ? `+${inr(benchmarkCalc.attendanceBonus)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
-                        </td>
-                      </tr>
-
-                      {/* Yearly Bonus */}
-                      <tr className={benchmarkCalc.yrBonusEnabled ? "bg-emerald-500/5" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 font-semibold text-emerald-800 dark:text-emerald-200">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.yrBonusEnabled}
-                              onCheckedChange={(checked) =>
-                                setCompany({
-                                  yearlyBonusRules: {
-                                    enabled: checked,
-                                    type: "flat",
-                                    value: company.yearlyBonusRules?.value ?? 500,
-                                  },
-                                })
-                              }
-                            />
-                            <span>Yearly Bonus</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              disabled={!benchmarkCalc.yrBonusEnabled}
-                              value={company.yearlyBonusRules?.value ?? 500}
-                              onChange={(e) =>
-                                setCompany({
-                                  yearlyBonusRules: {
-                                    enabled: company.yearlyBonusRules?.enabled === true,
-                                    type: "flat",
-                                    value: Number(e.target.value) || 0,
-                                  },
-                                })
-                              }
-                              className="h-8 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">₹ Flat</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-bold text-emerald-600">
-                          {benchmarkCalc.yrBonusEnabled ? `+${inr(benchmarkCalc.yearlyBonus)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
-                        </td>
-                      </tr>
-
-                      {/* ATTENDANCE & SWIFT ROSTER WEEK OFF SETTINGS */}
-                      <tr className="bg-sky-500/10 font-bold text-xs uppercase text-sky-800 dark:text-sky-200">
-                        <td colSpan={3} className="p-2 pl-3">
-                          <div className="flex items-center justify-between">
-                            <span>Attendance &amp; Swift Roster Integration</span>
-                            <Badge variant="outline" className="bg-sky-500/20 text-sky-700 dark:text-sky-300 text-[9px] border-sky-500/30">
-                              Auto-Sync
-                            </Badge>
-                          </div>
-                        </td>
-                      </tr>
-
-                      <tr className={company.includeWeekOff !== false ? "bg-sky-500/5" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 font-semibold text-sky-950 dark:text-sky-100">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={company.includeWeekOff !== false}
-                              onCheckedChange={(checked) => setCompany({ includeWeekOff: checked })}
-                            />
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span>Weekly Offs (Swift Roster)</span>
-                                <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">Auto</Badge>
-                              </div>
-                              <div className="text-[10px] text-muted-foreground font-normal">
-                                Fetch and credit weekly offs from Swift Roster shift planner into attendance
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            {company.includeWeekOff !== false ? "Credit Roster Offs" : "Exclude Weekly Offs"}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right font-semibold text-sky-600">
-                          {company.includeWeekOff !== false ? "Auto-Credited" : <span className="text-xs text-muted-foreground">Disabled</span>}
-                        </td>
-                      </tr>
-
-                      {/* STATUTORY & DEDUCTIONS HEADER */}
-                      <tr className="bg-rose-500/10 font-bold text-xs uppercase text-rose-800 dark:text-rose-200">
-                        <td colSpan={3} className="p-2.5 pl-3">
-                          <div className="flex items-center justify-between">
-                            <span>PF, ESI &amp; Professional Tax (Employee &amp; Employer Split)</span>
-                            <Badge variant="outline" className="bg-rose-500/20 text-rose-700 dark:text-rose-300 text-[9px] border-rose-500/30">
-                              Statutory Compliant
-                            </Badge>
-                          </div>
-                        </td>
-                      </tr>
-
-                      {/* PF (Provident Fund) MASTER TOGGLE */}
-                      <tr className={benchmarkCalc.pfEnabled ? "bg-rose-500/5" : "opacity-50 bg-muted/20"}>
-                        <td className="p-3 font-semibold text-rose-950 dark:text-rose-100">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.pfEnabled}
-                              onCheckedChange={(checked) =>
-                                setCompany({
-                                  pfRules: {
-                                    ...(company.pfRules || { employeePct: 12, employerPct: 13, ceiling: 15000 }),
-                                    enabled: checked,
-                                  },
-                                })
-                              }
-                            />
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span>Provident Fund (EPF Act 1952)</span>
-                                <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">
-                                  Ceiling ₹{company.pfRules?.ceiling || 15000}
-                                </Badge>
-                              </div>
-                              <div className="text-[10px] text-muted-foreground font-normal">
-                                Wage Base: Basic + DA = {inr(benchmarkCalc.pfBase)}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            {benchmarkCalc.pfEnabled ? "PF Enabled" : "PF Disabled"}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right font-bold text-xs text-rose-600">
-                          {benchmarkCalc.pfEnabled ? "Configurable Split" : <span className="text-muted-foreground font-normal">Disabled</span>}
-                        </td>
-                      </tr>
-
-                      {/* PF — EMPLOYEE SHARE */}
-                      <tr className={benchmarkCalc.pfEnabled ? "bg-rose-500/5 border-t border-border/40" : "opacity-50 bg-muted/20 border-t border-border/40"}>
-                        <td className="p-2.5 pl-8 font-medium">
-                          <div className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-                            <span className="text-xs font-semibold">Employee PF Share</span>
-                            <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/30">
-                              Deduction
-                            </Badge>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground pl-3.5">
-                            Deducted from employee monthly take-home salary
-                          </div>
-                        </td>
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.1"
-                              disabled={!benchmarkCalc.pfEnabled}
-                              value={company.employeePfPct ?? 12}
-                              onChange={(e) => {
-                                const val = Number(e.target.value) || 0;
-                                setCompany({
-                                  employeePfPct: val,
-                                  pfRules: {
-                                    ...(company.pfRules || { employeePct: 12, employerPct: 13, ceiling: 15000, enabled: true }),
-                                    employeePct: val,
-                                  },
-                                });
-                              }}
-                              className="h-7.5 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% Employee</span>
-                          </div>
-                        </td>
-                        <td className="p-2.5 text-right font-semibold text-rose-600">
-                          {benchmarkCalc.pfEnabled ? `-${inr(benchmarkCalc.pfEmployee)}` : <span className="text-xs text-muted-foreground">Excluded</span>}
-                        </td>
-                      </tr>
-
-                      {/* PF — EMPLOYER SHARE */}
-                      <tr className={benchmarkCalc.pfEnabled ? "bg-rose-500/5" : "opacity-50 bg-muted/20"}>
-                        <td className="p-2.5 pl-8 font-medium">
-                          <div className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
-                            <span className="text-xs font-semibold">Employer PF Share</span>
-                            <Badge variant="outline" className="text-[9px] bg-indigo-500/10 text-indigo-600 border-indigo-500/30">
-                              Company CTC
-                            </Badge>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground pl-3.5">
-                            Company contribution (EPF 3.67% + EPS 8.33% + Admin 1.0%)
-                          </div>
-                        </td>
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.1"
-                              disabled={!benchmarkCalc.pfEnabled}
-                              value={company.employerPfPct ?? 13}
-                              onChange={(e) => {
-                                const val = Number(e.target.value) || 0;
-                                setCompany({
-                                  employerPfPct: val,
-                                  pfRules: {
-                                    ...(company.pfRules || { employeePct: 12, employerPct: 13, ceiling: 15000, enabled: true }),
-                                    employerPct: val,
-                                  },
-                                });
-                              }}
-                              className="h-7.5 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% Employer</span>
-                          </div>
-                        </td>
-                        <td className="p-2.5 text-right font-semibold text-indigo-600 dark:text-indigo-400">
-                          {benchmarkCalc.pfEnabled ? `+${inr(benchmarkCalc.pfEmployer)} (CTC)` : <span className="text-xs text-muted-foreground">Excluded</span>}
-                        </td>
-                      </tr>
-
-                      {/* ESI (State Insurance) MASTER TOGGLE */}
-                      <tr className={benchmarkCalc.esiEnabled ? "bg-rose-500/5 border-t-2 border-border/60" : "opacity-50 bg-muted/20 border-t-2 border-border/60"}>
-                        <td className="p-3 font-semibold text-rose-950 dark:text-rose-100">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.esiEnabled}
-                              onCheckedChange={(checked) =>
-                                setCompany({
-                                  esiRules: {
-                                    ...(company.esiRules || { employeePct: 0.75, employerPct: 3.25, threshold: 21000 }),
-                                    enabled: checked,
-                                  },
-                                })
-                              }
-                            />
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span>ESI (Employee State Insurance)</span>
-                                <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">
-                                  Threshold ≤ ₹{company.esiRules?.threshold || company.esiThreshold || 21000}
-                                </Badge>
-                              </div>
-                              <div className="text-[10px] text-muted-foreground font-normal">
-                                {benchmarkCalc.esiEligible
-                                  ? `Gross salary ${inr(benchmarkCalc.gross)} is eligible for ESI`
-                                  : `Gross salary ${inr(benchmarkCalc.gross)} exceeds statutory ₹21k limit`}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            {benchmarkCalc.esiEnabled ? (benchmarkCalc.esiEligible ? "ESI Applicable" : "Wage Exceeds Limit") : "ESI Disabled"}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right font-bold text-xs text-rose-600">
-                          {benchmarkCalc.esiEnabled ? "Configurable Split" : <span className="text-muted-foreground font-normal">Disabled</span>}
-                        </td>
-                      </tr>
-
-                      {/* ESI — EMPLOYEE SHARE */}
-                      <tr className={benchmarkCalc.esiEnabled ? "bg-rose-500/5 border-t border-border/40" : "opacity-50 bg-muted/20 border-t border-border/40"}>
-                        <td className="p-2.5 pl-8 font-medium">
-                          <div className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-                            <span className="text-xs font-semibold">Employee ESI Share</span>
-                            <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/30">
-                              Deduction
-                            </Badge>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground pl-3.5">
-                            Deducted from employee gross salary if Gross ≤ ₹21,000
-                          </div>
-                        </td>
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              disabled={!benchmarkCalc.esiEnabled}
-                              value={company.employeeEsiPct ?? 0.75}
-                              onChange={(e) => {
-                                const val = Number(e.target.value) || 0;
-                                setCompany({
-                                  employeeEsiPct: val,
-                                  esiRules: {
-                                    ...(company.esiRules || { employeePct: 0.75, employerPct: 3.25, threshold: 21000, enabled: true }),
-                                    employeePct: val,
-                                  },
-                                });
-                              }}
-                              className="h-7.5 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% Employee</span>
-                          </div>
-                        </td>
-                        <td className="p-2.5 text-right font-semibold text-rose-600">
-                          {benchmarkCalc.esiEnabled && benchmarkCalc.esiEligible
-                            ? `-${inr(benchmarkCalc.esiEmployee)}`
-                            : <span className="text-xs text-muted-foreground">{benchmarkCalc.esiEnabled ? "₹0 (Exceeds ₹21k)" : "Excluded"}</span>}
-                        </td>
-                      </tr>
-
-                      {/* ESI — EMPLOYER SHARE */}
-                      <tr className={benchmarkCalc.esiEnabled ? "bg-rose-500/5" : "opacity-50 bg-muted/20"}>
-                        <td className="p-2.5 pl-8 font-medium">
-                          <div className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
-                            <span className="text-xs font-semibold">Employer ESI Share</span>
-                            <Badge variant="outline" className="text-[9px] bg-indigo-500/10 text-indigo-600 border-indigo-500/30">
-                              Company CTC
-                            </Badge>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground pl-3.5">
-                            Company contribution deposited to ESIC healthcare fund
-                          </div>
-                        </td>
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              disabled={!benchmarkCalc.esiEnabled}
-                              value={company.employerEsiPct ?? 3.25}
-                              onChange={(e) => {
-                                const val = Number(e.target.value) || 0;
-                                setCompany({
-                                  employerEsiPct: val,
-                                  esiRules: {
-                                    ...(company.esiRules || { employeePct: 0.75, employerPct: 3.25, threshold: 21000, enabled: true }),
-                                    employerPct: val,
-                                  },
-                                });
-                              }}
-                              className="h-7.5 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">% Employer</span>
-                          </div>
-                        </td>
-                        <td className="p-2.5 text-right font-semibold text-indigo-600 dark:text-indigo-400">
-                          {benchmarkCalc.esiEnabled && benchmarkCalc.esiEligible
-                            ? `+${inr(benchmarkCalc.esiEmployer)} (CTC)`
-                            : <span className="text-xs text-muted-foreground">{benchmarkCalc.esiEnabled ? "₹0 (Exceeds ₹21k)" : "Excluded"}</span>}
-                        </td>
-                      </tr>
-
-                      {/* Professional Tax (PT) */}
-                      <tr className={benchmarkCalc.ptEnabled ? "bg-rose-500/5 border-t-2 border-border/60" : "opacity-50 bg-muted/20 border-t-2 border-border/60"}>
-                        <td className="p-3 font-medium">
-                          <div className="flex items-center gap-2.5">
-                            <Switch
-                              checked={benchmarkCalc.ptEnabled}
-                              onCheckedChange={(checked) => setCompany({ ptEnabled: checked })}
-                            />
-                            <span>Professional Tax (PT)</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              disabled={!benchmarkCalc.ptEnabled}
-                              value={company.ptAmount ?? 208}
-                              onChange={(e) => setCompany({ ptAmount: Number(e.target.value) || 0 })}
-                              className="h-8 w-20 text-xs font-semibold"
-                            />
-                            <span className="text-xs text-muted-foreground">₹ Slab</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-semibold text-rose-600">
-                          {benchmarkCalc.ptEnabled ? `-${inr(benchmarkCalc.pt)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowLivePayslipModal(true)}
+                  className="h-8.5 px-3 rounded-xl gap-2 font-semibold text-xs bg-background shadow-xs hover:bg-muted"
+                >
+                  <Receipt className="h-3.5 w-3.5 text-primary" />
+                  <span>Preview Live Payslip</span>
+                </Button>
               </div>
             </div>
 
-            {/* RIGHT COLUMN: REAL CORPORATE PAYSLIP RECEIPT PREVIEW (5 Cols, Sticky) */}
-            <div className="lg:col-span-5 lg:sticky lg:top-20 space-y-3">
-              {/* Receipt Card Header */}
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  <Receipt className="h-4 w-4 text-primary" />
-                  <span>Live Payslip Receipt Preview</span>
-                </div>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]">
-                  Real-Time Sync
-                </Badge>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead className="bg-muted/30 border-b border-border/60 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  <tr>
+                    <th className="px-5 py-3 text-left w-[44%]">Component &amp; Toggle</th>
+                    <th className="px-5 py-3 text-left w-[36%]">Formula / Rate Specification</th>
+                    <th className="px-5 py-3 text-right w-[20%]">Calculated Value (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {/* Fixed Benchmark Row */}
+                  <tr className="bg-muted/20 font-medium">
+                    <td className="px-5 py-3 text-foreground font-semibold flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-primary" />
+                      <span>Monthly Gross Benchmark</span>
+                    </td>
+                    <td className="px-5 py-3 text-muted-foreground text-xs">Standard monthly benchmark used for live simulator</td>
+                    <td className="px-5 py-3 text-right font-bold text-foreground text-base">{inr(benchmarkCalc.gross)}</td>
+                  </tr>
 
-              {/* Realistic Paper Payslip Card */}
-              <div className="relative bg-background border-2 border-border/80 rounded-3xl p-6 shadow-xl space-y-4 overflow-hidden text-card-foreground">
-                {/* Top Brand Accent */}
-                <div className="flex items-start justify-between border-b border-border/70 pb-4">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-5 w-5 rounded-md bg-primary flex items-center justify-center text-[11px] font-black text-primary-foreground">
-                        S
+                  {/* 1. Basic + DA (MANDATORY CORE WAGE - EDITABLE %) */}
+                  <tr className="hover:bg-muted/20 transition-colors">
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        <span className="font-semibold text-foreground text-sm">Basic + DA</span>
+                        <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary border-primary/20 font-bold">
+                          Mandatory Core Wage
+                        </Badge>
                       </div>
-                      <h4 className="font-display font-extrabold text-base tracking-tight text-foreground">
-                        {company.name || "SWIFT HRMS"}
-                      </h4>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground truncate max-w-[210px]">
-                      {company.legalName || "SWIFT Demo Pvt Ltd"}
-                    </p>
-                  </div>
-
-                  <div className="text-right space-y-0.5">
-                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-primary/10 text-primary uppercase tracking-wider">
-                      SALARY PAYSLIP
-                    </span>
-                    <div className="text-xs font-bold text-foreground">
-                      {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase()}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Employee Meta Box */}
-                <div className="grid grid-cols-2 gap-2.5 p-3 rounded-2xl bg-muted/40 border border-border/60 text-[11px]">
-                  <div>
-                    <span className="text-muted-foreground block text-[10px]">Employee Name</span>
-                    <span className="font-bold text-foreground">{sampleEmployee.name}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block text-[10px]">Employee Code</span>
-                    <span className="font-bold text-foreground">{sampleEmployee.empCode}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block text-[10px]">Designation</span>
-                    <span className="font-medium text-foreground">{sampleEmployee.designation}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block text-[10px]">Department</span>
-                    <span className="font-medium text-foreground">{sampleEmployee.department}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block text-[10px]">Working Days</span>
-                    <span className="font-bold text-foreground">{company.workingDaysPerMonth || 26} Days</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block text-[10px]">Present / Paid Days</span>
-                    <span className="font-bold text-emerald-600">{company.workingDaysPerMonth || 26} Days</span>
-                  </div>
-                </div>
-
-                {/* Side-by-Side Earnings & Deductions Tables */}
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  {/* Earnings List (Active only) */}
-                  <div className="space-y-1.5">
-                    <div className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border/50 pb-1">
-                      Earnings
-                    </div>
-                    <div className="space-y-1 text-[11px]">
-                      <div className="flex justify-between font-semibold">
-                        <span>Basic + DA</span>
-                        <span>{inr(benchmarkCalc.basic)}</span>
+                      <div className="text-[11px] text-muted-foreground pl-4 mt-0.5">
+                        Statutory wage base for EPF, ESI, Gratuity &amp; Overtime rate computations
                       </div>
-                      {benchmarkCalc.hraEnabled && (
-                        <div className="flex justify-between">
-                          <span>HRA</span>
-                          <span className="font-semibold">{inr(benchmarkCalc.hra)}</span>
-                        </div>
-                      )}
-                      {benchmarkCalc.oaEnabled && (
-                        <div className="flex justify-between">
-                          <span>Other Allow.</span>
-                          <span className="font-semibold">{inr(benchmarkCalc.oa)}</span>
-                        </div>
-                      )}
-                      {benchmarkCalc.caEnabled && (
-                        <div className="flex justify-between">
-                          <span>Conveyance</span>
-                          <span className="font-semibold">{inr(benchmarkCalc.ca)}</span>
-                        </div>
-                      )}
-                      {benchmarkCalc.ltaEnabled && (
-                        <div className="flex justify-between">
-                          <span>LTA</span>
-                          <span className="font-semibold">{inr(benchmarkCalc.lta)}</span>
-                        </div>
-                      )}
-                      {benchmarkCalc.activeCustomAllowances.map((c) => {
-                        const calculatedVal =
-                          c.formula === "pctOfBasic"
-                            ? Math.round(benchmarkCalc.basic * (c.value / 100))
-                            : (c as any).formula === "pctOfGross"
-                            ? Math.round(benchmarkCalc.gross * (c.value / 100))
-                            : c.value;
-                        return (
-                          <div key={c.id} className="flex justify-between">
-                            <span className="truncate max-w-[90px]">{c.name}</span>
-                            <span className="font-semibold">{inr(calculatedVal)}</span>
-                          </div>
-                        );
-                      })}
-                      {benchmarkCalc.attBonusEnabled && (
-                        <div className="flex justify-between text-emerald-600 font-medium">
-                          <span>Att. Bonus</span>
-                          <span>+{inr(benchmarkCalc.attendanceBonus)}</span>
-                        </div>
-                      )}
-                      {benchmarkCalc.yrBonusEnabled && (
-                        <div className="flex justify-between text-emerald-600 font-medium">
-                          <span>Yearly Bonus</span>
-                          <span>+{inr(benchmarkCalc.yearlyBonus)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={company.basicPct ?? 33.33}
+                          onChange={(e) => setCompany({ basicPct: Number(e.target.value) || 0 })}
+                          className="h-8 w-24 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">% of Monthly Gross</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-bold text-foreground text-sm">{inr(benchmarkCalc.basic)}</td>
+                  </tr>
 
-                  {/* Deductions List (Active only) */}
-                  <div className="space-y-1.5">
-                    <div className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border/50 pb-1">
-                      Deductions
-                    </div>
-                    <div className="space-y-1 text-[11px]">
-                      {benchmarkCalc.pfEnabled && (
-                        <div className="flex justify-between text-rose-600">
-                          <span>Employee PF ({benchmarkCalc.employeePfPct}%)</span>
-                          <span className="font-semibold">-{inr(benchmarkCalc.pfEmployee)}</span>
+                  {/* ALLOWANCES SUB-HEADER */}
+                  <tr className="bg-muted/30 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <td colSpan={3} className="px-5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>Allowances (Configurable Earnings)</span>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* HRA (TOGGLEABLE) */}
+                  <tr className={`transition-colors ${benchmarkCalc.hraEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 pl-8 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.hraEnabled}
+                          onCheckedChange={(checked) => setCompany({ hraEnabled: checked })}
+                        />
+                        <div>
+                          <span className="text-xs font-semibold text-foreground">HRA (House Rent Allowance)</span>
+                          <div className="text-[10px] text-muted-foreground">Exempt under Section 10(13A) of Income Tax Act</div>
                         </div>
-                      )}
-                      {benchmarkCalc.esiEnabled && (
-                        <div className="flex justify-between text-rose-600">
-                          <span>Employee ESI ({benchmarkCalc.employeeEsiPct}%)</span>
-                          <span className="font-semibold">
-                            {benchmarkCalc.esiEligible ? `-${inr(benchmarkCalc.esiEmployee)}` : "₹0 (Exceeds ₹21k)"}
-                          </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.hraEnabled}
+                          value={company.hraPct ?? 16.67}
+                          onChange={(e) => setCompany({ hraPct: Number(e.target.value) || 0 })}
+                          className="h-8 w-24 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">% of Monthly Gross</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-foreground">
+                      {benchmarkCalc.hraEnabled ? inr(benchmarkCalc.hra) : <span className="text-xs text-muted-foreground">Excluded</span>}
+                    </td>
+                  </tr>
+
+                  {/* OA (TOGGLEABLE) */}
+                  <tr className={`transition-colors ${benchmarkCalc.oaEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 pl-8 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.oaEnabled}
+                          onCheckedChange={(checked) => setCompany({ oaEnabled: checked })}
+                        />
+                        <div>
+                          <span className="text-xs font-semibold text-foreground">OA (Other Allowance)</span>
+                          <div className="text-[10px] text-muted-foreground">General special / supplementary allowance</div>
                         </div>
-                      )}
-                      {benchmarkCalc.ptEnabled && (
-                        <div className="flex justify-between text-rose-600">
-                          <span>Prof. Tax (PT)</span>
-                          <span className="font-semibold">-{inr(benchmarkCalc.pt)}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.oaEnabled}
+                          value={company.oaPct ?? 16.67}
+                          onChange={(e) => setCompany({ oaPct: Number(e.target.value) || 0 })}
+                          className="h-8 w-24 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">% of Monthly Gross</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-foreground">
+                      {benchmarkCalc.oaEnabled ? inr(benchmarkCalc.oa) : <span className="text-xs text-muted-foreground">Excluded</span>}
+                    </td>
+                  </tr>
+
+                  {/* CA (TOGGLEABLE) */}
+                  <tr className={`transition-colors ${benchmarkCalc.caEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 pl-8 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.caEnabled}
+                          onCheckedChange={(checked) => setCompany({ caEnabled: checked })}
+                        />
+                        <div>
+                          <span className="text-xs font-semibold text-foreground">CA (Conveyance Allowance)</span>
+                          <div className="text-[10px] text-muted-foreground">Transport allowance for commute &amp; field travel</div>
                         </div>
-                      )}
-                      {!benchmarkCalc.pfEnabled && !benchmarkCalc.esiEnabled && !benchmarkCalc.ptEnabled && (
-                        <div className="text-[10px] text-muted-foreground italic">No active deductions</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.caEnabled}
+                          value={company.caPct ?? 16.67}
+                          onChange={(e) => setCompany({ caPct: Number(e.target.value) || 0 })}
+                          className="h-8 w-24 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">% of Monthly Gross</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-foreground">
+                      {benchmarkCalc.caEnabled ? inr(benchmarkCalc.ca) : <span className="text-xs text-muted-foreground">Excluded</span>}
+                    </td>
+                  </tr>
 
-                {/* Sub-Total Bar */}
-                <div className="flex justify-between items-center px-3 py-2 rounded-xl bg-muted/60 text-xs font-bold border border-border/60">
-                  <div>
-                    <span className="text-muted-foreground font-normal text-[10px] block">Gross Earnings</span>
-                    <span>{inr(benchmarkCalc.totalEarnings + benchmarkCalc.totalBonuses)}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-muted-foreground font-normal text-[10px] block">Total Deductions</span>
-                    <span className="text-rose-600">-{inr(benchmarkCalc.totalEmployeeDeductions)}</span>
-                  </div>
-                </div>
+                  {/* LTA (TOGGLEABLE) */}
+                  <tr className={`transition-colors ${benchmarkCalc.ltaEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 pl-8 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.ltaEnabled}
+                          onCheckedChange={(checked) => setCompany({ ltaEnabled: checked })}
+                        />
+                        <div>
+                          <span className="text-xs font-semibold text-foreground">LTA (Leave Travel Allowance)</span>
+                          <div className="text-[10px] text-muted-foreground">Exempt for domestic travel under Section 10(5)</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.ltaEnabled}
+                          value={company.ltaPct ?? 16.67}
+                          onChange={(e) => setCompany({ ltaPct: Number(e.target.value) || 0 })}
+                          className="h-8 w-24 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">% of Monthly Gross</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-foreground">
+                      {benchmarkCalc.ltaEnabled ? inr(benchmarkCalc.lta) : <span className="text-xs text-muted-foreground">Excluded</span>}
+                    </td>
+                  </tr>
 
-                {/* Net Salary Payable In-Hand Banner (Executive Dark Navy Theme) */}
-                <div className="p-4 rounded-2xl bg-slate-900 text-white dark:bg-slate-950 border border-slate-800 space-y-1 shadow-md">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold uppercase tracking-wide text-slate-300">
-                      NET SALARY PAYABLE
-                    </span>
-                    <span className="text-xl font-black font-display text-white">
-                      {inr(benchmarkCalc.salaryInHand)}
-                    </span>
-                  </div>
-                  <div className="text-[10px] font-medium text-slate-400 italic">
-                    {numberToWordsIndian(benchmarkCalc.salaryInHand)}
-                  </div>
-                </div>
+                  {/* Custom Allowances (WITH TOGGLES & EDITABLE NAMES) */}
+                  {(company.earnings || [])
+                    .filter((e) => !["basic", "da", "hra", "oa", "ca", "lta", "ot", "shift", "incentive", "bonus", "arrears"].includes(e.id))
+                    .map((item) => {
+                      const isItemActive = (item as any).enabled !== false;
+                      const calculatedVal =
+                        item.formula === "pctOfBasic"
+                          ? Math.round(benchmarkCalc.basic * (item.value / 100))
+                          : (item as any).formula === "pctOfGross"
+                          ? Math.round(benchmarkCalc.gross * (item.value / 100))
+                          : item.value;
 
-                {/* Employer CTC Breakdown */}
-                <div className="pt-2 border-t border-border/50 text-[10px] space-y-1 text-muted-foreground">
-                  <div className="flex justify-between font-medium">
-                    <span>Employer PF ({benchmarkCalc.employerPfPct}%)</span>
-                    <span>+{inr(benchmarkCalc.pfEmployer)}</span>
-                  </div>
-                  <div className="flex justify-between font-medium">
-                    <span>Employer ESI ({benchmarkCalc.employerEsiPct}%)</span>
-                    <span>+{inr(benchmarkCalc.esiEmployer)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-foreground pt-1 border-t border-border/40">
-                    <span>Total Cost to Company (CTC)</span>
-                    <span className="text-primary font-bold">
-                      {inr(benchmarkCalc.totalMonthlyCtc)} / mo ({benchmarkCalc.totalYearlyCtcLpa} LPA)
-                    </span>
-                  </div>
-                </div>
+                      return (
+                        <tr key={item.id} className={`transition-colors ${isItemActive ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                          <td className="px-5 py-2.5 pl-8 font-medium">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 flex-1 max-w-sm">
+                                <Switch
+                                  checked={isItemActive}
+                                  onCheckedChange={(checked) => {
+                                    const next = [...(company.earnings || [])];
+                                    const targetIdx = next.findIndex((x) => x.id === item.id);
+                                    if (targetIdx >= 0) {
+                                      next[targetIdx] = { ...next[targetIdx], enabled: checked } as any;
+                                      setCompany({ earnings: next });
+                                    }
+                                  }}
+                                />
+                                <Input
+                                  type="text"
+                                  value={item.name}
+                                  onChange={(e) => {
+                                    const next = [...(company.earnings || [])];
+                                    const targetIdx = next.findIndex((x) => x.id === item.id);
+                                    if (targetIdx >= 0) {
+                                      next[targetIdx] = { ...next[targetIdx], name: e.target.value };
+                                      setCompany({ earnings: next });
+                                    }
+                                  }}
+                                  placeholder="Allowance Name"
+                                  className="h-7.5 text-xs font-semibold px-2.5 rounded-lg bg-background border-border flex-1"
+                                />
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive hover:bg-destructive/10 shrink-0"
+                                onClick={() => {
+                                  const next = (company.earnings || []).filter((x) => x.id !== item.id);
+                                  setCompany({ earnings: next });
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                          <td className="px-5 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                disabled={!isItemActive}
+                                value={item.value}
+                                onChange={(ev) => {
+                                  const next = [...(company.earnings || [])];
+                                  const targetIdx = next.findIndex((x) => x.id === item.id);
+                                  if (targetIdx >= 0) next[targetIdx] = { ...next[targetIdx], value: Number(ev.target.value) || 0 };
+                                  setCompany({ earnings: next });
+                                }}
+                                className="h-7.5 w-20 text-xs font-semibold px-2 rounded-lg bg-background"
+                              />
+                              <Select
+                                disabled={!isItemActive}
+                                value={
+                                  item.formula === "pctOfBasic"
+                                    ? "pctOfBasic"
+                                    : (item as any).formula === "pctOfGross"
+                                    ? "pctOfGross"
+                                    : "flatMonthly"
+                                }
+                                onValueChange={(val: any) => {
+                                  const next = [...(company.earnings || [])];
+                                  const targetIdx = next.findIndex((x) => x.id === item.id);
+                                  if (targetIdx >= 0) {
+                                    next[targetIdx] = { ...next[targetIdx], formula: val };
+                                    setCompany({ earnings: next });
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="h-7.5 text-xs w-28 px-2 rounded-lg">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pctOfGross">% Gross</SelectItem>
+                                  <SelectItem value="pctOfBasic">% Basic</SelectItem>
+                                  <SelectItem value="flatMonthly">₹ Flat</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </td>
+                          <td className="px-5 py-2.5 text-right font-semibold text-foreground">
+                            {isItemActive ? inr(calculatedVal) : <span className="text-xs text-muted-foreground">Excluded</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
 
-                {/* Receipt Footer Note & Instant PDF Export */}
-                <div className="flex items-center justify-between pt-2 border-t border-border/40 text-[9px] text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-                    <span>System Generated Receipt</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const comp = computePayroll({
-                        company,
-                        employee: sampleEmployee,
-                        daysWorked: company.workingDaysPerMonth || 26,
-                        otHours: 0,
-                        incentive: 0,
-                        shiftDays: 26,
-                        loan: 0,
-                        advance: 0,
-                        bonus: benchmarkCalc.totalBonuses,
-                      });
-                      generateSalarySlipPDF(company, sampleEmployee, selectedMonth, comp);
-                      toast.success("Sample PDF downloaded!");
-                    }}
-                    className="h-6 text-[10px] px-2 rounded-lg gap-1 font-semibold"
+                  {/* Add Custom Allowance Button */}
+                  <tr>
+                    <td colSpan={3} className="px-5 py-2.5 bg-muted/10">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const newAllowance: EarningComponent & { enabled?: boolean } = {
+                            id: `allow-${Date.now()}`,
+                            name: "Medical Allowance",
+                            formula: "pctOfGross" as any,
+                            value: 5,
+                            prorate: true,
+                            taxable: true,
+                            includeInPf: false,
+                            includeInEsi: true,
+                            includeInGratuity: false,
+                            enabled: true,
+                          };
+                          setCompany({ earnings: [...(company.earnings || []), newAllowance] });
+                        }}
+                        className="h-7.5 text-xs rounded-lg gap-1.5 border-dashed font-medium"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Add Custom Allowance</span>
+                      </Button>
+                    </td>
+                  </tr>
+
+                  {/* TOTAL EARNINGS ROW */}
+                  <tr
+                    className={`font-bold border-t transition-colors ${
+                      benchmarkCalc.isExceeded
+                        ? "bg-destructive/10 text-destructive"
+                        : benchmarkCalc.totalEarningsPct === 100
+                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "bg-muted/40 text-foreground"
+                    }`}
                   >
-                    <Download className="h-3 w-3" />
-                    <span>Download PDF</span>
-                  </Button>
-                </div>
-              </div>
+                    <td className="px-5 py-3.5 font-bold flex items-center gap-2">
+                      <span>TOTAL GROSS EARNINGS ALLOCATION</span>
+                      {benchmarkCalc.isExceeded ? (
+                        <Badge variant="destructive" className="text-[10px] gap-1 font-bold">
+                          <AlertTriangle className="h-3 w-3" /> {benchmarkCalc.totalEarningsPct}% (Over)
+                        </Badge>
+                      ) : benchmarkCalc.totalEarningsPct === 100 ? (
+                        <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] font-bold">
+                          100% Balanced
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px] font-bold">
+                          {benchmarkCalc.totalEarningsPct}%
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5 font-semibold text-xs text-muted-foreground">
+                      {benchmarkCalc.isExceeded ? "Exceeds 100% benchmark gross" : "Active Gross Components Combined"}
+                    </td>
+                    <td className={`px-5 py-3.5 text-right font-extrabold text-base ${benchmarkCalc.isExceeded ? "text-destructive" : "text-foreground"}`}>
+                      {inr(benchmarkCalc.totalEarnings)}
+                    </td>
+                  </tr>
+
+                  {/* BONUSES HEADER */}
+                  <tr className="bg-muted/30 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <td colSpan={3} className="px-5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-3.5 w-3.5 text-emerald-500" />
+                        <span>Bonuses &amp; Additions (Company Discretion)</span>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Attendance Bonus */}
+                  <tr className={`transition-colors ${benchmarkCalc.attBonusEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 pl-8 font-medium text-foreground">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.attBonusEnabled}
+                          onCheckedChange={(checked) =>
+                            setCompany({
+                              attendanceBonusRules: {
+                                enabled: checked,
+                                type: "flat",
+                                value: company.attendanceBonusRules?.value ?? 500,
+                                requireFullAttendance: true,
+                              },
+                            })
+                          }
+                        />
+                        <div>
+                          <span className="text-xs font-semibold">Attendance Bonus</span>
+                          <div className="text-[10px] text-muted-foreground">Credited for 100% attendance in the calendar month</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          disabled={!benchmarkCalc.attBonusEnabled}
+                          value={company.attendanceBonusRules?.value ?? 500}
+                          onChange={(e) =>
+                            setCompany({
+                              attendanceBonusRules: {
+                                enabled: company.attendanceBonusRules?.enabled === true,
+                                type: "flat",
+                                value: Number(e.target.value) || 0,
+                                requireFullAttendance: true,
+                              },
+                            })
+                          }
+                          className="h-8 w-24 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">₹ Flat Monthly</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-bold text-emerald-600">
+                      {benchmarkCalc.attBonusEnabled ? `+${inr(benchmarkCalc.attendanceBonus)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
+                    </td>
+                  </tr>
+
+                  {/* Yearly Bonus */}
+                  <tr className={`transition-colors ${benchmarkCalc.yrBonusEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 pl-8 font-medium text-foreground">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.yrBonusEnabled}
+                          onCheckedChange={(checked) =>
+                            setCompany({
+                              yearlyBonusRules: {
+                                enabled: checked,
+                                type: "flat",
+                                value: company.yearlyBonusRules?.value ?? 500,
+                              },
+                            })
+                          }
+                        />
+                        <div>
+                          <span className="text-xs font-semibold">Yearly / Festive Bonus</span>
+                          <div className="text-[10px] text-muted-foreground">Periodic festive incentive or annual statutory bonus</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          disabled={!benchmarkCalc.yrBonusEnabled}
+                          value={company.yearlyBonusRules?.value ?? 500}
+                          onChange={(e) =>
+                            setCompany({
+                              yearlyBonusRules: {
+                                enabled: company.yearlyBonusRules?.enabled === true,
+                                type: "flat",
+                                value: Number(e.target.value) || 0,
+                              },
+                            })
+                          }
+                          className="h-8 w-24 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">₹ Flat Monthly</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-bold text-emerald-600">
+                      {benchmarkCalc.yrBonusEnabled ? `+${inr(benchmarkCalc.yearlyBonus)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
+                    </td>
+                  </tr>
+
+                  {/* ATTENDANCE & SWIFT ROSTER WEEK OFF SETTINGS */}
+                  <tr className="bg-muted/30 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <td colSpan={3} className="px-5 py-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-3.5 w-3.5 text-sky-500" />
+                          <span>Attendance &amp; Swift Roster Integration</span>
+                        </div>
+                        <Badge variant="outline" className="bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[9px] border-sky-500/20 font-mono">
+                          Auto-Sync
+                        </Badge>
+                      </div>
+                    </td>
+                  </tr>
+
+                  <tr className={`transition-colors ${company.includeWeekOff !== false ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3.5 pl-8 font-medium text-foreground">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={company.includeWeekOff !== false}
+                          onCheckedChange={(checked) => setCompany({ includeWeekOff: checked })}
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold">Weekly Offs (Swift Roster Planner)</span>
+                            <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">Auto</Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                            Automatically fetch and credit designated weekly offs from shift planner into attendance
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {company.includeWeekOff !== false ? "Credit Roster Weekly Offs" : "Exclude Weekly Offs"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-sky-600">
+                      {company.includeWeekOff !== false ? "Auto-Credited" : <span className="text-xs text-muted-foreground">Disabled</span>}
+                    </td>
+                  </tr>
+
+                  {/* STATUTORY & DEDUCTIONS HEADER */}
+                  <tr className="bg-muted/30 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <td colSpan={3} className="px-5 py-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="h-3.5 w-3.5 text-rose-500" />
+                          <span>Statutory Deductions &amp; Employer Contribution Split</span>
+                        </div>
+                        <Badge variant="outline" className="bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[9px] border-rose-500/20 font-mono">
+                          EPF &amp; ESI Act
+                        </Badge>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* PF (Provident Fund) MASTER TOGGLE */}
+                  <tr className={`transition-colors ${benchmarkCalc.pfEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3.5 font-semibold text-foreground">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.pfEnabled}
+                          onCheckedChange={(checked) =>
+                            setCompany({
+                              pfRules: {
+                                ...(company.pfRules || { employeePct: 12, employerPct: 13, ceiling: 15000 }),
+                                enabled: checked,
+                              },
+                            })
+                          }
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold">Provident Fund (EPF Act 1952)</span>
+                            <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">
+                              Ceiling ₹{company.pfRules?.ceiling || 15000}
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                            Wage Base: Basic + DA = {inr(benchmarkCalc.pfBase)}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {benchmarkCalc.pfEnabled ? "EPF Enabled (Configurable Split)" : "EPF Disabled"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-bold text-xs text-rose-600">
+                      {benchmarkCalc.pfEnabled ? "Active Split" : <span className="text-muted-foreground font-normal">Disabled</span>}
+                    </td>
+                  </tr>
+
+                  {/* PF — EMPLOYEE SHARE */}
+                  <tr className={`transition-colors ${benchmarkCalc.pfEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-2.5 pl-12 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                        <span className="text-xs font-medium">Employee PF Share</span>
+                        <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/20">
+                          Deduction
+                        </Badge>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.pfEnabled}
+                          value={company.employeePfPct ?? 12}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setCompany({
+                              employeePfPct: val,
+                              pfRules: {
+                                ...(company.pfRules || { employeePct: 12, employerPct: 13, ceiling: 15000 }),
+                                employeePct: val,
+                              },
+                            });
+                          }}
+                          className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">% of PF Wage Base</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5 text-right font-semibold text-rose-600 text-xs">
+                      {benchmarkCalc.pfEnabled ? `-${inr(benchmarkCalc.pfEmployee)}` : <span className="text-xs text-muted-foreground">Excluded</span>}
+                    </td>
+                  </tr>
+
+                  {/* PF — EMPLOYER SHARE */}
+                  <tr className={`transition-colors ${benchmarkCalc.pfEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-2.5 pl-12 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                        <span className="text-xs font-medium">Employer PF Share</span>
+                        <Badge variant="outline" className="text-[9px] bg-indigo-500/10 text-indigo-600 border-indigo-500/20">
+                          Company CTC
+                        </Badge>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.pfEnabled}
+                          value={company.employerPfPct ?? 13}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setCompany({
+                              employerPfPct: val,
+                              pfRules: {
+                                ...(company.pfRules || { employeePct: 12, employerPct: 13, ceiling: 15000 }),
+                                employerPct: val,
+                              },
+                            });
+                          }}
+                          className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">% of PF Wage Base</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5 text-right font-semibold text-indigo-600 dark:text-indigo-400 text-xs">
+                      {benchmarkCalc.pfEnabled ? `+${inr(benchmarkCalc.pfEmployer)} (CTC)` : <span className="text-xs text-muted-foreground">Excluded</span>}
+                    </td>
+                  </tr>
+
+                  {/* ESI (State Insurance) MASTER TOGGLE */}
+                  <tr className={`transition-colors ${benchmarkCalc.esiEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3.5 font-semibold text-foreground">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.esiEnabled}
+                          onCheckedChange={(checked) =>
+                            setCompany({
+                              esiRules: {
+                                ...(company.esiRules || { employeePct: 0.75, employerPct: 3.25, threshold: 21000 }),
+                                enabled: checked,
+                              },
+                            })
+                          }
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold">ESI (Employee State Insurance)</span>
+                            <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">
+                              Threshold ≤ ₹{company.esiRules?.threshold || company.esiThreshold || 21000}
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                            {benchmarkCalc.esiEligible
+                              ? `Gross salary ${inr(benchmarkCalc.gross)} is eligible for ESI`
+                              : `Gross salary ${inr(benchmarkCalc.gross)} exceeds statutory ₹21k limit`}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {benchmarkCalc.esiEnabled ? (benchmarkCalc.esiEligible ? "ESI Applicable" : "Wage Exceeds Limit") : "ESI Disabled"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-bold text-xs text-rose-600">
+                      {benchmarkCalc.esiEnabled ? "Active Split" : <span className="text-muted-foreground font-normal">Disabled</span>}
+                    </td>
+                  </tr>
+
+                  {/* ESI — EMPLOYEE SHARE */}
+                  <tr className={`transition-colors ${benchmarkCalc.esiEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-2.5 pl-12 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                        <span className="text-xs font-medium">Employee ESI Share</span>
+                        <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/20">
+                          Deduction
+                        </Badge>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          disabled={!benchmarkCalc.esiEnabled}
+                          value={company.employeeEsiPct ?? 0.75}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setCompany({
+                              employeeEsiPct: val,
+                              esiRules: {
+                                ...(company.esiRules || { employeePct: 0.75, employerPct: 3.25, threshold: 21000 }),
+                                employeePct: val,
+                              },
+                            });
+                          }}
+                          className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">% of Gross</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5 text-right font-semibold text-rose-600 text-xs">
+                      {benchmarkCalc.esiEnabled && benchmarkCalc.esiEligible
+                        ? `-${inr(benchmarkCalc.esiEmployee)}`
+                        : <span className="text-xs text-muted-foreground">{benchmarkCalc.esiEnabled ? "₹0 (Exceeds ₹21k)" : "Excluded"}</span>}
+                    </td>
+                  </tr>
+
+                  {/* ESI — EMPLOYER SHARE */}
+                  <tr className={`transition-colors ${benchmarkCalc.esiEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-2.5 pl-12 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                        <span className="text-xs font-medium">Employer ESI Share</span>
+                        <Badge variant="outline" className="text-[9px] bg-indigo-500/10 text-indigo-600 border-indigo-500/20">
+                          Company CTC
+                        </Badge>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          disabled={!benchmarkCalc.esiEnabled}
+                          value={company.employerEsiPct ?? 3.25}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setCompany({
+                              employerEsiPct: val,
+                              esiRules: {
+                                ...(company.esiRules || { employeePct: 0.75, employerPct: 3.25, threshold: 21000 }),
+                                employerPct: val,
+                              },
+                            });
+                          }}
+                          className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">% of Gross</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5 text-right font-semibold text-indigo-600 dark:text-indigo-400 text-xs">
+                      {benchmarkCalc.esiEnabled && benchmarkCalc.esiEligible
+                        ? `+${inr(benchmarkCalc.esiEmployer)} (CTC)`
+                        : <span className="text-xs text-muted-foreground">{benchmarkCalc.esiEnabled ? "₹0 (Exceeds ₹21k)" : "Excluded"}</span>}
+                    </td>
+                  </tr>
+
+                  {/* Professional Tax (PT) */}
+                  <tr className={`transition-colors ${benchmarkCalc.ptEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.ptEnabled}
+                          onCheckedChange={(checked) => setCompany({ ptEnabled: checked })}
+                        />
+                        <div>
+                          <span className="text-xs font-semibold">Professional Tax (PT)</span>
+                          <div className="text-[10px] text-muted-foreground">State-specific statutory monthly tax slab</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          disabled={!benchmarkCalc.ptEnabled}
+                          value={company.ptAmount ?? 208}
+                          onChange={(e) => setCompany({ ptAmount: Number(e.target.value) || 0 })}
+                          className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">₹ Monthly Slab</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-rose-600 text-xs">
+                      {benchmarkCalc.ptEnabled ? `-${inr(benchmarkCalc.pt)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </TabsContent>
@@ -1862,16 +1719,73 @@ export function PayrollPage() {
         {/* TAB 2: MONTHLY PAYROLL RUN & PROCESSING                                   */}
         {/* ========================================================================= */}
         <TabsContent value="run" className="space-y-4 m-0">
+          {/* Top KPI Metric Strip for the Month */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Total Net Salary Outflow */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Net Outflow</span>
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[9px] px-1.5 py-0">
+                  {runTotals.count} Staff
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400 tracking-tight">
+                {inr(runTotals.totalNet)}
+              </div>
+              <span className="text-[11px] text-muted-foreground">Total net payable in-hand</span>
+            </div>
+
+            {/* Total Gross Earnings */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Gross Earned</span>
+                <Badge variant="secondary" className="text-[9px] px-1.5 py-0">Base</Badge>
+              </div>
+              <div className="text-2xl font-bold font-display text-foreground tracking-tight">
+                {inr(runTotals.totalGross)}
+              </div>
+              <span className="text-[11px] text-muted-foreground">Fixed gross earned this month</span>
+            </div>
+
+            {/* Total Deductions */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Statutory Deductions</span>
+                <Badge variant="outline" className="bg-rose-500/10 text-rose-600 border-rose-500/30 text-[9px] px-1.5 py-0">
+                  EPF/ESI/PT
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold font-display text-rose-600 tracking-tight">
+                -{inr(runTotals.totalDeductions)}
+              </div>
+              <span className="text-[11px] text-muted-foreground">Employee statutory withholdings</span>
+            </div>
+
+            {/* Total Company CTC Liability */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Total CTC Liability</span>
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[9px] px-1.5 py-0">
+                  Company Cost
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold font-display text-primary tracking-tight">
+                {inr(runTotals.totalCtc)}
+              </div>
+              <span className="text-[11px] text-muted-foreground">Gross + Employer PF/ESI share</span>
+            </div>
+          </div>
+
           {/* Controls Ribbon */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-card p-4 rounded-xl border border-border">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-card/80 p-3.5 rounded-2xl border border-border/80">
+            <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <Label className="text-xs font-semibold">Payroll Month:</Label>
+                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                 <Input
                   type="month"
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="w-auto h-8 text-xs font-bold"
+                  className="w-auto h-8 text-xs font-bold rounded-xl bg-background"
                 />
               </div>
 
@@ -1880,7 +1794,7 @@ export function PayrollPage() {
                 <Button
                   size="sm"
                   variant={isMonthLocked ? "destructive" : "outline"}
-                  className="h-8 rounded-lg text-xs gap-1.5 font-semibold"
+                  className="h-8 rounded-xl text-xs gap-1.5 font-semibold"
                   onClick={() => {
                     lockPayrollMonth(selectedMonth, !isMonthLocked);
                     toast.success(isMonthLocked ? `Payroll unlocked for ${selectedMonth}` : `Payroll locked for ${selectedMonth}`);
@@ -1892,15 +1806,18 @@ export function PayrollPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Search staff..."
-                value={searchEmployee}
-                onChange={(e) => setSearchEmployee(e.target.value)}
-                className="h-8 text-xs w-44 rounded-lg"
-              />
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <div className="relative w-full sm:w-48">
+                <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search staff..."
+                  value={searchEmployee}
+                  onChange={(e) => setSearchEmployee(e.target.value)}
+                  className="h-8 text-xs pl-8 rounded-xl bg-background w-full"
+                />
+              </div>
               <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-                <SelectTrigger className="h-8 text-xs w-36 rounded-lg">
+                <SelectTrigger className="h-8 text-xs w-36 rounded-xl bg-background">
                   <SelectValue placeholder="Department" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1916,113 +1833,113 @@ export function PayrollPage() {
           </div>
 
           {/* Monthly Payroll Register Table */}
-          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
+          <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
+              <table className="w-full text-sm border-collapse">
+                <thead className="bg-muted/40 border-b border-border/80 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                   <tr className="text-left">
-                    <th className="p-3.5 font-semibold">Employee</th>
-                    <th className="p-3.5 font-semibold">Fixed Salary</th>
-                    <th className="p-3.5 font-semibold">Paid Days / OT</th>
-                    <th className="p-3.5 font-semibold">Gross Earned</th>
-                    <th className="p-3.5 font-semibold">Deductions</th>
-                    <th className="p-3.5 font-semibold">Net Salary in Hand</th>
-                    <th className="p-3.5 font-semibold">Total CTC</th>
-                    <th className="p-3.5 font-semibold text-right">Actions</th>
+                    <th className="px-4 py-3">Employee</th>
+                    <th className="px-4 py-3">Fixed Salary</th>
+                    <th className="px-4 py-3">Attendance &amp; OT</th>
+                    <th className="px-4 py-3">Gross Earned</th>
+                    <th className="px-4 py-3">Deductions</th>
+                    <th className="px-4 py-3">Net In-Hand</th>
+                    <th className="px-4 py-3">Monthly CTC</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody className="divide-y divide-border/60">
                   {monthlyRegister.map(({ emp, rawEmp, paidDays, rawPresentDays, weekOffDays, weekOffEnabled, rosterWeekOffDays, otHours, comp, hasOverride, overrideData }) => (
-                    <tr key={emp.id} className="hover:bg-muted/30 transition-colors">
+                    <tr key={emp.id} className="hover:bg-muted/20 transition-colors">
                       {/* Employee */}
-                      <td className="p-3.5">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="h-9 w-9 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs border border-primary/20">
+                          <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs border border-primary/20 shrink-0">
                             {emp.name.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-foreground">{emp.name}</span>
+                              <span className="font-semibold text-foreground text-xs">{emp.name}</span>
                               {hasOverride && (
                                 <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[9px] px-1 py-0">
                                   Custom
                                 </Badge>
                               )}
                             </div>
-                            <div className="text-xs text-muted-foreground">{emp.empCode} • {emp.department}</div>
+                            <div className="text-[11px] text-muted-foreground">{emp.empCode} · {emp.department}</div>
                           </div>
                         </div>
                       </td>
 
                       {/* Fixed Salary */}
-                      <td className="p-3.5">
-                        <div className="font-medium text-foreground">{inr(emp.basic || 30000)}</div>
-                        <div className="text-[11px] text-muted-foreground">{(((emp.basic || 30000) * 12) / 100000).toFixed(2)} LPA</div>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-foreground text-xs">{inr(emp.basic || 30000)}</div>
+                        <div className="text-[10px] text-muted-foreground">{(((emp.basic || 30000) * 12) / 100000).toFixed(2)} LPA</div>
                       </td>
 
                       {/* Present Days / WO / OT */}
-                      <td className="p-3.5">
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-bold text-xs px-2 py-0.5">
-                            {paidDays} / {company.workingDaysPerMonth || 26} Present
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-semibold text-[11px] px-1.5 py-0.5 whitespace-nowrap">
+                            {paidDays}/{company.workingDaysPerMonth || 26} Present
                           </Badge>
                           {otHours > 0 && (
-                            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] px-1.5 py-0">
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] px-1.5 py-0 whitespace-nowrap">
                               +{otHours}h OT
                             </Badge>
                           )}
                         </div>
-                        <div className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-                          {weekOffEnabled && (
-                            <span className="text-sky-600 font-medium">Weekoff ({weekOffDays} days)</span>
-                          )}
-                        </div>
+                        {weekOffEnabled && (
+                          <div className="text-[10px] text-sky-600 font-medium mt-0.5">
+                            Weekoff: {weekOffDays}d
+                          </div>
+                        )}
                       </td>
 
                       {/* Gross Earned */}
-                      <td className="p-3.5">
-                        <div className="font-semibold text-foreground">{inr(comp.gross)}</div>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-foreground text-xs">{inr(comp.gross)}</div>
                       </td>
 
                       {/* Deductions */}
-                      <td className="p-3.5">
-                        <div className="font-semibold text-rose-600">-{inr(comp.totalDeductions)}</div>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-rose-600 text-xs">-{inr(comp.totalDeductions)}</div>
                         <div className="text-[10px] text-muted-foreground">
                           PF: {inr(comp.deductions.employeePF)} | PT: {inr(comp.deductions.professionalTax)}
                         </div>
                       </td>
 
                       {/* Net In Hand */}
-                      <td className="p-3.5">
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold text-sm px-2 py-0.5">
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold text-xs px-2 py-0.5">
                           {inr(comp.net)}
                         </Badge>
                       </td>
 
                       {/* Total CTC */}
-                      <td className="p-3.5">
-                        <div className="font-semibold text-primary">{inr(comp.monthlyCTC)}</div>
-                        <div className="text-[11px] text-muted-foreground">{((comp.monthlyCTC * 12) / 100000).toFixed(2)} LPA</div>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-primary text-xs">{inr(comp.monthlyCTC)}</div>
+                        <div className="text-[10px] text-muted-foreground">{((comp.monthlyCTC * 12) / 100000).toFixed(2)} LPA</div>
                       </td>
 
                       {/* Actions: PREVIEW, EDIT, DOWNLOAD PDF */}
-                      <td className="p-3.5 text-right">
+                      <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {/* PREVIEW BUTTON */}
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="ghost"
                             onClick={() => setPreviewTarget({ emp, paidDays, rawPresentDays, weekOffDays, weekOffEnabled, otHours, comp })}
-                            className="h-8 text-xs rounded-lg gap-1 border-primary/30 text-primary hover:bg-primary/10 font-medium"
+                            className="h-7.5 px-2 text-xs rounded-lg gap-1 text-primary hover:bg-primary/10 font-medium"
                           >
-                            <Eye className="h-3.5 w-3.5 text-primary" />
+                            <Eye className="h-3.5 w-3.5" />
                             <span>Preview</span>
                           </Button>
 
                           {/* EDIT BUTTON (INDIVIDUAL EMPLOYEE OVERRIDE) */}
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="ghost"
                             onClick={() => {
                               const defaultCustomAllowances: CustomAllowanceItem[] = (company.earnings || [])
                                 .filter((item) => !["basic", "da", "hra", "oa", "ca", "lta", "ot", "shift", "incentive", "bonus", "arrears"].includes(item.id))
@@ -2085,23 +2002,28 @@ export function PayrollPage() {
                                 notes: overrideData.notes || "",
                               });
                             }}
-                            className="h-8 text-xs rounded-lg gap-1 border-amber-500/30 text-amber-600 hover:bg-amber-500/10 font-medium"
+                            className="h-7.5 px-2 text-xs rounded-lg gap-1 text-amber-600 hover:bg-amber-500/10 font-medium"
                           >
-                            <Edit3 className="h-3.5 w-3.5 text-amber-600" />
+                            <Edit3 className="h-3.5 w-3.5" />
                             <span>Edit</span>
                           </Button>
 
                           {/* PDF DOWNLOAD BUTTON */}
                           <Button
                             size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              generateSalarySlipPDF(company, emp, selectedMonth, comp, paidDays, weekOffEnabled ? weekOffDays : 0);
-                              toast.success(`Payslip downloaded for ${emp.name}`);
+                            variant="ghost"
+                            onClick={async () => {
+                              try {
+                                await generateSalarySlipPDF(company, emp, selectedMonth, comp, paidDays, weekOffEnabled ? weekOffDays : 0, docAssets);
+                                toast.success(`Payslip downloaded for ${emp.name}`);
+                              } catch (err) {
+                                console.error("[Payroll] PDF generation failed:", err);
+                                toast.error(`Failed to generate PDF for ${emp.name}`);
+                              }
                             }}
-                            className="h-8 text-xs rounded-lg gap-1 font-medium"
+                            className="h-7.5 px-2 text-xs rounded-lg gap-1 text-muted-foreground hover:text-foreground font-medium"
                           >
-                            <FileDown className="h-3.5 w-3.5 text-muted-foreground" />
+                            <FileDown className="h-3.5 w-3.5" />
                             <span>PDF</span>
                           </Button>
                         </div>
@@ -2119,11 +2041,11 @@ export function PayrollPage() {
         {/* ========================================================================= */}
         <TabsContent value="revision" className="space-y-4 m-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="rounded-2xl border-border bg-card md:col-span-1">
-              <CardHeader>
+            <Card className="rounded-2xl border-border bg-card md:col-span-1 shadow-xs">
+              <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  Salary Revision Simulator
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span>Salary Revision Simulator</span>
                 </CardTitle>
                 <CardDescription className="text-xs">
                   Simulate salary increments and evaluate financial impact before applying.
@@ -2131,9 +2053,9 @@ export function PayrollPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Select Employee</Label>
+                  <Label className="text-xs font-semibold">Select Employee</Label>
                   <Select value={selectedEmpId} onValueChange={setSelectedEmpId}>
-                    <SelectTrigger className="h-9 text-xs rounded-lg">
+                    <SelectTrigger className="h-9 text-xs rounded-xl">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -2147,20 +2069,20 @@ export function PayrollPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Adjustment Amount (₹)</Label>
+                  <Label className="text-xs font-semibold">Adjustment Amount (₹)</Label>
                   <Input
                     type="number"
                     value={revAmount}
                     onChange={(e) => setRevAmount(Number(e.target.value) || 0)}
                     placeholder="e.g. 5000"
-                    className="h-9 text-xs rounded-lg"
+                    className="h-9 text-xs rounded-xl"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Reason</Label>
+                  <Label className="text-xs font-semibold">Reason</Label>
                   <Select value={revReason} onValueChange={(v: any) => setRevReason(v)}>
-                    <SelectTrigger className="h-9 text-xs rounded-lg">
+                    <SelectTrigger className="h-9 text-xs rounded-xl">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -2197,7 +2119,7 @@ export function PayrollPage() {
                     toast.success("Salary revision applied successfully");
                     setRevAmount(0);
                   }}
-                  className="w-full bg-primary text-primary-foreground font-semibold rounded-xl mt-2"
+                  className="w-full bg-primary text-primary-foreground font-semibold rounded-xl mt-2 h-9 text-xs"
                 >
                   Apply Revision
                 </Button>
@@ -2205,11 +2127,11 @@ export function PayrollPage() {
             </Card>
 
             {/* Impact Preview */}
-            <Card className="rounded-2xl border-border bg-card md:col-span-2">
-              <CardHeader>
+            <Card className="rounded-2xl border-border bg-card md:col-span-2 shadow-xs">
+              <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-emerald-500" />
-                  Financial Impact Projection
+                  <TrendingUp className="h-4 w-4 text-emerald-500" />
+                  <span>Financial Impact Projection</span>
                 </CardTitle>
                 <CardDescription className="text-xs">
                   Before vs After comparison of monthly In-Hand and Employer CTC liability.
@@ -2224,15 +2146,15 @@ export function PayrollPage() {
                   const newLpa = ((newBasic * 12) / 100000).toFixed(2);
 
                   return (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 rounded-xl bg-muted/40 border border-border space-y-2">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase">Current Package</span>
-                        <div className="text-2xl font-bold font-display">{inr(currentBasic)} / mo</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="p-4 rounded-2xl bg-muted/40 border border-border space-y-2">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Current Package</span>
+                        <div className="text-2xl font-bold font-display text-foreground">{inr(currentBasic)} / mo</div>
                         <div className="text-xs text-muted-foreground">{currentLpa} LPA CTC</div>
                       </div>
 
-                      <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
-                        <span className="text-xs font-semibold text-emerald-600 uppercase">Revised Package (+{inr(revAmount)})</span>
+                      <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
+                        <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Revised Package (+{inr(revAmount)})</span>
                         <div className="text-2xl font-bold font-display text-emerald-600">{inr(newBasic)} / mo</div>
                         <div className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold">{newLpa} LPA CTC</div>
                       </div>
@@ -2249,206 +2171,38 @@ export function PayrollPage() {
       {/* MODAL 1: LIVE PAYSLIP PREVIEW DIALOG                                      */}
       {/* ========================================================================= */}
       <Dialog open={!!previewTarget} onOpenChange={(open) => !open && setPreviewTarget(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-4 sm:p-6 rounded-3xl border border-border shadow-2xl">
           {previewTarget && (
-            <div className="space-y-4 text-card-foreground">
-              {/* Header */}
-              <div className="flex items-start justify-between border-b border-border pb-4">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <div className="h-6 w-6 rounded-lg bg-primary flex items-center justify-center text-xs font-black text-primary-foreground">
-                      S
-                    </div>
-                    <h3 className="font-display font-extrabold text-lg tracking-tight text-foreground">
-                      {company.name || "SWIFT HRMS"}
-                    </h3>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{company.legalName || "SWIFT Demo Pvt Ltd"}</p>
-                  {company.address ? <p className="text-[11px] text-muted-foreground/80">{company.address}</p> : null}
-                </div>
-                <div className="text-right space-y-1">
-                  <span className="inline-block px-3 py-1 rounded-full text-xs font-extrabold bg-primary/10 text-primary uppercase tracking-wider">
-                    SALARY PAYSLIP
-                  </span>
-                  <div className="text-xs font-bold text-foreground">
-                    {new Date(selectedMonth + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase()}
-                  </div>
-                </div>
-              </div>
-
-              {/* Employee Meta Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-2xl bg-muted/40 border border-border/70 text-xs">
-                <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Employee Name</span>
-                  <span className="font-bold text-foreground">{previewTarget.emp.name}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Employee Code</span>
-                  <span className="font-bold text-foreground">{previewTarget.emp.empCode}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Designation</span>
-                  <span className="font-medium text-foreground">{previewTarget.emp.designation || "-"}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Department</span>
-                  <span className="font-medium text-foreground">{previewTarget.emp.department || "-"}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Date of Joining</span>
-                  <span className="font-medium text-foreground">{previewTarget.emp.doj || "-"}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">PAN Number</span>
-                  <span className="font-medium text-foreground">{previewTarget.emp.pan || "-"}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">PF UAN No</span>
-                  <span className="font-medium text-foreground">{previewTarget.emp.uan || "—"}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Bank A/C</span>
-                  <span className="font-medium text-foreground">
-                    {previewTarget.emp.bankAcc ? `XXXX${previewTarget.emp.bankAcc.slice(-4)}` : "-"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Present Days</span>
-                  <span className="font-bold text-emerald-600">
-                    {previewTarget.paidDays} Days {previewTarget.weekOffDays ? `+ Weekoff: ${previewTarget.weekOffDays} days` : ""}
-                  </span>
-                </div>
-              </div>
-
-              {/* Side-by-Side Itemized Tables */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                {/* Earnings */}
-                <div className="rounded-xl border border-border/80 p-3.5 space-y-2 bg-muted/10">
-                  <div className="font-bold text-xs uppercase tracking-wider text-muted-foreground border-b border-border/60 pb-1.5 flex justify-between">
-                    <span>Earnings Component</span>
-                    <span>Amount (₹)</span>
-                  </div>
-                  <div className="space-y-1.5 text-xs">
-                    {previewTarget.comp.earningsList.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center">
-                        <span className="text-foreground">{item.name}</span>
-                        <span className="font-semibold">{inr(item.amount)}</span>
-                      </div>
-                    ))}
-                    {previewTarget.comp.earnings.bonus > 0 && (
-                      <div className="flex justify-between items-center text-emerald-600 font-medium">
-                        <span>Attendance &amp; Performance Bonus</span>
-                        <span>+{inr(previewTarget.comp.earnings.bonus)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Deductions */}
-                <div className="rounded-xl border border-border/80 p-3.5 space-y-2 bg-muted/10">
-                  <div className="font-bold text-xs uppercase tracking-wider text-muted-foreground border-b border-border/60 pb-1.5 flex justify-between">
-                    <span>Deduction Component</span>
-                    <span>Amount (₹)</span>
-                  </div>
-                  <div className="space-y-1.5 text-xs">
-                    {previewTarget.comp.deductions.employeePF > 0 && (
-                      <div className="flex justify-between items-center text-rose-600">
-                        <span>Provident Fund (PF)</span>
-                        <span className="font-semibold">-{inr(previewTarget.comp.deductions.employeePF)}</span>
-                      </div>
-                    )}
-                    {previewTarget.comp.deductions.employeeESI > 0 && (
-                      <div className="flex justify-between items-center text-rose-600">
-                        <span>Employee State Insurance (ESI)</span>
-                        <span className="font-semibold">-{inr(previewTarget.comp.deductions.employeeESI)}</span>
-                      </div>
-                    )}
-                    {previewTarget.comp.deductions.professionalTax > 0 && (
-                      <div className="flex justify-between items-center text-rose-600">
-                        <span>Professional Tax (PT)</span>
-                        <span className="font-semibold">-{inr(previewTarget.comp.deductions.professionalTax)}</span>
-                      </div>
-                    )}
-                    {previewTarget.comp.deductions.loan > 0 && (
-                      <div className="flex justify-between items-center text-rose-600">
-                        <span>Loan EMI</span>
-                        <span className="font-semibold">-{inr(previewTarget.comp.deductions.loan)}</span>
-                      </div>
-                    )}
-                    {previewTarget.comp.deductions.advance > 0 && (
-                      <div className="flex justify-between items-center text-rose-600">
-                        <span>Salary Advance</span>
-                        <span className="font-semibold">-{inr(previewTarget.comp.deductions.advance)}</span>
-                      </div>
-                    )}
-                    {previewTarget.comp.extraDeductions.map((d) => (
-                      <div key={d.id} className="flex justify-between items-center text-rose-600">
-                        <span>{d.name}</span>
-                        <span className="font-semibold">-{inr(d.amount)}</span>
-                      </div>
-                    ))}
-                    {previewTarget.comp.totalDeductions === 0 && (
-                      <div className="text-muted-foreground italic text-xs">No active deductions</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Summary Bar */}
-              <div className="flex justify-between items-center px-4 py-2.5 rounded-xl bg-muted/60 text-xs font-bold border border-border">
-                <div>
-                  <span className="text-muted-foreground font-normal text-[10px] block">Total Gross Earnings</span>
-                  <span className="text-foreground text-sm">{inr(previewTarget.comp.gross)}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-muted-foreground font-normal text-[10px] block">Total Deductions</span>
-                  <span className="text-rose-600 text-sm">-{inr(previewTarget.comp.totalDeductions)}</span>
-                </div>
-              </div>
-
-              {/* Net Take Home Highlight (Corporate Dark Theme) */}
-              <div className="p-4 rounded-2xl bg-slate-900 text-white dark:bg-slate-950 border border-slate-800 space-y-1 shadow-md">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold uppercase tracking-wide text-slate-300">
-                    NET TAKE-HOME SALARY PAYABLE
-                  </span>
-                  <span className="text-2xl font-black font-display text-white">
-                    {inr(previewTarget.comp.net)}
-                  </span>
-                </div>
-                <div className="text-xs font-medium text-slate-400 italic">
-                  {numberToWordsIndian(previewTarget.comp.net)}
-                </div>
-              </div>
-
-              {/* Footer Actions */}
-              <div className="flex items-center justify-between pt-3 border-t border-border">
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <ShieldCheck className="h-4 w-4 text-emerald-500" />
-                  <span>Computer-generated official payslip</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => window.print()}
-                    className="h-9 text-xs rounded-xl gap-1.5 font-medium"
-                  >
-                    <Printer className="h-3.5 w-3.5" />
-                    <span>Print</span>
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      generateSalarySlipPDF(company, previewTarget.emp, selectedMonth, previewTarget.comp, previewTarget.paidDays, previewTarget.weekOffEnabled ? previewTarget.weekOffDays : 0);
-                      toast.success(`Payslip PDF downloaded for ${previewTarget.emp.name}`);
-                    }}
-                    className="h-9 text-xs rounded-xl gap-1.5 bg-primary text-primary-foreground font-semibold"
-                  >
-                    <FileDown className="h-3.5 w-3.5" />
-                    <span>Download PDF</span>
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <PayslipTemplateView
+              company={company}
+              employee={previewTarget.emp}
+              month={selectedMonth}
+              computation={previewTarget.comp}
+              docAssets={docAssets}
+              paidDays={previewTarget.paidDays}
+              rawPresentDays={previewTarget.rawPresentDays}
+              weekOffDays={previewTarget.weekOffDays}
+              weekOffEnabled={previewTarget.weekOffEnabled}
+              onDownloadPdf={async () => {
+                try {
+                  await generateSalarySlipPDF(
+                    company,
+                    previewTarget.emp,
+                    selectedMonth,
+                    previewTarget.comp,
+                    previewTarget.paidDays,
+                    previewTarget.weekOffEnabled ? previewTarget.weekOffDays : 0,
+                    docAssets
+                  );
+                  toast.success(`Payslip PDF downloaded for ${previewTarget.emp.name}`);
+                } catch (err) {
+                  console.error("[Payroll Modal] PDF generation failed:", err);
+                  toast.error(`Failed to generate PDF for ${previewTarget.emp.name}`);
+                }
+              }}
+              onPrint={() => window.print()}
+              onClose={() => setPreviewTarget(null)}
+            />
           )}
         </DialogContent>
       </Dialog>
@@ -3383,6 +3137,65 @@ export function PayrollPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* FLOATING ACTION BUTTON: LIVE PAYSLIP PREVIEW TRIGGER                     */}
+      {/* ========================================================================= */}
+      <div className="fixed bottom-6 right-32 md:right-36 z-40 animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <Button
+          onClick={() => setShowLivePayslipModal(true)}
+          className="h-12 px-4 rounded-2xl shadow-2xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 border border-slate-700/60 dark:border-slate-300/60 gap-3 font-bold text-xs backdrop-blur-md group transition-all hover:scale-105 cursor-pointer"
+        >
+          <div className="h-7 w-7 rounded-xl bg-primary/20 text-primary flex items-center justify-center">
+            <Receipt className="h-4 w-4" />
+          </div>
+          <div className="flex flex-col text-left">
+            <span className="leading-tight font-bold">Live Payslip Preview</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-600 font-normal">Real-Time Receipt</span>
+          </div>
+          <Badge variant="outline" className="ml-1 bg-emerald-500/20 text-emerald-400 dark:text-emerald-700 border-emerald-500/30 text-[10px] font-bold px-2 py-0.5">
+            {inr(benchmarkCalc.salaryInHand)}
+          </Badge>
+        </Button>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: MASTER BLUEPRINT LIVE PAYSLIP PREVIEW POPUP DIALOG               */}
+      {/* ========================================================================= */}
+      <Dialog open={showLivePayslipModal} onOpenChange={setShowLivePayslipModal}>
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-4 sm:p-6 rounded-3xl border border-border shadow-2xl">
+          <PayslipTemplateView
+            company={company}
+            employee={sampleEmployee}
+            month={selectedMonth}
+            computation={liveBenchmarkComp}
+            docAssets={docAssets}
+            paidDays={company.workingDaysPerMonth || 26}
+            rawPresentDays={company.workingDaysPerMonth || 26}
+            weekOffDays={4}
+            weekOffEnabled={true}
+            onDownloadPdf={async () => {
+              try {
+                await generateSalarySlipPDF(
+                  company,
+                  sampleEmployee,
+                  selectedMonth,
+                  liveBenchmarkComp,
+                  company.workingDaysPerMonth || 26,
+                  0,
+                  docAssets
+                );
+                toast.success("Benchmark Payslip PDF downloaded!");
+              } catch (err) {
+                console.error("[Benchmark Modal] PDF generation failed:", err);
+                toast.error("Failed to generate Benchmark PDF");
+              }
+            }}
+            onPrint={() => window.print()}
+            onClose={() => setShowLivePayslipModal(false)}
+          />
         </DialogContent>
       </Dialog>
     </div>

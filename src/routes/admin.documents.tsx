@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useStore, type DocRequest, canRoleApproveDocument } from "@/lib/store";
 import { inr } from "@/lib/payroll";
 import { generateSalarySlipPDF } from "@/lib/pdf";
+import { PayslipTemplateView } from "@/components/payroll/PayslipTemplateView";
 import {
   DEFAULT_TEMPLATES, downloadLetter, bulkZipLetters, renderTemplate, buildVars,
   type LetterTemplate, type LetterCategory,
@@ -37,7 +38,7 @@ const CATEGORIES: LetterCategory[] = [
 
 function DocumentsPage() {
   const {
-    employees, company, payrolls,
+    employees, company, payrolls, docAssets,
     approvalMatrix, docRequests, currentUser, roles,
     setApprovalChain, createDocRequest, actOnDocStep, forwardDocStep, deleteDocRequest,
   } = useStore();
@@ -56,6 +57,7 @@ function DocumentsPage() {
   const [reqBody, setReqBody] = useState("");
   const [reqNote, setReqNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [previewPayslipTarget, setPreviewPayslipTarget] = useState<{ emp: any; pr: any } | null>(null);
 
   // Bulk request dialog
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -473,9 +475,34 @@ function DocumentsPage() {
                         <div className="font-medium text-sm truncate">{emp.name} · {pr.month}</div>
                         <div className="text-xs text-muted-foreground">Net {inr(pr.computed.net)}</div>
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => generateSalarySlipPDF(company, emp, pr.month, pr.computed)}>
-                        <FileDown className="h-4 w-4 mr-1" /> PDF
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setPreviewPayslipTarget({ emp, pr })}
+                          className="h-8 px-2.5 text-xs rounded-lg gap-1 text-primary hover:bg-primary/10"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>Preview</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              await generateSalarySlipPDF(company, emp, pr.month, pr.computed, undefined, undefined, docAssets);
+                              toast.success(`Payslip PDF downloaded for ${emp.name}`);
+                            } catch (err) {
+                              console.error("[Documents] PDF download failed:", err);
+                              toast.error(`Failed to download PDF for ${emp.name}`);
+                            }
+                          }}
+                          className="h-8 px-2.5 text-xs rounded-lg gap-1"
+                        >
+                          <FileDown className="h-3.5 w-3.5" />
+                          <span>PDF</span>
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
@@ -484,6 +511,40 @@ function DocumentsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Payslip Preview Dialog */}
+      <Dialog open={!!previewPayslipTarget} onOpenChange={(open) => !open && setPreviewPayslipTarget(null)}>
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-4 sm:p-6 rounded-3xl border border-border shadow-2xl">
+          {previewPayslipTarget && (
+            <PayslipTemplateView
+              company={company}
+              employee={previewPayslipTarget.emp}
+              month={previewPayslipTarget.pr.month}
+              computation={previewPayslipTarget.pr.computed}
+              docAssets={docAssets}
+              onDownloadPdf={async () => {
+                try {
+                  await generateSalarySlipPDF(
+                    company,
+                    previewPayslipTarget.emp,
+                    previewPayslipTarget.pr.month,
+                    previewPayslipTarget.pr.computed,
+                    undefined,
+                    undefined,
+                    docAssets
+                  );
+                  toast.success(`Payslip PDF downloaded for ${previewPayslipTarget.emp.name}`);
+                } catch (err) {
+                  console.error("[Documents Modal] PDF download failed:", err);
+                  toast.error(`Failed to download PDF for ${previewPayslipTarget.emp.name}`);
+                }
+              }}
+              onPrint={() => window.print()}
+              onClose={() => setPreviewPayslipTarget(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Request approval dialog */}
       <Dialog open={reqOpen} onOpenChange={setReqOpen}>

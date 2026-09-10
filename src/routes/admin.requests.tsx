@@ -732,12 +732,12 @@ function UnifiedRequestsHubPage() {
                       className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
                     />
                   </th>
-                  <th className="p-3.5 font-semibold">Employee</th>
-                  <th className="p-3.5 font-semibold">Category & Type</th>
-                  <th className="p-3.5 font-semibold">Subject / Details</th>
-                  <th className="p-3.5 font-semibold">Date / Duration</th>
-                  <th className="p-3.5 font-semibold">Workflow Status</th>
-                  <th className="p-3.5 font-semibold text-right">Actions</th>
+                  <th className="p-3.5 font-semibold min-w-[200px]">Employee</th>
+                  <th className="p-3.5 font-semibold min-w-[160px]">Category & Type</th>
+                  <th className="p-3.5 font-semibold min-w-[200px]">Subject / Details</th>
+                  <th className="p-3.5 font-semibold min-w-[130px] whitespace-nowrap">Date / Duration</th>
+                  <th className="p-3.5 font-semibold min-w-[150px] whitespace-nowrap">Workflow Status</th>
+                  <th className="p-3.5 font-semibold min-w-[110px] text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -790,23 +790,23 @@ function UnifiedRequestsHubPage() {
                                 <img
                                   src={item.avatarUrl}
                                   alt={item.employeeName}
-                                  className="h-9 w-9 rounded-full object-cover border border-border"
+                                  className="h-9 w-9 rounded-full object-cover border border-border shrink-0"
                                 />
                               ) : (
-                                <div className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs border border-primary/20">
+                                <div className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs border border-primary/20 shrink-0">
                                   {item.employeeName.slice(0, 2).toUpperCase()}
                                 </div>
                               )}
                             </div>
-                            <div>
-                              <div className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-1">
-                                <span>{item.employeeName}</span>
-                                <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary" />
+                            <div className="min-w-0">
+                              <div className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-1 truncate">
+                                <span className="truncate">{item.employeeName}</span>
+                                <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
                               </div>
-                              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              <div className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
                                 <span className="font-mono">{item.empCode}</span>
                                 <span>•</span>
-                                <span>{item.department}</span>
+                                <span className="truncate">{item.department}</span>
                               </div>
                             </div>
                           </div>
@@ -815,21 +815,21 @@ function UnifiedRequestsHubPage() {
                         {/* Category & Type Column */}
                         <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
                           <div className="space-y-1">
-                            <div className="flex items-center gap-1.5">
-                              {item.category === "leave" && <Calendar className="h-3.5 w-3.5 text-blue-500" />}
-                              {item.category === "attendance" && <CalendarCheck className="h-3.5 w-3.5 text-emerald-500" />}
-                              {item.category === "document" && <FileText className="h-3.5 w-3.5 text-purple-500" />}
-                              {item.category === "loan" && <Banknote className="h-3.5 w-3.5 text-amber-500" />}
-                              {item.category === "grievance" && <MessageSquareHeart className="h-3.5 w-3.5 text-rose-500" />}
-                              {item.category === "compoff" && <Coffee className="h-3.5 w-3.5 text-teal-500" />}
-                              <span className="font-medium text-xs text-foreground">{item.type}</span>
+                            <div className="flex items-center gap-1.5 whitespace-nowrap">
+                              {item.category === "leave" && <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
+                              {item.category === "attendance" && <CalendarCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
+                              {item.category === "document" && <FileText className="h-3.5 w-3.5 text-purple-500 shrink-0" />}
+                              {item.category === "loan" && <Banknote className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                              {item.category === "grievance" && <MessageSquareHeart className="h-3.5 w-3.5 text-rose-500 shrink-0" />}
+                              {item.category === "compoff" && <Coffee className="h-3.5 w-3.5 text-teal-500 shrink-0" />}
+                              <span className="font-medium text-xs text-foreground truncate">{item.type}</span>
                             </div>
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal whitespace-nowrap">
                                 {item.categoryLabel}
                               </Badge>
                               {item.attachments && item.attachments.length > 0 && (
-                                <Badge variant="secondary" className="gap-1 text-[10px] bg-primary/10 text-primary border-primary/20">
+                                <Badge variant="secondary" className="gap-1 text-[10px] bg-primary/10 text-primary border-primary/20 whitespace-nowrap">
                                   <Paperclip className="h-3 w-3" />
                                   {item.attachments.length} {item.attachments.length === 1 ? "Proof" : "Proofs"}
                                 </Badge>
@@ -841,15 +841,15 @@ function UnifiedRequestsHubPage() {
                         {/* Subject / Details Column */}
                         <td className="p-3.5">
                           <div className="space-y-0.5 max-w-xs">
-                            <div className="font-medium text-xs text-foreground truncate">{item.title}</div>
+                            <div className="font-medium text-xs text-foreground truncate" title={item.title}>{item.title}</div>
                             {item.details && (
-                              <p className="text-xs text-muted-foreground line-clamp-1">{item.details}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-1" title={item.details}>{item.details}</p>
                             )}
                           </div>
                         </td>
 
                         {/* Date / Value Column */}
-                        <td className="p-3.5">
+                        <td className="p-3.5 whitespace-nowrap">
                           <div className="space-y-0.5 text-xs">
                             <div className="font-semibold text-foreground">{item.amountOrDays || "—"}</div>
                             <div className="text-muted-foreground">{item.dateStr}</div>
@@ -857,11 +857,11 @@ function UnifiedRequestsHubPage() {
                         </td>
 
                         {/* Status Column */}
-                        <td className="p-3.5">
+                        <td className="p-3.5 whitespace-nowrap">
                           <div className="space-y-1">
                             <Badge
                               variant="outline"
-                              className={`px-2 py-0.5 text-xs font-semibold ${
+                              className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-xs font-semibold rounded-lg shrink-0 ${
                                 item.status === "Approved"
                                   ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
                                   : item.status === "Pending"
@@ -871,15 +871,40 @@ function UnifiedRequestsHubPage() {
                                   : "bg-destructive/10 text-destructive border-destructive/20"
                               }`}
                             >
-                              {item.status === "Approved" && "✓ Approved"}
-                              {item.status === "Pending" && "⏳ Pending Sign-off"}
-                              {item.status === "In Progress" && "🔄 In Review"}
-                              {item.status === "Escalated" && "⚡ Escalated"}
-                              {item.status === "Rejected" && "✕ Rejected"}
+                              {item.status === "Approved" && (
+                                <>
+                                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Approved</span>
+                                </>
+                              )}
+                              {item.status === "Pending" && (
+                                <>
+                                  <Clock className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Pending Sign-off</span>
+                                </>
+                              )}
+                              {item.status === "In Progress" && (
+                                <>
+                                  <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                                  <span>In Review</span>
+                                </>
+                              )}
+                              {item.status === "Escalated" && (
+                                <>
+                                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Escalated</span>
+                                </>
+                              )}
+                              {item.status === "Rejected" && (
+                                <>
+                                  <XCircle className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Rejected</span>
+                                </>
+                              )}
                             </Badge>
 
                             {item.totalLevels > 1 && (
-                              <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1 whitespace-nowrap">
                                 <span>Level {item.currentLevel} of {item.totalLevels}</span>
                               </div>
                             )}

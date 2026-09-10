@@ -21,6 +21,7 @@ import {
   Select, SelectContent, SelectItem,
   SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
@@ -637,14 +638,14 @@ function LeaveCalendarPage() {
                 <table className="w-full text-xs text-left">
                   <thead className="bg-muted/50 text-muted-foreground border-y border-border">
                     <tr>
-                      <th className="p-3">Employee</th>
-                      <th className="p-3">Category</th>
-                      <th className="p-3">Requested Period / Timing</th>
-                      <th className="p-3">Duration</th>
-                      <th className="p-3">Reason</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Approver Notes</th>
-                      <th className="p-3 text-right">Actions</th>
+                      <th className="p-3 font-semibold min-w-[180px]">Employee</th>
+                      <th className="p-3 font-semibold min-w-[150px] whitespace-nowrap">Category</th>
+                      <th className="p-3 font-semibold min-w-[150px] whitespace-nowrap">Requested Period / Timing</th>
+                      <th className="p-3 font-semibold min-w-[90px] whitespace-nowrap">Duration</th>
+                      <th className="p-3 font-semibold min-w-[180px]">Reason</th>
+                      <th className="p-3 font-semibold min-w-[130px] whitespace-nowrap">Status</th>
+                      <th className="p-3 font-semibold min-w-[160px]">Approver Notes</th>
+                      <th className="p-3 font-semibold text-right min-w-[110px] whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -678,12 +679,12 @@ function LeaveCalendarPage() {
                             {/* Employee Details */}
                             <td className="p-3">
                               <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs">
+                                <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0 border border-primary/20">
                                   {initial}
                                 </div>
-                                <div>
-                                  <div className="font-bold text-foreground">{empName}</div>
-                                  <div className="text-[10px] text-muted-foreground">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-foreground truncate">{empName}</div>
+                                  <div className="text-[10px] text-muted-foreground truncate">
                                     {empCode} · {dept}
                                   </div>
                                 </div>
@@ -691,9 +692,9 @@ function LeaveCalendarPage() {
                             </td>
 
                             {/* Category Badge */}
-                            <td className="p-3">
+                            <td className="p-3 whitespace-nowrap">
                               <span
-                                className={`px-2.5 py-1 rounded-md border text-[10px] font-bold ${
+                                className={`px-2.5 py-1 rounded-md border text-[10px] font-bold whitespace-nowrap inline-flex items-center gap-1 shrink-0 ${
                                   l.type.toLowerCase().includes("permission")
                                     ? "bg-purple-500/10 text-purple-700 border-purple-500/30"
                                     : l.type.toLowerCase().includes("casual")
@@ -708,7 +709,7 @@ function LeaveCalendarPage() {
                             </td>
 
                             {/* Period / Dates */}
-                            <td className="p-3 font-medium text-foreground">
+                            <td className="p-3 font-medium text-foreground whitespace-nowrap">
                               <div className="flex items-center gap-1.5">
                                 <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                                 <span>{l.startDate || l.from || "Recent"}</span>
@@ -716,40 +717,57 @@ function LeaveCalendarPage() {
                             </td>
 
                             {/* Duration */}
-                            <td className="p-3">
-                              <Badge variant="secondary" className="font-mono text-[10px]">
+                            <td className="p-3 whitespace-nowrap">
+                              <Badge variant="secondary" className="font-mono text-[10px] whitespace-nowrap inline-block shrink-0 px-2 py-0.5">
                                 {l.days || "1 Day"}
                               </Badge>
                             </td>
 
-                            {/* Reason */}
-                            <td className="p-3 max-w-[200px] truncate text-muted-foreground" title={l.reason}>
-                              {l.reason || "—"}
+                            {/* Reason with Hover Popup Tooltip */}
+                            <td className="p-3 max-w-[200px]">
+                              <TooltipProvider delayDuration={150}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="truncate text-muted-foreground text-xs cursor-default" title={l.reason}>
+                                      {l.reason || "—"}
+                                    </div>
+                                  </TooltipTrigger>
+                                  {l.reason && (
+                                    <TooltipContent side="top" align="start" className="max-w-xs bg-foreground text-background text-xs font-medium p-2.5 shadow-xl z-50 break-words">
+                                      {l.reason}
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
                             </td>
 
                             {/* Status */}
-                            <td className="p-3">
+                            <td className="p-3 whitespace-nowrap">
                               {isPending ? (
                                 <div className="space-y-1">
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 border border-amber-500/30">
-                                    <Clock className="h-3 w-3" />
-                                    {l.approvalSteps && l.approvalSteps.length > 0
-                                      ? `Level ${l.currentLevel || 1}/${l.totalLevels || 3} Pending`
-                                      : "Pending Review"}
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30 whitespace-nowrap">
+                                    <Clock className="h-3.5 w-3.5 shrink-0" />
+                                    <span>
+                                      {l.approvalSteps && l.approvalSteps.length > 0
+                                        ? `Level ${l.currentLevel || 1}/${l.totalLevels || 3} Pending`
+                                        : "Pending Review"}
+                                    </span>
                                   </span>
                                   {l.approvalSteps && l.approvalSteps.length > 0 && (
-                                    <div className="text-[10px] text-muted-foreground">
+                                    <div className="text-[10px] text-muted-foreground truncate">
                                       Next: {l.approvalSteps.find((s) => s.level === (l.currentLevel || 1))?.roleName || "Manager"}
                                     </div>
                                   )}
                                 </div>
                               ) : isApproved ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 border border-emerald-500/30">
-                                  <CheckCircle2 className="h-3 w-3" /> Fully Approved
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 whitespace-nowrap">
+                                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Approved</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-700 border border-rose-500/30">
-                                  <XCircle className="h-3 w-3" /> Rejected
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-rose-500/15 text-rose-600 border border-rose-500/30 whitespace-nowrap">
+                                  <XCircle className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Rejected</span>
                                 </span>
                               )}
                             </td>

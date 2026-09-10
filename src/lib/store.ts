@@ -16,6 +16,8 @@ import {
   type JourneyStepStatus,
   type LifecyclePhase,
 } from "./lifecycle";
+
+export type { CompanyDocumentAssets };
 import {
   DEFAULT_ASSET_CATEGORIES,
   type Asset,

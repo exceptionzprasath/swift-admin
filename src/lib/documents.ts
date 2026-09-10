@@ -408,34 +408,56 @@ Signed and submitted for official employment records.`,
 const A4_W = 210, A4_H = 297, ML = 14, MR = 14;
 const RIGHT = A4_W - MR; // 196
 const CONTENT_W = A4_W - ML - MR; // 182
-const BOTTOM_SAFE = A4_H - 20; // 277
-
+const BOTTOM_SAFE = 277;
 const imageCache = new Map<string, string>();
 
 /** Converts URL / S3 / blob / relative path / DataURL into a base64 DataURL for jsPDF */
 export async function resolveImageToDataUrl(src?: string): Promise<string | undefined> {
   if (!src || typeof src !== "string" || !src.trim()) return undefined;
-  if (src.startsWith("data:image/")) return src;
+  if (src.startsWith("data:")) return src;
   if (imageCache.has(src)) return imageCache.get(src);
 
-  try {
-    const res = await fetch(src, { mode: "cors" });
-    const blob = await res.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        imageCache.set(src, dataUrl);
-        resolve(dataUrl);
-      };
-      reader.onerror = () => resolve(undefined);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return new Promise((resolve) => {
+  return new Promise((resolve) => {
+    let done = false;
+    const safeResolve = (val?: string) => {
+      if (!done) {
+        done = true;
+        if (val) imageCache.set(src, val);
+        resolve(val);
+      }
+    };
+
+    // Generous timeout: 4000ms to allow network image downloads to complete
+    const timer = setTimeout(() => {
+      safeResolve(undefined);
+    }, 4000);
+
+    // Try direct fetch first
+    fetch(src)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          clearTimeout(timer);
+          safeResolve(reader.result as string);
+        };
+        reader.onerror = () => {
+          tryLoadViaImage();
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(() => {
+        tryLoadViaImage();
+      });
+
+    function tryLoadViaImage() {
       const img = new Image();
-      img.crossOrigin = "Anonymous";
+      img.crossOrigin = "anonymous";
       img.onload = () => {
+        clearTimeout(timer);
         try {
           const canvas = document.createElement("canvas");
           canvas.width = img.naturalWidth || img.width;
@@ -443,20 +465,20 @@ export async function resolveImageToDataUrl(src?: string): Promise<string | unde
           const ctx = canvas.getContext("2d");
           if (ctx) {
             ctx.drawImage(img, 0, 0);
-            const dataUrl = canvas.toDataURL("image/png");
-            imageCache.set(src, dataUrl);
-            resolve(dataUrl);
+            safeResolve(canvas.toDataURL("image/png"));
             return;
           }
         } catch {
-          // ignore
+          // ignore canvas error
         }
-        resolve(undefined);
+        safeResolve(undefined);
       };
-      img.onerror = () => resolve(undefined);
+      img.onerror = () => {
+        safeResolve(undefined);
+      };
       img.src = src;
-    });
-  }
+    }
+  });
 }
 
 export async function prepareDocAssets(
@@ -542,6 +564,65 @@ export function drawImageSafe(
       // ignore
     }
     return false;
+  }
+}
+
+/**
+ * Proportional aspect-ratio preserving image renderer (object-contain).
+ * Ensures logos, letterheads, and footers are never stretched or distorted.
+ */
+export function drawImageContained(
+  doc: jsPDF,
+  imgSource: string | undefined | null,
+  boxX: number,
+  boxY: number,
+  boxW: number,
+  boxH: number
+): { x: number; y: number; w: number; h: number } | null {
+  if (!imgSource || typeof imgSource !== "string" || !imgSource.trim()) return null;
+  try {
+    let imgW = boxW;
+    let imgH = boxH;
+    try {
+      const props = (doc as any).getImageProperties(imgSource);
+      if (props && props.width && props.height && props.width > 0 && props.height > 0) {
+        imgW = props.width;
+        imgH = props.height;
+      }
+    } catch {
+      // fallback
+    }
+
+    const ratio = imgW / imgH;
+    let renderW = boxW;
+    let renderH = boxW / ratio;
+
+    if (renderH > boxH) {
+      renderH = boxH;
+      renderW = boxH * ratio;
+    }
+
+    const renderX = boxX + (boxW - renderW) / 2;
+    const renderY = boxY + (boxH - renderH) / 2;
+
+    let format: string | undefined = undefined;
+    if (/^data:image\/(jpe?g|jfif)/i.test(imgSource) || /\.(jpe?g|jfif)(\?.*)?$/i.test(imgSource)) format = "JPEG";
+    else if (/^data:image\/webp/i.test(imgSource) || /\.webp(\?.*)?$/i.test(imgSource)) format = "WEBP";
+    else if (/^data:image\/png/i.test(imgSource) || /\.png(\?.*)?$/i.test(imgSource)) format = "PNG";
+
+    try {
+      if (format) {
+        doc.addImage(imgSource, format, renderX, renderY, renderW, renderH);
+      } else {
+        doc.addImage(imgSource, renderX, renderY, renderW, renderH);
+      }
+    } catch {
+      doc.addImage(imgSource, "PNG", renderX, renderY, renderW, renderH);
+    }
+    return { x: renderX, y: renderY, w: renderW, h: renderH };
+  } catch (err) {
+    console.warn("[PDF] drawImageContained failed:", err);
+    return null;
   }
 }
 

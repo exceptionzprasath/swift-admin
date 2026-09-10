@@ -328,7 +328,7 @@ export class AIQueryEngine {
         const absentDays = breakdownItem ? breakdownItem.absentDays : empRecords.filter((a) => (a.status || "").toLowerCase() === "absent").length;
         const leaveDays = breakdownItem ? breakdownItem.leaveDays : 0;
         const lateDays = breakdownItem ? breakdownItem.lateDays : (empRoster?.isLate ? 1 : 0);
-        const totalWorkingDays = breakdownItem?.workingDays || (context.company?.workingDaysPerMonth || 26);
+        const totalWorkingDays = breakdownItem?.totalWorkingDays || (context.company?.workingDaysPerMonth || 26);
         const attendancePct = breakdownItem ? breakdownItem.attendancePercentage : (totalWorkingDays > 0 ? Math.round((presentDays / totalWorkingDays) * 100) : 0);
 
         const summaryText = `👤 **${emp.name} (${emp.empCode}) — Attendance Summary**\n*Period: ${monthlyOverview?.period || "Last 30 Days"}*\n\n• **Total Working Days:** ${totalWorkingDays}\n• **Present Days:** ${presentDays}\n• **Absent Days:** ${absentDays}\n• **Leave Days:** ${leaveDays}\n• **Late Check-ins:** ${lateDays}\n• **Attendance Rate:** ${attendancePct}%\n\n| Metric | Status |\n|---|---|\n| Department | ${emp.department || "General"} |\n| Designation | ${emp.designation || "Staff"} |\n| Today Status | ${todayStatus} |\n| Check-In Punch | ${empRoster?.checkIn || "Not Punched Today"} |\n| Monthly Attendance | ${attendancePct}% |`;
@@ -376,14 +376,14 @@ export class AIQueryEngine {
         .join(", ") || "None recorded";
 
       const frequentLateStr = (monthlyOverview?.frequentLateEmployees || [])
-        .map((l) => `${l.name} (${l.count} late instances)`)
+        .map((l) => `${l.name} (${l.lateCount} late instances)`)
         .join(", ") || "None recorded";
 
       const breakdown = monthlyOverview?.employeeBreakdown || [];
 
       // Clean Markdown Table rows
       const tableRows = breakdown.map((b) =>
-        `| ${b.name} | ${b.department || "General"} | ${b.workingDays} | ${b.presentDays} | ${b.absentDays} | ${b.leaveDays} | ${b.lateDays} | ${b.attendancePercentage}% |`
+        `| ${b.name} | ${b.department || "General"} | ${b.totalWorkingDays} | ${b.presentDays} | ${b.absentDays} | ${b.leaveDays} | ${b.lateDays} | ${b.attendancePercentage}% |`
       ).join("\n");
 
       const summaryText = `📊 **Attendance Summary** *Period: ${period}*\n\n• **Total Working Days:** ${standardWorkingDays}\n• **Total Present Punches:** ${totalPresent}\n• **Company Attendance Rate:** ${overallRate}%\n• **Total Overtime:** ${totalOt} hrs\n\n🏆 **Attendance Highlights**\n• **Top Attendees:** ${topAttendeesStr}\n• **Frequent Late Check-ins:** ${frequentLateStr}\n\n| Employee | Dept | Working Days | Present | Absent | Leave | Late | Attendance % |\n|---|---|---|---|---|---|---|---|\n${tableRows}\n\n*Note: Absenteeism is calculated based on the number of days employees were scheduled to work but did not punch in.*`;

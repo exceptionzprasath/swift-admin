@@ -15,8 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   MessageSquareHeart, Search, Filter, Plus, Send, CheckCircle2,
   Clock, AlertTriangle, XCircle, ArrowUpRight, UserCheck, ShieldAlert,
-  Calendar, Building2, Tag, FileText, Paperclip, MessageSquare, Download, Eye
+  Calendar, Building2, Tag, FileText, Paperclip, MessageSquare, Download, Eye,
+  LayoutList, LayoutGrid, Sparkles, RefreshCw
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/grievances")({
@@ -30,6 +32,8 @@ function initials(name: string) {
 
 function GrievancesPage() {
   const { grievances, addGrievance, updateGrievance, addGrievanceMessage, employees, currentUser, company } = useStore();
+
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
 
   const categories = useMemo(() => {
     const types = company.grievanceTypes && company.grievanceTypes.length > 0 ? company.grievanceTypes : [
@@ -214,21 +218,21 @@ function GrievancesPage() {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="p-4 rounded-2xl border border-border bg-card flex flex-wrap items-center justify-between gap-3 shadow-soft">
+      {/* Filter Bar & View Switcher */}
+      <div className="p-4 rounded-2xl border border-border bg-card flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-soft">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by ticket #, employee, subject..."
-            className="pl-9 h-9"
+            className="pl-9 h-9 text-xs"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-9 w-32"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-32 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
               <SelectItem value="Open">Open</SelectItem>
@@ -239,7 +243,7 @@ function GrievancesPage() {
           </Select>
 
           <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="h-9 w-32"><SelectValue placeholder="Priority" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-32 text-xs"><SelectValue placeholder="Priority" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Priorities</SelectItem>
               <SelectItem value="Critical">Critical</SelectItem>
@@ -250,7 +254,7 @@ function GrievancesPage() {
           </Select>
 
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Category" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-40 text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
               {categories.map((c) => (
@@ -258,10 +262,40 @@ function GrievancesPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* View Mode Switcher */}
+          <div className="flex items-center rounded-xl border border-border bg-muted/30 p-0.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                viewMode === "table"
+                  ? "bg-card text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Table View"
+            >
+              <LayoutList className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Table</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                viewMode === "cards"
+                  ? "bg-card text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Cards View"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Cards</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Tickets List */}
+      {/* Tickets List / Table */}
       {filteredTickets.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center bg-card">
           <MessageSquareHeart className="h-10 w-10 mx-auto text-muted-foreground mb-3 opacity-60" />
@@ -270,7 +304,147 @@ function GrievancesPage() {
             Employees can raise tickets through the mobile app or HR portal.
           </p>
         </div>
+      ) : viewMode === "table" ? (
+        /* TABLE VIEW */
+        <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
+                <tr className="text-left">
+                  <th className="p-3.5 font-semibold min-w-[120px] whitespace-nowrap">Ticket ID</th>
+                  <th className="p-3.5 font-semibold min-w-[180px]">Employee</th>
+                  <th className="p-3.5 font-semibold min-w-[140px]">Category</th>
+                  <th className="p-3.5 font-semibold min-w-[220px]">Subject & Details</th>
+                  <th className="p-3.5 font-semibold min-w-[110px] whitespace-nowrap">Priority</th>
+                  <th className="p-3.5 font-semibold min-w-[120px] whitespace-nowrap">Status</th>
+                  <th className="p-3.5 font-semibold min-w-[100px] whitespace-nowrap">Thread</th>
+                  <th className="p-3.5 font-semibold min-w-[100px] text-right whitespace-nowrap">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredTickets.map((t) => (
+                  <tr
+                    key={t.id}
+                    onClick={() => setSelectedTicket(t)}
+                    className="hover:bg-muted/30 transition-colors cursor-pointer group"
+                  >
+                    {/* Ticket ID */}
+                    <td className="p-3.5 whitespace-nowrap">
+                      <span className="font-mono text-xs font-bold text-primary group-hover:underline">
+                        {t.ticketNumber}
+                      </span>
+                    </td>
+
+                    {/* Employee */}
+                    <td className="p-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-bold text-xs grid place-items-center shrink-0 border border-primary/20">
+                          {initials(t.employeeName)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-xs text-foreground truncate">{t.employeeName}</div>
+                          <div className="text-[10.5px] text-muted-foreground truncate">{t.empCode} · {t.department}</div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Category */}
+                    <td className="p-3.5">
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-medium whitespace-nowrap bg-muted/40">
+                        {t.category}
+                      </Badge>
+                    </td>
+
+                    {/* Subject & Summary */}
+                    <td className="p-3.5">
+                      <div className="space-y-0.5 max-w-sm">
+                        <div className="font-semibold text-xs text-foreground truncate" title={t.subject}>
+                          {t.subject}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground line-clamp-1" title={t.description}>
+                          {t.description}
+                        </p>
+                        {(t.fromDate || t.toDate || t.incidentDate) && (
+                          <div className="inline-flex items-center gap-1 text-[10px] text-primary font-medium mt-0.5">
+                            <Calendar className="h-2.5 w-2.5" />
+                            <span>{t.fromDate === t.toDate ? t.fromDate : `${t.fromDate || t.incidentDate} to ${t.toDate || t.incidentDate}`}</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Priority */}
+                    <td className="p-3.5 whitespace-nowrap">
+                      <Badge
+                        className={`text-[10.5px] px-2 py-0.5 font-semibold inline-flex items-center gap-1 ${
+                          t.priority === "Critical"
+                            ? "bg-red-500/15 text-red-600 border-red-500/30"
+                            : t.priority === "High"
+                            ? "bg-amber-500/15 text-amber-600 border-amber-500/30"
+                            : "bg-blue-500/15 text-blue-600 border-blue-500/30"
+                        }`}
+                      >
+                        {t.priority === "Critical" && <AlertTriangle className="h-3 w-3" />}
+                        {t.priority}
+                      </Badge>
+                    </td>
+
+                    {/* Status */}
+                    <td className="p-3.5 whitespace-nowrap">
+                      <Badge
+                        className={`text-[10.5px] px-2.5 py-0.5 font-semibold inline-flex items-center gap-1 ${
+                          t.status === "Resolved"
+                            ? "bg-emerald-500/15 text-emerald-600 border-emerald-500/30"
+                            : t.status === "In Progress"
+                            ? "bg-blue-500/15 text-blue-600 border-blue-500/30"
+                            : t.status === "Rejected"
+                            ? "bg-gray-500/15 text-gray-600 border-gray-500/30"
+                            : "bg-amber-500/15 text-amber-600 border-amber-500/30"
+                        }`}
+                      >
+                        {t.status === "Resolved" && <CheckCircle2 className="h-3 w-3" />}
+                        {t.status === "In Progress" && <Clock className="h-3 w-3" />}
+                        {t.status === "Open" && <Clock className="h-3 w-3" />}
+                        {t.status === "Rejected" && <XCircle className="h-3 w-3" />}
+                        <span>{t.status}</span>
+                      </Badge>
+                    </td>
+
+                    {/* Thread Info */}
+                    <td className="p-3.5 whitespace-nowrap">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                          <span>{t.thread?.length || 1}</span>
+                        </span>
+                        {t.attachments && t.attachments.length > 0 && (
+                          <span className="flex items-center gap-0.5 text-primary font-medium" title={`${t.attachments.length} attachment(s)`}>
+                            <Paperclip className="h-3 w-3" />
+                            <span>{t.attachments.length}</span>
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="p-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelectedTicket(t)}
+                        className="h-7 px-2.5 text-xs font-semibold gap-1 hover:bg-primary/10 hover:text-primary hover:border-primary/40"
+                      >
+                        <Eye className="h-3 w-3" /> View / Reply
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* CARDS VIEW */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredTickets.map((t) => (
             <div
