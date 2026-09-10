@@ -384,6 +384,9 @@ export type Company = {
   legalName: string;
   address: string;
   gstin: string;
+  email?: string;
+  phone?: string;
+  website?: string;
   logoDataUrl?: string;
   workingDaysPerMonth: number;
   workingHoursPerDay: number;
@@ -524,6 +527,7 @@ export type Employee = {
   designation: string;
   doj: string;
   basic: number;
+  salary?: number;
   pan?: string;
   aadhaar?: string;
   bankAcc?: string;

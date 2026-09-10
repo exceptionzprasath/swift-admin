@@ -36,6 +36,7 @@ const nav: NavItem[] = [
   { to: "/admin/branches", label: "Branches", icon: Building2 },
   { to: "/admin/org", label: "Organization", icon: Network },
   { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal },
+  { to: "/admin/documentation-alt", label: "Documentations (alt)", icon: FileText },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays },
   { to: "/admin/shift-roster", label: "Swift Roster", icon: Clock },

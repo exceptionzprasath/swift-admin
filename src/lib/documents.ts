@@ -476,7 +476,7 @@ export async function resolveImageToDataUrl(src?: string): Promise<string | unde
       img.onerror = () => {
         safeResolve(undefined);
       };
-      img.src = src;
+      img.src = src || "";
     }
   });
 }
