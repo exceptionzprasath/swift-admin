@@ -357,7 +357,7 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
         {/* ========================================================================= */}
         <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 text-xs border-b border-border/80 divide-y sm:divide-y-0 sm:divide-x divide-border/60 bg-muted/20">
           
-          {/* Column 1: Name, Gender, DOJ, PF.No */}
+          {/* Column 1: Name, Gender, DOJ, PF.No, Bank Acc */}
           <div className="lg:col-span-4 divide-y divide-border/60">
             <div className="grid grid-cols-12 p-2 hover:bg-muted/40 transition-colors">
               <span className="col-span-4 font-bold text-muted-foreground uppercase text-[11px]">Name</span>
@@ -379,9 +379,14 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
               <span className="col-span-1 text-center text-muted-foreground">:</span>
               <span className="col-span-7 font-mono font-medium text-foreground">{pfNo}</span>
             </div>
+            <div className="grid grid-cols-12 p-2 hover:bg-muted/40 transition-colors">
+              <span className="col-span-4 font-bold text-muted-foreground uppercase text-[11px]">Bank A/C</span>
+              <span className="col-span-1 text-center text-muted-foreground">:</span>
+              <span className="col-span-7 font-mono font-medium text-foreground truncate">{bankAcc}</span>
+            </div>
           </div>
 
-          {/* Column 2: Emp Code, Month & Year, DOB, ESI.No */}
+          {/* Column 2: Emp Code, Month & Year, DOB, ESI.No, Bank IFSC */}
           <div className="lg:col-span-4 divide-y divide-border/60">
             <div className="grid grid-cols-12 p-2 hover:bg-muted/40 transition-colors">
               <span className="col-span-4 font-bold text-muted-foreground uppercase text-[11px]">Employee Code</span>
@@ -403,9 +408,14 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
               <span className="col-span-1 text-center text-muted-foreground">:</span>
               <span className="col-span-7 font-mono font-medium text-foreground">{esiNo}</span>
             </div>
+            <div className="grid grid-cols-12 p-2 hover:bg-muted/40 transition-colors">
+              <span className="col-span-4 font-bold text-muted-foreground uppercase text-[11px]">Bank IFSC</span>
+              <span className="col-span-1 text-center text-muted-foreground">:</span>
+              <span className="col-span-7 font-mono font-medium text-foreground truncate">{bankIfsc}</span>
+            </div>
           </div>
 
-          {/* Column 3: Designation, Father Name, Pay Slab, PAN */}
+          {/* Column 3: Designation, Father Name, Pay Slab, Fixed Salary, PAN / Dept */}
           <div className="lg:col-span-4 divide-y divide-border/60">
             <div className="grid grid-cols-12 p-2 hover:bg-muted/40 transition-colors">
               <span className="col-span-4 font-bold text-muted-foreground uppercase text-[11px]">Designation</span>
@@ -424,6 +434,14 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
               <span className="col-span-4 font-bold uppercase text-[11px]" style={{ color: palette.primaryHex }}>Pay Slab</span>
               <span className="col-span-1 text-center" style={{ color: palette.primaryHex }}>:</span>
               <span className="col-span-7 font-bold font-mono" style={{ color: palette.primaryHex }}>₹{formatInr(dailyPaySlab)} / day</span>
+            </div>
+            <div
+              className="grid grid-cols-12 p-2 hover:bg-muted/40 transition-colors"
+              style={{ backgroundColor: `${palette.primaryHex}08` }}
+            >
+              <span className="col-span-4 font-bold uppercase text-[11px]" style={{ color: palette.primaryHex }}>Fixed Salary</span>
+              <span className="col-span-1 text-center" style={{ color: palette.primaryHex }}>:</span>
+              <span className="col-span-7 font-bold font-mono" style={{ color: palette.primaryHex }}>₹{formatInr(fixedGross)} / month</span>
             </div>
             <div className="grid grid-cols-12 p-2 hover:bg-muted/40 transition-colors">
               <span className="col-span-4 font-bold text-muted-foreground uppercase text-[11px]">PAN / Dept</span>
