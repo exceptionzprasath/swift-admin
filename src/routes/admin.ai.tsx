@@ -6,7 +6,7 @@ import chatbotAnimationRaw from "@/assets/chatbot.json";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { type Role } from "@/lib/ai-context";
-import { suggestionsFor } from "@/lib/ai-knowledge";
+import { resolveUserContext } from "@/lib/ai-auth-resolver";
 import { checkOpenAiStatus } from "@/lib/ai.functions";
 import { useUnifiedAiStore } from "@/lib/ai-unified-store";
 import { aiOrchestrator } from "@/lib/ai-orchestrator";
@@ -23,6 +23,7 @@ import {
   Copy,
   Check,
   FileText,
+  FileSpreadsheet,
   Download,
   Plus,
   ArrowUp,
@@ -87,11 +88,24 @@ export const Route = createFileRoute("/admin/ai")({
 });
 
 function SwiftAiCommandCenter() {
-  const { user, isSuperAdmin, activeTenantId } = useAuth();
+  const { user, isSuperAdmin, activeTenantId, memberships } = useAuth();
   const { company, employees, attendance, payrolls, leaves, docRequests } = useStore();
 
-  const role: Role = isSuperAdmin ? "super_admin" : "admin";
-  const suggestions = useMemo(() => suggestionsFor(role), [role]);
+  // Automatic, invisible role & authorization resolution from authenticated session
+  const authContext = useMemo(() => {
+    return resolveUserContext(user, isSuperAdmin, memberships, employees, company);
+  }, [user, isSuperAdmin, memberships, employees, company]);
+
+  const universalSuggestions = useMemo(() => [
+    "Today's attendance summary",
+    "Show absent employees",
+    "Detailed attendance for this month",
+    "Show pending leave requests",
+    "Generate monthly attendance report",
+    "Who is working overtime today?",
+    "Show employee shift register",
+    "Which department has the highest overtime?",
+  ], []);
 
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -227,7 +241,26 @@ function SwiftAiCommandCenter() {
         payrolls,
         leaves,
         docRequests,
-        role,
+        role: authContext.role,
+        viewerEmployeeId: authContext.viewerEmployeeId,
+      },
+      structuredData
+    );
+  };
+
+  const handleGenerateExcelForQuery = (query: string, rawContent?: string, structuredData?: any) => {
+    aiOrchestrator.downloadQueryExcel(
+      query,
+      rawContent,
+      {
+        company,
+        employees,
+        attendance,
+        payrolls,
+        leaves,
+        docRequests,
+        role: authContext.role,
+        viewerEmployeeId: authContext.viewerEmployeeId,
       },
       structuredData
     );
@@ -264,7 +297,7 @@ function SwiftAiCommandCenter() {
     inputRef.current?.focus();
   };
 
-  const handleSend = async (queryText?: string, forceFormat?: "pdf" | "text") => {
+  const handleSend = async (queryText?: string, forceFormat?: "pdf" | "excel" | "text") => {
     const rawText = (queryText ?? input).trim();
     if ((!rawText && !attachedPhoto) || busy) return;
 
@@ -288,6 +321,8 @@ function SwiftAiCommandCenter() {
     await aiOrchestrator.dispatchUserMessage(text, {
       source: "COPILOT",
       forceFormat,
+      role: authContext.role,
+      viewerEmployeeId: authContext.viewerEmployeeId,
       documentMeta: docMeta,
       imageUrl: currentPhoto?.dataUrl,
       context: {
@@ -297,7 +332,8 @@ function SwiftAiCommandCenter() {
         payrolls,
         leaves,
         docRequests,
-        role,
+        role: authContext.role,
+        viewerEmployeeId: authContext.viewerEmployeeId,
       },
     });
   };
@@ -444,7 +480,7 @@ function SwiftAiCommandCenter() {
                 ? "Listening to your voice... Speak now"
                 : attachedPhoto
                 ? "Ask anything about this photo..."
-                : "Ask anything"
+                : "Ask anything about SWIFT HRMS..."
             }
             disabled={busy}
             className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/70 text-sm sm:text-base px-2 py-1"
@@ -609,9 +645,9 @@ function SwiftAiCommandCenter() {
           {/* Centered ChatGPT Search Capsule */}
           {renderChatGptSearchBox(true)}
 
-          {/* Prompt Suggestion Pills */}
-          <div className="flex flex-wrap items-center justify-center gap-2.5 mt-7 max-w-2xl mx-auto">
-            {suggestions.slice(0, 5).map((s) => (
+          {/* Universal Prompt Suggestion Pills */}
+          <div className="flex flex-wrap items-center justify-center gap-2.5 mt-7 max-w-3xl mx-auto">
+            {universalSuggestions.slice(0, 6).map((s) => (
               <button
                 key={s}
                 onClick={() => handleSend(s)}
@@ -728,12 +764,18 @@ function SwiftAiCommandCenter() {
                         <div className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
                           <Sparkles className="h-3.5 w-3.5 text-primary" /> Please choose your preferred report format:
                         </div>
-                        <div className="grid grid-cols-2 gap-2.5 max-w-md">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 max-w-xl">
                           <button
                             onClick={() => handleSend("PDF format", "pdf")}
                             className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition shadow-xs cursor-pointer active:scale-95"
                           >
                             <FileText className="h-4 w-4" /> 📄 PDF Format (Download)
+                          </button>
+                          <button
+                            onClick={() => handleSend("Excel format", "excel")}
+                            className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition shadow-xs cursor-pointer active:scale-95"
+                          >
+                            <FileSpreadsheet className="h-4 w-4" /> 📊 Excel Format (Download)
                           </button>
                           <button
                             onClick={() => handleSend("Text format", "text")}
@@ -745,19 +787,28 @@ function SwiftAiCommandCenter() {
                       </div>
                     )}
 
-                    {/* Download as PDF format option on each and every AI response */}
+                    {/* Download as PDF and Excel format option on each and every AI response */}
                     {!isUser && !msg.isFormatPrompt && (
                       <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between gap-3 flex-wrap">
                         <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                          <FileText className="h-3.5 w-3.5 text-primary/80" /> Export as official document
+                          <FileText className="h-3.5 w-3.5 text-primary/80" /> Export official document
                         </span>
-                        <button
-                          onClick={() => handleGeneratePdfForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content, msg.structuredData)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition cursor-pointer active:scale-95 border border-primary/20 shadow-2xs hover:shadow-xs"
-                          title="Download as PDF format"
-                        >
-                          <Download className="h-3.5 w-3.5" /> Download as PDF format
-                        </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => handleGeneratePdfForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content, msg.structuredData)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition cursor-pointer active:scale-95 border border-primary/20 shadow-2xs hover:shadow-xs"
+                            title="Download as PDF format"
+                          >
+                            <Download className="h-3.5 w-3.5" /> Download as PDF format
+                          </button>
+                          <button
+                            onClick={() => handleGenerateExcelForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content, msg.structuredData)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold transition cursor-pointer active:scale-95 border border-emerald-500/25 shadow-2xs hover:shadow-xs"
+                            title="Download as Excel sheet"
+                          >
+                            <FileSpreadsheet className="h-3.5 w-3.5" /> Download as Excel sheet
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -787,12 +838,12 @@ function SwiftAiCommandCenter() {
             <div ref={bottomAnchorRef} className="h-6 w-full shrink-0" />
           </div>
 
-          {/* Quick Suggestions Pills (Above bottom input) */}
+          {/* Universal Quick Suggestions Pills (Above bottom input) */}
           <div className="px-4 py-2 border-t border-border/40 bg-background/50 backdrop-blur overflow-x-auto flex items-center justify-center gap-2 no-scrollbar">
             <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1 shrink-0">
               <Sparkles className="h-3 w-3 text-primary" /> Quick:
             </span>
-            {suggestions.slice(0, 4).map((s) => (
+            {universalSuggestions.slice(0, 5).map((s) => (
               <button
                 key={s}
                 onClick={() => handleSend(s)}

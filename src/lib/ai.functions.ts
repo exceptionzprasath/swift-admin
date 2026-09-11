@@ -36,6 +36,7 @@ const InputSchema = z.object({
   messages: z.array(MessageSchema).min(1).max(100),
   snapshot: z.unknown(),
   model: z.string().optional(),
+  factualContext: z.string().optional(),
 });
 
 const SYSTEM_PROMPT = `You are an HRMS AI Assistant for SHIFT HRMS (SWIFT HRMS).
@@ -262,6 +263,20 @@ function formatCompactSnapshot(snapshot: any): string {
     }
   }
 
+  if (snapshot.company?.shifts?.length) {
+    lines.push(`SHIFTS: ${snapshot.company.shifts.map((s: any) => `${s.name} (${s.start}-${s.end}, Grace: ${s.graceTime || 15}m)`).join(", ")}`);
+  }
+
+  if (snapshot.leaves?.pendingApprovals) {
+    lines.push(`PENDING LEAVES: ${snapshot.leaves.pendingApprovals} requests awaiting approval.`);
+  }
+
+  if (snapshot.departments?.length) {
+    lines.push(`DEPARTMENTS: ${snapshot.departments.map((d: any) => `${d.name} (${d.headcount})`).join(", ")}`);
+  }
+
+  lines.push(`POLICIES: Working Days: ${snapshot.company?.workingDaysPerMonth || 26}d/mo | Probation: 6 months | Notice Period: 30 days | Regularization: max 2/mo | Leaves: CL 12d, SL 12d, EL 15d.`);
+
   return lines.join("\n");
 }
 
@@ -300,6 +315,20 @@ export const askSwiftAi = createServerFn({ method: "POST" })
     const compactContext = formatCompactSnapshot(cleanSnapshot);
 
     try {
+      const messagesToSend: any[] = [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: `Tenant Context:\n${compactContext}` },
+      ];
+
+      if (data.factualContext) {
+        messagesToSend.push({
+          role: "system",
+          content: `AUTHORITATIVE HRMS DATABASE QUERY RESULTS:\n${data.factualContext}\n(Always use these exact retrieved factual values in your answer)`,
+        });
+      }
+
+      messagesToSend.push(...data.messages);
+
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -308,11 +337,7 @@ export const askSwiftAi = createServerFn({ method: "POST" })
         },
         body: JSON.stringify({
           model: selectedModel,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "system", content: `Tenant Context:\n${compactContext}` },
-            ...data.messages,
-          ],
+          messages: messagesToSend,
           temperature: 0.2, // Low temperature for high factual accuracy and speed
         }),
       });

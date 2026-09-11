@@ -11,7 +11,7 @@ import { aiOrchestrator } from "@/lib/ai-orchestrator";
 import { AIResponseRenderer } from "@/components/ai/AIResponseRenderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sparkles, X, Send, Loader2, Bot, Zap, FileText, MessageSquare, Download } from "lucide-react";
+import { Sparkles, X, Send, Loader2, Bot, Zap, FileText, FileSpreadsheet, MessageSquare, Download } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,15 +19,25 @@ import { motion, AnimatePresence } from "framer-motion";
 const Lottie = (LottieRaw as any)?.default || LottieRaw;
 const chatbotAnimation = (chatbotAnimationRaw as any)?.default || chatbotAnimationRaw;
 
-export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Role; viewerEmployeeId?: string }) {
+import { resolveUserContext } from "@/lib/ai-auth-resolver";
+
+export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmployeeId }: { role?: Role; viewerEmployeeId?: string }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [guideActive, setGuideActive] = useState(false);
   const [pulse, setPulse] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
-  const { activeTenantId } = useAuth();
+  const { activeTenantId, user, isSuperAdmin, memberships } = useAuth();
   const { company, employees, attendance, payrolls, leaves, docRequests } = useStore();
+
+  const authContext = useMemo(() => {
+    return resolveUserContext(user, isSuperAdmin, memberships, employees, company);
+  }, [user, isSuperAdmin, memberships, employees, company]);
+
+  const role = propRole || authContext.role;
+  const viewerEmployeeId = propViewerEmployeeId || authContext.viewerEmployeeId;
+
   const suggestions = useMemo(() => suggestionsFor(role), [role]);
 
   // Unified Store
@@ -86,7 +96,25 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
     );
   };
 
-  const send = async (text: string, forceFormat?: "pdf" | "text") => {
+  const handleGenerateExcelForQuery = (query: string, rawContent?: string, structuredData?: any) => {
+    aiOrchestrator.downloadQueryExcel(
+      query,
+      rawContent,
+      {
+        company,
+        employees,
+        attendance,
+        payrolls,
+        leaves,
+        docRequests,
+        role,
+        viewerEmployeeId,
+      },
+      structuredData
+    );
+  };
+
+  const send = async (text: string, forceFormat?: "pdf" | "excel" | "text") => {
     if (!text.trim() || busy) return;
 
     setInput("");
@@ -199,36 +227,51 @@ export function SwiftAiCopilot({ role = "admin", viewerEmployeeId }: { role?: Ro
                         <div className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
                           <Sparkles className="h-3 w-3 text-primary" /> Select output format:
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-1.5">
                           <button
                             onClick={() => send("PDF format", "pdf")}
-                            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition shadow-xs cursor-pointer active:scale-95"
+                            className="flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-primary text-white text-[11px] font-semibold hover:bg-primary/90 transition shadow-xs cursor-pointer active:scale-95"
                           >
-                            <FileText className="h-3.5 w-3.5" /> 📄 PDF Format
+                            <FileText className="h-3 w-3" /> PDF
+                          </button>
+                          <button
+                            onClick={() => send("Excel format", "excel")}
+                            className="flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700 transition shadow-xs cursor-pointer active:scale-95"
+                          >
+                            <FileSpreadsheet className="h-3 w-3" /> Excel
                           </button>
                           <button
                             onClick={() => send("Text format", "text")}
-                            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-muted/80 hover:bg-muted border border-border text-foreground text-xs font-semibold transition cursor-pointer active:scale-95"
+                            className="flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-muted/80 hover:bg-muted border border-border text-foreground text-[11px] font-semibold transition cursor-pointer active:scale-95"
                           >
-                            <MessageSquare className="h-3.5 w-3.5 text-primary" /> 💬 Text Format
+                            <MessageSquare className="h-3 w-3 text-primary" /> Text
                           </button>
                         </div>
                       </div>
                     )}
 
-                    {/* Download as PDF format option on each and every AI response */}
+                    {/* Download as PDF and Excel sheet options on each and every AI response */}
                     {m.role === "assistant" && !m.isFormatPrompt && (
-                      <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between gap-1.5 flex-wrap">
                         <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <FileText className="h-3 w-3 text-primary/80" /> PDF Document
+                          <FileText className="h-3 w-3 text-primary/80" /> Export document
                         </span>
-                        <button
-                          onClick={() => handleGeneratePdfForQuery(m.downloadQuery || "SWIFT AI Report", m.content, m.structuredData)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-semibold transition cursor-pointer active:scale-95 border border-primary/20 shadow-2xs hover:shadow-xs"
-                          title="Download as PDF format"
-                        >
-                          <Download className="h-3 w-3" /> Download as PDF format
-                        </button>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            onClick={() => handleGeneratePdfForQuery(m.downloadQuery || "SWIFT AI Report", m.content, m.structuredData)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-semibold transition cursor-pointer active:scale-95 border border-primary/20 shadow-2xs hover:shadow-xs"
+                            title="Download as PDF format"
+                          >
+                            <Download className="h-3 w-3" /> PDF
+                          </button>
+                          <button
+                            onClick={() => handleGenerateExcelForQuery(m.downloadQuery || "SWIFT AI Report", m.content, m.structuredData)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold transition cursor-pointer active:scale-95 border border-emerald-500/25 shadow-2xs hover:shadow-xs"
+                            title="Download as Excel sheet"
+                          >
+                            <FileSpreadsheet className="h-3 w-3" /> Excel
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>

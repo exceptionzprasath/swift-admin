@@ -16,7 +16,7 @@ export type AIDocumentMeta = {
   ref?: string;
   size?: number;
   downloadUrl?: string;
-  docType?: "pdf" | "zip" | "docx" | "image";
+  docType?: "pdf" | "zip" | "docx" | "image" | "excel";
   imageUrl?: string;
 };
 

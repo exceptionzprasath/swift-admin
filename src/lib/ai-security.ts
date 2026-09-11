@@ -22,7 +22,7 @@ const SECRET_EXTRACTION_PATTERNS = [
 
 // Patterns indicating prompt injection / jailbreak attempts
 const INJECTION_PATTERNS = [
-  /ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions/i,
+  /ignore\s+(?:all\s+)?(?:previous|prior|above)?\s*instructions/i,
   /act\s+as\s+(?:the\s+)?(?:developer|system\s+admin|root|god\s+mode|dan)/i,
   /(?:reveal|show|print|output|display|echo|leak|dump)\s+(?:the\s+)?(?:system\s+prompt|developer\s+instructions|hidden\s+prompt|rules|credentials)/i,
   /(?:base64|hex|rot13|binary|encode|decode|hash)\s+(?:the\s+)?(?:api\s*key|secret|password|credential|prompt)/i,
@@ -106,7 +106,7 @@ export function inspectUserInput(text: string): SecurityInspectionResult {
   }
 
   // 2. Check for secret / credential extraction attempts
-  const isAskingToReveal = /(?:show|give|tell|print|get|what\s+is|what's|find|export|dump|display|reveal|leak|share|provide|decode|encode|see)/i.test(clean);
+  const isAskingToReveal = /(?:show|give|tell|print|output|get|what\s+is|what's|find|export|dump|display|reveal|leak|share|provide|decode|encode|see)/i.test(clean);
   if (isAskingToReveal) {
     for (const pattern of SECRET_EXTRACTION_PATTERNS) {
       if (pattern.test(clean)) {

@@ -11,6 +11,18 @@ import {
   generateStructuredPayrollSummaryPdf,
   downloadPdfBlob,
 } from "./ai-pdf-reports";
+import {
+  generateEmployeesExcel,
+  generateAttendanceExcel,
+  generateSalaryExcel,
+  generateAiReportExcel,
+  generateStructuredEmployeeListExcel,
+  generateStructuredAttendanceSummaryExcel,
+  generateStructuredEmployeeDetailsExcel,
+  generateStructuredLeaveSummaryExcel,
+  generateStructuredPayrollSummaryExcel,
+  downloadExcelBlob,
+} from "./ai-excel-reports";
 import { parseComplianceCommand, renderComplianceDocPDF } from "./compliance-docs";
 import { useComplianceDocs, blobToDataUrl } from "./compliance-docs-store";
 import { buildEnterpriseSnapshot } from "./ai-knowledge";
@@ -23,7 +35,7 @@ export interface ToolExecutionContext {
   attendance: any[];
   payrolls: any[];
   leaves: any[];
-  docRequests: any[];
+  docRequests?: any[];
   role?: string;
   viewerEmployeeId?: string;
 }
@@ -32,7 +44,7 @@ export function isReportQuery(text: string): boolean {
   const lower = text.toLowerCase().trim();
   if (/^(?:hi|hello|hey|thanks|thank you|ok|okay|bye)$/i.test(lower)) return false;
   if (/(?:api\s*key|password|\.env|credential|token|system\s*prompt|source\s*code)/i.test(lower)) return false;
-  return /\b(generate\s+report|download\s+report|export\s+report|pdf\s+report|statutory\s+report|export\s+to\s+pdf|download\s+pdf)\b/i.test(
+  return /\b(generate\s+report|download\s+report|export\s+report|pdf\s+report|excel\s+report|statutory\s+report|export\s+to\s+pdf|download\s+pdf|export\s+to\s+excel|download\s+excel|excel\s+sheet|download\s+as\s+excel)\b/i.test(
     lower
   );
 }
@@ -134,7 +146,7 @@ export class AIToolRegistry {
       attendance: context.attendance,
       payrolls: context.payrolls,
       leaves: context.leaves,
-      docRequests: context.docRequests,
+      docRequests: context.docRequests || [],
       role: (context.role as any) || "admin",
       viewerEmployeeId: context.viewerEmployeeId,
     });
@@ -227,6 +239,128 @@ export class AIToolRegistry {
         filename,
         size: blob.size,
         docType: "pdf",
+      },
+    };
+  }
+
+  /**
+   * Executes Excel spreadsheet generation tool.
+   * Faithfully produces an .xlsx spreadsheet matching the exact information in the AI chat response.
+   */
+  static executeExcelReport(
+    query: string,
+    context: ToolExecutionContext,
+    rawContent?: string,
+    structuredData?: AIStructuredData,
+    actionId?: string
+  ): { docMeta: AIDocumentMeta; filename: string } {
+    if (actionId && this.executedActionIds.has(actionId)) {
+      return {
+        docMeta: { title: "Generated Spreadsheet", filename: "report.xlsx", docType: "excel" },
+        filename: "report.xlsx",
+      };
+    }
+    if (actionId) this.executedActionIds.add(actionId);
+
+    const snapshot = buildEnterpriseSnapshot({
+      company: context.company,
+      employees: context.employees,
+      attendance: context.attendance,
+      payrolls: context.payrolls,
+      leaves: context.leaves,
+      docRequests: context.docRequests || [],
+      role: (context.role as any) || "admin",
+      viewerEmployeeId: context.viewerEmployeeId,
+    });
+
+    let blob: Blob;
+    let filename = `SWIFT_AI_Report_${snapshot.today}.xlsx`;
+    let title = "SWIFT AI HRMS Spreadsheet Report";
+
+    // 1. Resolve structured data if provided or if deterministic engine resolves it
+    let effectiveStructured = structuredData;
+    if (!effectiveStructured && query) {
+      const res = AIQueryEngine.resolveQuery(query, context);
+      if (res.handled && res.structuredData) {
+        effectiveStructured = res.structuredData;
+      }
+    }
+
+    if (effectiveStructured) {
+      switch (effectiveStructured.type) {
+        case "EMPLOYEE_LIST": {
+          blob = generateStructuredEmployeeListExcel(context.company, effectiveStructured);
+          const safeTitle = (effectiveStructured.title || "Employee_List").replace(/[^a-zA-Z0-9]/g, "_");
+          filename = `${safeTitle}_${snapshot.today}.xlsx`;
+          title = effectiveStructured.title;
+          break;
+        }
+        case "ATTENDANCE_SUMMARY": {
+          blob = generateStructuredAttendanceSummaryExcel(context.company, effectiveStructured);
+          const safeTitle = (effectiveStructured.title || "Attendance_Summary").replace(/[^a-zA-Z0-9]/g, "_");
+          filename = `${safeTitle}_${snapshot.today}.xlsx`;
+          title = effectiveStructured.title;
+          break;
+        }
+        case "EMPLOYEE_DETAILS": {
+          blob = generateStructuredEmployeeDetailsExcel(context.company, effectiveStructured);
+          const empCode = effectiveStructured.employee.empCode || "Details";
+          filename = `Employee_Profile_${empCode}_${snapshot.today}.xlsx`;
+          title = `Employee Profile — ${effectiveStructured.employee.name}`;
+          break;
+        }
+        case "LEAVE_SUMMARY": {
+          blob = generateStructuredLeaveSummaryExcel(context.company, effectiveStructured);
+          filename = `Leave_Summary_${snapshot.today}.xlsx`;
+          title = effectiveStructured.title;
+          break;
+        }
+        case "PAYROLL_SUMMARY": {
+          blob = generateStructuredPayrollSummaryExcel(context.company, effectiveStructured);
+          filename = `Payroll_Summary_${effectiveStructured.month || snapshot.today}.xlsx`;
+          title = effectiveStructured.title;
+          break;
+        }
+        default: {
+          blob = generateAiReportExcel(query || "SWIFT HRMS Report", rawContent || query, context.company);
+          filename = `HRMS_Report_${snapshot.today}.xlsx`;
+          title = query || "SWIFT HRMS Report";
+          break;
+        }
+      }
+    } else {
+      // 2. Pure markdown / text content
+      const contentToUse = rawContent || query;
+      const lower = query.toLowerCase();
+      if (lower.includes("monthly attendance") || lower.includes("attendance register") || lower.includes("30-day attendance")) {
+        blob = generateAttendanceExcel(context.company, snapshot.attendance.monthlyReport, snapshot.attendance.todayLiveRoster);
+        filename = `Monthly_Attendance_Report_${snapshot.today}.xlsx`;
+        title = `Monthly Attendance Report — ${snapshot.today}`;
+      } else if (lower.includes("master salary") || lower.includes("payroll register")) {
+        blob = generateSalaryExcel(context.company, snapshot.employees);
+        filename = `Salary_Summary_${snapshot.today}.xlsx`;
+        title = `Salary & Payroll Summary — ${snapshot.today}`;
+      } else if (lower.includes("all employees directory") || lower.includes("master employee list")) {
+        blob = generateEmployeesExcel(context.company, snapshot.employees);
+        filename = `Employee_Master_Registry_${snapshot.today}.xlsx`;
+        title = `Employee Master Registry — ${snapshot.today}`;
+      } else {
+        blob = generateAiReportExcel(query || "SWIFT AI Report", contentToUse, context.company);
+        const safeTitle = (query || "SWIFT_AI_Report").slice(0, 30).replace(/[^a-zA-Z0-9]/g, "_");
+        filename = `${safeTitle}_${snapshot.today}.xlsx`;
+        title = query || "SWIFT AI Report";
+      }
+    }
+
+    downloadExcelBlob(blob, filename);
+
+    return {
+      filename,
+      docMeta: {
+        title,
+        filename,
+        size: blob.size,
+        docType: "excel",
       },
     };
   }
