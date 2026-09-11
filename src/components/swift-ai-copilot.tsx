@@ -11,7 +11,7 @@ import { aiOrchestrator } from "@/lib/ai-orchestrator";
 import { AIResponseRenderer } from "@/components/ai/AIResponseRenderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sparkles, X, Send, Loader2, Bot, Zap, FileText, FileSpreadsheet, MessageSquare, Download } from "lucide-react";
+import { Sparkles, X, Send, Loader2, Bot, Zap, FileText, FileSpreadsheet, MessageSquare, Download, Minus } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -135,29 +135,86 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
     });
   };
 
+  const [isMinimized, setIsMinimized] = useState(false);
+  const isDraggingRef = useRef(false);
+
   return (
     <>
-      {!open && (
+      {!open && isMinimized && (
         <motion.button
-          onClick={() => setOpen(true)}
-          initial={{ scale: 0, rotate: -90 }}
-          animate={{ scale: 1, rotate: 0 }}
-          transition={{ type: "spring", stiffness: 200, damping: 14 }}
-          whileHover={{ scale: 1.12 }}
-          whileTap={{ scale: 0.94 }}
-          className="fixed bottom-40 md:bottom-22 right-3 md:right-5 z-50 h-24 w-24 rounded-full flex items-center justify-center animate-swift-float cursor-pointer group"
-          aria-label="Open SWIFT AI"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 20 }}
+          whileHover={{ scale: 1.05, x: -2 }}
+          onClick={() => setIsMinimized(false)}
+          className="fixed right-0 bottom-24 md:bottom-20 z-50 rounded-l-full bg-gradient-brand text-white pl-3 pr-2 py-2 shadow-lg shadow-primary/20 flex items-center gap-1.5 cursor-pointer border-y border-l border-white/20 backdrop-blur text-xs font-semibold group"
+          title="Click to restore SWIFT AI Copilot"
         >
-          {/* Lottie Animation Only */}
-          <span className="relative h-24 w-24 flex items-center justify-center overflow-hidden">
-            <Lottie animationData={chatbotAnimation} loop={true} className="w-full h-full object-contain scale-110" />
-          </span>
-          {(guideActive || pulse) && (
-            <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-coral text-[10px] font-bold text-white grid place-items-center ring-2 ring-background z-10">
-              <Zap className="h-3 w-3" />
-            </span>
-          )}
+          <Bot className="h-4 w-4 animate-pulse" />
+          <span className="hidden group-hover:inline text-[11px] pr-1">SWIFT AI</span>
+          <Sparkles className="h-3 w-3 text-amber-300" />
         </motion.button>
+      )}
+
+      {!open && !isMinimized && (
+        <motion.div
+          drag
+          dragMomentum={false}
+          onDragStart={() => {
+            isDraggingRef.current = true;
+          }}
+          onDragEnd={() => {
+            // Short delay to avoid firing click after drag release
+            setTimeout(() => {
+              isDraggingRef.current = false;
+            }, 100);
+          }}
+          whileDrag={{ scale: 1.08, cursor: "grabbing" }}
+          className="fixed bottom-28 md:bottom-20 right-4 md:right-6 z-50 touch-none group"
+        >
+          {/* Minimize button on hover */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsMinimized(true);
+            }}
+            className="absolute -top-1 -left-1 z-20 h-5 w-5 rounded-full bg-muted/90 dark:bg-card/90 border border-border/80 text-foreground/70 hover:text-foreground hover:bg-destructive hover:text-destructive-foreground shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[10px]"
+            title="Minimize to side tab"
+          >
+            <Minus className="h-3 w-3" />
+          </button>
+
+          <motion.button
+            onClick={() => {
+              if (!isDraggingRef.current) {
+                setOpen(true);
+              }
+            }}
+            initial={{ scale: 0, rotate: -90 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 14 }}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.94 }}
+            className="relative h-15 w-15 md:h-16 md:w-16 rounded-full flex items-center justify-center bg-background/85 dark:bg-card/85 backdrop-blur-md border border-primary/25 shadow-xl hover:shadow-primary/20 cursor-grab active:cursor-grabbing transition-shadow"
+            aria-label="Open SWIFT AI (Drag to reposition)"
+            title="SWIFT AI (Drag anywhere to move • Click to open)"
+          >
+            {/* Ambient subtle glow ring */}
+            <span className="absolute inset-0 rounded-full bg-gradient-to-tr from-primary/20 via-primary/5 to-purple-500/20 blur-sm pointer-events-none" />
+
+            {/* Lottie Animation */}
+            <span className="relative h-14 w-14 md:h-15 md:w-15 flex items-center justify-center overflow-hidden pointer-events-none">
+              <Lottie animationData={chatbotAnimation} loop={true} className="w-full h-full object-contain scale-105" />
+            </span>
+
+            {(guideActive || pulse) && (
+              <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-coral text-[10px] font-bold text-white grid place-items-center ring-2 ring-background z-10 animate-bounce">
+                <Zap className="h-3 w-3" />
+              </span>
+            )}
+          </motion.button>
+        </motion.div>
       )}
       <AnimatePresence>
         {open && (

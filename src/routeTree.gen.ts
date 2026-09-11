@@ -32,6 +32,7 @@ import { Route as AdminLeaveCalendarRouteImport } from './routes/admin.leave-cal
 import { Route as AdminGrievancesRouteImport } from './routes/admin.grievances'
 import { Route as AdminEmployeesRouteImport } from './routes/admin.employees'
 import { Route as AdminDocumentsRouteImport } from './routes/admin.documents'
+import { Route as AdminDocumentationAltRouteImport } from './routes/admin.documentation-alt'
 import { Route as AdminComplianceDocsRouteImport } from './routes/admin.compliance-docs'
 import { Route as AdminComplianceRouteImport } from './routes/admin.compliance'
 import { Route as AdminBranchesRouteImport } from './routes/admin.branches'
@@ -156,6 +157,11 @@ const AdminDocumentsRoute = AdminDocumentsRouteImport.update({
   path: '/documents',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminDocumentationAltRoute = AdminDocumentationAltRouteImport.update({
+  id: '/documentation-alt',
+  path: '/documentation-alt',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminComplianceDocsRoute = AdminComplianceDocsRouteImport.update({
   id: '/compliance-docs',
   path: '/compliance-docs',
@@ -211,6 +217,7 @@ export interface FileRoutesByFullPath {
   '/admin/branches': typeof AdminBranchesRoute
   '/admin/compliance': typeof AdminComplianceRoute
   '/admin/compliance-docs': typeof AdminComplianceDocsRoute
+  '/admin/documentation-alt': typeof AdminDocumentationAltRoute
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
   '/admin/grievances': typeof AdminGrievancesRoute
@@ -243,6 +250,7 @@ export interface FileRoutesByTo {
   '/admin/branches': typeof AdminBranchesRoute
   '/admin/compliance': typeof AdminComplianceRoute
   '/admin/compliance-docs': typeof AdminComplianceDocsRoute
+  '/admin/documentation-alt': typeof AdminDocumentationAltRoute
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
   '/admin/grievances': typeof AdminGrievancesRoute
@@ -277,6 +285,7 @@ export interface FileRoutesById {
   '/admin/branches': typeof AdminBranchesRoute
   '/admin/compliance': typeof AdminComplianceRoute
   '/admin/compliance-docs': typeof AdminComplianceDocsRoute
+  '/admin/documentation-alt': typeof AdminDocumentationAltRoute
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
   '/admin/grievances': typeof AdminGrievancesRoute
@@ -312,6 +321,7 @@ export interface FileRouteTypes {
     | '/admin/branches'
     | '/admin/compliance'
     | '/admin/compliance-docs'
+    | '/admin/documentation-alt'
     | '/admin/documents'
     | '/admin/employees'
     | '/admin/grievances'
@@ -344,6 +354,7 @@ export interface FileRouteTypes {
     | '/admin/branches'
     | '/admin/compliance'
     | '/admin/compliance-docs'
+    | '/admin/documentation-alt'
     | '/admin/documents'
     | '/admin/employees'
     | '/admin/grievances'
@@ -377,6 +388,7 @@ export interface FileRouteTypes {
     | '/admin/branches'
     | '/admin/compliance'
     | '/admin/compliance-docs'
+    | '/admin/documentation-alt'
     | '/admin/documents'
     | '/admin/employees'
     | '/admin/grievances'
@@ -568,6 +580,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDocumentsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/documentation-alt': {
+      id: '/admin/documentation-alt'
+      path: '/documentation-alt'
+      fullPath: '/admin/documentation-alt'
+      preLoaderRoute: typeof AdminDocumentationAltRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/compliance-docs': {
       id: '/admin/compliance-docs'
       path: '/compliance-docs'
@@ -636,6 +655,7 @@ interface AdminRouteChildren {
   AdminBranchesRoute: typeof AdminBranchesRoute
   AdminComplianceRoute: typeof AdminComplianceRoute
   AdminComplianceDocsRoute: typeof AdminComplianceDocsRoute
+  AdminDocumentationAltRoute: typeof AdminDocumentationAltRoute
   AdminDocumentsRoute: typeof AdminDocumentsRoute
   AdminEmployeesRoute: typeof AdminEmployeesRoute
   AdminGrievancesRoute: typeof AdminGrievancesRoute
@@ -665,6 +685,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminBranchesRoute: AdminBranchesRoute,
   AdminComplianceRoute: AdminComplianceRoute,
   AdminComplianceDocsRoute: AdminComplianceDocsRoute,
+  AdminDocumentationAltRoute: AdminDocumentationAltRoute,
   AdminDocumentsRoute: AdminDocumentsRoute,
   AdminEmployeesRoute: AdminEmployeesRoute,
   AdminGrievancesRoute: AdminGrievancesRoute,
