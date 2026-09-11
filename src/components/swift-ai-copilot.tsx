@@ -242,9 +242,23 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
                   Live Brain · {company.name}
                 </div>
               </div>
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 relative cursor-pointer" onClick={() => setOpen(false)}>
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1 relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-white/20 h-8 w-8 relative cursor-pointer"
+                  onClick={() => {
+                    setOpen(false);
+                    setIsMinimized(true);
+                  }}
+                  title="Minimize to side tab"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 relative cursor-pointer" onClick={() => setOpen(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             <div ref={scroller} className="flex-1 overflow-y-auto p-3 space-y-3 bg-gradient-to-b from-background/50 to-muted/30">
