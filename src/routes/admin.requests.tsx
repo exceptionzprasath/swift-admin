@@ -165,6 +165,7 @@ function UnifiedRequestsHubPage() {
         if (activeCategoryTab === "loan" && item.category !== "loan") return false;
         if (activeCategoryTab === "grievance" && item.category !== "grievance") return false;
         if (activeCategoryTab === "compoff" && item.category !== "compoff" && item.category !== "shift_swap") return false;
+        if (activeCategoryTab === "team_group" && item.category !== "team_group") return false;
       }
 
       // 2. Status Filter
@@ -213,6 +214,7 @@ function UnifiedRequestsHubPage() {
     const docsPending = normalizedRequests.filter((r) => r.category === "document" && r.status === "Pending").length;
     const attPending = normalizedRequests.filter((r) => r.category === "attendance" && r.status === "Pending").length;
     const grvPending = normalizedRequests.filter((r) => r.category === "grievance" && r.status === "Pending").length;
+    const groupsPending = normalizedRequests.filter((r) => (r.category === "team_group" || (r.category as any) === "group") && r.status === "Pending").length;
 
     return {
       total,
@@ -225,6 +227,7 @@ function UnifiedRequestsHubPage() {
       docsPending,
       attPending,
       grvPending,
+      groupsPending,
     };
   }, [normalizedRequests]);
 
@@ -606,6 +609,15 @@ function UnifiedRequestsHubPage() {
                 <Coffee className="h-3.5 w-3.5 text-teal-500" />
                 Comp-Off & Swap
               </TabsTrigger>
+              <TabsTrigger value="team_group" className="rounded-lg gap-1.5 text-xs font-medium">
+                <Users className="h-3.5 w-3.5 text-teal-600" />
+                Team Groups
+                {kpis.groupsPending > 0 && (
+                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/15 text-amber-600 font-bold">
+                    {kpis.groupsPending}
+                  </Badge>
+                )}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -822,6 +834,7 @@ function UnifiedRequestsHubPage() {
                               {item.category === "loan" && <Banknote className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
                               {item.category === "grievance" && <MessageSquareHeart className="h-3.5 w-3.5 text-rose-500 shrink-0" />}
                               {item.category === "compoff" && <Coffee className="h-3.5 w-3.5 text-teal-500 shrink-0" />}
+                              {item.category === "team_group" && <Users className="h-3.5 w-3.5 text-teal-600 shrink-0" />}
                               <span className="font-medium text-xs text-foreground truncate">{item.type}</span>
                             </div>
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1140,6 +1153,50 @@ function UnifiedRequestsHubPage() {
                     </div>
                   )
                 )}
+              </div>
+            )}
+
+            {/* Team Group Details Section */}
+            {inspectItem.category === "team_group" && (
+              <div className="space-y-3 bg-teal-500/5 border border-teal-500/20 rounded-2xl p-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-sm"
+                    style={{ backgroundColor: inspectItem.originalItem?.metadata?.iconBgColor || "#075E54" }}
+                  >
+                    {inspectItem.originalItem?.metadata?.iconEmoji || "🚀"}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base text-foreground">
+                      {inspectItem.originalItem?.metadata?.groupSubject || inspectItem.title}
+                    </h4>
+                    <p className="text-xs text-muted-foreground">
+                      Requested by {inspectItem.employeeName} • {inspectItem.originalItem?.metadata?.memberCount || 0} participants
+                    </p>
+                  </div>
+                </div>
+
+                {inspectItem.originalItem?.metadata?.groupDescription && (
+                  <div className="bg-card p-3 rounded-xl border border-border text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground block mb-1">Group Purpose:</span>
+                    {inspectItem.originalItem.metadata.groupDescription}
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5 text-teal-600" />
+                    Selected Group Participants:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(inspectItem.originalItem?.metadata?.members || []).map((m: any, idx: number) => (
+                      <Badge key={idx} variant="secondary" className="gap-1 py-1 px-2 text-xs">
+                        <span className="font-medium">{m.name}</span>
+                        {m.role && <span className="text-[10px] text-muted-foreground">({m.role})</span>}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
