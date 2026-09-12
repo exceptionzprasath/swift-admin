@@ -826,6 +826,7 @@ export type PayrollInput = {
 export type PayrollRun = PayrollInput & {
   id: string;
   computed: ReturnType<typeof import("./payroll").computePayroll>;
+  overrideData?: any;
   createdAt: string;
 };
 
@@ -2819,7 +2820,12 @@ export const useStore = create<State>()(
           return { attendance: next };
         }),
       addPayroll: (p) => {
-        set((s) => ({ payrolls: [...s.payrolls, p] }));
+        set((s) => {
+          const filtered = s.payrolls.filter(
+            (existing) => existing.id !== p.id && !(existing.employeeId === p.employeeId && existing.month === p.month)
+          );
+          return { payrolls: [...filtered, p] };
+        });
         const tenantId = useAuth.getState().activeTenantId;
         if (tenantId && !get().demoMode) {
           syncItem("payrolls", { tenantId, ...p });

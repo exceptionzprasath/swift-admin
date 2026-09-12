@@ -249,36 +249,43 @@ function Dashboard() {
   // 4 Top KPI Cards strictly matching the reference aesthetic
   const kpiCards = [
     {
+      id: "payroll",
       label: "Current Payroll",
       value: inr(totalMonthlyCTC),
       bgClass: "bg-kpi-1 text-kpi-1-foreground",
       icon: IndianRupee,
       link: "/admin/payroll",
-      isAbsentees: false,
+      hasHover: false,
     },
     {
+      id: "employees",
       label: "Total Employees",
       value: employees.length.toString(),
       bgClass: "bg-kpi-2 text-kpi-2-foreground",
       icon: Users,
       link: "/admin/employees",
-      isAbsentees: false,
+      hasHover: true,
+      subText: `${employees.filter((e) => e.status !== "inactive").length} active`,
     },
     {
+      id: "absentees",
       label: "Today's Absentees",
       value: todayAbsentees.length.toString(),
       bgClass: "bg-kpi-3 text-kpi-3-foreground",
       icon: UserX,
       link: "/admin/attendance",
-      isAbsentees: true,
+      hasHover: true,
+      subText: `${employees.length - todayAbsentees.length}/${employees.length} present`,
     },
     {
+      id: "pending",
       label: "Pending Requests",
       value: pendingCount.toString(),
       bgClass: "bg-kpi-4 text-kpi-4-foreground",
       icon: Clock,
       link: "/admin/requests",
-      isAbsentees: false,
+      hasHover: true,
+      subText: pendingCount > 0 ? "Requires action" : "All cleared",
     },
   ];
 
@@ -384,7 +391,7 @@ function Dashboard() {
                     {c.label}
                   </span>
                   <div className="flex items-center gap-1.5 opacity-75">
-                    {c.isAbsentees && (
+                    {c.hasHover && (
                       <span className="text-[10px] font-medium tracking-normal opacity-90 underline decoration-dotted underline-offset-2">
                         Hover details
                       </span>
@@ -396,9 +403,9 @@ function Dashboard() {
                   <div className="font-display text-3xl sm:text-4xl font-bold tracking-tight">
                     {c.value}
                   </div>
-                  {c.isAbsentees && (
+                  {c.subText && (
                     <span className="text-xs opacity-80 font-medium">
-                      {employees.length - todayAbsentees.length}/{employees.length} present
+                      {c.subText}
                     </span>
                   )}
                 </div>
@@ -406,7 +413,113 @@ function Dashboard() {
             </motion.div>
           );
 
-          if (c.isAbsentees) {
+          if (c.id === "employees") {
+            return (
+              <HoverCard key={c.label} openDelay={100} closeDelay={200}>
+                <HoverCardTrigger asChild>
+                  {cardContent}
+                </HoverCardTrigger>
+                <HoverCardContent
+                  side="bottom"
+                  align="start"
+                  sideOffset={8}
+                  className="w-80 sm:w-96 p-0 overflow-hidden rounded-xl border border-border/80 bg-popover/95 backdrop-blur-md shadow-2xl z-50 text-popover-foreground"
+                >
+                  {/* Header */}
+                  <div className="p-3.5 bg-muted/40 border-b border-border/60 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center font-semibold text-xs">
+                        <Users className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-foreground leading-tight">
+                          Total Employees
+                        </h4>
+                        <p className="text-[10px] text-muted-foreground">
+                          {deptData.length} Departments · Active Staff
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                      {employees.length} Total
+                    </span>
+                  </div>
+
+                  {/* List of employees */}
+                  <div className="max-h-72 overflow-y-auto divide-y divide-border/40 p-1">
+                    {employees.length === 0 ? (
+                      <div className="py-6 px-4 text-center">
+                        <Users className="h-8 w-8 text-muted-foreground mx-auto mb-1.5 opacity-70" />
+                        <p className="text-xs font-semibold text-foreground">No employees registered</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Add employees to start tracking your workforce.
+                        </p>
+                      </div>
+                    ) : (
+                      employees.map((emp) => {
+                        const initials = (emp.name || "E")
+                          .split(" ")
+                          .map((n: string) => n[0])
+                          .slice(0, 2)
+                          .join("")
+                          .toUpperCase();
+
+                        return (
+                          <div
+                            key={emp.id}
+                            className="flex items-center justify-between gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {emp.photoDataUrl ? (
+                                <img
+                                  src={emp.photoDataUrl}
+                                  alt={emp.name}
+                                  className="h-8 w-8 rounded-full object-cover shrink-0 border border-border/60"
+                                />
+                              ) : (
+                                <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-semibold text-xs flex items-center justify-center shrink-0 border border-primary/20">
+                                  {initials}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-foreground truncate">
+                                  {emp.name}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground truncate">
+                                  <span className="font-mono">{emp.empCode || emp.id}</span> · {emp.department || "General"} · {emp.designation || "Staff"}
+                                </p>
+                              </div>
+                            </div>
+                            <span
+                              className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-md border ${
+                                emp.status === "inactive"
+                                  ? "bg-muted text-muted-foreground border-border/60"
+                                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                              }`}
+                            >
+                              {emp.status === "inactive" ? "Inactive" : "Active"}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Footer link to employees directory */}
+                  <div className="p-2.5 bg-muted/20 border-t border-border/60 text-center">
+                    <Link
+                      to="/admin/employees"
+                      className="text-[11px] font-medium text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      Open Employee Directory <ChevronRight className="h-3 w-3" />
+                    </Link>
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
+            );
+          }
+
+          if (c.id === "absentees") {
             return (
               <HoverCard key={c.label} openDelay={100} closeDelay={200}>
                 <HoverCardTrigger asChild>
@@ -493,6 +606,105 @@ function Dashboard() {
                       className="text-[11px] font-medium text-primary hover:underline inline-flex items-center gap-1"
                     >
                       Open Live Attendance Dossier <ChevronRight className="h-3 w-3" />
+                    </Link>
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
+            );
+          }
+
+          if (c.id === "pending") {
+            return (
+              <HoverCard key={c.label} openDelay={100} closeDelay={200}>
+                <HoverCardTrigger asChild>
+                  {cardContent}
+                </HoverCardTrigger>
+                <HoverCardContent
+                  side="bottom"
+                  align="start"
+                  sideOffset={8}
+                  className="w-80 sm:w-96 p-0 overflow-hidden rounded-xl border border-border/80 bg-popover/95 backdrop-blur-md shadow-2xl z-50 text-popover-foreground"
+                >
+                  {/* Header */}
+                  <div className="p-3.5 bg-muted/40 border-b border-border/60 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center font-semibold text-xs">
+                        <Clock className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-foreground leading-tight">
+                          Pending Requests
+                        </h4>
+                        <p className="text-[10px] text-muted-foreground">
+                          Awaiting approval & review
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      {pendingCount} Pending
+                    </span>
+                  </div>
+
+                  {/* List of pending requests */}
+                  <div className="max-h-72 overflow-y-auto divide-y divide-border/40 p-1">
+                    {pendingRequestsList.length === 0 ? (
+                      <div className="py-6 px-4 text-center">
+                        <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-1.5 opacity-90" />
+                        <p className="text-xs font-semibold text-foreground">All Caught Up!</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          No pending requests requiring your review.
+                        </p>
+                      </div>
+                    ) : (
+                      pendingRequestsList.map((req) => {
+                        const initials = (req.employeeName || "U")
+                          .split(" ")
+                          .map((n: string) => n[0])
+                          .slice(0, 2)
+                          .join("")
+                          .toUpperCase();
+
+                        return (
+                          <div
+                            key={req.id}
+                            className="flex items-center justify-between gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="h-8 w-8 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold text-xs flex items-center justify-center shrink-0 border border-amber-500/20">
+                                {initials}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-foreground truncate">
+                                  {req.employeeName}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground truncate">
+                                  <span className="font-semibold text-foreground/80">{req.categoryLabel || req.type}</span>
+                                  {req.amountOrDays ? ` · ${req.amountOrDays}` : ""}
+                                  {req.title ? ` · ${req.title}` : ""}
+                                </p>
+                                <p className="text-[9px] text-muted-foreground/75 font-mono">
+                                  {req.dateStr} {req.department ? `· ${req.department}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                            <span
+                              className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-md border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                            >
+                              {req.status}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Footer link to requests page */}
+                  <div className="p-2.5 bg-muted/20 border-t border-border/60 text-center">
+                    <Link
+                      to="/admin/requests"
+                      className="text-[11px] font-medium text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      Open Requests & Approvals Hub <ChevronRight className="h-3 w-3" />
                     </Link>
                   </div>
                 </HoverCardContent>
