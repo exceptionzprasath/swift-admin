@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useStore, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
 import { computePayroll, inr, type PayrollComputation } from "@/lib/payroll";
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
@@ -204,11 +204,14 @@ interface EditingPayrollRecord extends MonthlyOverrideData {
 export function PayrollPage() {
   const {
     employees,
+    updateEmployee,
     company,
     setCompany,
     attendance,
     roster,
     requests,
+    payrolls,
+    addPayroll,
     applySalaryRevision,
     currentUser,
     saveAllCompanySettings,
@@ -237,6 +240,24 @@ export function PayrollPage() {
 
   // Monthly Employee-Specific Overrides Map (Key: `${month}_${empId}`)
   const [monthlyOverrides, setMonthlyOverrides] = useState<Record<string, MonthlyOverrideData>>({});
+
+  // Rehydrate monthly overrides from DynamoDB persisted payroll runs
+  useEffect(() => {
+    if (payrolls && payrolls.length > 0) {
+      setMonthlyOverrides((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        payrolls.forEach((p) => {
+          const key = `${p.month}_${p.employeeId}`;
+          if (p.overrideData && !next[key]) {
+            next[key] = p.overrideData;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [payrolls]);
 
   // Preview Modal State
   const [previewTarget, setPreviewTarget] = useState<{
@@ -3084,49 +3105,82 @@ export function PayrollPage() {
                   <Button
                     onClick={() => {
                       const overrideKey = `${selectedMonth}_${editingRecord.emp.id}`;
+                      const overridePayload: MonthlyOverrideData = {
+                        daysWorked: editingRecord.daysWorked,
+                        otHours: editingRecord.otHours,
+                        weekOffEnabled: editingRecord.weekOffEnabled,
+                        weekOffDays: editingRecord.weekOffDays,
+                        customBasic: editingRecord.customBasic,
+                        basicPct: editingRecord.basicPct,
+                        daEnabled: editingRecord.daEnabled,
+                        daPct: editingRecord.daPct,
+                        hraEnabled: editingRecord.hraEnabled,
+                        hraPct: editingRecord.hraPct,
+                        oaEnabled: editingRecord.oaEnabled,
+                        oaPct: editingRecord.oaPct,
+                        caEnabled: editingRecord.caEnabled,
+                        caPct: editingRecord.caPct,
+                        ltaEnabled: editingRecord.ltaEnabled,
+                        ltaPct: editingRecord.ltaPct,
+                        customAllowances: editingRecord.customAllowances,
+                        attBonusEnabled: editingRecord.attBonusEnabled,
+                        attBonusAmount: editingRecord.attBonusAmount,
+                        yrBonusEnabled: editingRecord.yrBonusEnabled,
+                        yrBonusAmount: editingRecord.yrBonusAmount,
+                        incentive: editingRecord.incentive,
+                        bonus: editingRecord.bonus,
+                        variablePay: editingRecord.variablePay,
+                        otherEarnings: editingRecord.otherEarnings,
+                        pfEnabled: editingRecord.pfEnabled,
+                        esiEnabled: editingRecord.esiEnabled,
+                        ptEnabled: editingRecord.ptEnabled,
+                        ptAmountOverride: editingRecord.ptAmountOverride,
+                        lwfEnabled: editingRecord.lwfEnabled,
+                        lwfAmountOverride: editingRecord.lwfAmountOverride,
+                        tds: editingRecord.tds,
+                        loan: editingRecord.loan,
+                        advance: editingRecord.advance,
+                        otherDeductions: editingRecord.otherDeductions,
+                        notes: editingRecord.notes,
+                      };
+
+                      // 1. Update in-memory overrides for live preview
                       setMonthlyOverrides({
                         ...monthlyOverrides,
-                        [overrideKey]: {
+                        [overrideKey]: overridePayload,
+                      });
+
+                      // 2. Persist updated base salary to DynamoDB (swift_company_employees)
+                      const origSalary = editingRecord.emp.basic || editingRecord.emp.salary || 0;
+                      if (editingRecord.customBasic !== undefined && editingRecord.customBasic !== origSalary) {
+                        updateEmployee(editingRecord.emp.id, {
+                          basic: editingRecord.customBasic,
+                          salary: editingRecord.customBasic,
+                          fixedSalary: editingRecord.customBasic,
+                        });
+                      }
+
+                      // 3. Persist monthly payroll computation & overrides to DynamoDB (swift_company_payrolls)
+                      if (editingComp) {
+                        addPayroll({
+                          id: `pay-${editingRecord.emp.id}-${selectedMonth}`,
+                          employeeId: editingRecord.emp.id,
+                          month: selectedMonth,
                           daysWorked: editingRecord.daysWorked,
                           otHours: editingRecord.otHours,
-                          weekOffEnabled: editingRecord.weekOffEnabled,
-                          weekOffDays: editingRecord.weekOffDays,
-                          customBasic: editingRecord.customBasic,
-                          basicPct: editingRecord.basicPct,
-                          daEnabled: editingRecord.daEnabled,
-                          daPct: editingRecord.daPct,
-                          hraEnabled: editingRecord.hraEnabled,
-                          hraPct: editingRecord.hraPct,
-                          oaEnabled: editingRecord.oaEnabled,
-                          oaPct: editingRecord.oaPct,
-                          caEnabled: editingRecord.caEnabled,
-                          caPct: editingRecord.caPct,
-                          ltaEnabled: editingRecord.ltaEnabled,
-                          ltaPct: editingRecord.ltaPct,
-                          customAllowances: editingRecord.customAllowances,
-                          attBonusEnabled: editingRecord.attBonusEnabled,
-                          attBonusAmount: editingRecord.attBonusAmount,
-                          yrBonusEnabled: editingRecord.yrBonusEnabled,
-                          yrBonusAmount: editingRecord.yrBonusAmount,
                           incentive: editingRecord.incentive,
-                          bonus: editingRecord.bonus,
-                          variablePay: editingRecord.variablePay,
-                          otherEarnings: editingRecord.otherEarnings,
-                          pfEnabled: editingRecord.pfEnabled,
-                          esiEnabled: editingRecord.esiEnabled,
-                          ptEnabled: editingRecord.ptEnabled,
-                          ptAmountOverride: editingRecord.ptAmountOverride,
-                          lwfEnabled: editingRecord.lwfEnabled,
-                          lwfAmountOverride: editingRecord.lwfAmountOverride,
-                          tds: editingRecord.tds,
+                          shiftDays: editingRecord.daysWorked,
                           loan: editingRecord.loan,
                           advance: editingRecord.advance,
-                          otherDeductions: editingRecord.otherDeductions,
-                          notes: editingRecord.notes,
-                        },
-                      });
+                          bonus: (editingRecord.bonus || 0) + (editingRecord.attBonusAmount || 0) + (editingRecord.yrBonusAmount || 0),
+                          computed: editingComp,
+                          overrideData: overridePayload,
+                          createdAt: new Date().toISOString(),
+                        });
+                      }
+
                       setEditingRecord(null);
-                      toast.success(`Payslip parameters saved for ${editingRecord.emp.name}`);
+                      toast.success(`Payslip parameters & DynamoDB records saved for ${editingRecord.emp.name}`);
                     }}
                     className="h-9 text-xs rounded-xl gap-1.5 bg-primary text-primary-foreground font-semibold"
                   >

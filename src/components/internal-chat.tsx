@@ -1,6 +1,6 @@
 // SWIFT — Floating Internal Chat panel usable in both Admin and Employee portals.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MessageSquare, Send, X, Search, Users, ArrowLeft } from "lucide-react";
+import { MessageSquare, Send, X, Search, Users, ArrowLeft, Minus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,8 @@ type Props = {
 
 export function InternalChat({ me, contacts, title = "Internal Chat" }: Props) {
   const [open, setOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const isDraggingRef = useRef(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [q, setQ] = useState("");
@@ -58,31 +60,86 @@ export function InternalChat({ me, contacts, title = "Internal Chat" }: Props) {
 
   return (
     <>
-      <motion.button
-        onClick={() => setOpen((o) => !o)}
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.92 }}
-        transition={{ type: "spring", stiffness: 260, damping: 18 }}
-        className="fixed z-50 bottom-24 md:bottom-6 right-7 md:right-8 h-13 w-13 rounded-full bg-gradient-brand animate-swift-gradient shadow-glow text-white flex items-center justify-center cursor-pointer"
-        style={{ height: 52, width: 52 }}
-        aria-label="Open internal chat"
-      >
-        {totalUnread > 0 && (
-          <span className="absolute inset-0 rounded-full bg-primary/40 animate-swift-ping" />
-        )}
-        <MessageSquare className="h-5 w-5 relative" />
-        {totalUnread > 0 && (
-          <motion.span
+      {!open && isMinimized && (
+        <motion.button
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 20 }}
+          whileHover={{ scale: 1.05, x: -2 }}
+          onClick={() => setIsMinimized(false)}
+          className="fixed right-0 bottom-10 md:bottom-8 z-50 rounded-l-full bg-gradient-brand text-white pl-3 pr-2 py-2 shadow-lg shadow-primary/20 flex items-center gap-1.5 cursor-pointer border-y border-l border-white/20 backdrop-blur text-xs font-semibold group"
+          title="Click to restore Team Chat"
+        >
+          <MessageSquare className="h-4 w-4 relative" />
+          <span className="hidden group-hover:inline text-[11px] pr-1">Team Chat</span>
+          {totalUnread > 0 && (
+            <span className="bg-coral text-white text-[10px] rounded-full h-4 min-w-4 px-1 flex items-center justify-center font-bold ring-1 ring-background">
+              {totalUnread}
+            </span>
+          )}
+        </motion.button>
+      )}
+
+      {!open && !isMinimized && (
+        <motion.div
+          drag
+          dragMomentum={false}
+          onDragStart={() => {
+            isDraggingRef.current = true;
+          }}
+          onDragEnd={() => {
+            setTimeout(() => {
+              isDraggingRef.current = false;
+            }, 100);
+          }}
+          whileDrag={{ scale: 1.08, cursor: "grabbing" }}
+          className="fixed z-50 bottom-24 md:bottom-6 right-7 md:right-8 touch-none group"
+        >
+          {/* Minimize button on hover */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsMinimized(true);
+            }}
+            className="absolute -top-1 -left-1 z-20 h-5 w-5 rounded-full bg-muted/90 dark:bg-card/90 border border-border/80 text-foreground/70 hover:text-foreground hover:bg-destructive hover:text-destructive-foreground shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[10px]"
+            title="Minimize to side tab"
+          >
+            <Minus className="h-3 w-3" />
+          </button>
+
+          <motion.button
+            onClick={() => {
+              if (!isDraggingRef.current) {
+                setOpen((o) => !o);
+              }
+            }}
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            className="absolute -top-1 -right-1 bg-coral text-white text-[10px] rounded-full h-5 min-w-5 px-1 flex items-center justify-center font-semibold ring-2 ring-background"
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ type: "spring", stiffness: 260, damping: 18 }}
+            className="h-13 w-13 rounded-full bg-gradient-brand animate-swift-gradient shadow-glow text-white flex items-center justify-center cursor-grab active:cursor-grabbing transition-shadow relative"
+            style={{ height: 52, width: 52 }}
+            aria-label="Open internal chat"
+            title="Team Chat (Drag anywhere to move • Click to open)"
           >
-            {totalUnread}
-          </motion.span>
-        )}
-      </motion.button>
+            {totalUnread > 0 && (
+              <span className="absolute inset-0 rounded-full bg-primary/40 animate-swift-ping" />
+            )}
+            <MessageSquare className="h-5 w-5 relative pointer-events-none" />
+            {totalUnread > 0 && (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute -top-1 -right-1 bg-coral text-white text-[10px] rounded-full h-5 min-w-5 px-1 flex items-center justify-center font-semibold ring-2 ring-background pointer-events-none"
+              >
+                {totalUnread}
+              </motion.span>
+            )}
+          </motion.button>
+        </motion.div>
+      )}
 
       <AnimatePresence>
         {open && (
@@ -112,9 +169,22 @@ export function InternalChat({ me, contacts, title = "Internal Chat" }: Props) {
                   </div>
                 </div>
               </div>
-              <button onClick={() => setOpen(false)} aria-label="Close" className="p-1.5 rounded-full hover:bg-white/20 relative">
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1 relative">
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    setIsMinimized(true);
+                  }}
+                  aria-label="Minimize"
+                  title="Minimize to side tab"
+                  className="p-1.5 rounded-full hover:bg-white/20 cursor-pointer"
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <button onClick={() => setOpen(false)} aria-label="Close" className="p-1.5 rounded-full hover:bg-white/20 cursor-pointer">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <AnimatePresence mode="wait">

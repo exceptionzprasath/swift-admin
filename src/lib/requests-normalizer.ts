@@ -16,7 +16,7 @@ export type NormalizedRequest = {
   department: string;
   branchName: string;
   avatarUrl?: string;
-  category: "leave" | "attendance" | "document" | "loan" | "grievance" | "compoff" | "shift_swap" | "general" | "profile";
+  category: "leave" | "attendance" | "document" | "loan" | "grievance" | "compoff" | "shift_swap" | "general" | "profile" | "team_group";
   categoryLabel: string;
   type: string;
   title: string;
@@ -88,7 +88,9 @@ export function getNormalizedRequests(params: {
       avatarUrl: emp?.photoDataUrl,
       category: (r.category as any) || "general",
       categoryLabel:
-        r.category === "loan"
+        r.category === "team_group" || (r.category as any) === "group"
+          ? "Team Group Creation"
+          : r.category === "loan"
           ? "Salary Advance & Loan"
           : r.category === "profile" || (r.category as any) === "profile_update"
           ? "Profile & Onboarding Update"
