@@ -2,8 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, isMockEmployee, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
-import { generateAppointmentPDF } from "@/lib/pdf";
-import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, type LetterKey } from "@/lib/documents";
+import { generateAppointmentPDF, generateAppointmentPDFBlob } from "@/lib/pdf";
+import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, prepareDocAssets, generateLetterPDF, type LetterKey } from "@/lib/documents";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -1509,6 +1511,7 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
   const [uploadName, setUploadName] = useState("");
   const [previewDocModal, setPreviewDocModal] = useState<EmployeeDocument | null>(null);
   const [adminPreviewPageIndex, setAdminPreviewPageIndex] = useState(0);
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!employee) return null;
@@ -1525,6 +1528,178 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
     { code: "PFR", title: "EPF / EPS Statutory Declaration (Form 11)", key: "pfr" as LetterKey },
     { code: "ESI", title: "ESIC Medical Benefit Joining Declaration", key: "esi" as LetterKey },
   ];
+
+  const handleDownloadZip = async () => {
+    if (!employee) return;
+    setIsDownloadingZip(true);
+    try {
+      const zip = new JSZip();
+      let totalFilesAdded = 0;
+
+      const appSignedFolder = zip.folder("App_Signed_Documents");
+      const uploadsFolder = zip.folder("Employee_Uploads_and_KYC");
+
+      // 1. Process App Signed Documents (ONLY verified/signed documents)
+      const { company: prepCompany, assets: prepAssets } = await prepareDocAssets(company, docAssets);
+      const payroll = computePayroll({
+        company,
+        employee,
+        daysWorked: company.workingDaysPerMonth,
+        otHours: 0,
+        incentive: 0,
+        shiftDays: 0,
+        loan: 0,
+        advance: 0,
+        bonus: 0,
+      });
+
+      for (const agr of companyAgreements) {
+        const isSigned = !!signedDocs[agr.code] || (agr.code === "APT" && employee.acceptance?.signed);
+        if (!isSigned) continue; // Skip pending documents
+
+        if (agr.code === "APT") {
+          const { blob, filename } = await generateAppointmentPDFBlob(prepCompany, employee, payroll, prepAssets);
+          appSignedFolder?.file(filename, blob);
+          totalFilesAdded++;
+        } else {
+          const tpl =
+            DEFAULT_TEMPLATES.find((t) => t.key === agr.key || t.code === agr.code) ||
+            buildGenericTemplate(agr.code, agr.title, employee);
+          const { blob, filename } = generateLetterPDF(prepCompany, employee, tpl, prepAssets);
+          appSignedFolder?.file(filename, blob);
+          totalFilesAdded++;
+        }
+      }
+
+      // Helper to detect true format and extension from payload magic bytes / data URI
+      const detectFileExtensionAndData = (
+        rawSrc: string,
+        origName: string
+      ): { ext: string; base64Payload: string | null; isRemoteUrl: boolean } => {
+        let ext = "";
+        let base64Payload: string | null = null;
+        let isRemoteUrl = false;
+
+        const cleanOrigName = (origName || "document").trim();
+        const origExtMatch = cleanOrigName.match(/\.(png|jpe?g|webp|pdf|docx?)$/i);
+        const origExt = origExtMatch ? origExtMatch[0].toLowerCase() : "";
+
+        if (rawSrc.startsWith("data:")) {
+          const commaIdx = rawSrc.indexOf(",");
+          const header = commaIdx !== -1 ? rawSrc.slice(0, commaIdx).toLowerCase() : "";
+          base64Payload = commaIdx !== -1 ? rawSrc.slice(commaIdx + 1) : "";
+
+          if (header.includes("image/png") || base64Payload.startsWith("iVBORw0KGgo")) {
+            ext = ".png";
+          } else if (header.includes("image/jpeg") || header.includes("image/jpg") || base64Payload.startsWith("/9j/")) {
+            ext = ".jpg";
+          } else if (header.includes("image/webp") || base64Payload.startsWith("UklGR")) {
+            ext = ".webp";
+          } else if (header.includes("application/pdf") || base64Payload.startsWith("JVBERi0")) {
+            ext = ".pdf";
+          } else {
+            if (base64Payload.startsWith("JVBERi0")) ext = ".pdf";
+            else if (base64Payload.startsWith("iVBORw0KGgo")) ext = ".png";
+            else if (base64Payload.startsWith("/9j/")) ext = ".jpg";
+            else if (base64Payload.startsWith("UklGR")) ext = ".webp";
+            else ext = origExt || ".jpg";
+          }
+        } else if (/^[A-Za-z0-9+/=\r\n]{50,}$/.test(rawSrc.trim())) {
+          base64Payload = rawSrc.trim();
+          if (base64Payload.startsWith("JVBERi0")) ext = ".pdf";
+          else if (base64Payload.startsWith("iVBORw0KGgo")) ext = ".png";
+          else if (base64Payload.startsWith("/9j/")) ext = ".jpg";
+          else if (base64Payload.startsWith("UklGR")) ext = ".webp";
+          else ext = origExt || ".jpg";
+        } else {
+          isRemoteUrl = true;
+          ext = origExt || ".jpg";
+        }
+
+        return { ext: ext === ".jpeg" ? ".jpg" : ext, base64Payload, isRemoteUrl };
+      };
+
+      for (const doc of uploadedList) {
+        const sources: string[] =
+          doc.files && doc.files.length > 0
+            ? doc.files
+            : doc.dataUrl
+            ? [doc.dataUrl]
+            : [];
+
+        const baseTitle = (doc.name || doc.type || "Document")
+          .replace(/\.(png|jpe?g|webp|pdf|docx?)$/i, "")
+          .replace(/[^a-zA-Z0-9_-]/g, "_")
+          .replace(/_+/g, "_")
+          .trim() || "document";
+
+        for (let idx = 0; idx < sources.length; idx++) {
+          const src = sources[idx];
+          if (!src) continue;
+
+          const { ext, base64Payload, isRemoteUrl } = detectFileExtensionAndData(src, doc.name || doc.type || "");
+          const finalExt = ext || ".jpg";
+          const fileName =
+            sources.length > 1
+              ? `${baseTitle}_page_${idx + 1}${finalExt}`
+              : `${baseTitle}${finalExt}`;
+
+          if (base64Payload) {
+            uploadsFolder?.file(fileName, base64Payload, { base64: true });
+            totalFilesAdded++;
+          } else if (isRemoteUrl) {
+            try {
+              const res = await fetch(src);
+              if (res.ok) {
+                const blob = await res.blob();
+                let remoteExt = finalExt;
+                if (blob.type === "application/pdf") remoteExt = ".pdf";
+                else if (blob.type === "image/png") remoteExt = ".png";
+                else if (blob.type === "image/jpeg") remoteExt = ".jpg";
+                else if (blob.type === "image/webp") remoteExt = ".webp";
+
+                const remoteFileName =
+                  sources.length > 1
+                    ? `${baseTitle}_page_${idx + 1}${remoteExt}`
+                    : `${baseTitle}${remoteExt}`;
+
+                uploadsFolder?.file(remoteFileName, blob);
+                totalFilesAdded++;
+              }
+            } catch (err) {
+              console.warn("Failed to fetch remote document file:", fileName, err);
+            }
+          }
+        }
+      }
+
+      if (totalFilesAdded === 0) {
+        toast.warning("No verified signed documents or uploaded files found to download.");
+        return;
+      }
+
+      const zipBlob = await zip.generateAsync({
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      });
+
+      const safeName = (employee.name || "employee")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-z0-9_-]/g, "");
+      const zipFileName = `${safeName || "employee"}_documents.zip`;
+
+      saveAs(zipBlob, zipFileName);
+      toast.success(`Downloaded ${zipFileName} (${totalFilesAdded} document${totalFilesAdded > 1 ? "s" : ""})`);
+    } catch (err) {
+      console.error("Download ZIP failed:", err);
+      toast.error("Failed to generate ZIP. Please try again.");
+    } finally {
+      setIsDownloadingZip(false);
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1585,6 +1760,20 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
                 </div>
               </div>
             </div>
+
+            <Button
+              size="sm"
+              onClick={handleDownloadZip}
+              disabled={isDownloadingZip}
+              className="rounded-xl text-xs gap-1.5 font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs shrink-0"
+            >
+              {isDownloadingZip ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              <span>{isDownloadingZip ? "Generating ZIP..." : "Download ZIP"}</span>
+            </Button>
           </div>
         </DialogHeader>
 
@@ -1804,8 +1993,21 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
           </div>
         )}
 
-        <DialogFooter className="pt-3 border-t border-border">
-          <Button onClick={onClose} className="rounded-xl text-xs h-9 bg-primary text-primary-foreground font-semibold">
+        <DialogFooter className="pt-3 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2">
+          <Button
+            size="sm"
+            onClick={handleDownloadZip}
+            disabled={isDownloadingZip}
+            className="rounded-xl text-xs h-9 gap-1.5 font-semibold bg-emerald-600 hover:bg-emerald-700 text-white w-full sm:w-auto"
+          >
+            {isDownloadingZip ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            <span>{isDownloadingZip ? "Generating ZIP..." : "Download All as ZIP"}</span>
+          </Button>
+          <Button onClick={onClose} variant="outline" className="rounded-xl text-xs h-9 font-semibold w-full sm:w-auto">
             Close
           </Button>
         </DialogFooter>

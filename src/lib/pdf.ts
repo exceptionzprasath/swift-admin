@@ -766,7 +766,7 @@ export async function generateSalarySlipPDF(
   }
 }
 
-export async function generateAppointmentPDF(
+export async function generateAppointmentPDFDoc(
   c: Company,
   e: Employee,
   p: PayrollComputation,
@@ -832,31 +832,47 @@ export async function generateAppointmentPDF(
     margin: { left: 14, right: 14 },
   });
 
-  let yEnd = (doc as any).lastAutoTable.finalY + 12;
-  if (yEnd > 235) {
-    doc.addPage();
-    yEnd = 35;
-  }
+  const finalY = (doc as any).lastAutoTable?.finalY || 180;
+  const yTerms = Math.min(finalY + 6, 215);
 
-  // Two column signature block (Company Authorised Signatory + Employee E-Signature)
-  doc.setFontSize(9.5);
-  doc.setTextColor(30, 41, 59);
-
-  // Left: Company Signatory
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "bold");
-  doc.text("For " + (prepCompany.legalName || prepCompany.name), 14, yEnd);
-  const compSig = prepAssets?.authorisedSignatoryDataUrl;
-  if (compSig) {
-    drawImageSafe(doc, compSig, 14, yEnd + 3, 45, 14);
-  }
+  doc.setTextColor(15, 23, 42);
+  doc.text("Standard Terms & Compliance Undertakings:", 14, yTerms);
+
   doc.setFont("helvetica", "normal");
-  doc.text("_________________________", 14, yEnd + 20);
-  doc.text("Authorised Signatory", 14, yEnd + 25);
-  if (prepAssets?.digitalCertificateName) {
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  const terms = [
+    "1. Probation Period: 3 (Three) months from the date of joining, extendable at the discretion of management.",
+    "2. Notice Period: 30 days written notice or gross salary in lieu thereof during probation; 60 days post-confirmation.",
+    "3. Working Hours & Shift: As per company roster; strict adherence to attendance and biometric/app punch policies.",
+    "4. Confidentiality & IP: All work products, code, documentation, and client data remain exclusive property of the company.",
+    "5. Termination: Summary dismissal without notice for gross misconduct, breach of confidentiality, or criminal conviction.",
+  ];
+  let yTermLine = yTerms + 4.5;
+  terms.forEach((t) => {
+    doc.text(t, 14, yTermLine);
+    yTermLine += 4;
+  });
+
+  const ySign = Math.max(yTermLine + 4, 240);
+  const yEnd = Math.min(ySign, 255);
+
+  // Left: Authorized Signatory
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text("For " + (c.legalName || c.name || "SWIFT ENTERPRISE"), 14, yEnd);
+
+  const authSig = prepAssets?.authorisedSignatoryDataUrl;
+  if (authSig) {
+    drawImageSafe(doc, authSig, 14, yEnd + 3, 45, 14);
+  } else {
+    doc.setFont("helvetica", "italic");
     doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Digitally verified: ${prepAssets.digitalCertificateName}`, 14, yEnd + 29);
-    doc.setFontSize(9.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("Digitally Authorized by HR", 14, yEnd + 12);
     doc.setTextColor(30, 41, 59);
   }
 
@@ -919,5 +935,38 @@ export async function generateAppointmentPDF(
   doc.text(`Generated via SWIFT HRMS · Confidential Employment Document · ${c.legalName || c.name}`, 14, 290);
   doc.text(`Page 1 of 1`, 196, 290, { align: "right" });
 
+  return doc;
+}
+
+export async function generateAppointmentPDFBlob(
+  c: Company,
+  e: Employee,
+  p: PayrollComputation,
+  assets?: {
+    logoDataUrl?: string;
+    companySealDataUrl?: string;
+    authorisedSignatoryDataUrl?: string;
+    digitalCertificateName?: string;
+  }
+): Promise<{ blob: Blob; filename: string }> {
+  const doc = await generateAppointmentPDFDoc(c, e, p, assets);
+  return {
+    blob: doc.output("blob"),
+    filename: `Appointment_${e.empCode || "EMP"}.pdf`,
+  };
+}
+
+export async function generateAppointmentPDF(
+  c: Company,
+  e: Employee,
+  p: PayrollComputation,
+  assets?: {
+    logoDataUrl?: string;
+    companySealDataUrl?: string;
+    authorisedSignatoryDataUrl?: string;
+    digitalCertificateName?: string;
+  }
+) {
+  const doc = await generateAppointmentPDFDoc(c, e, p, assets);
   doc.save(`Appointment_${e.empCode || "EMP"}.pdf`);
 }

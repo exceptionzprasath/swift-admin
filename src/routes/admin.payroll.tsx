@@ -53,9 +53,11 @@ import {
   SlidersHorizontal,
   ArrowRight,
   Layers,
+  FileSpreadsheet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { type RevisionTarget, type RevisionReason } from "@/lib/salary-revision";
+import { downloadWageRegisterExcel } from "@/lib/wage-register-excel";
 
 export const Route = createFileRoute("/admin/payroll")({
   head: () => ({ meta: [{ title: "Payroll & Salary Structures · SWIFT" }] }),
@@ -229,6 +231,9 @@ export function PayrollPage() {
 
   // Saving state
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Wage Register Excel Export Dialog
+  const [wageRegisterOpen, setWageRegisterOpen] = useState(false);
 
   // Live Blueprint Benchmark Salary (from user template: 30000)
   const [benchmarkSalary, setBenchmarkSalary] = useState<number>(30000);
@@ -782,6 +787,16 @@ export function PayrollPage() {
 
         {/* Global Action Buttons */}
         <div className="flex items-center gap-2.5 shrink-0">
+          <Button
+            variant="outline"
+            onClick={() => setWageRegisterOpen(true)}
+            className="h-9 px-3.5 rounded-xl border-border hover:bg-muted font-semibold text-xs gap-1.5 text-foreground shadow-xs"
+            title="Export Monthly Wage Register, Salary Slips & ESI Statement into Excel"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Download Wage Register</span>
+          </Button>
+
           <Button
             onClick={handleSavePayrollSettings}
             disabled={savingSettings}
@@ -3252,6 +3267,213 @@ export function PayrollPage() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* ========================================================================= */}
+      {/* MODAL 4: WAGE REGISTER & ESI STATEMENT EXCEL EXPORT POPUP DIALOG           */}
+      {/* ========================================================================= */}
+      <WageRegisterDownloadDialog
+        open={wageRegisterOpen}
+        onClose={() => setWageRegisterOpen(false)}
+        company={company}
+        employees={employees}
+        attendance={attendance}
+        roster={roster}
+        requests={requests}
+        monthlyOverrides={monthlyOverrides}
+        defaultMonth={selectedMonth}
+      />
     </div>
   );
 }
+
+function WageRegisterDownloadDialog({
+  open,
+  onClose,
+  company,
+  employees,
+  attendance,
+  roster,
+  requests,
+  monthlyOverrides,
+  defaultMonth,
+}: {
+  open: boolean;
+  onClose: () => void;
+  company: Company;
+  employees: Employee[];
+  attendance: any[];
+  roster: any[];
+  requests: any[];
+  monthlyOverrides: Record<string, any>;
+  defaultMonth: string;
+}) {
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonth || new Date().toISOString().slice(0, 7));
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    if (defaultMonth) {
+      setSelectedMonth(defaultMonth);
+    }
+  }, [defaultMonth]);
+
+  // Generate a list of recent 12 months for quick selection
+  const monthOptions = useMemo(() => {
+    const list: { value: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = d.toISOString().slice(0, 7);
+      const label = d.toLocaleString("en-US", { month: "long", year: "numeric" });
+      list.push({ value: val, label });
+    }
+    return list;
+  }, []);
+
+  const monthLabel = useMemo(() => {
+    if (!selectedMonth) return "";
+    const [y, m] = selectedMonth.split("-").map(Number);
+    if (!y || !m) return selectedMonth;
+    return new Date(y, m - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+  }, [selectedMonth]);
+
+  const activeStaffCount = useMemo(() => {
+    return (
+      employees.filter(
+        (e) => e.status !== "inactive" || (e.doj && e.doj <= `${selectedMonth}-31`)
+      ).length || employees.length
+    );
+  }, [employees, selectedMonth]);
+
+  const handleDownload = () => {
+    try {
+      setDownloading(true);
+      downloadWageRegisterExcel({
+        company,
+        employees,
+        attendance,
+        roster,
+        requests,
+        monthlyOverrides,
+        selectedMonth,
+      });
+      toast.success(`Wage Register & ESI Statement for ${monthLabel} downloaded successfully!`);
+      onClose();
+    } catch (err) {
+      console.error("Wage register export error:", err);
+      toast.error("Failed to generate Wage Register Excel. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
+        <DialogHeader className="pb-3 border-b border-border">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2 font-display text-lg font-bold">
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                <FileSpreadsheet className="h-5 w-5" />
+              </div>
+              <span>Download Wage Register</span>
+            </DialogTitle>
+            <Badge
+              variant="outline"
+              className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-xs font-semibold"
+            >
+              {activeStaffCount} Employees Eligible
+            </Badge>
+          </div>
+          <DialogDescription className="text-xs text-muted-foreground pt-1.5 leading-relaxed">
+            Select the processing month to export the complete statutory Wage Register spreadsheet into Microsoft Excel (<strong className="text-foreground font-semibold">.xlsx</strong>).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-3">
+          {/* Month Selection Box */}
+          <div className="p-4 rounded-2xl border border-primary/20 bg-primary/5 space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-primary" /> Select Processing Month
+              </Label>
+              <Badge variant="secondary" className="text-xs font-semibold text-primary font-mono">
+                {monthLabel}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-[11px] text-muted-foreground">Select from recent months</Label>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="text-xs bg-card h-9">
+                    <SelectValue placeholder="Choose month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-xs font-medium">
+                        {opt.label} ({opt.value})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[11px] text-muted-foreground">Custom Month (YYYY-MM)</Label>
+                <Input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => e.target.value && setSelectedMonth(e.target.value)}
+                  className="text-xs bg-card h-9 font-medium"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Included Columns Breakdown */}
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center justify-between">
+              <span>Included Register Structure</span>
+              <Badge variant="secondary" className="text-[10px] font-mono">
+                50 Statutory Columns (.xlsx)
+              </Badge>
+            </div>
+
+            <div className="p-3 rounded-xl border border-border/80 bg-muted/30 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">✓</span>
+                  Wage Register Columns
+                </span>
+                <Badge variant="secondary" className="text-[9.5px] font-mono">Statutory Master</Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed pl-6.5">
+                S.No, EMP ID, Name of the Employee, UAN No, ESI No, Gender, Present & Permanent Address, Number of days Calculate, No of Days Worked, FH/NH/PL/ML, Sunday, Half day, PAID LEAVES DAYS, Sundays work, No of days in month, Number of days Calculate paid, Absent days, Fixed Salary, Pay Slab, Per hrs, Per Hrs working time, Per hrs Amt, LATE PUNCHING Hrs & Amt, Basic+DA, HRA, Conveyance Allowance, Other Allowances, LTA, Sundays days Amount, Incentives, Gross Salary, Basic+DA for PF, EPF Elig, EPF - 12%, ESI Elig, ESI- 0.75%, Advance, PT, TDS/4% Cass, LWF, Deductions, NCP Days, Net Salary, Month, Remarks, 13%, EPF, ESI.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="flex items-center justify-between sm:justify-between gap-2 pt-3 border-t border-border mt-2">
+          <Button variant="outline" onClick={onClose} disabled={downloading} className="rounded-xl text-xs h-9">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDownload}
+            disabled={downloading || activeStaffCount === 0}
+            className="rounded-xl text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-500/20 gap-1.5"
+          >
+            {downloading ? (
+              <>
+                <RotateCcw className="h-3.5 w-3.5 animate-spin" /> Generating Workbook...
+              </>
+            ) : (
+              <>
+                <FileDown className="h-4 w-4" /> Download Wage Register ({monthLabel})
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
