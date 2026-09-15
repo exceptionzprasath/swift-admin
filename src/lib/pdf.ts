@@ -225,11 +225,16 @@ export async function generateSalarySlipPDF(
   let formattedMonthDateStr = `01-${safeMonth}`;
   let formattedMonthNameStr = safeMonth;
   try {
-    const [y, m] = safeMonth.split("-");
-    if (y && m) {
-      formattedMonthDateStr = `01-${m}-${y}`;
-      const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
-      formattedMonthNameStr = d.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+    if (safeMonth.includes(" to ") || safeMonth.includes(" - ")) {
+      formattedMonthDateStr = safeMonth;
+      formattedMonthNameStr = safeMonth.toUpperCase();
+    } else {
+      const [y, m] = safeMonth.split("-");
+      if (y && m) {
+        formattedMonthDateStr = `01-${m}-${y}`;
+        const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+        formattedMonthNameStr = d.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+      }
     }
   } catch {
     // fallback

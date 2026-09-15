@@ -383,10 +383,10 @@ export class AIQueryEngine {
 
       // Clean Markdown Table rows
       const tableRows = breakdown.map((b) =>
-        `| ${b.name} | ${b.department || "General"} | ${b.totalWorkingDays} | ${b.presentDays} | ${b.absentDays} | ${b.leaveDays} | ${b.lateDays} | ${b.attendancePercentage}% |`
+        `| ${b.name} | ${b.empCode} | ${b.department || "General"} | ${b.totalWorkingDays} | ${b.presentDays} | ${b.absentDays} | ${b.leaveDays} | ${b.lateDays} | ${b.attendancePercentage}% |`
       ).join("\n");
 
-      const summaryText = `📊 **Attendance Summary** *Period: ${period}*\n\n• **Total Working Days:** ${standardWorkingDays}\n• **Total Present Punches:** ${totalPresent}\n• **Company Attendance Rate:** ${overallRate}%\n• **Total Overtime:** ${totalOt} hrs\n\n🏆 **Attendance Highlights**\n• **Top Attendees:** ${topAttendeesStr}\n• **Frequent Late Check-ins:** ${frequentLateStr}\n\n| Employee | Dept | Working Days | Present | Absent | Leave | Late | Attendance % |\n|---|---|---|---|---|---|---|---|\n${tableRows}\n\n*Note: Absenteeism is calculated based on the number of days employees were scheduled to work but did not punch in.*`;
+      const summaryText = `📊 **Attendance Summary** *Period: ${period}*\n\n• **Total Working Days:** ${standardWorkingDays}\n• **Total Present Punches:** ${totalPresent}\n• **Company Attendance Rate:** ${overallRate}%\n• **Total Overtime:** ${totalOt} hrs\n\n🏆 **Attendance Highlights**\n• **Top Attendees:** ${topAttendeesStr}\n• **Frequent Late Check-ins:** ${frequentLateStr}\n\n| Employee | Employee ID | Dept | Working Days | Present | Absent | Leave | Late | Attendance % |\n|---|---|---|---|---|---|---|---|---|\n${tableRows}\n\n*Note: Absenteeism is calculated based on the number of days employees were scheduled to work but did not punch in.*`;
 
       return {
         handled: true,
@@ -697,7 +697,7 @@ export class AIQueryEngine {
           type: "NO_DATA",
           title: "Employee Not Found",
           message: `I couldn't find any employee record matching "${rawQuery}" in your company database.`,
-          suggestions: employees.slice(0, 3).map((e) => `Who is ${e.name}?`),
+          suggestions: employees.slice(0, 3).map((e) => `Who is ${e.name} (${e.empCode})?`),
         },
         summaryText: `I couldn't find an employee matching "${rawQuery}".`,
       };
