@@ -57,11 +57,16 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
   let formattedMonthDateStr = `01-${month}`;
   let formattedMonthNameStr = month;
   try {
-    const [y, m] = month.split("-");
-    if (y && m) {
-      formattedMonthDateStr = `01-${m}-${y}`;
-      const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
-      formattedMonthNameStr = d.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+    if (month && (month.includes(" to ") || month.includes(" - ") || month.includes("_"))) {
+      formattedMonthDateStr = month;
+      formattedMonthNameStr = month.toUpperCase();
+    } else {
+      const [y, m] = month.split("-");
+      if (y && m) {
+        formattedMonthDateStr = `01-${m}-${y}`;
+        const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+        formattedMonthNameStr = d.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+      }
     }
   } catch {
     // fallback

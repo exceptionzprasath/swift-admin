@@ -52,6 +52,8 @@ import {
   Calendar,
   SlidersHorizontal,
   ArrowRight,
+  CalendarRange,
+  X,
   Layers,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -63,15 +65,42 @@ export const Route = createFileRoute("/admin/payroll")({
 });
 
 /**
- * Calculates weekly offs from Swift Roster shift assignments for an employee in a given month.
+ * Calculates weekly offs from Swift Roster shift assignments for an employee in a given month or custom date range.
  * If explicit "off" roster assignments exist, counts them; otherwise calculates calendar Sundays.
  */
 function getRosterWeekOffDays(
   employeeId: string,
   employeeName: string,
   monthStr: string,
-  rosterList: ShiftAssignment[]
+  rosterList: ShiftAssignment[],
+  customRange?: { start: string; end: string }
 ): number {
+  if (customRange?.start && customRange?.end) {
+    const rangeRoster = (rosterList || []).filter(
+      (r) =>
+        (r.employeeId === employeeId || r.employeeName === employeeName) &&
+        r.date >= customRange.start &&
+        r.date <= customRange.end
+    );
+    const explicitOffs = rangeRoster.filter(
+      (r) => r.shiftId === "off" || r.shiftName?.toLowerCase().includes("off")
+    ).length;
+
+    if (explicitOffs > 0) return explicitOffs;
+
+    // Fallback: calculate calendar Sundays in this custom date range
+    let sundays = 0;
+    try {
+      const cur = new Date(customRange.start);
+      const end = new Date(customRange.end);
+      while (cur <= end) {
+        if (cur.getDay() === 0) sundays++;
+        cur.setDate(cur.getDate() + 1);
+      }
+    } catch {}
+    return sundays;
+  }
+
   const monthRoster = (rosterList || []).filter(
     (r) => (r.employeeId === employeeId || r.employeeName === employeeName) && r.date.startsWith(monthStr)
   );
@@ -227,6 +256,65 @@ export function PayrollPage() {
     new Date().toISOString().slice(0, 7) // YYYY-MM
   );
 
+  // Custom Date Range State for Particular Days Payroll
+  const [isCustomDateRange, setIsCustomDateRange] = useState<boolean>(false);
+  const [customStartDate, setCustomStartDate] = useState<string>(() => {
+    const yyyymm = new Date().toISOString().slice(0, 7);
+    return `${yyyymm}-01`;
+  });
+  const [customEndDate, setCustomEndDate] = useState<string>(() => {
+    const d = new Date();
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return `${d.toISOString().slice(0, 7)}-${String(lastDay).padStart(2, "0")}`;
+  });
+
+  // Keep custom start & end dates in sync whenever selectedMonth changes (unless custom mode is already modified)
+  useEffect(() => {
+    if (selectedMonth && !isCustomDateRange) {
+      const [y, m] = selectedMonth.split("-").map(Number);
+      if (y && m) {
+        const lastDay = new Date(y, m, 0).getDate();
+        setCustomStartDate(`${selectedMonth}-01`);
+        setCustomEndDate(`${selectedMonth}-${String(lastDay).padStart(2, "0")}`);
+      }
+    }
+  }, [selectedMonth, isCustomDateRange]);
+
+  // Derived Range Working Days and Calendar Days
+  const { totalRangeDays, rangeWorkingDays } = useMemo(() => {
+    if (!isCustomDateRange || !customStartDate || !customEndDate) {
+      const [y, m] = selectedMonth.split("-").map(Number);
+      const days = new Date(y || 2026, m || 9, 0).getDate();
+      return { totalRangeDays: days, rangeWorkingDays: company.workingDaysPerMonth || 26 };
+    }
+    try {
+      const start = new Date(customStartDate);
+      const end = new Date(customEndDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+        return { totalRangeDays: 1, rangeWorkingDays: 1 };
+      }
+      let days = 0;
+      let sundays = 0;
+      const cur = new Date(start);
+      while (cur <= end) {
+        days++;
+        if (cur.getDay() === 0) sundays++;
+        cur.setDate(cur.getDate() + 1);
+      }
+      return {
+        totalRangeDays: days,
+        rangeWorkingDays: Math.max(1, days - sundays),
+      };
+    } catch {
+      return { totalRangeDays: 30, rangeWorkingDays: 26 };
+    }
+  }, [isCustomDateRange, customStartDate, customEndDate, selectedMonth, company.workingDaysPerMonth]);
+
+  // Effective period key for locking, overrides & PDF labelling
+  const effectivePeriodKey = isCustomDateRange ? `${customStartDate}_${customEndDate}` : selectedMonth;
+  const effectivePeriodLabel = isCustomDateRange ? `${customStartDate} to ${customEndDate}` : selectedMonth;
+  const isPeriodLocked = !!(company.payrollLockedMonths && company.payrollLockedMonths[effectivePeriodKey]);
+
   // Saving state
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -282,8 +370,8 @@ export function PayrollPage() {
   const [revReason, setRevReason] = useState<RevisionReason>("increment");
   const [revEffective] = useState(new Date().toISOString().slice(0, 10));
 
-  // Check if current month is locked
-  const isMonthLocked = !!(company.payrollLockedMonths && company.payrollLockedMonths[selectedMonth]);
+  // Check if current month/period is locked
+  const isMonthLocked = isPeriodLocked;
 
   // Handle Save All Settings to DynamoDB
   const handleSavePayrollSettings = async () => {
@@ -501,9 +589,13 @@ export function PayrollPage() {
     const wd = company.workingDaysPerMonth || 26;
 
     return filteredEmployees.map((emp) => {
-      const monthAtt = attendance.filter(
-        (a) => (a.employeeId === emp.id || a.employeeName === emp.name) && a.date.startsWith(selectedMonth)
-      );
+      const monthAtt = attendance.filter((a) => {
+        if (a.employeeId !== emp.id && a.employeeName !== emp.name) return false;
+        if (isCustomDateRange && customStartDate && customEndDate) {
+          return a.date >= customStartDate && a.date <= customEndDate;
+        }
+        return a.date.startsWith(selectedMonth);
+      });
 
       const daysPresent = monthAtt.filter((a) => a.status === "present").length;
       const daysHalf = monthAtt.filter((a) => a.status === "half-day").length;
@@ -541,11 +633,17 @@ export function PayrollPage() {
       }, 0);
 
       // Check for employee-specific monthly override
-      const overrideKey = `${selectedMonth}_${emp.id}`;
-      const ov = monthlyOverrides[overrideKey] || {};
+      const overrideKey = `${effectivePeriodKey}_${emp.id}`;
+      const ov = monthlyOverrides[overrideKey] || monthlyOverrides[`${selectedMonth}_${emp.id}`] || {};
 
-      // Fetch Weekly Offs from Swift Roster for this employee in this month (for metadata display on payslip)
-      const rosterWeekOffDays = getRosterWeekOffDays(emp.id, emp.name, selectedMonth, roster);
+      // Fetch Weekly Offs from Swift Roster for this employee in this month/range (for metadata display on payslip)
+      const rosterWeekOffDays = getRosterWeekOffDays(
+        emp.id,
+        emp.name,
+        selectedMonth,
+        roster,
+        isCustomDateRange ? { start: customStartDate, end: customEndDate } : undefined
+      );
       const weekOffEnabled = ov.weekOffEnabled !== undefined ? ov.weekOffEnabled : (company.includeWeekOff !== false);
       const weekOffDays = ov.weekOffDays !== undefined ? ov.weekOffDays : rosterWeekOffDays;
 
@@ -674,7 +772,18 @@ export function PayrollPage() {
         overrideData: ov,
       };
     });
-  }, [filteredEmployees, attendance, roster, selectedMonth, company, monthlyOverrides]);
+  }, [
+    filteredEmployees,
+    attendance,
+    roster,
+    selectedMonth,
+    company,
+    monthlyOverrides,
+    isCustomDateRange,
+    customStartDate,
+    customEndDate,
+    effectivePeriodKey,
+  ]);
 
   // Live computation for the employee being edited in the Edit Dialog
   const editingComp = useMemo(() => {
@@ -1798,47 +1907,138 @@ export function PayrollPage() {
           </div>
 
           {/* Controls Ribbon */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-card/80 p-3.5 rounded-2xl border border-border/80">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 bg-card/85 p-2.5 sm:p-3 rounded-2xl border border-border/80 shadow-xs">
+            {/* Left Cluster: Calendar Month + Custom Range Controls + Lock Payroll */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Calendar Month Picker */}
+              <div className="flex items-center gap-1.5 bg-background px-2.5 h-9 rounded-xl border border-border/80 shadow-2xs shrink-0">
                 <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                 <Input
                   type="month"
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="w-auto h-8 text-xs font-bold rounded-xl bg-background"
+                  className="w-[124px] h-full text-xs font-bold border-0 bg-transparent p-0 focus-visible:ring-0 cursor-pointer text-foreground"
                 />
               </div>
 
-              {/* Payroll Lock Banner */}
-              <div className="flex items-center gap-2">
+              {/* Custom Date Selection Option between Calendar and Payroll Lock */}
+              {!isCustomDateRange ? (
                 <Button
+                  type="button"
                   size="sm"
-                  variant={isMonthLocked ? "destructive" : "outline"}
-                  className="h-8 rounded-xl text-xs gap-1.5 font-semibold"
-                  onClick={() => {
-                    lockPayrollMonth(selectedMonth, !isMonthLocked);
-                    toast.success(isMonthLocked ? `Payroll unlocked for ${selectedMonth}` : `Payroll locked for ${selectedMonth}`);
-                  }}
+                  variant="outline"
+                  onClick={() => setIsCustomDateRange(true)}
+                  className="h-9 px-3 rounded-xl text-xs gap-1.5 font-semibold shrink-0"
                 >
-                  {isMonthLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-                  <span>{isMonthLocked ? "Payroll Locked" : "Lock Payroll"}</span>
+                  <Calendar className="h-3.5 w-3.5" />
+                  <span>Custom Dates</span>
                 </Button>
-              </div>
+              ) : (
+                <div className="flex items-center gap-1.5 bg-muted/50 p-1 rounded-xl border border-border/80 shadow-2xs shrink-0 animate-in fade-in zoom-in-95 duration-200">
+                  {/* Active Indicator Button / Toggle Back */}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    onClick={() => setIsCustomDateRange(false)}
+                    className="h-7 px-2 rounded-lg text-xs font-semibold gap-1 bg-primary text-primary-foreground shadow-xs shrink-0"
+                    title="Click to reset to Full Month"
+                  >
+                    <CalendarRange className="h-3.5 w-3.5" />
+                    <span>Custom</span>
+                  </Button>
+
+                  {/* From Date Input */}
+                  <div className="flex items-center gap-1 bg-background px-2 h-7 rounded-lg border border-border/70 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground shrink-0 select-none">
+                      From
+                    </span>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomStartDate(val);
+                        if (val > customEndDate) setCustomEndDate(val);
+                      }}
+                      className="h-full w-[104px] text-xs font-semibold bg-transparent border-0 p-0 focus:outline-hidden cursor-pointer text-foreground"
+                    />
+                  </div>
+
+                  {/* Separator Arrow */}
+                  <ArrowRight className="h-3 w-3 text-muted-foreground/70 shrink-0" />
+
+                  {/* To Date Input */}
+                  <div className="flex items-center gap-1 bg-background px-2 h-7 rounded-lg border border-border/70 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground shrink-0 select-none">
+                      To
+                    </span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomEndDate(val);
+                        if (val < customStartDate) setCustomStartDate(val);
+                      }}
+                      className="h-full w-[104px] text-xs font-semibold bg-transparent border-0 p-0 focus:outline-hidden cursor-pointer text-foreground"
+                    />
+                  </div>
+
+                  {/* Calculated Range Days Badge */}
+                  <Badge
+                    variant="outline"
+                    className="h-7 bg-primary/10 text-primary border-primary/25 text-[11px] font-bold px-1.5 rounded-lg shrink-0 flex items-center whitespace-nowrap"
+                  >
+                    {totalRangeDays}d ({rangeWorkingDays} Wkg)
+                  </Badge>
+
+                  {/* Reset / Close Button */}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsCustomDateRange(false)}
+                    className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
+                    title="Reset to Full Month"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+
+              {/* Payroll Lock Banner */}
+              <Button
+                size="sm"
+                variant={isPeriodLocked ? "destructive" : "outline"}
+                className="h-9 px-3 rounded-xl text-xs gap-1.5 font-semibold shrink-0"
+                onClick={() => {
+                  lockPayrollMonth(effectivePeriodKey, !isPeriodLocked);
+                  toast.success(
+                    isPeriodLocked
+                      ? `Payroll unlocked for ${effectivePeriodLabel}`
+                      : `Payroll locked for ${effectivePeriodLabel}`
+                  );
+                }}
+              >
+                {isPeriodLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                <span>{isPeriodLocked ? "Payroll Locked" : "Lock Payroll"}</span>
+              </Button>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              <div className="relative w-full sm:w-48">
-                <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+            {/* Right Cluster: Search Staff & Department Filter */}
+            <div className="flex items-center gap-2 ml-auto shrink-0">
+              <div className="relative w-36 sm:w-44">
+                <Search className="h-3.5 w-3.5 absolute left-2.5 top-3 text-muted-foreground" />
                 <Input
                   placeholder="Search staff..."
                   value={searchEmployee}
                   onChange={(e) => setSearchEmployee(e.target.value)}
-                  className="h-8 text-xs pl-8 rounded-xl bg-background w-full"
+                  className="h-9 text-xs pl-8 pr-2 rounded-xl bg-background border-border/80 shadow-2xs w-full"
                 />
               </div>
               <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-                <SelectTrigger className="h-8 text-xs w-36 rounded-xl bg-background">
+                <SelectTrigger className="h-9 text-xs w-28 sm:w-32 rounded-xl bg-background border-border/80 shadow-2xs">
                   <SelectValue placeholder="Department" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1902,7 +2102,7 @@ export function PayrollPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-semibold text-[11px] px-1.5 py-0.5 whitespace-nowrap">
-                            {paidDays}/{company.workingDaysPerMonth || 26} Present
+                            {paidDays}/{isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)} Present
                           </Badge>
                           {otHours > 0 && (
                             <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] px-1.5 py-0 whitespace-nowrap">
@@ -1910,10 +2110,16 @@ export function PayrollPage() {
                             </Badge>
                           )}
                         </div>
-                        {weekOffEnabled && (
-                          <div className="text-[10px] text-sky-600 font-medium mt-0.5">
-                            Weekoff: {weekOffDays}d
+                        {isCustomDateRange ? (
+                          <div className="text-[10px] text-primary font-medium mt-0.5">
+                            {customStartDate.slice(5)} to {customEndDate.slice(5)}{weekOffEnabled ? ` · WO: ${weekOffDays}d` : ""}
                           </div>
+                        ) : (
+                          weekOffEnabled && (
+                            <div className="text-[10px] text-sky-600 font-medium mt-0.5">
+                              Weekoff: {weekOffDays}d
+                            </div>
+                          )
                         )}
                       </td>
 
@@ -2035,7 +2241,7 @@ export function PayrollPage() {
                             variant="ghost"
                             onClick={async () => {
                               try {
-                                await generateSalarySlipPDF(company, emp, selectedMonth, comp, paidDays, weekOffEnabled ? weekOffDays : 0, docAssets);
+                                await generateSalarySlipPDF(company, emp, effectivePeriodLabel, comp, paidDays, weekOffEnabled ? weekOffDays : 0, docAssets);
                                 toast.success(`Payslip downloaded for ${emp.name}`);
                               } catch (err) {
                                 console.error("[Payroll] PDF generation failed:", err);
@@ -2197,7 +2403,7 @@ export function PayrollPage() {
             <PayslipTemplateView
               company={company}
               employee={previewTarget.emp}
-              month={selectedMonth}
+              month={effectivePeriodLabel}
               computation={previewTarget.comp}
               docAssets={docAssets}
               paidDays={previewTarget.paidDays}
@@ -2209,7 +2415,7 @@ export function PayrollPage() {
                   await generateSalarySlipPDF(
                     company,
                     previewTarget.emp,
-                    selectedMonth,
+                    effectivePeriodLabel,
                     previewTarget.comp,
                     previewTarget.paidDays,
                     previewTarget.weekOffEnabled ? previewTarget.weekOffDays : 0,
@@ -2242,7 +2448,7 @@ export function PayrollPage() {
                     <span>Edit Payslip — {editingRecord.emp.name} ({editingRecord.emp.empCode})</span>
                   </DialogTitle>
                   <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-mono text-xs">
-                    {selectedMonth}
+                    {effectivePeriodLabel}
                   </Badge>
                 </div>
                 <DialogDescription className="text-xs text-muted-foreground">
@@ -2336,7 +2542,7 @@ export function PayrollPage() {
                         </span>
                       </div>
                       <span className="text-[10px] text-sky-700/80 dark:text-sky-300/80 font-medium">
-                        Roster Default: {getRosterWeekOffDays(editingRecord.emp.id, editingRecord.emp.name, selectedMonth, roster)} Days
+                        Roster Default: {getRosterWeekOffDays(editingRecord.emp.id, editingRecord.emp.name, selectedMonth, roster, isCustomDateRange ? { start: customStartDate, end: customEndDate } : undefined)} Days
                       </span>
                     </div>
                   </div>
@@ -2929,7 +3135,7 @@ export function PayrollPage() {
                           Live Payslip Impact
                         </div>
                         <div className="text-sm font-bold text-foreground">
-                          {editingRecord.emp.name} · {selectedMonth}
+                          {editingRecord.emp.name} · {effectivePeriodLabel}
                         </div>
                       </div>
                       <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]">
@@ -2950,7 +3156,7 @@ export function PayrollPage() {
                           <div className="flex justify-between items-center text-emerald-600 font-semibold">
                             <span>Present / Working Days:</span>
                             <span>
-                              {editingRecord.daysWorked} / {company.workingDaysPerMonth || 26} Days
+                              {editingRecord.daysWorked} / {isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)} Days
                             </span>
                           </div>
                         </div>
@@ -3081,7 +3287,7 @@ export function PayrollPage() {
                 <Button
                   variant="ghost"
                   onClick={() => {
-                    const overrideKey = `${selectedMonth}_${editingRecord.emp.id}`;
+                    const overrideKey = `${effectivePeriodKey}_${editingRecord.emp.id}`;
                     const copy = { ...monthlyOverrides };
                     delete copy[overrideKey];
                     setMonthlyOverrides(copy);
@@ -3104,7 +3310,7 @@ export function PayrollPage() {
                   </Button>
                   <Button
                     onClick={() => {
-                      const overrideKey = `${selectedMonth}_${editingRecord.emp.id}`;
+                      const overrideKey = `${effectivePeriodKey}_${editingRecord.emp.id}`;
                       const overridePayload: MonthlyOverrideData = {
                         daysWorked: editingRecord.daysWorked,
                         otHours: editingRecord.otHours,
@@ -3163,11 +3369,11 @@ export function PayrollPage() {
                       // 3. Persist monthly payroll computation & overrides to DynamoDB (swift_company_payrolls)
                       if (editingComp) {
                         addPayroll({
-                          id: `pay-${editingRecord.emp.id}-${selectedMonth}`,
+                          id: `pay-${editingRecord.emp.id}-${effectivePeriodKey}`,
                           employeeId: editingRecord.emp.id,
                           empCode: editingRecord.emp.empCode,
                           employeeName: editingRecord.emp.name,
-                          month: selectedMonth,
+                          month: effectivePeriodLabel,
                           daysWorked: editingRecord.daysWorked,
                           otHours: editingRecord.otHours,
                           incentive: editingRecord.incentive,
@@ -3225,11 +3431,11 @@ export function PayrollPage() {
           <PayslipTemplateView
             company={company}
             employee={sampleEmployee}
-            month={selectedMonth}
+            month={effectivePeriodLabel}
             computation={liveBenchmarkComp}
             docAssets={docAssets}
-            paidDays={company.workingDaysPerMonth || 26}
-            rawPresentDays={company.workingDaysPerMonth || 26}
+            paidDays={isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)}
+            rawPresentDays={isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)}
             weekOffDays={4}
             weekOffEnabled={true}
             onDownloadPdf={async () => {
@@ -3237,9 +3443,9 @@ export function PayrollPage() {
                 await generateSalarySlipPDF(
                   company,
                   sampleEmployee,
-                  selectedMonth,
+                  effectivePeriodLabel,
                   liveBenchmarkComp,
-                  company.workingDaysPerMonth || 26,
+                  isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26),
                   0,
                   docAssets
                 );
