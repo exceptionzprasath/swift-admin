@@ -813,6 +813,8 @@ export type AttendanceRecord = {
 
 export type PayrollInput = {
   employeeId: string;
+  empCode?: string;
+  employeeName?: string;
   month: string; // YYYY-MM
   daysWorked: number;
   otHours: number;
