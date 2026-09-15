@@ -1411,32 +1411,39 @@ export default function DigitalDocumentationPage() {
       );
 
       const numSigners = pdfSignatories.length;
-      const startX = 40;
-      const endX = 390;
-      const spacing = numSigners > 1 ? (endX - startX) / (numSigners - 1) : 0;
-
-      pdfSignatories.forEach((sig, sIdx) => {
-        const x = numSigners === 1 ? startX : startX + sIdx * spacing;
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(9.5);
-        pdf.setTextColor(15, 23, 42);
-        pdf.text(sig.label || sig.roleTitle, x, currentY);
-
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8.5);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(sig.signerName, x, currentY + 14);
-        if (sig.roleTitle && sig.roleTitle !== sig.label) {
-          pdf.text(sig.roleTitle, x, currentY + 24);
+      if (numSigners > 0 || (doc.includeCompanySeal !== false && docAssets?.companySealDataUrl)) {
+        if (currentY > 660) {
+          pdf.addPage();
+          currentY = 60;
         }
-      });
 
-      if (doc.includeCompanySeal !== false && docAssets?.companySealDataUrl) {
-        try {
-          const sealX = numSigners === 2 ? (startX + endX) / 2 - 8 : 240;
-          pdf.addImage(docAssets.companySealDataUrl, "PNG", sealX, currentY - 15, 42, 42);
-        } catch {
-          // Ignore seal render error in PDF if format unsupported
+        const startX = 40;
+        const endX = 390;
+        const spacing = numSigners > 1 ? (endX - startX) / (numSigners - 1) : 0;
+
+        pdfSignatories.forEach((sig, sIdx) => {
+          const x = numSigners === 1 ? startX : startX + sIdx * spacing;
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(9.5);
+          pdf.setTextColor(15, 23, 42);
+          pdf.text(sig.label || sig.roleTitle, x, currentY);
+
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(100, 116, 139);
+          pdf.text(sig.signerName, x, currentY + 14);
+          if (sig.roleTitle && sig.roleTitle !== sig.label) {
+            pdf.text(sig.roleTitle, x, currentY + 24);
+          }
+        });
+
+        if (doc.includeCompanySeal !== false && docAssets?.companySealDataUrl) {
+          try {
+            const sealX = numSigners === 2 ? (startX + endX) / 2 - 8 : numSigners === 0 ? 200 : 240;
+            pdf.addImage(docAssets.companySealDataUrl, "PNG", sealX, currentY - 15, 42, 42);
+          } catch {
+            // Ignore seal render error in PDF if format unsupported
+          }
         }
       }
 
@@ -1825,8 +1832,8 @@ export default function DigitalDocumentationPage() {
       {/* VIEW 2: DIGITAL DOCUMENT COMPOSER (EMAIL-LIKE FLOW) */}
       {viewMode === "composer" && (
         <div className="space-y-5">
-          {/* Top Sticky Header */}
-          <div className="sticky top-16 z-20 bg-card/95 backdrop-blur border border-border p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Top Header */}
+          <div className="bg-card border border-border p-4 rounded-2xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
@@ -3755,110 +3762,33 @@ export default function DigitalDocumentationPage() {
               )}
 
               {/* Dynamic Signatures: Distributed Left to Right by Organizational Priority */}
-              <div className="pt-8 border-t border-slate-200">
-                <div className="flex flex-wrap items-end justify-between gap-6 text-[11px]">
-                  {previewSignatories.length === 2 && includeCompanySeal ? (
-                    <>
-                      {/* Left: 1st Priority (e.g. Employee Acceptance) */}
-                      <div className="flex flex-col text-left items-start min-w-[140px] flex-1">
-                        <p className="font-bold text-slate-800">{previewSignatories[0].label}</p>
-                        <div className="h-10 flex items-center">
-                          {previewSignatories[0].dataUrl ? (
-                            <img
-                              src={previewSignatories[0].dataUrl}
-                              alt={previewSignatories[0].roleTitle}
-                              className="max-h-9 object-contain"
-                            />
-                          ) : previewSignatories[0].isEmployee ? (
-                            <span className="text-[10px] text-slate-400 italic">Recipient Sign-off</span>
-                          ) : (
-                            <div className="h-8 border-b border-dashed border-slate-300 w-28" />
-                          )}
-                        </div>
-                        <p className="text-slate-700 font-semibold">{previewSignatories[0].signerName}</p>
-                        <p className="text-[10px] text-slate-500">{previewSignatories[0].roleTitle}</p>
-                      </div>
-
-                      {/* Center: Official Company Seal */}
-                      <div className="flex flex-col items-center px-4 shrink-0">
-                        {docAssets?.companySealDataUrl ? (
-                          <img
-                            src={docAssets.companySealDataUrl}
-                            alt="Company Seal"
-                            className="h-14 w-14 object-contain filter contrast-125 opacity-90"
-                          />
-                        ) : (
-                          <div className="h-14 w-14 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
-                            <span className="text-[8px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
-                              {company?.name || "SWIFT"}
-                            </span>
-                            <span className="text-[6px] text-indigo-500 font-mono">SEAL</span>
+              {(previewSignatories.length > 0 || includeCompanySeal) && (
+                <div className="pt-8 border-t border-slate-200">
+                  <div className="flex flex-wrap items-end justify-between gap-6 text-[11px]">
+                    {previewSignatories.length === 2 && includeCompanySeal ? (
+                      <>
+                        {/* Left: 1st Priority (e.g. Employee Acceptance) */}
+                        <div className="flex flex-col text-left items-start min-w-[140px] flex-1">
+                          <p className="font-bold text-slate-800">{previewSignatories[0].label}</p>
+                          <div className="h-10 flex items-center">
+                            {previewSignatories[0].dataUrl ? (
+                              <img
+                                src={previewSignatories[0].dataUrl}
+                                alt={previewSignatories[0].roleTitle}
+                                className="max-h-9 object-contain"
+                              />
+                            ) : previewSignatories[0].isEmployee ? (
+                              <span className="text-[10px] text-slate-400 italic">Recipient Sign-off</span>
+                            ) : (
+                              <div className="h-8 border-b border-dashed border-slate-300 w-28" />
+                            )}
                           </div>
-                        )}
-                        <span className="text-[8px] text-slate-400 font-mono mt-0.5">Official Seal</span>
-                      </div>
-
-                      {/* Right: 2nd Priority (e.g. HR / CEO / Authorized Signatory) */}
-                      <div className="flex flex-col text-right items-end min-w-[140px] flex-1">
-                        <p className="font-bold text-slate-800">{previewSignatories[1].label}</p>
-                        <div className="h-10 flex items-center justify-end">
-                          {previewSignatories[1].dataUrl ? (
-                            <img
-                              src={previewSignatories[1].dataUrl}
-                              alt={previewSignatories[1].roleTitle}
-                              className="max-h-9 object-contain"
-                            />
-                          ) : (
-                            <div className="h-8 border-b border-dashed border-slate-300 w-28" />
-                          )}
+                          <p className="text-slate-700 font-semibold">{previewSignatories[0].signerName}</p>
+                          <p className="text-[10px] text-slate-500">{previewSignatories[0].roleTitle}</p>
                         </div>
-                        <p className="text-slate-700 font-semibold">{previewSignatories[1].signerName}</p>
-                        <p className="text-[10px] text-slate-500">{previewSignatories[1].roleTitle}</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {previewSignatories.map((sig, sIdx) => {
-                        const isFirst = sIdx === 0;
-                        const isLast = sIdx === previewSignatories.length - 1;
-                        const alignClass =
-                          previewSignatories.length === 1
-                            ? "text-left items-start"
-                            : isFirst
-                            ? "text-left items-start"
-                            : isLast
-                            ? "text-right items-end"
-                            : "text-center items-center";
 
-                        return (
-                          <div
-                            key={sig.key}
-                            className={`flex flex-col ${alignClass} min-w-[130px] flex-1`}
-                          >
-                            <p className="font-bold text-slate-800">{sig.label}</p>
-                            <div className="h-10 flex items-center justify-center">
-                              {sig.dataUrl ? (
-                                <img
-                                  src={sig.dataUrl}
-                                  alt={sig.roleTitle}
-                                  className="max-h-9 object-contain"
-                                />
-                              ) : sig.isEmployee ? (
-                                <span className="text-[10px] text-slate-400 italic">
-                                  Recipient Sign-off
-                                </span>
-                              ) : (
-                                <div className="h-8 border-b border-dashed border-slate-300 w-24" />
-                              )}
-                            </div>
-                            <p className="text-slate-700 font-semibold">{sig.signerName}</p>
-                            <p className="text-[10px] text-slate-500">{sig.roleTitle}</p>
-                          </div>
-                        );
-                      })}
-
-                      {includeCompanySeal && previewSignatories.length !== 2 && (
-                        <div className="flex flex-col items-center px-2 shrink-0">
+                        {/* Center: Official Company Seal */}
+                        <div className="flex flex-col items-center px-4 shrink-0">
                           {docAssets?.companySealDataUrl ? (
                             <img
                               src={docAssets.companySealDataUrl}
@@ -3875,11 +3805,90 @@ export default function DigitalDocumentationPage() {
                           )}
                           <span className="text-[8px] text-slate-400 font-mono mt-0.5">Official Seal</span>
                         </div>
-                      )}
-                    </>
-                  )}
+
+                        {/* Right: 2nd Priority (e.g. HR / CEO / Authorized Signatory) */}
+                        <div className="flex flex-col text-right items-end min-w-[140px] flex-1">
+                          <p className="font-bold text-slate-800">{previewSignatories[1].label}</p>
+                          <div className="h-10 flex items-center justify-end">
+                            {previewSignatories[1].dataUrl ? (
+                              <img
+                                src={previewSignatories[1].dataUrl}
+                                alt={previewSignatories[1].roleTitle}
+                                className="max-h-9 object-contain"
+                              />
+                            ) : (
+                              <div className="h-8 border-b border-dashed border-slate-300 w-28" />
+                            )}
+                          </div>
+                          <p className="text-slate-700 font-semibold">{previewSignatories[1].signerName}</p>
+                          <p className="text-[10px] text-slate-500">{previewSignatories[1].roleTitle}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {previewSignatories.map((sig, sIdx) => {
+                          const isFirst = sIdx === 0;
+                          const isLast = sIdx === previewSignatories.length - 1;
+                          const alignClass =
+                            previewSignatories.length === 1
+                              ? "text-left items-start"
+                              : isFirst
+                              ? "text-left items-start"
+                              : isLast
+                              ? "text-right items-end"
+                              : "text-center items-center";
+
+                          return (
+                            <div
+                              key={sig.key}
+                              className={`flex flex-col ${alignClass} min-w-[130px] flex-1`}
+                            >
+                              <p className="font-bold text-slate-800">{sig.label}</p>
+                              <div className="h-10 flex items-center justify-center">
+                                {sig.dataUrl ? (
+                                  <img
+                                    src={sig.dataUrl}
+                                    alt={sig.roleTitle}
+                                    className="max-h-9 object-contain"
+                                  />
+                                ) : sig.isEmployee ? (
+                                  <span className="text-[10px] text-slate-400 italic">
+                                    Recipient Sign-off
+                                  </span>
+                                ) : (
+                                  <div className="h-8 border-b border-dashed border-slate-300 w-24" />
+                                )}
+                              </div>
+                              <p className="text-slate-700 font-semibold">{sig.signerName}</p>
+                              <p className="text-[10px] text-slate-500">{sig.roleTitle}</p>
+                            </div>
+                          );
+                        })}
+
+                        {includeCompanySeal && previewSignatories.length !== 2 && (
+                          <div className="flex flex-col items-center px-2 shrink-0">
+                            {docAssets?.companySealDataUrl ? (
+                              <img
+                                src={docAssets.companySealDataUrl}
+                                alt="Company Seal"
+                                className="h-14 w-14 object-contain filter contrast-125 opacity-90"
+                              />
+                            ) : (
+                              <div className="h-14 w-14 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
+                                <span className="text-[8px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
+                                  {company?.name || "SWIFT"}
+                                </span>
+                                <span className="text-[6px] text-indigo-500 font-mono">SEAL</span>
+                              </div>
+                            )}
+                            <span className="text-[8px] text-slate-400 font-mono mt-0.5">Official Seal</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Footer */}
               {docFooter.enabled && (
@@ -4725,6 +4734,10 @@ function RealisticDocumentPaper({
           lh?.companyName || company?.name || "SWIFT Technologies",
           docAssets
         );
+
+        if (docSignatories.length === 0 && doc.includeCompanySeal === false) {
+          return null;
+        }
 
         return (
           <div className="pt-10 border-t border-slate-200">

@@ -1,4 +1,5 @@
-import type { Employee, PredefinedRole } from "./store";
+import type { Employee, PredefinedRole, Branch, ShiftType, Device } from "./store";
+import * as XLSX from "xlsx";
 
 export function generateEmployeePassword(): string {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -15,6 +16,587 @@ export function generateEmployeePassword(): string {
     p += digits[Math.floor(Math.random() * digits.length)];
   }
   return p;
+}
+
+function autoFitColumns(rows: any[][]): { wch: number }[] {
+  if (!rows || rows.length === 0) return [];
+  const colCount = Math.max(...rows.map((r) => r.length));
+  const colWidths: number[] = new Array(colCount).fill(12);
+
+  rows.forEach((row) => {
+    row.forEach((val, idx) => {
+      const len = val != null ? String(val).length : 0;
+      if (len + 3 > colWidths[idx]) {
+        colWidths[idx] = Math.min(len + 3, 50);
+      }
+    });
+  });
+
+  return colWidths.map((w) => ({ wch: Math.max(w, 12) }));
+}
+
+/**
+ * Generates and downloads a comprehensive multi-tabbed Excel (.xlsx) workbook
+ * containing all 7 modules of Employee Master Data.
+ */
+export function downloadBulkEmployeesExcel(
+  companyName: string = "SWIFT",
+  employees: Employee[] = [],
+  branches: Branch[] = [],
+  shifts: ShiftType[] = [],
+  roles: PredefinedRole[] = [],
+  devices: Device[] = []
+) {
+  const wb = XLSX.utils.book_new();
+
+  const getBranchName = (bId?: string) => {
+    if (!bId) return "—";
+    const found = (branches || []).find((b) => b.id === bId);
+    return found ? `${found.name} (${found.code})` : bId;
+  };
+
+  const getBranchNamesList = (emp: Employee) => {
+    const ids = emp.branchIds && emp.branchIds.length > 0 ? emp.branchIds : emp.branchId ? [emp.branchId] : [];
+    if (ids.length === 0) return "All Branches / Unrestricted";
+    return ids.map((id) => getBranchName(id)).join(", ");
+  };
+
+  const getShiftName = (sId?: string) => {
+    if (!sId) return "General Shift";
+    const found = (shifts || []).find((s) => s.id === sId);
+    return found ? `${found.name} (${found.start} - ${found.end})` : sId;
+  };
+
+  const getRoleTitle = (emp: Employee) => {
+    if (emp.roleName) return emp.roleName;
+    if (emp.roleId) {
+      const found = (roles || []).find((r) => r.id === emp.roleId);
+      if (found) return found.name;
+    }
+    return "Standard Employee";
+  };
+
+  const getManagerName = (emp: Employee) => {
+    if (emp.reportingManager) return emp.reportingManager;
+    if (emp.managerId) {
+      const found = (employees || []).find((e) => e.id === emp.managerId);
+      if (found) return `${found.name} (${found.empCode})`;
+    }
+    return "— (Top Level)";
+  };
+
+  const formatBool = (val?: boolean, def = true) => ((val ?? def) ? "YES" : "NO");
+
+  // ==========================================
+  // SHEET 1: Master All Details (Consolidated)
+  // ==========================================
+  const masterHeaders = [
+    // 1. Profile & Identity
+    "Employee Code",
+    "Full Name",
+    "Status",
+    "Gender",
+    "Date of Birth",
+    "Blood Group",
+    "Marital Status",
+    "Nationality",
+    "Father Name",
+    "Mother Name",
+    "Spouse Name",
+    "Personal Email",
+    "Emergency Contact Person",
+    "Emergency Relation",
+    "Emergency Contact Phone",
+    // 2. Employment & Salary
+    "Work Email",
+    "Phone Number",
+    "Department",
+    "Designation",
+    "Assigned Role",
+    "Reporting Manager",
+    "Date of Joining",
+    "Benefits Eligible Date",
+    "Probation End Date",
+    "Fixed Salary (Monthly ₹)",
+    "Basic Salary (₹)",
+    "PF UAN",
+    "PF Number",
+    "ESIC Number",
+    "PT Number",
+    // 3. Address & KYC
+    "Address Line 1",
+    "Address Line 2",
+    "City",
+    "State",
+    "Country",
+    "Pincode",
+    "Aadhaar Number",
+    "PAN Number",
+    "Passport Number",
+    "Driving License",
+    "Bank Account Number",
+    "Bank IFSC Code",
+    "Bank Name",
+    "Bank Branch",
+    "Bank Account Type",
+    // 4. Branches & Policy
+    "Assigned Branches",
+    "Primary Branch",
+    "Shift",
+    "Morning Grace Time",
+    "Allow Afternoon Login",
+    "Afternoon Login Time",
+    "Afternoon Grace Time",
+    "Geofencing Enabled",
+    "Leave Apply Mobile Eligible",
+    "PF Eligible",
+    "ESI Eligible",
+    "PT Eligible",
+    "TDS Eligible",
+    "Biometric Enabled",
+    "Biometric Terminals Mapped",
+    // 5. Family & Education Summary
+    "Family Members Count",
+    "Family Details Summary",
+    "Education Qualifications Count",
+    "Education Summary",
+    // 6. Experience & Skills Summary
+    "Prior Companies Count",
+    "Experience Summary",
+    "Technical Skills",
+    "Languages Known",
+    // 7. Compliance & BGV
+    "BGV Status",
+    "Police Verification",
+    "Medical Fitness",
+    "NDA Signed",
+    "Compliance Notes",
+    "AI Verification Passed",
+    "Final Approval Status",
+    "Portal Activated",
+  ];
+
+  const masterRows = employees.map((e) => {
+    const familySummary = (e.family || []).map((f) => `${f.name} (${f.relation}${f.dob ? ` - ${f.dob}` : ""})`).join("; ");
+    const eduSummary = (e.education || []).map((ed) => `${ed.level} from ${ed.institute}${ed.year ? ` (${ed.year})` : ""}${ed.grade ? ` [${ed.grade}]` : ""}`).join("; ");
+    const expSummary = (e.experience || []).map((ex) => `${ex.company} - ${ex.role}${ex.from && ex.to ? ` (${ex.from} to ${ex.to})` : ""}${ex.ctc ? ` [₹${ex.ctc}]` : ""}`).join("; ");
+    const bioSummary = (e.biometricMappings || []).map((b) => `SN: ${b.deviceSn} (PIN: ${b.biometricEmpCode})`).join("; ");
+
+    return [
+      e.empCode || "—",
+      e.name || "—",
+      e.status === "active" ? "Active" : "Inactive",
+      e.gender ? e.gender.toUpperCase() : "—",
+      e.dob || "—",
+      e.bloodGroup || "—",
+      e.maritalStatus ? e.maritalStatus.toUpperCase() : "SINGLE",
+      e.nationality || "Indian",
+      e.fatherName || "—",
+      e.motherName || "—",
+      e.spouseName || "—",
+      e.about || "—",
+      e.emergencyName || e.emergencyContact || "—",
+      e.emergencyRelation || "—",
+      e.emergencyPhone2 || e.emergencyContact || "—",
+      e.email || "—",
+      e.phone || "—",
+      e.department || "—",
+      e.designation || "—",
+      getRoleTitle(e),
+      getManagerName(e),
+      e.doj || "—",
+      e.eligibleDate || e.doj || "—",
+      e.probationDate || "—",
+      e.fixedSalary ?? e.basic ?? 0,
+      e.basic ?? e.fixedSalary ?? 0,
+      e.uan || "—",
+      e.pfNumber || "—",
+      e.esic || "—",
+      e.ptNumber || "—",
+      e.addressLine1 || e.address || "—",
+      e.addressLine2 || "—",
+      e.city || "—",
+      e.state || "—",
+      e.country || "India",
+      e.pincode || "—",
+      e.aadhaar || "—",
+      e.pan || "—",
+      e.passportNumber || "—",
+      e.drivingLicense || "—",
+      e.bankAcc || "—",
+      e.bankIfsc || "—",
+      e.bankName || "—",
+      e.bankBranch || "—",
+      e.bankAccountType ? e.bankAccountType.toUpperCase() : "SAVINGS",
+      getBranchNamesList(e),
+      getBranchName(e.branchId),
+      getShiftName(e.shiftId),
+      e.graceTime ? `${e.graceTime} mins` : "15 mins",
+      formatBool(e.allowHalfDayLogin, true),
+      e.halfDayLoginTime || "12:00",
+      e.afternoonGraceTime ? `${e.afternoonGraceTime} mins` : "15 mins",
+      formatBool(e.geofencingEnabled, true),
+      formatBool(e.leaveApplyEligible, true),
+      formatBool(e.pfEligible, true),
+      formatBool(e.esiEligible, false),
+      formatBool(e.ptEligible, true),
+      formatBool(e.tdsEligible, false),
+      formatBool(e.biometricEnabled, false),
+      bioSummary || "—",
+      (e.family || []).length,
+      familySummary || "—",
+      (e.education || []).length,
+      eduSummary || "—",
+      (e.experience || []).length,
+      expSummary || "—",
+      (e.skills || []).join(", ") || "—",
+      (e.languagesKnown || []).join(", ") || "—",
+      e.backgroundCheckStatus ? e.backgroundCheckStatus.toUpperCase() : "PENDING",
+      formatBool(e.policeVerification, false),
+      formatBool(e.medicalFitness, false),
+      formatBool(e.ndaSigned, false),
+      e.complianceNotes || "—",
+      e.aiVerification?.passed ? "PASSED" : e.aiVerification ? "FLAGGED" : "NOT RUN",
+      e.finalApproval?.status ? e.finalApproval.status.toUpperCase() : "PENDING",
+      formatBool(e.portalActivated, false),
+    ];
+  });
+
+  const wsMaster = XLSX.utils.aoa_to_sheet([masterHeaders, ...masterRows]);
+  wsMaster["!cols"] = autoFitColumns([masterHeaders, ...masterRows]);
+  XLSX.utils.book_append_sheet(wb, wsMaster, "Master All Records");
+
+  // ==========================================
+  // SHEET 2: 1. Profile & Identity
+  // ==========================================
+  const identityHeaders = [
+    "Employee Code",
+    "Full Name",
+    "Status",
+    "Gender",
+    "Date of Birth",
+    "Blood Group",
+    "Marital Status",
+    "Nationality",
+    "Father's Name",
+    "Mother's Name",
+    "Spouse's Name",
+    "Personal Email (Alt)",
+    "Emergency Contact Person",
+    "Emergency Relation",
+    "Emergency Phone Number",
+    "Face Registered",
+    "Portal Activated",
+  ];
+  const identityRows = employees.map((e) => [
+    e.empCode || "—",
+    e.name || "—",
+    e.status === "active" ? "Active" : "Inactive",
+    e.gender ? e.gender.toUpperCase() : "—",
+    e.dob || "—",
+    e.bloodGroup || "—",
+    e.maritalStatus ? e.maritalStatus.toUpperCase() : "SINGLE",
+    e.nationality || "Indian",
+    e.fatherName || "—",
+    e.motherName || "—",
+    e.spouseName || "—",
+    e.about || "—",
+    e.emergencyName || e.emergencyContact || "—",
+    e.emergencyRelation || "—",
+    e.emergencyPhone2 || e.emergencyContact || "—",
+    formatBool(e.faceRegistered, false),
+    formatBool(e.portalActivated, false),
+  ]);
+  const wsIdentity = XLSX.utils.aoa_to_sheet([identityHeaders, ...identityRows]);
+  wsIdentity["!cols"] = autoFitColumns([identityHeaders, ...identityRows]);
+  XLSX.utils.book_append_sheet(wb, wsIdentity, "1. Profile & Identity");
+
+  // ==========================================
+  // SHEET 3: 2. Employment & Salary
+  // ==========================================
+  const employmentHeaders = [
+    "Employee Code",
+    "Full Name",
+    "Work Email",
+    "Phone Number",
+    "Department",
+    "Designation",
+    "Assigned Role",
+    "Reporting Manager",
+    "Date of Joining",
+    "Benefits Eligible Date",
+    "Probation End Date",
+    "Fixed Salary (Monthly ₹)",
+    "Basic Salary (₹)",
+    "PF UAN Number",
+    "PF Member ID",
+    "ESIC Insurance Number",
+    "PT Registration Number",
+  ];
+  const employmentRows = employees.map((e) => [
+    e.empCode || "—",
+    e.name || "—",
+    e.email || "—",
+    e.phone || "—",
+    e.department || "—",
+    e.designation || "—",
+    getRoleTitle(e),
+    getManagerName(e),
+    e.doj || "—",
+    e.eligibleDate || e.doj || "—",
+    e.probationDate || "—",
+    e.fixedSalary ?? e.basic ?? 0,
+    e.basic ?? e.fixedSalary ?? 0,
+    e.uan || "—",
+    e.pfNumber || "—",
+    e.esic || "—",
+    e.ptNumber || "—",
+  ]);
+  const wsEmployment = XLSX.utils.aoa_to_sheet([employmentHeaders, ...employmentRows]);
+  wsEmployment["!cols"] = autoFitColumns([employmentHeaders, ...employmentRows]);
+  XLSX.utils.book_append_sheet(wb, wsEmployment, "2. Employment & Salary");
+
+  // ==========================================
+  // SHEET 4: 3. Address & KYC
+  // ==========================================
+  const addressHeaders = [
+    "Employee Code",
+    "Full Name",
+    "Address Line 1",
+    "Address Line 2",
+    "City",
+    "State",
+    "Country",
+    "Pincode",
+    "Aadhaar Number",
+    "PAN Card Number",
+    "Passport Number",
+    "Driving License Number",
+    "Bank Account Number",
+    "Bank IFSC Code",
+    "Bank Name",
+    "Bank Branch Name",
+    "Bank Account Type",
+  ];
+  const addressRows = employees.map((e) => [
+    e.empCode || "—",
+    e.name || "—",
+    e.addressLine1 || e.address || "—",
+    e.addressLine2 || "—",
+    e.city || "—",
+    e.state || "—",
+    e.country || "India",
+    e.pincode || "—",
+    e.aadhaar || "—",
+    e.pan || "—",
+    e.passportNumber || "—",
+    e.drivingLicense || "—",
+    e.bankAcc || "—",
+    e.bankIfsc || "—",
+    e.bankName || "—",
+    e.bankBranch || "—",
+    e.bankAccountType ? e.bankAccountType.toUpperCase() : "SAVINGS",
+  ]);
+  const wsAddress = XLSX.utils.aoa_to_sheet([addressHeaders, ...addressRows]);
+  wsAddress["!cols"] = autoFitColumns([addressHeaders, ...addressRows]);
+  XLSX.utils.book_append_sheet(wb, wsAddress, "3. Address & KYC");
+
+  // ==========================================
+  // SHEET 5: 4. Branches & Policy
+  // ==========================================
+  const policyHeaders = [
+    "Employee Code",
+    "Full Name",
+    "Authorized Branches",
+    "Primary Branch",
+    "Assigned Shift",
+    "Morning Grace Time",
+    "Allow Afternoon Login",
+    "Afternoon Login Time",
+    "Afternoon Grace Time",
+    "Geofencing Verification",
+    "Leave Apply in Mobile App",
+    "PF Eligible",
+    "ESI Eligible",
+    "PT Eligible",
+    "TDS Eligible",
+    "Biometric Enabled",
+    "Biometric Mappings",
+  ];
+  const policyRows = employees.map((e) => {
+    const bioSummary = (e.biometricMappings || []).map((b) => `SN: ${b.deviceSn} (PIN: ${b.biometricEmpCode})`).join("; ");
+    return [
+      e.empCode || "—",
+      e.name || "—",
+      getBranchNamesList(e),
+      getBranchName(e.branchId),
+      getShiftName(e.shiftId),
+      e.graceTime ? `${e.graceTime} mins` : "15 mins",
+      formatBool(e.allowHalfDayLogin, true),
+      e.halfDayLoginTime || "12:00",
+      e.afternoonGraceTime ? `${e.afternoonGraceTime} mins` : "15 mins",
+      formatBool(e.geofencingEnabled, true),
+      formatBool(e.leaveApplyEligible, true),
+      formatBool(e.pfEligible, true),
+      formatBool(e.esiEligible, false),
+      formatBool(e.ptEligible, true),
+      formatBool(e.tdsEligible, false),
+      formatBool(e.biometricEnabled, false),
+      bioSummary || "—",
+    ];
+  });
+  const wsPolicy = XLSX.utils.aoa_to_sheet([policyHeaders, ...policyRows]);
+  wsPolicy["!cols"] = autoFitColumns([policyHeaders, ...policyRows]);
+  XLSX.utils.book_append_sheet(wb, wsPolicy, "4. Branches & Policy");
+
+  // ==========================================
+  // SHEET 6: 5. Family & Education
+  // ==========================================
+  const familyHeaders = [
+    "Employee Code",
+    "Full Name",
+    "Member Type / Category",
+    "Nominee / Relative Name",
+    "Relationship / Level",
+    "Date of Birth / Year",
+    "Institution / Grade / Notes",
+  ];
+  const familyRows: any[][] = [];
+  employees.forEach((e) => {
+    let hasEntries = false;
+    (e.family || []).forEach((f) => {
+      hasEntries = true;
+      familyRows.push([
+        e.empCode || "—",
+        e.name || "—",
+        "Family & Nominee",
+        f.name || "—",
+        f.relation || "—",
+        f.dob || "—",
+        f.dependent ? "Dependent" : "Non-dependent",
+      ]);
+    });
+    (e.education || []).forEach((ed) => {
+      hasEntries = true;
+      familyRows.push([
+        e.empCode || "—",
+        e.name || "—",
+        "Education Qualification",
+        ed.institute || "—",
+        ed.level || "—",
+        ed.year || "—",
+        ed.grade ? `Grade/CGPA: ${ed.grade}` : "—",
+      ]);
+    });
+    if (!hasEntries) {
+      familyRows.push([
+        e.empCode || "—",
+        e.name || "—",
+        "No Records Added",
+        "—",
+        "—",
+        "—",
+        "—",
+      ]);
+    }
+  });
+  const wsFamily = XLSX.utils.aoa_to_sheet([familyHeaders, ...familyRows]);
+  wsFamily["!cols"] = autoFitColumns([familyHeaders, ...familyRows]);
+  XLSX.utils.book_append_sheet(wb, wsFamily, "5. Family & Education");
+
+  // ==========================================
+  // SHEET 7: 6. Experience & Skills
+  // ==========================================
+  const expHeaders = [
+    "Employee Code",
+    "Full Name",
+    "Prior Company Name",
+    "Designation / Role",
+    "From Date",
+    "To Date",
+    "Last CTC (₹)",
+    "Technical Skills",
+    "Languages Known",
+  ];
+  const expRows: any[][] = [];
+  employees.forEach((e) => {
+    const skillsStr = (e.skills || []).join(", ") || "—";
+    const langsStr = (e.languagesKnown || []).join(", ") || "—";
+    if (e.experience && e.experience.length > 0) {
+      e.experience.forEach((ex) => {
+        expRows.push([
+          e.empCode || "—",
+          e.name || "—",
+          ex.company || "—",
+          ex.role || "—",
+          ex.from || "—",
+          ex.to || "—",
+          ex.ctc ? `₹${ex.ctc}` : "—",
+          skillsStr,
+          langsStr,
+        ]);
+      });
+    } else {
+      expRows.push([
+        e.empCode || "—",
+        e.name || "—",
+        "Fresher / No Prior Experience Recorded",
+        "—",
+        "—",
+        "—",
+        "—",
+        skillsStr,
+        langsStr,
+      ]);
+    }
+  });
+  const wsExp = XLSX.utils.aoa_to_sheet([expHeaders, ...expRows]);
+  wsExp["!cols"] = autoFitColumns([expHeaders, ...expRows]);
+  XLSX.utils.book_append_sheet(wb, wsExp, "6. Experience & Skills");
+
+  // ==========================================
+  // SHEET 8: 7. Compliance & BGV
+  // ==========================================
+  const complianceHeaders = [
+    "Employee Code",
+    "Full Name",
+    "Department",
+    "Background Verification (BGV) Status",
+    "Police Verification Submitted",
+    "Medical Fitness Certificate",
+    "NDA Signed",
+    "Compliance & HR Notes",
+    "AI Verification Status",
+    "AI Verification Issues",
+    "Final Approval Status",
+    "Approved By",
+    "Approved At",
+  ];
+  const complianceRows = employees.map((e) => [
+    e.empCode || "—",
+    e.name || "—",
+    e.department || "—",
+    e.backgroundCheckStatus ? e.backgroundCheckStatus.toUpperCase() : "PENDING",
+    formatBool(e.policeVerification, false),
+    formatBool(e.medicalFitness, false),
+    formatBool(e.ndaSigned, false),
+    e.complianceNotes || "—",
+    e.aiVerification?.passed ? "PASSED" : e.aiVerification ? "FLAGGED" : "NOT RUN",
+    (e.aiVerification?.issues || []).join("; ") || "None",
+    e.finalApproval?.status ? e.finalApproval.status.toUpperCase() : "PENDING",
+    e.finalApproval?.approvedBy || "—",
+    e.finalApproval?.approvedAt || "—",
+  ]);
+  const wsCompliance = XLSX.utils.aoa_to_sheet([complianceHeaders, ...complianceRows]);
+  wsCompliance["!cols"] = autoFitColumns([complianceHeaders, ...complianceRows]);
+  XLSX.utils.book_append_sheet(wb, wsCompliance, "7. Compliance & BGV");
+
+  // ==========================================
+  // Generate and trigger download of .xlsx file
+  // ==========================================
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const fileName = `${companyName.replace(/\s+/g, "_")}_Bulk_Employee_Master_Data_${dateStr}.xlsx`;
+  XLSX.writeFile(wb, fileName);
 }
 
 export const BULK_TEMPLATE_HEADERS = [

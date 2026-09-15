@@ -46,7 +46,10 @@ import {
   Heading3,
   Quote,
   X,
+  Receipt,
 } from "lucide-react";
+import { computePayroll } from "@/lib/payroll";
+import { numberToWordsIndian } from "@/lib/pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -295,44 +298,88 @@ export function DocWordEditor({
     executeCommand("foreColor", color);
   };
 
+  // Robust HTML inserter that preserves insertion even when dropdown menu took focus
+  const insertHtmlContent = (htmlString: string) => {
+    if (viewMode === "code") {
+      onChange((value || "") + "\n" + htmlString);
+      return;
+    }
+
+    if (!editorRef.current) {
+      onChange((value || "") + htmlString);
+      return;
+    }
+
+    editorRef.current.focus();
+
+    let inserted = false;
+    const selection = window.getSelection();
+
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      if (editorRef.current.contains(range.commonAncestorContainer)) {
+        try {
+          range.deleteContents();
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = htmlString;
+          const frag = document.createDocumentFragment();
+          let node: ChildNode | null;
+          let lastNode: ChildNode | null = null;
+          while ((node = tempDiv.firstChild)) {
+            lastNode = frag.appendChild(node);
+          }
+          range.insertNode(frag);
+          if (lastNode) {
+            range.setStartAfter(lastNode);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          inserted = true;
+        } catch (e) {
+          console.warn("Range insertion fallback:", e);
+        }
+      }
+    }
+
+    if (!inserted) {
+      try {
+        inserted = document.execCommand("insertHTML", false, htmlString);
+      } catch {
+        inserted = false;
+      }
+    }
+
+    if (!inserted) {
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = htmlString;
+      while (tempDiv.firstChild) {
+        editorRef.current.appendChild(tempDiv.firstChild);
+      }
+    }
+
+    handleInput();
+  };
+
   // Insert tag / dynamic variable
   const insertTag = (tag: string) => {
-    if (editorRef.current) {
-      editorRef.current.focus();
-    }
-    const htmlToInsert = ` <strong>${tag}</strong> `;
-    document.execCommand("insertHTML", false, htmlToInsert);
-    handleInput();
+    insertHtmlContent(` <strong>${tag}</strong> `);
     toast.success(`Inserted ${tag}`);
   };
 
   // Insert Divider
   const insertDivider = () => {
-    if (editorRef.current) {
-      editorRef.current.focus();
-    }
-    document.execCommand(
-      "insertHTML",
-      false,
-      `<hr style="border: 0; border-top: 1.5px solid #cbd5e1; margin: 20px 0;" />`
-    );
-    handleInput();
+    insertHtmlContent(`<hr style="border: 0; border-top: 1.5px solid #cbd5e1; margin: 20px 0;" />`);
     toast.success("Inserted Divider Line");
   };
 
   // Insert Callout Box
   const insertCallout = () => {
-    if (editorRef.current) {
-      editorRef.current.focus();
-    }
-    document.execCommand(
-      "insertHTML",
-      false,
+    insertHtmlContent(
       `<div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px 16px; margin: 16px 0; border-radius: 4px; font-size: 13px; color: #166534;">
         <strong>Important Notice:</strong> Please review this section carefully before signing.
       </div>`
     );
-    handleInput();
     toast.success("Inserted Callout Box");
   };
 
@@ -343,12 +390,185 @@ export function DocWordEditor({
       month: "long",
       year: "numeric",
     });
-    if (editorRef.current) {
-      editorRef.current.focus();
-    }
-    document.execCommand("insertHTML", false, `<span>${todayFormatted}</span>`);
-    handleInput();
+    insertHtmlContent(`<span>${todayFormatted}</span>`);
     toast.success(`Inserted Date: ${todayFormatted}`);
+  };
+
+  // Insert Employee Payslip / Salary Breakdown Box
+  const insertPayslip = () => {
+    const emp = selectedEmployee;
+    let comp: any = null;
+
+    if (emp) {
+      try {
+        comp = computePayroll({
+          company: company || ({} as any),
+          employee: emp,
+          daysWorked: company?.workingDaysPerMonth || 26,
+          otHours: 0,
+          incentive: 0,
+          shiftDays: 0,
+          loan: 0,
+          advance: 0,
+          bonus: 0,
+        });
+      } catch (err) {
+        console.warn("Could not compute live payroll, using fallback values:", err);
+      }
+    }
+
+    // Build earnings list
+    const earnings: { name: string; amount: number }[] = [];
+    if (comp && Array.isArray(comp.earningsList) && comp.earningsList.length > 0) {
+      comp.earningsList.forEach((e: { name: string; amount: number }) => {
+        if (e.amount > 0) {
+          earnings.push({ name: e.name, amount: e.amount });
+        }
+      });
+    }
+    if (earnings.length === 0) {
+      const basicAmt = emp?.basic || (emp as any)?.salary || 25000;
+      earnings.push(
+        { name: "Basic + DA", amount: Math.round(basicAmt * 0.5) },
+        { name: "House Rent Allowance (HRA)", amount: Math.round(basicAmt * 0.25) },
+        { name: "Special Allowance", amount: Math.round(basicAmt * 0.15) },
+        { name: "Conveyance Allowance", amount: Math.round(basicAmt * 0.1) }
+      );
+    }
+
+    // Build deductions list
+    const deductions: { name: string; amount: number }[] = [];
+    if (comp && comp.deductions) {
+      if (comp.deductions.employeePF > 0) {
+        deductions.push({ name: "Provident Fund (EPF)", amount: comp.deductions.employeePF });
+      }
+      if (comp.deductions.employeeESI > 0) {
+        deductions.push({ name: "ESI Contribution", amount: comp.deductions.employeeESI });
+      }
+      if (comp.deductions.professionalTax > 0) {
+        deductions.push({ name: "Professional Tax (PT)", amount: comp.deductions.professionalTax });
+      }
+      if (comp.deductions.tds > 0) {
+        deductions.push({ name: "TDS / Income Tax", amount: comp.deductions.tds });
+      }
+      if (comp.deductions.lwf > 0) {
+        deductions.push({ name: "Labour Welfare Fund", amount: comp.deductions.lwf });
+      }
+      if (comp.extraDeductions && Array.isArray(comp.extraDeductions)) {
+        comp.extraDeductions.forEach((d: { name: string; amount: number }) => {
+          if (d.amount > 0) {
+            deductions.push({ name: d.name, amount: d.amount });
+          }
+        });
+      }
+    }
+    if (deductions.length === 0) {
+      deductions.push(
+        { name: "Provident Fund (EPF)", amount: 1800 },
+        { name: "Professional Tax (PT)", amount: 200 },
+        { name: "ESI Contribution", amount: 225 }
+      );
+    }
+
+    const totalGross = comp?.gross ?? earnings.reduce((sum, item) => sum + item.amount, 0);
+    const totalDeductions = comp?.totalDeductions ?? deductions.reduce((sum, item) => sum + item.amount, 0);
+    const netTakeHome = comp?.net ?? Math.max(0, totalGross - totalDeductions);
+
+    let words = "";
+    try {
+      words = numberToWordsIndian(netTakeHome);
+    } catch {
+      words = "";
+    }
+
+    const maxRows = Math.max(earnings.length, deductions.length);
+    const rowsHtml: string[] = [];
+
+    for (let i = 0; i < maxRows; i++) {
+      const earn = earnings[i];
+      const ded = deductions[i];
+      const bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+      rowsHtml.push(`
+        <tr style="background-color: ${bg}; border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 7px 12px; color: #334155; border-right: 1px solid #e2e8f0;">${earn ? earn.name : "—"}</td>
+          <td style="padding: 7px 12px; text-align: right; font-weight: 500; color: #0f172a; border-right: 1.5px solid #cbd5e1;">${earn ? `₹${earn.amount.toLocaleString("en-IN")}` : "—"}</td>
+          <td style="padding: 7px 12px; color: #334155; border-right: 1px solid #e2e8f0;">${ded ? ded.name : "—"}</td>
+          <td style="padding: 7px 12px; text-align: right; font-weight: 500; color: #0f172a;">${ded ? `₹${ded.amount.toLocaleString("en-IN")}` : "—"}</td>
+        </tr>
+      `);
+    }
+
+    const empHeaderSubtitle = emp
+      ? `${emp.name} (${emp.empCode || "EMP"}) • ${emp.designation || "Employee"}`
+      : "Employee Salary Breakdown";
+
+    const payslipHtml = `
+      <div class="payslip-summary-box" style="margin: 20px 0; border: 1.5px solid #cbd5e1; border-radius: 8px; overflow: hidden; font-family: inherit; font-size: 12px; page-break-inside: avoid; background-color: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="background: #f1f5f9; padding: 10px 14px; border-bottom: 1.5px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <strong style="font-size: 12.5px; color: #0f172a; text-transform: uppercase; letter-spacing: 0.3px;">Salary Structure &amp; Compensation</strong>
+            <span style="font-size: 11px; color: #64748b; margin-left: 8px;">— ${empHeaderSubtitle}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; font-weight: 600; color: #475569; background: #e2e8f0; padding: 2px 7px; border-radius: 4px; text-transform: uppercase;">Monthly Pay</span>
+            <button type="button" data-action="delete-payslip" class="delete-payslip-btn" title="Remove Payslip" style="cursor: pointer; background: #fee2e2; border: 1px solid #fca5a5; color: #dc2626; border-radius: 4px; padding: 2px 6px; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; transition: all 0.15s;" onmouseover="this.style.background='#fecaca'" onmouseout="this.style.background='#fee2e2'">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+            </button>
+          </div>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11.5px; text-align: left;">
+          <thead>
+            <tr style="background-color: #f8fafc; border-bottom: 1.5px solid #cbd5e1; color: #475569; font-size: 11px; text-transform: uppercase;">
+              <th style="padding: 8px 12px; font-weight: 700; width: 35%; border-right: 1px solid #e2e8f0;">Earnings Component</th>
+              <th style="padding: 8px 12px; text-align: right; font-weight: 700; width: 15%; border-right: 1.5px solid #cbd5e1;">Amount (₹)</th>
+              <th style="padding: 8px 12px; font-weight: 700; width: 35%; border-right: 1px solid #e2e8f0;">Deductions Component</th>
+              <th style="padding: 8px 12px; text-align: right; font-weight: 700; width: 15%;">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml.join("")}
+            <tr style="background-color: #f8fafc; font-weight: 700; border-top: 1.5px solid #cbd5e1; border-bottom: 1.5px solid #cbd5e1;">
+              <td style="padding: 8px 12px; color: #0f172a; border-right: 1px solid #e2e8f0;">Total Gross Earnings</td>
+              <td style="padding: 8px 12px; text-align: right; color: #059669; border-right: 1.5px solid #cbd5e1;">₹${totalGross.toLocaleString("en-IN")}</td>
+              <td style="padding: 8px 12px; color: #0f172a; border-right: 1px solid #e2e8f0;">Total Deductions</td>
+              <td style="padding: 8px 12px; text-align: right; color: #dc2626;">₹${totalDeductions.toLocaleString("en-IN")}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="background: #f0fdf4; padding: 10px 14px; border-top: 1.5px solid #bbf7d0; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span style="font-size: 11px; font-weight: 700; color: #166534; text-transform: uppercase; letter-spacing: 0.5px;">Net Take Home Pay:</span>
+            ${words ? `<span style="margin-left: 6px; font-size: 11px; color: #15803d; font-style: italic;">(${words})</span>` : ""}
+          </div>
+          <div style="text-align: right;">
+            <span style="font-size: 15px; font-weight: 800; color: #15803d; font-family: monospace;">₹${netTakeHome.toLocaleString("en-IN")}</span>
+            <span style="font-size: 10.5px; color: #166534; margin-left: 3px;">/ month</span>
+          </div>
+        </div>
+      </div>
+      <p><br/></p>
+    `;
+
+    insertHtmlContent(payslipHtml);
+    toast.success(
+      emp ? `Inserted Payslip table for ${emp.name}` : "Inserted Payslip table"
+    );
+  };
+
+  // Handle clicks inside editor canvas (e.g. on payslip delete icon)
+  const handleEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const deleteBtn = target.closest("[data-action='delete-payslip']");
+    if (deleteBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const payslipBox = deleteBtn.closest(".payslip-summary-box, .payslip-box");
+      if (payslipBox) {
+        payslipBox.remove();
+        handleInput();
+        toast.success("Removed Payslip from document");
+      }
+    }
   };
 
   // Calculate statistics (word count, character count)
@@ -783,6 +1003,9 @@ export function DocWordEditor({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 text-xs">
+              <DropdownMenuItem onClick={insertPayslip}>
+                <Receipt className="h-4 w-4 mr-2 text-emerald-600" /> Insert Payslip
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onOpenTableModal}>
                 <TableIcon className="h-4 w-4 mr-2 text-indigo-500" /> Insert Annexure Table
               </DropdownMenuItem>
@@ -1058,6 +1281,7 @@ export function DocWordEditor({
                 contentEditable
                 onInput={handleInput}
                 onBlur={handleInput}
+                onClick={handleEditorClick}
                 onKeyUp={updateActiveFormats}
                 onMouseUp={updateActiveFormats}
                 className="outline-hidden min-h-[380px] text-slate-800 text-xs leading-relaxed focus:ring-0 word-editor-content flex-1"

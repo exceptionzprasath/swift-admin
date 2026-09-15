@@ -24,9 +24,9 @@ import {
   FileSignature, CheckCircle2, Sparkles, Wand2, Camera, Home, Users as UsersIcon,
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
-  KeyRound, RefreshCw, Copy, Check, Fingerprint,
+  KeyRound, RefreshCw, Copy, Check, Fingerprint, Database,
 } from "lucide-react";
-import { downloadEmployeeTemplate, parseEmployeeCsvText, generateEmployeePassword } from "@/lib/bulk-employee";
+import { downloadEmployeeTemplate, parseEmployeeCsvText, generateEmployeePassword, downloadBulkEmployeesExcel } from "@/lib/bulk-employee";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
 import { toast } from "sonner";
 import { aiNotify, setAiGuideMode } from "@/lib/ai-guide-bus";
@@ -136,6 +136,7 @@ function EmployeesPage() {
 
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
   const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
   const [actionEmp, setActionEmp] = useState<Employee | null>(null);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
@@ -167,6 +168,16 @@ function EmployeesPage() {
             title="Download Excel / CSV template with prefilled column headers"
           >
             <Download className="mr-2 h-4 w-4 text-primary" /> Download Template
+          </Button>
+
+          <Button
+            id="trigger-bulk-download-btn"
+            variant="outline"
+            className="border-border hover:bg-muted text-foreground font-medium"
+            onClick={() => setBulkDownloadOpen(true)}
+            title="Download all employee details across all 7 modules into Excel"
+          >
+            <FileDown className="mr-2 h-4 w-4 text-emerald-600" /> Bulk Download
           </Button>
 
           <Button
@@ -333,6 +344,16 @@ function EmployeesPage() {
       <BulkUploadDialog
         open={bulkOpen}
         onClose={() => setBulkOpen(false)}
+      />
+      <BulkDownloadConfirmDialog
+        open={bulkDownloadOpen}
+        onClose={() => setBulkDownloadOpen(false)}
+        companyName={company.name}
+        employees={employees}
+        branches={company.branches ?? []}
+        shifts={company.shifts ?? []}
+        roles={roles ?? []}
+        devices={devices ?? []}
       />
     </div>
   );
@@ -3249,3 +3270,180 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
     </Dialog>
   );
 }
+
+function BulkDownloadConfirmDialog({
+  open,
+  onClose,
+  companyName,
+  employees,
+  branches,
+  shifts,
+  roles,
+  devices,
+}: {
+  open: boolean;
+  onClose: () => void;
+  companyName: string;
+  employees: Employee[];
+  branches: any[];
+  shifts: any[];
+  roles: any[];
+  devices: any[];
+}) {
+  const [downloading, setDownloading] = useState(false);
+
+  const modules = [
+    {
+      name: "Profile & Identity",
+      icon: User,
+      color: "text-blue-500 bg-blue-500/10 border-blue-500/20",
+      desc: "Employee Code, Full Name, Status, Demographics (DOB, Gender, Blood Group, Marital Status), Nationality, Parents/Spouse info, Personal Email & Emergency Contacts.",
+    },
+    {
+      name: "Employment & Salary",
+      icon: Briefcase,
+      color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20",
+      desc: "Work Email, Mobile, Department, Designation, Predefined Role, Reporting Manager, Date of Joining, Probation Dates, Monthly Fixed Salary, Basic & Statutory Numbers (PF UAN, ESIC, PT).",
+    },
+    {
+      name: "Address & KYC",
+      icon: Home,
+      color: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+      desc: "Residential Addresses (Lines 1 & 2, City, State, Pincode), Aadhaar Number, PAN Number, Passport Number, Driving License & Bank Account Direct Deposit Details (Account, IFSC, Branch).",
+    },
+    {
+      name: "Branches & Policy",
+      icon: Building2,
+      color: "text-purple-500 bg-purple-500/10 border-purple-500/20",
+      desc: "Authorized Branch Geofences, Primary Branch, Assigned Shifts, Morning/Afternoon Grace Timings, Afternoon Login Permissions, App Leave Permissions, PF/ESI/PT/TDS Eligibilities & Biometric Hardware Mappings.",
+    },
+    {
+      name: "Family & Education",
+      icon: GraduationCap,
+      color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
+      desc: "Family Members & Nominees (Relations, DOB, Dependency) and Educational Qualifications (Degrees, Universities/Institutes, Passing Years, Grades/CGPA).",
+    },
+    {
+      name: "Experience & Skills",
+      icon: Award,
+      color: "text-cyan-500 bg-cyan-500/10 border-cyan-500/20",
+      desc: "Prior Employment History (Companies, Designations, Tenures, Last CTC), Verified Technical/Job Skills & Language Proficiencies.",
+    },
+    {
+      name: "Compliance & BGV",
+      icon: ShieldCheck,
+      color: "text-rose-500 bg-rose-500/10 border-rose-500/20",
+      desc: "Background Verification (BGV) Clearance Status, Police Verification, Medical Fitness Certificate, NDA & Confidentiality Agreements, AI Verification Findings, HR Compliance Notes & Final Approvals.",
+    },
+  ];
+
+  const handleConfirmDownload = () => {
+    try {
+      setDownloading(true);
+      downloadBulkEmployeesExcel(companyName, employees, branches, shifts, roles, devices);
+      toast.success(`Successfully exported ${employees.length} employee records to Excel!`);
+      onClose();
+    } catch (err) {
+      console.error("Bulk download error:", err);
+      toast.error("Failed to generate Excel download. Please check the logs.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
+        <DialogHeader className="pb-3 border-b border-border">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2 font-display text-lg font-bold">
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                <FileSpreadsheet className="h-5 w-5" />
+              </div>
+              <span>Bulk Download Employee Master Records</span>
+            </DialogTitle>
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-xs font-semibold">
+              {employees.length} Records Available
+            </Badge>
+          </div>
+          <DialogDescription className="text-xs text-muted-foreground pt-1.5 leading-relaxed">
+            Confirming this action will generate and download an exhaustive, multi-tab Microsoft Excel (<strong className="text-foreground font-semibold">.xlsx</strong>) workbook containing the complete master profile for all registered employees.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-3">
+          {/* Summary Box */}
+          <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <Database className="h-3.5 w-3.5 text-primary" /> Included Data Modules (7 Sections + Master)
+              </div>
+              <Badge variant="secondary" className="text-[10px] font-mono">
+                Format: Microsoft Excel (.xlsx)
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2.5">
+              {modules.map((m, idx) => {
+                const Icon = m.icon;
+                return (
+                  <div key={m.name} className="flex items-start gap-3 p-2.5 rounded-xl border border-border/70 bg-card hover:bg-card/80 transition-colors">
+                    <div className={`p-1.5 rounded-lg shrink-0 border ${m.color}`}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <span>{idx + 1}. {m.name}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-snug">{m.desc}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-primary/5 border border-primary/20 flex items-center gap-2 text-xs">
+              <Sparkles className="h-4 w-4 text-primary shrink-0" />
+              <span className="text-[11.5px] text-muted-foreground">
+                <strong className="text-foreground font-medium">Consolidated Master Sheet:</strong> A unified summary tab is also created for easy spreadsheet filtering and pivot analysis.
+              </span>
+            </div>
+          </div>
+
+          {/* Confidentiality Warning */}
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-300">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+            <div className="space-y-0.5">
+              <div className="font-semibold text-xs">Confidential Master Export</div>
+              <p className="text-[11px] opacity-90 leading-relaxed">
+                This workbook contains sensitive personally identifiable information (PII), bank credentials, and statutory salary figures. Please ensure safe handling and storage.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="flex items-center justify-between sm:justify-between gap-2 pt-3 border-t border-border mt-2">
+          <Button variant="outline" onClick={onClose} disabled={downloading} className="rounded-xl text-xs h-9">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmDownload}
+            disabled={downloading || employees.length === 0}
+            className="rounded-xl text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-500/20"
+          >
+            {downloading ? (
+              <>
+                <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" /> Generating Excel...
+              </>
+            ) : (
+              <>
+                <FileDown className="mr-2 h-4 w-4" /> Download Complete Excel ({employees.length} Records)
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+

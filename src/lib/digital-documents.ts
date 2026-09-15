@@ -155,64 +155,57 @@ export function getOrderedSignatories(
 ): SignatorySlot[] {
   const slots: SignatorySlot[] = [];
 
-  // 1. Leftmost: Recipient / Employee acceptance
-  slots.push({
-    key: "emp-acceptance",
-    label: "Employee Acceptance",
-    roleTitle: "Recipient Acknowledgment",
-    signerName: employeeName || "Employee Signature",
-    rank: 1,
-    positionGroup: "left",
-    isEmployee: true,
-  });
-
   const activeApprovers = (approvers || []).filter((s) => s.requireSignature !== false);
 
-  if (activeApprovers.length === 0) {
-    slots.push({
-      key: "company-default-sig",
-      label: `For ${companyName || "SWIFT Technologies"}`,
-      roleTitle: "Authorized Signatory",
-      signerName: "Authorized Official",
-      rank: 5,
-      positionGroup: "right",
-      dataUrl: docAssets?.authorisedSignatoryDataUrl,
-    });
-  } else {
-    activeApprovers.forEach((step) => {
-      const roleName = step.approverRoleOrName || step.roleType || "Signatory";
-      const rank = getSignatoryRank(roleName, step.category);
-      const positionGroup: "left" | "middle" | "right" =
-        rank === 1 ? "left" : rank <= 4 ? "middle" : "right";
+  activeApprovers.forEach((step) => {
+    const rawRole = step.approverRoleOrName || step.roleType || "Signatory";
+    const rank = getSignatoryRank(rawRole, step.category);
+    const isEmp = rank === 1 || step.category === "employee";
+    const positionGroup: "left" | "middle" | "right" =
+      isEmp ? "left" : rank <= 4 ? "middle" : "right";
 
-      let dataUrl: string | undefined = step.signatureDataUrl;
-      if (!dataUrl) {
-        const lower = roleName.toLowerCase();
-        if (lower.includes("md") || lower.includes("director")) {
-          dataUrl = docAssets?.mdSignatureDataUrl || docAssets?.authorisedSignatoryDataUrl;
-        } else if (lower.includes("hr") || lower.includes("human resources") || lower.includes("priya")) {
-          dataUrl = docAssets?.hrSignatureDataUrl;
-        } else if (lower.includes("branch")) {
-          dataUrl = docAssets?.branchManagerSignatureDataUrl;
-        } else if (lower.includes("factory")) {
-          dataUrl = docAssets?.factoryManagerSignatureDataUrl;
-        } else if (lower.includes("ceo") || lower.includes("super admin") || lower.includes("signatory") || lower.includes("admin")) {
-          dataUrl = docAssets?.authorisedSignatoryDataUrl;
-        }
+    let dataUrl: string | undefined = step.signatureDataUrl;
+    if (!dataUrl && !isEmp) {
+      const lower = rawRole.toLowerCase();
+      if (lower.includes("md") || lower.includes("director")) {
+        dataUrl = docAssets?.mdSignatureDataUrl || docAssets?.authorisedSignatoryDataUrl;
+      } else if (lower.includes("hr") || lower.includes("human resources") || lower.includes("priya")) {
+        dataUrl = docAssets?.hrSignatureDataUrl;
+      } else if (lower.includes("branch")) {
+        dataUrl = docAssets?.branchManagerSignatureDataUrl;
+      } else if (lower.includes("factory")) {
+        dataUrl = docAssets?.factoryManagerSignatureDataUrl;
+      } else if (lower.includes("ceo") || lower.includes("super admin") || lower.includes("signatory") || lower.includes("admin")) {
+        dataUrl = docAssets?.authorisedSignatoryDataUrl;
       }
+    }
 
-      slots.push({
-        key: step.id,
-        label: rank === 1 ? "Employee Acceptance" : `For ${companyName || "SWIFT Technologies"}`,
-        roleTitle: roleName,
-        signerName: step.category === "employee" ? roleName : roleName || "Authorized Signatory",
-        rank,
-        positionGroup,
-        dataUrl,
-        isEmployee: rank === 1,
-      });
+    let cleanSignerName = rawRole;
+    let cleanRoleTitle = rawRole;
+    if (isEmp) {
+      if (rawRole.toLowerCase().startsWith("employee:")) {
+        cleanSignerName = rawRole.replace(/^employee:\s*/i, "").trim() || employeeName || "Employee Signature";
+      } else if (rawRole.toLowerCase().includes("selected") || rawRole.toLowerCase().includes("all employees")) {
+        cleanSignerName = employeeName || rawRole;
+      } else {
+        cleanSignerName = rawRole || employeeName || "Employee Signature";
+      }
+      cleanRoleTitle = "Recipient Acknowledgment";
+    } else {
+      cleanSignerName = rawRole || "Authorized Signatory";
+    }
+
+    slots.push({
+      key: step.id,
+      label: isEmp ? "Employee Acceptance" : `For ${companyName || "SWIFT Technologies"}`,
+      roleTitle: cleanRoleTitle,
+      signerName: cleanSignerName,
+      rank: isEmp ? 1 : rank,
+      positionGroup,
+      dataUrl,
+      isEmployee: isEmp,
     });
-  }
+  });
 
   return slots.sort((a, b) => a.rank - b.rank);
 }
@@ -552,6 +545,8 @@ export function resolveDocumentTags(
     const escaped = key.replace(/[{()}]/g, "\\$&");
     resolved = resolved.replace(new RegExp(escaped, "g"), val);
   }
+  // Strip editor-only delete button for clean official documents and PDF exports
+  resolved = resolved.replace(/<button[^>]*class=["'][^"']*delete-payslip-btn[^"']*["'][^>]*>[\s\S]*?<\/button>/gi, "");
   return resolved;
 }
 
