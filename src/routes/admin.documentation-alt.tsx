@@ -11,12 +11,20 @@ import {
   type ApprovalMode,
   type ApprovalStepItem,
   type DocCustomTable,
+  type DocLetterheadConfig,
+  type DocFooterConfig,
+  type SignatorySlot,
+  getSignatoryRank,
+  getOrderedSignatories,
+  ORG_SIGNATORY_TIERS,
 } from "@/lib/digital-documents";
+import { DocWordEditor } from "@/components/doc-word-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -81,6 +89,9 @@ import {
   RotateCcw,
   Sliders,
   BellRing,
+  Crown,
+  UserCheck,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -144,18 +155,235 @@ export default function DigitalDocumentationPage() {
   const [docContentHtml, setDocContentHtml] = useState<string>("");
   const [customTable, setCustomTable] = useState<DocCustomTable | null>(null);
 
+  // Letterhead & Footer Configuration
+  const [docLetterhead, setDocLetterhead] = useState<DocLetterheadConfig>({
+    enabled: true,
+    style: docAssets?.letterheadDataUrl ? "uploaded" : "modern",
+    showLogo: true,
+    companyName: company?.name || "SWIFT Technologies Pvt. Ltd.",
+    tagline: "Enterprise Workforce & People Operations",
+    address: company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096",
+    email: company?.email || "hr@swift.io",
+    phone: company?.phone || "+91 44 2876 5400",
+    website: "www.swift-technologies.com",
+    cin: "U72200TN2026PTC109823",
+  });
+
+  const [docFooter, setDocFooter] = useState<DocFooterConfig>({
+    enabled: true,
+    style: docAssets?.footerDataUrl ? "uploaded" : "standard",
+    showPageNumbers: true,
+    showConfidentialNotice: true,
+    confidentialText: "STRICTLY CONFIDENTIAL • FOR AUTHORIZED RECIPIENT ONLY",
+    registeredOfficeText: `${company?.name || "SWIFT Technologies"} | Reg. Office: ${company?.address || "Tower B, Silicon Heights, OMR, Chennai"}`,
+  });
+
   // Delivery
   const [deliveryChannel, setDeliveryChannel] = useState<"email" | "app" | "both">("both");
   const [deliverySubject, setDeliverySubject] = useState("");
 
-  // Approval
+  // Approval Matrix & Signatory Configuration
   const [approvalRequired, setApprovalRequired] = useState(true);
   const [approvalMode, setApprovalMode] = useState<ApprovalMode>("sequential");
   const [approvers, setApprovers] = useState<ApprovalStepItem[]>([
-    { id: "s-1", approverRoleOrName: "HR Manager", order: 1, status: "pending" },
-    { id: "s-2", approverRoleOrName: "HR Head", order: 2, status: "pending" },
-    { id: "s-3", approverRoleOrName: "Authorized Signatory", order: 3, status: "pending" },
+    {
+      id: "s-1",
+      category: "role",
+      roleType: "HR Manager",
+      approverRoleOrName: "HR Manager",
+      order: 1,
+      status: "pending",
+      requireSignature: true,
+    },
+    {
+      id: "s-2",
+      category: "role",
+      roleType: "HR Head",
+      approverRoleOrName: "HR Head",
+      order: 2,
+      status: "pending",
+      requireSignature: true,
+    },
+    {
+      id: "s-3",
+      category: "role",
+      roleType: "Authorized Signatory",
+      approverRoleOrName: "Authorized Signatory",
+      order: 3,
+      status: "pending",
+      requireSignature: true,
+    },
   ]);
+  const [includeCompanySeal, setIncludeCompanySeal] = useState(true);
+  const [approverEmpSearchText, setApproverEmpSearchText] = useState<Record<string, string>>({});
+
+  const APPROVER_POSITION_OPTIONS = useMemo(
+    () => [
+      { value: "Employee", label: "Employee (Single / Multi / All)" },
+      { value: "Team Leader", label: "Team Leader / Supervisor" },
+      { value: "HR Manager", label: "HR Manager" },
+      { value: "HR Head", label: "HR Head (Priya Kumar)" },
+      { value: "Admin", label: "Admin / Super Admin" },
+      { value: "Authorized Signatory", label: "Authorized Signatory" },
+      { value: "Director", label: "Managing Director / Board Signatory" },
+      { value: "Department Head", label: "Department Head (HOD)" },
+      { value: "Finance Head", label: "Finance / Accounts Head" },
+      { value: "custom", label: "✨ Custom Position / Title..." },
+    ],
+    []
+  );
+
+  function handleAddApproverStep() {
+    const newStep: ApprovalStepItem = {
+      id: `s-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      category: "role",
+      roleType: "HR Manager",
+      approverRoleOrName: "HR Manager",
+      order: approvers.length + 1,
+      status: "pending",
+      requireSignature: true,
+    };
+    setApprovers([...approvers, newStep]);
+    toast.success(`Added Approver Step ${approvers.length + 1}`);
+  }
+
+  function handlePositionChange(index: number, newPosition: string) {
+    const updated = [...approvers];
+    const step = { ...updated[index] };
+    step.roleType = newPosition;
+
+    if (newPosition === "Employee") {
+      step.category = "employee";
+      step.employeeSelectionMode = step.employeeSelectionMode || "single";
+      if (!step.approverEmployeeId && employees.length > 0) {
+        step.approverEmployeeId = employees[0].id;
+        step.approverRoleOrName = `Employee: ${employees[0].name}`;
+      } else if (step.approverEmployeeId) {
+        const emp = employees.find((e) => e.id === step.approverEmployeeId);
+        step.approverRoleOrName = `Employee: ${emp?.name || "Selected"}`;
+      }
+    } else if (newPosition === "custom") {
+      step.category = "role";
+      step.approverRoleOrName = "";
+    } else {
+      step.category = "role";
+      step.approverRoleOrName = newPosition;
+    }
+
+    updated[index] = step;
+    setApprovers(updated);
+  }
+
+  function handleEmployeeSelectionModeChange(index: number, mode: "single" | "multiple" | "all") {
+    const updated = [...approvers];
+    const step = { ...updated[index] };
+    step.employeeSelectionMode = mode;
+
+    if (mode === "all") {
+      step.approverEmployeeIds = employees.map((e) => e.id);
+      step.approverRoleOrName = `All Employees (${employees.length})`;
+    } else if (mode === "multiple") {
+      if (!step.approverEmployeeIds || step.approverEmployeeIds.length === 0) {
+        step.approverEmployeeIds = employees.slice(0, 2).map((e) => e.id);
+      }
+      step.approverRoleOrName = `${step.approverEmployeeIds.length} Selected Employees`;
+    } else {
+      const empId = step.approverEmployeeId || employees[0]?.id || "";
+      step.approverEmployeeId = empId;
+      const emp = employees.find((e) => e.id === empId);
+      step.approverRoleOrName = `Employee: ${emp?.name || "Selected"}`;
+    }
+
+    updated[index] = step;
+    setApprovers(updated);
+  }
+
+  function handleSingleEmployeeChange(index: number, empId: string) {
+    const updated = [...approvers];
+    const step = { ...updated[index] };
+    step.approverEmployeeId = empId;
+    const emp = employees.find((e) => e.id === empId);
+    step.approverRoleOrName = `Employee: ${emp?.name || "Selected"}`;
+    updated[index] = step;
+    setApprovers(updated);
+  }
+
+  function handleToggleMultiEmployee(index: number, empId: string) {
+    const updated = [...approvers];
+    const step = { ...updated[index] };
+    const currentIds = step.approverEmployeeIds || [];
+    let nextIds: string[];
+    if (currentIds.includes(empId)) {
+      nextIds = currentIds.filter((id) => id !== empId);
+    } else {
+      nextIds = [...currentIds, empId];
+    }
+    step.approverEmployeeIds = nextIds;
+    step.approverRoleOrName = `${nextIds.length} Selected Employees`;
+    updated[index] = step;
+    setApprovers(updated);
+  }
+
+  function handleSelectAllMultiEmployees(index: number, selectAll: boolean) {
+    const updated = [...approvers];
+    const step = { ...updated[index] };
+    const nextIds = selectAll ? employees.map((e) => e.id) : [];
+    step.approverEmployeeIds = nextIds;
+    step.approverRoleOrName = selectAll ? `All Employees (${employees.length})` : `0 Selected Employees`;
+    updated[index] = step;
+    setApprovers(updated);
+  }
+
+  function handleToggleSignatureNeeded(index: number, requireSig: boolean) {
+    const updated = [...approvers];
+    const targetStep = { ...updated[index], requireSignature: requireSig };
+    updated[index] = targetStep;
+    setApprovers(updated);
+
+    const roleName = targetStep.approverRoleOrName || targetStep.roleType || "Approver";
+    const rank = getSignatoryRank(roleName, targetStep.category);
+    const positionLabel = rank <= 1 ? "Left" : rank <= 4 ? "Middle" : "Right";
+
+    toast.success(
+      requireSig
+        ? `Added ${roleName} signature to document (${positionLabel} position per Org Hierarchy)`
+        : `Removed ${roleName} signature requirement from document`
+    );
+  }
+
+  function handleAutomationActionChange(
+    index: number,
+    action: "manual" | "auto_approve" | "auto_decline"
+  ) {
+    const updated = [...approvers];
+    updated[index] = { ...updated[index], automationAction: action };
+    setApprovers(updated);
+    const actionLabel =
+      action === "auto_approve"
+        ? "⚡ Auto Approve"
+        : action === "auto_decline"
+        ? "⛔ Auto Decline"
+        : "👤 Manual Approval";
+    toast.success(`Set step ${index + 1} to ${actionLabel}`);
+  }
+
+  function handleMoveStep(fromIndex: number, toIndex: number) {
+    if (toIndex < 0 || toIndex >= approvers.length) return;
+    const updated = [...approvers];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    setApprovers(updated.map((s, i) => ({ ...s, order: i + 1 })));
+  }
+
+  function handleDeleteStep(index: number) {
+    if (approvers.length <= 1) {
+      toast.error("At least one approver step is required when approval is enabled");
+      return;
+    }
+    const updated = approvers.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i + 1 }));
+    setApprovers(updated);
+    toast.success("Approver step removed");
+  }
 
   // Escalation
   const [escalationEnabled, setEscalationEnabled] = useState(true);
@@ -260,6 +488,16 @@ export default function DigitalDocumentationPage() {
     return employees.find((e) => e.id === selectedEmpId) || employees[0] || null;
   }, [recipientMode, customRecipient, previewEmpId, selectedEmpIds, selectedEmpId, employees]);
 
+  // Dynamically ordered signatories for live composer preview based on Org Hierarchy Priority
+  const previewSignatories = useMemo(() => {
+    return getOrderedSignatories(
+      approvers,
+      selectedEmployee?.name || "Employee Signature",
+      docLetterhead.companyName || company?.name || "SWIFT Technologies",
+      docAssets
+    );
+  }, [approvers, selectedEmployee?.name, docLetterhead.companyName, company?.name, docAssets]);
+
   const activeDetailDoc = useMemo(() => {
     return documents.find((d) => d.id === selectedDocId) || documents[0] || null;
   }, [documents, selectedDocId]);
@@ -351,11 +589,15 @@ export default function DigitalDocumentationPage() {
     setApprovers(
       preset.defaultApprovers.map((name, i) => ({
         id: `s-${i + 1}`,
+        category: "role" as const,
+        roleType: name,
         approverRoleOrName: name,
         order: i + 1,
         status: "pending",
+        requireSignature: true,
       }))
     );
+    setIncludeCompanySeal(true);
     setEscalationEnabled(true);
     setEscalationDelay(2);
     setEscalationTarget("HR Head");
@@ -377,6 +619,32 @@ export default function DigitalDocumentationPage() {
     } else {
       setCustomTable(null);
     }
+
+    setDocLetterhead(
+      preset.defaultLetterhead || {
+        enabled: true,
+        style: docAssets?.letterheadDataUrl ? "uploaded" : "modern",
+        showLogo: true,
+        companyName: company?.name || "SWIFT Technologies Pvt. Ltd.",
+        tagline: "Enterprise Workforce & People Operations",
+        address: company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096",
+        email: company?.email || "hr@swift.io",
+        phone: company?.phone || "+91 44 2876 5400",
+        website: "www.swift-technologies.com",
+        cin: "U72200TN2026PTC109823",
+      }
+    );
+
+    setDocFooter(
+      preset.defaultFooter || {
+        enabled: true,
+        style: docAssets?.footerDataUrl ? "uploaded" : "standard",
+        showPageNumbers: true,
+        showConfidentialNotice: true,
+        confidentialText: "STRICTLY CONFIDENTIAL • FOR AUTHORIZED RECIPIENT ONLY",
+        registeredOfficeText: `${company?.name || "SWIFT Technologies"} | Reg. Office: ${company?.address || "Tower B, Silicon Heights, OMR, Chennai"}`,
+      }
+    );
 
     setViewMode("composer");
   }
@@ -409,11 +677,35 @@ export default function DigitalDocumentationPage() {
 
     setDocContentHtml(doc.contentHtml);
     setCustomTable(doc.tableData || null);
+    if (doc.letterhead) {
+      setDocLetterhead(doc.letterhead);
+    }
+    if (doc.footer) {
+      setDocFooter(doc.footer);
+    }
     setDeliveryChannel(doc.delivery.channel);
     setDeliverySubject(doc.delivery.subject);
     setApprovalRequired(doc.approvalRequired);
     setApprovalMode(doc.approvalMode);
-    setApprovers(doc.approvers);
+    setApprovers(
+      doc.approvers?.length > 0
+        ? doc.approvers.map((a) => ({
+            ...a,
+            requireSignature: a.requireSignature ?? true,
+          }))
+        : [
+            {
+              id: "s-1",
+              category: "role",
+              roleType: "HR Manager",
+              approverRoleOrName: "HR Manager",
+              order: 1,
+              status: "pending",
+              requireSignature: true,
+            },
+          ]
+    );
+    setIncludeCompanySeal(doc.includeCompanySeal !== false);
     setEscalationEnabled(doc.escalation.enabled);
     setEscalationDelay(doc.escalation.delayDays);
     setEscalationTarget(doc.escalation.escalateTo);
@@ -442,9 +734,12 @@ export default function DigitalDocumentationPage() {
     setApprovers(
       preset.defaultApprovers.map((name, i) => ({
         id: `s-${Date.now()}-${i}`,
+        category: "role" as const,
+        roleType: name,
         approverRoleOrName: name,
         order: i + 1,
         status: "pending",
+        requireSignature: true,
       }))
     );
   }
@@ -594,6 +889,8 @@ export default function DigitalDocumentationPage() {
         employeeEmail: customRecipient.email.trim() || "recipient@external.com",
         contentHtml: docContentHtml,
         tableData: customTable,
+        letterhead: docLetterhead,
+        footer: docFooter,
         delivery: {
           channel: deliveryChannel,
           recipientEmail: customRecipient.email.trim() || "recipient@external.com",
@@ -602,6 +899,7 @@ export default function DigitalDocumentationPage() {
         approvalRequired,
         approvalMode,
         approvers,
+        includeCompanySeal,
         currentStepIndex: 0,
         escalation: {
           enabled: escalationEnabled,
@@ -647,6 +945,8 @@ export default function DigitalDocumentationPage() {
           employeeEmail: emp.email,
           contentHtml: docContentHtml,
           tableData: customTable,
+          letterhead: docLetterhead,
+          footer: docFooter,
           delivery: {
             channel: deliveryChannel,
             recipientEmail: emp.email,
@@ -655,6 +955,7 @@ export default function DigitalDocumentationPage() {
           approvalRequired,
           approvalMode,
           approvers,
+          includeCompanySeal,
           currentStepIndex: 0,
           escalation: {
             enabled: escalationEnabled,
@@ -692,6 +993,8 @@ export default function DigitalDocumentationPage() {
       employeeEmail: selectedEmployee.email,
       contentHtml: docContentHtml,
       tableData: customTable,
+      letterhead: docLetterhead,
+      footer: docFooter,
       delivery: {
         channel: deliveryChannel,
         recipientEmail: selectedEmployee.email,
@@ -700,6 +1003,7 @@ export default function DigitalDocumentationPage() {
       approvalRequired,
       approvalMode,
       approvers,
+      includeCompanySeal,
       currentStepIndex: 0,
       escalation: {
         enabled: escalationEnabled,
@@ -783,6 +1087,8 @@ export default function DigitalDocumentationPage() {
         employeeEmail: customRecipient.email.trim() || "recipient@external.com",
         contentHtml: docContentHtml,
         tableData: customTable,
+        letterhead: docLetterhead,
+        footer: docFooter,
         delivery: {
           channel: deliveryChannel,
           recipientEmail: customRecipient.email.trim() || "recipient@external.com",
@@ -791,6 +1097,7 @@ export default function DigitalDocumentationPage() {
         approvalRequired,
         approvalMode,
         approvers: approvers.map((a) => ({ ...a, status: "pending" as const })),
+        includeCompanySeal,
         currentStepIndex: 0,
         escalation: {
           enabled: escalationEnabled,
@@ -808,7 +1115,7 @@ export default function DigitalDocumentationPage() {
       if (editingDocId) {
         const existing = documents.find((d) => d.id === editingDocId);
         if (existing && (existing.status === "REJECTED" || existing.currentVersion > 1)) {
-          createNewVersion(editingDocId, docContentHtml, customTable, "Dispatched revised version for approval");
+          createNewVersion(editingDocId, docContentHtml, customTable, "Dispatched revised version for approval", undefined, docLetterhead, docFooter, includeCompanySeal);
         } else {
           updateDocument(editingDocId, payload, "Dispatched document");
         }
@@ -854,6 +1161,8 @@ export default function DigitalDocumentationPage() {
           employeeEmail: emp.email,
           contentHtml: docContentHtml,
           tableData: customTable,
+          letterhead: docLetterhead,
+          footer: docFooter,
           delivery: {
             channel: deliveryChannel,
             recipientEmail: emp.email,
@@ -862,6 +1171,7 @@ export default function DigitalDocumentationPage() {
           approvalRequired,
           approvalMode,
           approvers: approvers.map((a) => ({ ...a, status: "pending" as const })),
+          includeCompanySeal,
           currentStepIndex: 0,
           escalation: {
             enabled: escalationEnabled,
@@ -899,6 +1209,8 @@ export default function DigitalDocumentationPage() {
       employeeEmail: selectedEmployee.email,
       contentHtml: docContentHtml,
       tableData: customTable,
+      letterhead: docLetterhead,
+      footer: docFooter,
       delivery: {
         channel: deliveryChannel,
         recipientEmail: selectedEmployee.email,
@@ -907,6 +1219,7 @@ export default function DigitalDocumentationPage() {
       approvalRequired,
       approvalMode,
       approvers: approvers.map((a) => ({ ...a, status: "pending" as const })),
+      includeCompanySeal,
       currentStepIndex: 0,
       escalation: {
         enabled: escalationEnabled,
@@ -925,7 +1238,7 @@ export default function DigitalDocumentationPage() {
       const existing = documents.find((d) => d.id === editingDocId);
       if (existing && (existing.status === "REJECTED" || existing.currentVersion > 1)) {
         // Create new version
-        createNewVersion(editingDocId, docContentHtml, customTable, "Dispatched revised version for approval");
+        createNewVersion(editingDocId, docContentHtml, customTable, "Dispatched revised version for approval", undefined, docLetterhead, docFooter, includeCompanySeal);
       } else {
         updateDocument(editingDocId, payload, "Dispatched document");
       }
@@ -1001,37 +1314,77 @@ export default function DigitalDocumentationPage() {
       // Strip HTML tags for PDF text
       const cleanText = resolved.replace(/<[^>]*>?/gm, "\n").replace(/\n\s*\n/g, "\n\n");
 
-      // Company Header
+      const lh = doc.letterhead;
+      const ft = doc.footer;
+      let startBodyY = 70;
+
+      // 1. Company Letterhead Header (if enabled)
+      if (!lh || lh.enabled !== false) {
+        const lhImage = (lh?.style === "uploaded" && docAssets?.letterheadDataUrl) || lh?.customBannerUrl;
+        if (lhImage) {
+          try {
+            pdf.addImage(lhImage, "PNG", 40, 20, 515, 60);
+            startBodyY = 95;
+          } catch {
+            pdf.setFont("helvetica", "bold");
+            pdf.setFontSize(15);
+            pdf.setTextColor(15, 23, 42);
+            const compName = lh?.companyName || company?.name || "SWIFT Technologies Pvt. Ltd.";
+            pdf.text(compName, 40, 50);
+
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(8.5);
+            pdf.setTextColor(100, 116, 139);
+            const addr = lh?.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096";
+            pdf.text(addr, 40, 64);
+            const contact = `Email: ${lh?.email || company?.email || "hr@swift.io"} | Phone: ${lh?.phone || company?.phone || "+91 44 2876 5400"}${lh?.cin ? ` | CIN: ${lh.cin}` : ""}`;
+            pdf.text(contact, 40, 76);
+
+            pdf.setDrawColor(226, 232, 240);
+            pdf.setLineWidth(1.5);
+            pdf.line(40, 88, 555, 88);
+
+            startBodyY = 115;
+          }
+        } else {
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(15);
+          pdf.setTextColor(15, 23, 42);
+          const compName = lh?.companyName || company?.name || "SWIFT Technologies Pvt. Ltd.";
+          pdf.text(compName, 40, 50);
+
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(100, 116, 139);
+          const addr = lh?.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096";
+          pdf.text(addr, 40, 64);
+          const contact = `Email: ${lh?.email || company?.email || "hr@swift.io"} | Phone: ${lh?.phone || company?.phone || "+91 44 2876 5400"}${lh?.cin ? ` | CIN: ${lh.cin}` : ""}`;
+          pdf.text(contact, 40, 76);
+
+          pdf.setDrawColor(226, 232, 240);
+          pdf.setLineWidth(1.5);
+          pdf.line(40, 88, 555, 88);
+
+          startBodyY = 115;
+        }
+      }
+
+      // 2. Doc Title
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(16);
-      pdf.setTextColor(20, 20, 20);
-      pdf.text(company?.name || "SWIFT Technologies Pvt. Ltd.", 40, 50);
-
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(9);
-      pdf.setTextColor(100, 100, 100);
-      pdf.text(company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096", 40, 65);
-      pdf.text(`Email: ${company?.email || "hr@swift.io"} | Phone: ${company?.phone || "+91 44 2876 5400"}`, 40, 78);
-
-      pdf.setDrawColor(220, 220, 220);
-      pdf.setLineWidth(1);
-      pdf.line(40, 90, 555, 90);
-
-      // Doc Title
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(14);
+      pdf.setFontSize(13);
       pdf.setTextColor(30, 41, 59);
-      pdf.text(doc.name.toUpperCase(), 40, 120);
+      pdf.text(doc.name.toUpperCase(), 40, startBodyY);
 
+      // 3. Body Content
       pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(10);
-      pdf.setTextColor(60, 60, 60);
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(51, 65, 85);
       const splitLines = pdf.splitTextToSize(cleanText, 515);
-      pdf.text(splitLines, 40, 145);
+      pdf.text(splitLines, 40, startBodyY + 22);
 
-      let currentY = 145 + splitLines.length * 12 + 20;
+      let currentY = startBodyY + 22 + splitLines.length * 12 + 20;
 
-      // Table if exists
+      // 4. Table if exists
       if (doc.tableData && doc.tableData.rows.length > 0) {
         autoTable(pdf, {
           startY: currentY,
@@ -1044,21 +1397,97 @@ export default function DigitalDocumentationPage() {
         currentY = (pdf as any).lastAutoTable.finalY + 30;
       }
 
-      // Signatures
-      if (currentY > 700) {
+      // 5. Signatures (Distributed Left to Right by Organizational Priority)
+      if (currentY > 660) {
         pdf.addPage();
         currentY = 60;
       }
 
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(10);
-      pdf.text("Authorized Signatory", 40, currentY);
-      pdf.text("Employee Signature", 380, currentY);
+      const pdfSignatories = getOrderedSignatories(
+        doc.approvers,
+        doc.employeeName,
+        company?.name || "SWIFT Technologies Pvt. Ltd.",
+        docAssets
+      );
 
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(9);
-      pdf.text(company?.name || "SWIFT Technologies Pvt. Ltd.", 40, currentY + 15);
-      pdf.text(doc.employeeName, 380, currentY + 15);
+      const numSigners = pdfSignatories.length;
+      if (numSigners > 0 || (doc.includeCompanySeal !== false && docAssets?.companySealDataUrl)) {
+        if (currentY > 660) {
+          pdf.addPage();
+          currentY = 60;
+        }
+
+        const startX = 40;
+        const endX = 390;
+        const spacing = numSigners > 1 ? (endX - startX) / (numSigners - 1) : 0;
+
+        pdfSignatories.forEach((sig, sIdx) => {
+          const x = numSigners === 1 ? startX : startX + sIdx * spacing;
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(9.5);
+          pdf.setTextColor(15, 23, 42);
+          pdf.text(sig.label || sig.roleTitle, x, currentY);
+
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(100, 116, 139);
+          pdf.text(sig.signerName, x, currentY + 14);
+          if (sig.roleTitle && sig.roleTitle !== sig.label) {
+            pdf.text(sig.roleTitle, x, currentY + 24);
+          }
+        });
+
+        if (doc.includeCompanySeal !== false && docAssets?.companySealDataUrl) {
+          try {
+            const sealX = numSigners === 2 ? (startX + endX) / 2 - 8 : numSigners === 0 ? 200 : 240;
+            pdf.addImage(docAssets.companySealDataUrl, "PNG", sealX, currentY - 15, 42, 42);
+          } catch {
+            // Ignore seal render error in PDF if format unsupported
+          }
+        }
+      }
+
+      // 6. Footer (if enabled)
+      if (!ft || ft.enabled !== false) {
+        const pageCount = (pdf as any).internal.getNumberOfPages();
+        const ftImage = (ft?.style === "uploaded" && docAssets?.footerDataUrl) || ft?.customBannerUrl;
+        for (let i = 1; i <= pageCount; i++) {
+          pdf.setPage(i);
+          if (ftImage) {
+            try {
+              pdf.addImage(ftImage, "PNG", 40, 785, 515, 38);
+            } catch {
+              pdf.setDrawColor(226, 232, 240);
+              pdf.setLineWidth(1);
+              pdf.line(40, 800, 555, 800);
+
+              pdf.setFont("helvetica", "normal");
+              pdf.setFontSize(8);
+              pdf.setTextColor(148, 163, 184);
+              const conf = ft?.confidentialText || "STRICTLY CONFIDENTIAL • FOR AUTHORIZED RECIPIENT USE ONLY";
+              pdf.text(conf, 40, 814);
+
+              if (ft?.showPageNumbers !== false) {
+                pdf.text(`Page ${i} of ${pageCount}`, 510, 814);
+              }
+            }
+          } else {
+            pdf.setDrawColor(226, 232, 240);
+            pdf.setLineWidth(1);
+            pdf.line(40, 800, 555, 800);
+
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(8);
+            pdf.setTextColor(148, 163, 184);
+            const conf = ft?.confidentialText || "STRICTLY CONFIDENTIAL • FOR AUTHORIZED RECIPIENT USE ONLY";
+            pdf.text(conf, 40, 814);
+
+            if (ft?.showPageNumbers !== false) {
+              pdf.text(`Page ${i} of ${pageCount}`, 510, 814);
+            }
+          }
+        }
+      }
 
       pdf.save(`${doc.docNumber}_${doc.name.replace(/\s+/g, "_")}.pdf`);
       toast.success("PDF generated and downloaded!");
@@ -1403,8 +1832,8 @@ export default function DigitalDocumentationPage() {
       {/* VIEW 2: DIGITAL DOCUMENT COMPOSER (EMAIL-LIKE FLOW) */}
       {viewMode === "composer" && (
         <div className="space-y-5">
-          {/* Top Sticky Header */}
-          <div className="sticky top-16 z-20 bg-card/95 backdrop-blur border border-border p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Top Header */}
+          <div className="bg-card border border-border p-4 rounded-2xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
@@ -1832,553 +2261,881 @@ export default function DigitalDocumentationPage() {
             </div>
           </div>
 
-          {/* Section 4 & 5: Primary Document Composer & Editor */}
-          <div className="rounded-2xl border border-border bg-card shadow-xs overflow-hidden flex flex-col min-h-[500px]">
-            {/* Formatting Toolbar */}
-            <div className="border-b border-border bg-muted/30 p-2.5 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1">
-                {/* Standard Rich Text Formatting shortcuts */}
-                <div className="flex items-center gap-0.5 bg-background border border-border rounded-lg p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocContentHtml((prev) => `${prev}<strong>Bold Text</strong> `);
-                    }}
-                    className="h-7 w-7 rounded flex items-center justify-center font-bold text-xs hover:bg-muted"
-                    title="Bold"
-                  >
-                    B
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocContentHtml((prev) => `${prev}<em>Italic Text</em> `);
-                    }}
-                    className="h-7 w-7 rounded flex items-center justify-center italic text-xs hover:bg-muted"
-                    title="Italic"
-                  >
-                    I
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocContentHtml((prev) => `${prev}<u>Underlined Text</u> `);
-                    }}
-                    className="h-7 w-7 rounded flex items-center justify-center underline text-xs hover:bg-muted"
-                    title="Underline"
-                  >
-                    U
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-0.5 bg-background border border-border rounded-lg p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocContentHtml((prev) => `${prev}\n<h3>Section Heading</h3>\n`);
-                    }}
-                    className="h-7 px-2 rounded flex items-center justify-center font-semibold text-xs hover:bg-muted"
-                    title="Heading 3"
-                  >
-                    H1
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocContentHtml((prev) => `${prev}\n<h4>Sub Heading</h4>\n`);
-                    }}
-                    className="h-7 px-2 rounded flex items-center justify-center font-semibold text-xs hover:bg-muted"
-                    title="Heading 4"
-                  >
-                    H2
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-0.5 bg-background border border-border rounded-lg p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocContentHtml((prev) => `${prev}\n<ul>\n  <li>Bullet item 1</li>\n  <li>Bullet item 2</li>\n</ul>\n`);
-                    }}
-                    className="h-7 px-2 rounded flex items-center justify-center text-xs hover:bg-muted gap-1"
-                    title="Bullet List"
-                  >
-                    • List
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocContentHtml((prev) => `${prev}\n<ol>\n  <li>Numbered item 1</li>\n  <li>Numbered item 2</li>\n</ol>\n`);
-                    }}
-                    className="h-7 px-2 rounded flex items-center justify-center text-xs hover:bg-muted gap-1"
-                    title="Numbered List"
-                  >
-                    1. List
-                  </button>
-                </div>
-              </div>
-
-              {/* Insert / Add Dropdown & Dynamic Fields */}
-              <div className="flex items-center gap-2">
-                {/* Insert Dynamic Field */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
-                      <Sparkles className="h-3.5 w-3.5" /> Insert Field
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-64 max-h-80 text-xs">
-                    <DropdownMenuLabel className="text-[10px] uppercase font-bold text-muted-foreground">
-                      Employee Fields
-                    </DropdownMenuLabel>
-                    {DYNAMIC_FIELDS.filter((f) => f.category === "Employee").map((f) => (
-                      <DropdownMenuItem key={f.tag} onClick={() => insertDynamicTag(f.tag)}>
-                        <span className="font-mono text-primary mr-1.5">{f.tag}</span>
-                        <span className="text-muted-foreground text-[11px] truncate">({f.label})</span>
-                      </DropdownMenuItem>
-                    ))}
-
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel className="text-[10px] uppercase font-bold text-muted-foreground">
-                      Company & Doc Fields
-                    </DropdownMenuLabel>
-                    {DYNAMIC_FIELDS.filter((f) => f.category !== "Employee").map((f) => (
-                      <DropdownMenuItem key={f.tag} onClick={() => insertDynamicTag(f.tag)}>
-                        <span className="font-mono text-primary mr-1.5">{f.tag}</span>
-                        <span className="text-muted-foreground text-[11px] truncate">({f.label})</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* + Add Insert Menu */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" className="h-8 text-xs gap-1 bg-primary text-primary-foreground font-semibold">
-                      <Plus className="h-3.5 w-3.5" /> Add Element
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56 text-xs">
-                    <DropdownMenuItem onClick={() => setTableModalOpen(true)}>
-                      <TableIcon className="h-4 w-4 mr-2 text-indigo-500" /> Insert Table
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setDocContentHtml((prev) => `${prev}\n<hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />\n`);
-                        toast.success("Divider line added");
-                      }}
-                    >
-                      <Layers className="h-4 w-4 mr-2 text-slate-500" /> Divider Line
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSignatureModalOpen(true)}>
-                      <PenTool className="h-4 w-4 mr-2 text-emerald-500" /> Signature Block (Choose Signers...)
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setDocContentHtml(
-                          (prev) =>
-                            `${prev}\n<div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px; margin: 12px 0; font-size: 13px;"><strong>Important Notice:</strong> Please ensure all compliance certificates are submitted within 14 days.</div>\n`
-                        );
-                        toast.success("Callout notice box added");
-                      }}
-                    >
-                      <AlertCircle className="h-4 w-4 mr-2 text-blue-500" /> Callout / Note Box
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-
-            {/* Email-like Text Editor Body */}
-            <div className="p-4 flex-1 flex flex-col space-y-3">
-              <div className="text-xs text-muted-foreground flex items-center justify-between flex-wrap gap-2">
-                <span>
-                  Tip: Use <code>{"{{employee_name}}"}</code>, <code>{"{{designation}}"}</code>, <code>{"{{salary}}"}</code> for automatic variable resolution.
-                </span>
-                <span className="text-[11px] font-mono text-primary font-medium flex items-center gap-1.5">
-                  <Sparkles className="h-3 w-3" />
-                  Resolving for: {selectedEmployee?.name || "Employee"}
-                  {recipientMode === "all" && ` (Previewing 1 of ${employees.length} employees)`}
-                  {recipientMode === "multiple" && ` (Previewing 1 of ${selectedEmpIds.length} employees)`}
-                  {recipientMode === "custom" && " (Custom Recipient)"}
-                </span>
-              </div>
-
-              <textarea
-                value={docContentHtml}
-                onChange={(e) => setDocContentHtml(e.target.value)}
-                className="w-full flex-1 min-h-[280px] p-4 text-xs font-mono rounded-xl border border-border bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/20 leading-relaxed resize-y"
-                placeholder="Compose digital document content here..."
-              />
-
-              {/* Table Editor if table exists */}
-              {customTable && (
-                <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-4 space-y-3 animate-in fade-in-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <TableIcon className="h-4 w-4 text-primary" />
-                      <span className="font-semibold text-xs text-foreground">
-                        Document Table: {customTable.caption || "Table Annexure"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const newRow = Array.from({ length: customTable.headers.length }, () => "—");
-                          setCustomTable({ ...customTable, rows: [...customTable.rows, newRow] });
-                        }}
-                        className="h-7 text-xs px-2"
-                      >
-                        + Add Row
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const nextIdx = customTable.headers.length + 1;
-                          setCustomTable({
-                            ...customTable,
-                            headers: [...customTable.headers, `Column ${nextIdx}`],
-                            rows: customTable.rows.map((r) => [...r, "—"]),
-                          });
-                        }}
-                        className="h-7 text-xs px-2"
-                      >
-                        + Add Column
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setCustomTable(null)}
-                        className="h-7 text-xs px-2 text-red-600 hover:bg-red-500/10"
-                        title="Remove Table"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto rounded-lg border border-border bg-card">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-muted/70 border-b border-border">
-                        <tr>
-                          {customTable.headers.map((h, colIdx) => (
-                            <th key={colIdx} className="p-2 font-semibold">
-                              <input
-                                type="text"
-                                value={h}
-                                onChange={(e) => {
-                                  const updated = [...customTable.headers];
-                                  updated[colIdx] = e.target.value;
-                                  setCustomTable({ ...customTable, headers: updated });
-                                }}
-                                className="bg-transparent border-b border-border/50 text-xs font-semibold focus:outline-none w-full"
-                              />
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {customTable.rows.map((row, rowIdx) => (
-                          <tr key={rowIdx}>
-                            {row.map((cell, colIdx) => (
-                              <td key={colIdx} className="p-2">
-                                <input
-                                  type="text"
-                                  value={cell}
-                                  onChange={(e) => {
-                                    const updatedRows = [...customTable.rows];
-                                    updatedRows[rowIdx][colIdx] = e.target.value;
-                                    setCustomTable({ ...customTable, rows: updatedRows });
-                                  }}
-                                  className="bg-transparent text-xs w-full focus:outline-none focus:bg-primary/5 rounded px-1"
-                                />
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          {/* Section 4 & 5: Primary MS Word WYSIWYG Document Editor */}
+          <DocWordEditor
+            value={docContentHtml}
+            onChange={setDocContentHtml}
+            selectedEmployee={selectedEmployee}
+            company={company}
+            docAssets={docAssets}
+            letterhead={docLetterhead}
+            onLetterheadChange={setDocLetterhead}
+            footer={docFooter}
+            onFooterChange={setDocFooter}
+            customTable={customTable}
+            onTableChange={setCustomTable}
+            onOpenSignatureModal={() => setSignatureModalOpen(true)}
+            onOpenTableModal={() => setTableModalOpen(true)}
+            documentTitle={
+              isCustomDocName
+                ? customDocName.trim() || "Custom Document"
+                : PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId)?.name || "Document"
+            }
+            recipientInfoText={
+              selectedEmployee
+                ? `Resolving: ${selectedEmployee.name} (${selectedEmployee.empCode})`
+                : undefined
+            }
+          />
 
           {/* Section 9, 10, 11, 12: Delivery, Approval & Escalation Configuration */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Delivery Settings */}
-            <div className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-xs">
-              <div className="flex items-center gap-2 pb-2 border-b border-border">
-                <Send className="h-4 w-4 text-primary" />
-                <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
-                  1. Delivery Configuration
-                </h3>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">Send Via Channels</Label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setDeliveryChannel("email")}
-                    className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                      deliveryChannel === "email"
-                        ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                        : "border-border hover:bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    Email
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeliveryChannel("app")}
-                    className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                      deliveryChannel === "app"
-                        ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                        : "border-border hover:bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    SWIFT App
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeliveryChannel("both")}
-                    className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                      deliveryChannel === "both"
-                        ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                        : "border-border hover:bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    Both
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-[11px] text-muted-foreground">Recipient Email</Label>
-                <Input
-                  disabled
-                  value={
-                    recipientMode === "all"
-                      ? `Dynamic (All ${employees.length} Employee Emails)`
-                      : recipientMode === "multiple"
-                      ? `Dynamic (${selectedEmpIds.length} Selected Employee Emails)`
-                      : recipientMode === "custom"
-                      ? customRecipient.email || "recipient@external.com"
-                      : selectedEmployee?.email || "employee@swift.io"
-                  }
-                  className="text-xs h-8 bg-muted/40 font-mono"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-[11px] text-muted-foreground">Subject Line</Label>
-                <Input
-                  value={deliverySubject}
-                  onChange={(e) => setDeliverySubject(e.target.value)}
-                  placeholder="Document Subject"
-                  className="text-xs h-8"
-                />
-              </div>
-            </div>
-
-            {/* Approval Matrix */}
-            <div className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-xs">
-              <div className="flex items-center justify-between pb-2 border-b border-border">
-                <div className="flex items-center gap-2">
-                  <GitBranch className="h-4 w-4 text-primary" />
+          <div className="space-y-6">
+            {/* Top Grid: Delivery Configuration (Left) & Auto-Escalation Protocol (Right) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Delivery Settings */}
+              <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
+                <div className="flex items-center gap-2 pb-2.5 border-b border-border">
+                  <Send className="h-4 w-4 text-primary" />
                   <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
-                    2. Approval Matrix
+                    1. Delivery Configuration
                   </h3>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground">Required</span>
-                  <Switch checked={approvalRequired} onCheckedChange={setApprovalRequired} />
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold">Send Via Channels</Label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryChannel("email")}
+                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
+                        deliveryChannel === "email"
+                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
+                          : "border-border hover:bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      Email
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryChannel("app")}
+                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
+                        deliveryChannel === "app"
+                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
+                          : "border-border hover:bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      SWIFT App
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryChannel("both")}
+                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
+                        deliveryChannel === "both"
+                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
+                          : "border-border hover:bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      Both
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] text-muted-foreground font-semibold">Recipient Email</Label>
+                  <Input
+                    disabled
+                    value={
+                      recipientMode === "all"
+                        ? `Dynamic (All ${employees.length} Employee Emails)`
+                        : recipientMode === "multiple"
+                        ? `Dynamic (${selectedEmpIds.length} Selected Employee Emails)`
+                        : recipientMode === "custom"
+                        ? customRecipient.email || "recipient@external.com"
+                        : selectedEmployee?.email || "employee@swift.io"
+                    }
+                    className="text-xs h-8 bg-muted/40 font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] text-muted-foreground font-semibold">Subject Line</Label>
+                  <Input
+                    value={deliverySubject}
+                    onChange={(e) => setDeliverySubject(e.target.value)}
+                    placeholder="Document Subject Line"
+                    className="text-xs h-8"
+                  />
                 </div>
               </div>
 
-              {approvalRequired ? (
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Approval Mode</Label>
-                    <Select
-                      value={approvalMode}
-                      onValueChange={(v) => setApprovalMode(v as ApprovalMode)}
-                    >
+              {/* Escalation Rules */}
+              <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
+                <div className="flex items-center justify-between pb-2.5 border-b border-border">
+                  <div className="flex items-center gap-2">
+                    <BellRing className="h-4 w-4 text-primary" />
+                    <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
+                      2. Auto-Escalation Protocol
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground">Enabled</span>
+                    <Switch checked={escalationEnabled} onCheckedChange={setEscalationEnabled} />
+                  </div>
+                </div>
+
+                {escalationEnabled ? (
+                  <div className="space-y-3 text-xs">
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground font-semibold">Level 1 Escalation Trigger</Label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Escalate after</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={30}
+                          value={escalationDelay}
+                          onChange={(e) => setEscalationDelay(Number(e.target.value))}
+                          className="h-8 w-16 text-center text-xs"
+                        />
+                        <span className="text-muted-foreground">days without action to:</span>
+                      </div>
+                    </div>
+
+                    <Select value={escalationTarget} onValueChange={setEscalationTarget}>
                       <SelectTrigger className="text-xs h-8">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="text-xs">
-                        <SelectItem value="sequential">Sequential (Ordered Step-by-Step)</SelectItem>
-                        <SelectItem value="all_must_approve">All Must Approve (Parallel)</SelectItem>
-                        <SelectItem value="any_one">Any One Can Approve (Quorum)</SelectItem>
+                        <SelectItem value="HR Head">HR Head (Priya Kumar)</SelectItem>
+                        <SelectItem value="Director">Director / Board Signatory</SelectItem>
+                        <SelectItem value="CEO / Super Admin">CEO / Super Admin</SelectItem>
+                        {roles?.map((r) => (
+                          <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
-                  </div>
 
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <Label className="text-[11px] text-muted-foreground">Configured Approvers</Label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newStep: ApprovalStepItem = {
-                            id: `s-${Date.now()}`,
-                            approverRoleOrName: "Director",
-                            order: approvers.length + 1,
-                            status: "pending",
-                          };
-                          setApprovers([...approvers, newStep]);
-                        }}
-                        className="text-[11px] text-primary font-semibold hover:underline"
-                      >
-                        + Add Approver
-                      </button>
-                    </div>
+                    <div className="pt-2 border-t border-border">
+                      <label className="flex items-center gap-2 cursor-pointer text-[11px] text-muted-foreground">
+                        <Checkbox
+                          checked={secondEscalationEnabled}
+                          onCheckedChange={(c) => setSecondEscalationEnabled(!!c)}
+                        />
+                        <span>Enable Level 2 Escalation Chain</span>
+                      </label>
 
-                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                      {approvers.map((step, idx) => (
-                        <div
-                          key={step.id}
-                          className="flex items-center gap-1.5 p-1.5 rounded-lg bg-muted/40 border border-border text-xs"
-                        >
-                          <span className="font-mono text-muted-foreground text-[10px] w-4 text-center">
-                            {idx + 1}.
-                          </span>
-                          <Input
-                            value={step.approverRoleOrName}
-                            onChange={(e) => {
-                              const updated = [...approvers];
-                              updated[idx].approverRoleOrName = e.target.value;
-                              setApprovers(updated);
-                            }}
-                            className="h-7 text-xs flex-1 bg-background"
-                          />
-                          {approvalMode === "sequential" && (
-                            <div className="flex items-center">
-                              <button
-                                type="button"
-                                disabled={idx === 0}
-                                onClick={() => {
-                                  const updated = [...approvers];
-                                  const temp = updated[idx - 1];
-                                  updated[idx - 1] = updated[idx];
-                                  updated[idx] = temp;
-                                  setApprovers(updated);
-                                }}
-                                className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                              >
-                                <ArrowUp className="h-3 w-3" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={idx === approvers.length - 1}
-                                onClick={() => {
-                                  const updated = [...approvers];
-                                  const temp = updated[idx + 1];
-                                  updated[idx + 1] = updated[idx];
-                                  updated[idx] = temp;
-                                  setApprovers(updated);
-                                }}
-                                className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                              >
-                                <ArrowDown className="h-3 w-3" />
-                              </button>
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setApprovers(approvers.filter((_, i) => i !== idx))}
-                            className="p-1 text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                      {secondEscalationEnabled && (
+                        <div className="mt-2 space-y-2 pl-4 border-l-2 border-primary/30 animate-in fade-in-50">
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span>After additional +</span>
+                            <Input
+                              type="number"
+                              value={secondEscalationDelay}
+                              onChange={(e) => setSecondEscalationDelay(Number(e.target.value))}
+                              className="h-7 w-12 text-center text-xs"
+                            />
+                            <span>days → Escalate to Director / Board</span>
+                          </div>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="p-4 rounded-xl bg-muted/20 border border-dashed text-center text-xs text-muted-foreground">
-                  Approval disabled. Document will be sent directly to employee.
-                </div>
-              )}
+                ) : (
+                  <div className="p-4 rounded-xl bg-muted/20 border border-dashed text-center text-xs text-muted-foreground">
+                    Escalation protocol is disabled. Unapproved documents will stay in current queue.
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Escalation Rules */}
-            <div className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-xs">
-              <div className="flex items-center justify-between pb-2 border-b border-border">
-                <div className="flex items-center gap-2">
-                  <BellRing className="h-4 w-4 text-primary" />
-                  <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
-                    3. Auto-Escalation
-                  </h3>
+            {/* Prominent Full-Width Approval Matrix & Signatory Workflow Designer */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-5 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                    <GitBranch className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-foreground uppercase tracking-wider font-display">
+                      3. Multi-Stage Approval Matrix & Sign-off Hierarchy
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Configure custom approver sequence, assign specific employees or organizational roles, and enforce e-signatures.
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground">Enabled</span>
-                  <Switch checked={escalationEnabled} onCheckedChange={setEscalationEnabled} />
+
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
+                    <span className="text-xs font-semibold text-foreground">Approval Required</span>
+                    <Switch checked={approvalRequired} onCheckedChange={setApprovalRequired} />
+                  </div>
+
+                  {approvalRequired && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAddApproverStep}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-xl shadow-xs gap-1.5"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add Approver
+                    </Button>
+                  )}
                 </div>
               </div>
 
-              {escalationEnabled ? (
-                <div className="space-y-3 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Escalate after</span>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={30}
-                      value={escalationDelay}
-                      onChange={(e) => setEscalationDelay(Number(e.target.value))}
-                      className="h-8 w-16 text-center text-xs"
-                    />
-                    <span className="text-muted-foreground">days to:</span>
+              {approvalRequired ? (
+                <div className="space-y-4">
+                  {/* Approval Mode Selector */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-muted/30 border border-border">
+                    <div>
+                      <span className="text-xs font-bold text-foreground">Workflow Execution Strategy</span>
+                      <p className="text-[11px] text-muted-foreground">
+                        Control how document moves through multiple approvers
+                      </p>
+                    </div>
+
+                    <div className="w-full sm:w-72">
+                      <Select
+                        value={approvalMode}
+                        onValueChange={(v) => setApprovalMode(v as ApprovalMode)}
+                      >
+                        <SelectTrigger className="text-xs h-8 bg-background">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="text-xs">
+                          <SelectItem value="sequential">
+                            Sequential (Ordered Step-by-Step Flow)
+                          </SelectItem>
+                          <SelectItem value="all_must_approve">
+                            Parallel (All Approvers Must Approve)
+                          </SelectItem>
+                          <SelectItem value="any_one">
+                            Quorum (Any One Approver Can Approve)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
-                  <Select value={escalationTarget} onValueChange={setEscalationTarget}>
-                    <SelectTrigger className="text-xs h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="text-xs">
-                      <SelectItem value="HR Head">HR Head (Priya Kumar)</SelectItem>
-                      <SelectItem value="Director">Director / Board Signatory</SelectItem>
-                      <SelectItem value="CEO / Super Admin">CEO / Super Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {/* Configured Approvers List */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">
+                        Approver Hierarchy Pipeline ({approvers.length} Steps Configured)
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Drag/order steps and mark required signatures
+                      </span>
+                    </div>
 
-                  <div className="pt-2 border-t border-border">
-                    <label className="flex items-center gap-2 cursor-pointer text-[11px] text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={secondEscalationEnabled}
-                        onChange={(e) => setSecondEscalationEnabled(e.target.checked)}
-                        className="rounded"
-                      />
-                      <span>Enable Level 2 Escalation</span>
-                    </label>
+                    <div className="space-y-3">
+                      {approvers.map((step, idx) => {
+                        const isEmployeeCategory =
+                          step.category === "employee" || step.roleType === "Employee";
+                        const empSearch = approverEmpSearchText[step.id] || "";
+                        const filteredEmps = employees.filter((e) => {
+                          const q = empSearch.toLowerCase().trim();
+                          return (
+                            !q ||
+                            e.name.toLowerCase().includes(q) ||
+                            e.empCode.toLowerCase().includes(q) ||
+                            e.department.toLowerCase().includes(q)
+                          );
+                        });
 
-                    {secondEscalationEnabled && (
-                      <div className="mt-2 space-y-2 pl-4 border-l-2 border-primary/30 animate-in fade-in-50">
-                        <div className="flex items-center gap-2 text-[11px]">
-                          <span>After +</span>
-                          <Input
-                            type="number"
-                            value={secondEscalationDelay}
-                            onChange={(e) => setSecondEscalationDelay(Number(e.target.value))}
-                            className="h-7 w-12 text-center text-xs"
-                          />
-                          <span>days → Director</span>
+                        const roleName = step.approverRoleOrName || step.roleType || "";
+                        const sigRank = getSignatoryRank(roleName, step.category);
+                        const positionPlacement =
+                          sigRank <= 1
+                            ? "Left (Employee)"
+                            : sigRank <= 4
+                            ? "Middle (HR / Management)"
+                            : "Right (CEO / MD / Signatory)";
+
+                        const isExecRole =
+                          step.category !== "employee" &&
+                          (step.roleType === "Director" ||
+                            step.roleType === "Admin" ||
+                            (step.approverRoleOrName &&
+                              (step.approverRoleOrName.toLowerCase().includes("md") ||
+                                step.approverRoleOrName.toLowerCase().includes("director") ||
+                                step.approverRoleOrName.toLowerCase().includes("ceo") ||
+                                step.approverRoleOrName.toLowerCase().includes("super admin") ||
+                                step.approverRoleOrName.toLowerCase().includes("managing director"))));
+
+                        return (
+                          <div key={step.id} className="space-y-2">
+                            {/* Step Card */}
+                            <div className="p-4 rounded-xl border border-border bg-background hover:border-primary/40 transition-all shadow-xs space-y-3">
+                              {/* Step Card Header */}
+                              <div className="flex items-center justify-between pb-2 border-b border-border/60">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge className="bg-primary/15 text-primary border-primary/30 text-[11px] font-bold px-2 py-0.5">
+                                    Step {idx + 1}
+                                  </Badge>
+                                  <span className="text-xs font-bold text-foreground">
+                                    {approvalMode === "sequential"
+                                      ? `Stage ${idx + 1} Sign-off`
+                                      : `Approver ${idx + 1}`}
+                                  </span>
+                                  {step.requireSignature && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-indigo-600 border-indigo-400/40 bg-indigo-50 dark:bg-indigo-950/30 text-[10px] px-1.5 py-0 h-5 flex items-center gap-1"
+                                    >
+                                      <PenTool className="h-2.5 w-2.5" /> Signature · {positionPlacement}
+                                    </Badge>
+                                  )}
+                                  {isExecRole && (
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[10px] px-1.5 py-0 h-5 flex items-center gap-1 ${
+                                        step.automationAction === "auto_approve"
+                                          ? "text-emerald-700 dark:text-emerald-300 border-emerald-400/50 bg-emerald-50 dark:bg-emerald-950/30"
+                                          : step.automationAction === "auto_decline"
+                                          ? "text-rose-700 dark:text-rose-300 border-rose-400/50 bg-rose-50 dark:bg-rose-950/30"
+                                          : "text-amber-700 dark:text-amber-300 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30"
+                                      }`}
+                                    >
+                                      {step.automationAction === "auto_approve" ? (
+                                        <>
+                                          <Zap className="h-2.5 w-2.5" /> Auto Approve
+                                        </>
+                                      ) : step.automationAction === "auto_decline" ? (
+                                        <>
+                                          <XCircle className="h-2.5 w-2.5" /> Auto Decline
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UserCheck className="h-2.5 w-2.5" /> Manual Approval
+                                        </>
+                                      )}
+                                    </Badge>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                  {/* Reorder Arrows */}
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={idx === 0}
+                                    onClick={() => handleMoveStep(idx, idx - 1)}
+                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                                    title="Move Step Up"
+                                  >
+                                    <ArrowUp className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={idx === approvers.length - 1}
+                                    onClick={() => handleMoveStep(idx, idx + 1)}
+                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                                    title="Move Step Down"
+                                  >
+                                    <ArrowDown className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <div className="h-4 w-px bg-border mx-1" />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteStep(idx)}
+                                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                    title="Delete Step"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {/* Step Card Body: Grid */}
+                              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                                {/* Column A: Position / Approver Designation */}
+                                <div className="md:col-span-4 space-y-1.5">
+                                  <Label className="text-[11px] text-muted-foreground font-semibold">
+                                    Select Approver Role / Position
+                                  </Label>
+                                  <Select
+                                    value={
+                                      step.category === "employee"
+                                        ? "Employee"
+                                        : APPROVER_POSITION_OPTIONS.some(
+                                            (opt) => opt.value === (step.roleType || step.approverRoleOrName)
+                                          )
+                                        ? step.roleType || step.approverRoleOrName
+                                        : "custom"
+                                    }
+                                    onValueChange={(val) => handlePositionChange(idx, val)}
+                                  >
+                                    <SelectTrigger className="text-xs h-9 bg-card">
+                                      <SelectValue placeholder="Choose Position / Role" />
+                                    </SelectTrigger>
+                                    <SelectContent className="text-xs max-h-60">
+                                      {APPROVER_POSITION_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+
+                                  {/* Custom Position Name Input */}
+                                  {(step.roleType === "custom" ||
+                                    (!isEmployeeCategory &&
+                                      !APPROVER_POSITION_OPTIONS.some(
+                                        (opt) => opt.value === (step.roleType || step.approverRoleOrName)
+                                      ))) && (
+                                    <div className="pt-1 animate-in fade-in-50">
+                                      <Input
+                                        placeholder="Enter custom designation / title..."
+                                        value={step.approverRoleOrName}
+                                        onChange={(e) => {
+                                          const updated = [...approvers];
+                                          updated[idx].approverRoleOrName = e.target.value;
+                                          setApprovers(updated);
+                                        }}
+                                        className="h-8 text-xs bg-card"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Column B: Employee Selector (Single / Multiple / All) OR Role Details */}
+                                <div className="md:col-span-5 space-y-1.5">
+                                  {isEmployeeCategory ? (
+                                    <div className="space-y-2 p-3 rounded-xl bg-muted/30 border border-border">
+                                      <div className="flex items-center justify-between gap-1">
+                                        <Label className="text-[11px] font-semibold text-foreground">
+                                          Employee Selection Target
+                                        </Label>
+                                        {/* Selection Mode Pills */}
+                                        <div className="inline-flex rounded-lg bg-background border border-border p-0.5 text-[10px]">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleEmployeeSelectionModeChange(idx, "single")
+                                            }
+                                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                                              step.employeeSelectionMode !== "multiple" &&
+                                              step.employeeSelectionMode !== "all"
+                                                ? "bg-primary text-primary-foreground font-semibold"
+                                                : "text-muted-foreground hover:text-foreground"
+                                            }`}
+                                          >
+                                            Single
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleEmployeeSelectionModeChange(idx, "multiple")
+                                            }
+                                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                                              step.employeeSelectionMode === "multiple"
+                                                ? "bg-primary text-primary-foreground font-semibold"
+                                                : "text-muted-foreground hover:text-foreground"
+                                            }`}
+                                          >
+                                            Multiple
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleEmployeeSelectionModeChange(idx, "all")
+                                            }
+                                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                                              step.employeeSelectionMode === "all"
+                                                ? "bg-primary text-primary-foreground font-semibold"
+                                                : "text-muted-foreground hover:text-foreground"
+                                            }`}
+                                          >
+                                            All
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Mode 1: Single Employee Select */}
+                                      {step.employeeSelectionMode !== "multiple" &&
+                                        step.employeeSelectionMode !== "all" && (
+                                          <div className="space-y-1">
+                                            <Select
+                                              value={
+                                                step.approverEmployeeId ||
+                                                employees[0]?.id ||
+                                                ""
+                                              }
+                                              onValueChange={(empId) =>
+                                                handleSingleEmployeeChange(idx, empId)
+                                              }
+                                            >
+                                              <SelectTrigger className="text-xs h-8 bg-background">
+                                                <SelectValue placeholder="Select specific employee..." />
+                                              </SelectTrigger>
+                                              <SelectContent className="text-xs max-h-60">
+                                                {employees.map((e) => (
+                                                  <SelectItem key={e.id} value={e.id}>
+                                                    <span className="font-semibold">{e.name}</span>
+                                                    <span className="text-muted-foreground ml-1.5 font-mono text-[10px]">
+                                                      ({e.empCode} · {e.designation})
+                                                    </span>
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        )}
+
+                                      {/* Mode 2: Multi-Employee Select Checkable Box */}
+                                      {step.employeeSelectionMode === "multiple" && (
+                                        <div className="space-y-2">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className="relative flex-1">
+                                              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                                              <Input
+                                                placeholder="Search employees..."
+                                                value={empSearch}
+                                                onChange={(e) =>
+                                                  setApproverEmpSearchText({
+                                                    ...approverEmpSearchText,
+                                                    [step.id]: e.target.value,
+                                                  })
+                                                }
+                                                className="h-7 text-[11px] pl-7 bg-background"
+                                              />
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0 text-[10px]">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleSelectAllMultiEmployees(idx, true)
+                                                }
+                                                className="text-primary hover:underline font-semibold"
+                                              >
+                                                Select All
+                                              </button>
+                                              <span className="text-muted-foreground">/</span>
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleSelectAllMultiEmployees(idx, false)
+                                                }
+                                                className="text-muted-foreground hover:underline"
+                                              >
+                                                Clear
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          <div className="max-h-32 overflow-y-auto space-y-1 p-1 rounded-lg border border-border bg-background">
+                                            {filteredEmps.map((emp) => {
+                                              const isChecked = (
+                                                step.approverEmployeeIds || []
+                                              ).includes(emp.id);
+                                              return (
+                                                <label
+                                                  key={emp.id}
+                                                  className={`flex items-center gap-2 p-1.5 rounded text-[11px] cursor-pointer transition-colors ${
+                                                    isChecked
+                                                      ? "bg-primary/10 text-primary font-medium"
+                                                      : "hover:bg-muted text-foreground"
+                                                  }`}
+                                                >
+                                                  <Checkbox
+                                                    checked={isChecked}
+                                                    onCheckedChange={() =>
+                                                      handleToggleMultiEmployee(idx, emp.id)
+                                                    }
+                                                    className="h-3.5 w-3.5"
+                                                  />
+                                                  <div className="truncate flex-1">
+                                                    <span>{emp.name}</span>
+                                                    <span className="text-[10px] text-muted-foreground ml-1 font-mono">
+                                                      ({emp.empCode})
+                                                    </span>
+                                                  </div>
+                                                </label>
+                                              );
+                                            })}
+                                          </div>
+                                          <div className="text-[10px] text-muted-foreground flex items-center justify-between">
+                                            <span>
+                                              {(step.approverEmployeeIds || []).length} of{" "}
+                                              {employees.length} employees selected
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Mode 3: All Employees */}
+                                      {step.employeeSelectionMode === "all" && (
+                                        <div className="p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-xs text-primary flex items-center gap-2">
+                                          <Users className="h-4 w-4 shrink-0" />
+                                          <div>
+                                            <div className="font-bold text-[11px]">
+                                              All {employees.length} Organisation Employees
+                                            </div>
+                                            <div className="text-[10px] opacity-80">
+                                              All active employees must review/sign off in parallel.
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="p-3 rounded-xl bg-muted/20 border border-border text-xs space-y-1">
+                                      <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                                        <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                                        <span>Role-based Assignment</span>
+                                      </div>
+                                      <p className="text-[11px] text-muted-foreground">
+                                        Any active user assigned to <strong>{step.approverRoleOrName || step.roleType}</strong> authority will be eligible to review and approve.
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Column C: Signature Needed Checkbox & Toggle */}
+                                <div className="md:col-span-3 space-y-1.5">
+                                  <Label className="text-[11px] text-muted-foreground font-semibold">
+                                    Verification Requirement
+                                  </Label>
+
+                                  <div
+                                    onClick={() =>
+                                      handleToggleSignatureNeeded(
+                                        idx,
+                                        !(step.requireSignature ?? true)
+                                      )
+                                    }
+                                    className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between gap-1.5 ${
+                                      step.requireSignature
+                                        ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/40"
+                                        : "border-border hover:border-border/80 bg-muted/20 text-muted-foreground"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
+                                        <PenTool className="h-3.5 w-3.5 text-primary" />
+                                        <span>Signature Needed</span>
+                                      </div>
+                                      <Checkbox
+                                        checked={step.requireSignature ?? true}
+                                        onCheckedChange={(c) =>
+                                          handleToggleSignatureNeeded(idx, !!c)
+                                        }
+                                        className="h-4 w-4 pointer-events-none"
+                                      />
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground leading-tight">
+                                      {step.requireSignature
+                                        ? `Assigned to ${positionPlacement} signatory block per Org Hierarchy.`
+                                        : "Review & acknowledgment without digital signature."}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Executive Protocol Section for MD / CEO */}
+                              {isExecRole && (
+                                <div className="mt-3 p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/70 via-indigo-50/30 to-background dark:from-indigo-950/40 dark:via-indigo-950/20 dark:to-background space-y-2.5 animate-in fade-in-50 duration-200">
+                                  <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <Crown className="h-4 w-4 text-amber-500 fill-amber-500/20" />
+                                      <span className="text-xs font-bold text-foreground">
+                                        Executive Decision Protocol ({roleName || "MD / CEO"})
+                                      </span>
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] px-1.5 py-0 h-4 border-indigo-300 text-indigo-700 dark:text-indigo-300 bg-indigo-100/50 dark:bg-indigo-900/40"
+                                      >
+                                        Tier 5 Leadership
+                                      </Badge>
+                                    </div>
+                                    <span className="text-[10px] text-muted-foreground font-medium">
+                                      Choose executive workflow policy
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
+                                    {/* 1. Approve Manually */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutomationActionChange(idx, "manual")}
+                                      className={`p-2.5 rounded-lg border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                                        !step.automationAction || step.automationAction === "manual"
+                                          ? "border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500/40 shadow-xs font-semibold"
+                                          : "border-border hover:border-border/80 bg-card text-muted-foreground hover:text-foreground"
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 text-xs">
+                                          <UserCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                          <span>Approve Manually</span>
+                                        </div>
+                                        {(!step.automationAction || step.automationAction === "manual") && (
+                                          <span className="h-2 w-2 rounded-full bg-amber-500" />
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] opacity-80 leading-tight font-normal">
+                                        Requires explicit manual review and physical / digital sign-off by MD/CEO.
+                                      </p>
+                                    </button>
+
+                                    {/* 2. Auto Approve */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutomationActionChange(idx, "auto_approve")}
+                                      className={`p-2.5 rounded-lg border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                                        step.automationAction === "auto_approve"
+                                          ? "border-emerald-500 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500/40 shadow-xs font-semibold"
+                                          : "border-border hover:border-border/80 bg-card text-muted-foreground hover:text-foreground"
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 text-xs">
+                                          <Zap className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                          <span>Auto Approve</span>
+                                        </div>
+                                        {step.automationAction === "auto_approve" && (
+                                          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] opacity-80 leading-tight font-normal">
+                                        Automatically signs and completes approval as soon as previous stages pass.
+                                      </p>
+                                    </button>
+
+                                    {/* 3. Auto Decline */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutomationActionChange(idx, "auto_decline")}
+                                      className={`p-2.5 rounded-lg border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                                        step.automationAction === "auto_decline"
+                                          ? "border-rose-500 bg-rose-500/10 text-rose-900 dark:text-rose-200 ring-1 ring-rose-500/40 shadow-xs font-semibold"
+                                          : "border-border hover:border-border/80 bg-card text-muted-foreground hover:text-foreground"
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 text-xs">
+                                          <XCircle className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+                                          <span>Auto Decline</span>
+                                        </div>
+                                        {step.automationAction === "auto_decline" && (
+                                          <span className="h-2 w-2 rounded-full bg-rose-500" />
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] opacity-80 leading-tight font-normal">
+                                        Automatically declines/blocks requests that escalate to executive level.
+                                      </p>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Sequential Connector Arrow */}
+                            {approvalMode === "sequential" &&
+                              idx < approvers.length - 1 && (
+                                <div className="flex justify-center items-center py-0.5">
+                                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/50 px-2.5 py-0.5 rounded-full border border-border">
+                                    <span>↓ Passes forward to Step {idx + 2}</span>
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Add Approver Button (Dashed) */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddApproverStep}
+                    className="w-full py-2.5 border-dashed border-2 hover:border-primary text-xs font-semibold text-primary hover:bg-primary/5 rounded-xl gap-2"
+                  >
+                    <Plus className="h-4 w-4" /> Add Another Approver Step
+                  </Button>
+
+                  {/* Company Seal Checkbox Card at bottom of Approval Matrix */}
+                  <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-gradient-to-r from-indigo-50/60 via-purple-50/30 to-background dark:from-indigo-950/20 dark:via-purple-950/10 dark:to-card space-y-2 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <label className="flex items-start gap-3 cursor-pointer select-none">
+                        <Checkbox
+                          checked={includeCompanySeal}
+                          onCheckedChange={(checked) => setIncludeCompanySeal(!!checked)}
+                          className="mt-0.5 h-4 w-4"
+                        />
+                        <div className="space-y-0.5">
+                          <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <ShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                            <span>Include Official Company Seal</span>
+                            <Badge className="bg-indigo-600 text-white text-[9px] px-1.5 py-0 h-4">
+                              Company Seal
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            When enabled, the official company round seal from Settings will be stamped on the document canvas, signature annexure, and exported PDF.
+                          </p>
                         </div>
+                      </label>
+
+                      {/* Live Seal Preview / Status */}
+                      <div className="flex items-center gap-2 shrink-0 bg-background/80 p-2 rounded-lg border border-border self-start sm:self-auto">
+                        {docAssets?.companySealDataUrl ? (
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={docAssets.companySealDataUrl}
+                              alt="Company Seal"
+                              className="h-9 w-9 rounded-full object-contain border border-border p-0.5 bg-white"
+                            />
+                            <div className="text-[10px]">
+                              <div className="font-semibold text-emerald-600 flex items-center gap-1">
+                                ✓ Seal Loaded
+                              </div>
+                              <div className="text-muted-foreground">from Settings</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            <div className="h-8 w-8 rounded-full border border-dashed border-indigo-400/50 flex items-center justify-center font-bold text-[8px] text-indigo-600">
+                              SEAL
+                            </div>
+                            <div>
+                              <div className="font-medium text-foreground">Standard Seal</div>
+                              <div className="opacity-75">Upload logo/seal in Settings</div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="p-4 rounded-xl bg-muted/20 border border-dashed text-center text-xs text-muted-foreground">
-                  Escalation is disabled for this document.
+                <div className="p-8 rounded-2xl bg-muted/20 border border-dashed border-border text-center space-y-2">
+                  <div className="h-10 w-10 mx-auto rounded-full bg-muted flex items-center justify-center text-muted-foreground">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                  <div className="font-bold text-xs text-foreground">
+                    Direct Dispatch Mode Enabled (No Approval Workflow)
+                  </div>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    This document will bypass internal hierarchical approvals and be dispatched immediately to the recipient upon confirmation.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setApprovalRequired(true)}
+                    className="text-xs text-primary border-primary/30 hover:bg-primary/10 mt-2"
+                  >
+                    Enable Approval Matrix
+                  </Button>
                 </div>
               )}
             </div>
@@ -2784,7 +3541,7 @@ export default function DigitalDocumentationPage() {
           {/* TAB 2: REALISTIC DOCUMENT PREVIEW */}
           {detailActiveTab === "preview" && (
             <div className="bg-muted/40 p-6 rounded-2xl border border-border flex justify-center">
-              <RealisticDocumentPaper doc={activeDetailDoc} company={company} employees={employees} />
+              <RealisticDocumentPaper doc={activeDetailDoc} company={company} employees={employees} docAssets={docAssets} />
             </div>
           )}
 
@@ -2907,18 +3664,56 @@ export default function DigitalDocumentationPage() {
             )}
             <div className="w-full max-w-[650px] bg-white text-slate-900 shadow-xl border border-slate-200 p-8 sm:p-12 rounded-lg text-xs leading-relaxed space-y-5">
               {/* Header */}
-              <div className="flex items-start justify-between border-b pb-4 border-slate-200">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                    {company?.name || "SWIFT Technologies Pvt. Ltd."}
-                  </h2>
-                  <p className="text-[11px] text-slate-500">{company?.address || "Tower B, Silicon Heights, OMR, Chennai"}</p>
-                  <p className="text-[11px] text-slate-500">Email: {company?.email || "hr@swift.io"} | Web: www.swift-technologies.com</p>
+              {docLetterhead.enabled && (
+                <div className="border-b pb-4 border-slate-200">
+                  {docLetterhead.style === "uploaded" && (docAssets?.letterheadDataUrl || docLetterhead.customBannerUrl) ? (
+                    <img
+                      src={docAssets?.letterheadDataUrl || docLetterhead.customBannerUrl}
+                      alt="Official Letterhead"
+                      className="w-full max-h-28 object-contain"
+                    />
+                  ) : docLetterhead.style === "classic" ? (
+                    <div className="text-center space-y-1">
+                      {docAssets?.logoDataUrl || company?.logoDataUrl ? (
+                        <img
+                          src={docAssets?.logoDataUrl || company?.logoDataUrl}
+                          alt="Logo"
+                          className="h-10 w-10 mx-auto rounded-lg object-contain bg-white p-0.5"
+                        />
+                      ) : (
+                        <div className="h-8 w-8 mx-auto rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">
+                          {docLetterhead.companyName ? docLetterhead.companyName.charAt(0) : "S"}
+                        </div>
+                      )}
+                      <h2 className="text-base font-bold uppercase tracking-wider text-slate-900">
+                        {docLetterhead.companyName || company?.name || "SWIFT TECHNOLOGIES PVT. LTD."}
+                      </h2>
+                      <p className="text-[10px] text-slate-500">{docLetterhead.address || company?.address || "OMR, Chennai"}</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                          {docLetterhead.companyName || company?.name || "SWIFT Technologies Pvt. Ltd."}
+                        </h2>
+                        <p className="text-[11px] text-slate-500">{docLetterhead.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai"}</p>
+                        <p className="text-[11px] text-slate-500">Email: {docLetterhead.email || company?.email || "hr@swift.io"} | Web: {docLetterhead.website || "www.swift-technologies.com"}</p>
+                      </div>
+                      {docAssets?.logoDataUrl || company?.logoDataUrl ? (
+                        <img
+                          src={docAssets?.logoDataUrl || company?.logoDataUrl}
+                          alt="Logo"
+                          className="h-10 w-10 rounded-lg object-contain bg-white p-0.5 border border-slate-200"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm">
+                          {docLetterhead.companyName ? docLetterhead.companyName.charAt(0) : "S"}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="h-10 w-10 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm">
-                  SWIFT
-                </div>
-              </div>
+              )}
 
               {/* Title */}
               <div className="text-center py-2">
@@ -2966,19 +3761,152 @@ export default function DigitalDocumentationPage() {
                 </div>
               )}
 
-              {/* Signatures */}
-              <div className="pt-8 flex justify-between items-end border-t border-slate-200 text-[11px]">
-                <div>
-                  <p className="font-bold text-slate-800">For {company?.name || "SWIFT Technologies"}</p>
-                  <div className="h-10" />
-                  <p className="text-slate-600">Authorized Signatory</p>
+              {/* Dynamic Signatures: Distributed Left to Right by Organizational Priority */}
+              {(previewSignatories.length > 0 || includeCompanySeal) && (
+                <div className="pt-8 border-t border-slate-200">
+                  <div className="flex flex-wrap items-end justify-between gap-6 text-[11px]">
+                    {previewSignatories.length === 2 && includeCompanySeal ? (
+                      <>
+                        {/* Left: 1st Priority (e.g. Employee Acceptance) */}
+                        <div className="flex flex-col text-left items-start min-w-[140px] flex-1">
+                          <p className="font-bold text-slate-800">{previewSignatories[0].label}</p>
+                          <div className="h-10 flex items-center">
+                            {previewSignatories[0].dataUrl ? (
+                              <img
+                                src={previewSignatories[0].dataUrl}
+                                alt={previewSignatories[0].roleTitle}
+                                className="max-h-9 object-contain"
+                              />
+                            ) : previewSignatories[0].isEmployee ? (
+                              <span className="text-[10px] text-slate-400 italic">Recipient Sign-off</span>
+                            ) : (
+                              <div className="h-8 border-b border-dashed border-slate-300 w-28" />
+                            )}
+                          </div>
+                          <p className="text-slate-700 font-semibold">{previewSignatories[0].signerName}</p>
+                          <p className="text-[10px] text-slate-500">{previewSignatories[0].roleTitle}</p>
+                        </div>
+
+                        {/* Center: Official Company Seal */}
+                        <div className="flex flex-col items-center px-4 shrink-0">
+                          {docAssets?.companySealDataUrl ? (
+                            <img
+                              src={docAssets.companySealDataUrl}
+                              alt="Company Seal"
+                              className="h-14 w-14 object-contain filter contrast-125 opacity-90"
+                            />
+                          ) : (
+                            <div className="h-14 w-14 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
+                              <span className="text-[8px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
+                                {company?.name || "SWIFT"}
+                              </span>
+                              <span className="text-[6px] text-indigo-500 font-mono">SEAL</span>
+                            </div>
+                          )}
+                          <span className="text-[8px] text-slate-400 font-mono mt-0.5">Official Seal</span>
+                        </div>
+
+                        {/* Right: 2nd Priority (e.g. HR / CEO / Authorized Signatory) */}
+                        <div className="flex flex-col text-right items-end min-w-[140px] flex-1">
+                          <p className="font-bold text-slate-800">{previewSignatories[1].label}</p>
+                          <div className="h-10 flex items-center justify-end">
+                            {previewSignatories[1].dataUrl ? (
+                              <img
+                                src={previewSignatories[1].dataUrl}
+                                alt={previewSignatories[1].roleTitle}
+                                className="max-h-9 object-contain"
+                              />
+                            ) : (
+                              <div className="h-8 border-b border-dashed border-slate-300 w-28" />
+                            )}
+                          </div>
+                          <p className="text-slate-700 font-semibold">{previewSignatories[1].signerName}</p>
+                          <p className="text-[10px] text-slate-500">{previewSignatories[1].roleTitle}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {previewSignatories.map((sig, sIdx) => {
+                          const isFirst = sIdx === 0;
+                          const isLast = sIdx === previewSignatories.length - 1;
+                          const alignClass =
+                            previewSignatories.length === 1
+                              ? "text-left items-start"
+                              : isFirst
+                              ? "text-left items-start"
+                              : isLast
+                              ? "text-right items-end"
+                              : "text-center items-center";
+
+                          return (
+                            <div
+                              key={sig.key}
+                              className={`flex flex-col ${alignClass} min-w-[130px] flex-1`}
+                            >
+                              <p className="font-bold text-slate-800">{sig.label}</p>
+                              <div className="h-10 flex items-center justify-center">
+                                {sig.dataUrl ? (
+                                  <img
+                                    src={sig.dataUrl}
+                                    alt={sig.roleTitle}
+                                    className="max-h-9 object-contain"
+                                  />
+                                ) : sig.isEmployee ? (
+                                  <span className="text-[10px] text-slate-400 italic">
+                                    Recipient Sign-off
+                                  </span>
+                                ) : (
+                                  <div className="h-8 border-b border-dashed border-slate-300 w-24" />
+                                )}
+                              </div>
+                              <p className="text-slate-700 font-semibold">{sig.signerName}</p>
+                              <p className="text-[10px] text-slate-500">{sig.roleTitle}</p>
+                            </div>
+                          );
+                        })}
+
+                        {includeCompanySeal && previewSignatories.length !== 2 && (
+                          <div className="flex flex-col items-center px-2 shrink-0">
+                            {docAssets?.companySealDataUrl ? (
+                              <img
+                                src={docAssets.companySealDataUrl}
+                                alt="Company Seal"
+                                className="h-14 w-14 object-contain filter contrast-125 opacity-90"
+                              />
+                            ) : (
+                              <div className="h-14 w-14 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
+                                <span className="text-[8px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
+                                  {company?.name || "SWIFT"}
+                                </span>
+                                <span className="text-[6px] text-indigo-500 font-mono">SEAL</span>
+                              </div>
+                            )}
+                            <span className="text-[8px] text-slate-400 font-mono mt-0.5">Official Seal</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-slate-800">Employee Acceptance</p>
-                  <div className="h-10" />
-                  <p className="text-slate-600">{selectedEmployee?.name || "Employee Signature"}</p>
+              )}
+
+              {/* Footer */}
+              {docFooter.enabled && (
+                <div className="pt-4 mt-auto border-t border-slate-100 text-[10px] text-slate-400">
+                  {docFooter.style === "uploaded" && (docAssets?.footerDataUrl || docFooter.customBannerUrl) ? (
+                    <img
+                      src={docAssets?.footerDataUrl || docFooter.customBannerUrl}
+                      alt="Official Footer"
+                      className="w-full max-h-16 object-contain"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <span>{docFooter.confidentialText || "STRICTLY CONFIDENTIAL • FOR RECIPIENT USE ONLY"}</span>
+                      {docFooter.showPageNumbers !== false && <span className="font-mono">Page 1 of 1</span>}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -3650,10 +4578,12 @@ function RealisticDocumentPaper({
   doc,
   company,
   employees,
+  docAssets,
 }: {
   doc: DigitalDocument;
   company: any;
   employees: Employee[];
+  docAssets?: any;
 }) {
   const emp = employees.find((e) => e.id === doc.employeeId) || {
     id: doc.employeeId,
@@ -3665,37 +4595,109 @@ function RealisticDocumentPaper({
   };
 
   const resolvedHtml = resolveDocumentTags(doc.contentHtml, emp, company);
+  const lh = doc.letterhead;
+  const ft = doc.footer;
 
   return (
-    <div className="w-full max-w-[650px] bg-white text-slate-900 shadow-2xl border border-slate-200 p-8 sm:p-12 rounded-lg text-xs leading-relaxed space-y-6">
-      {/* Letterhead */}
-      <div className="flex items-start justify-between border-b pb-4 border-slate-200">
-        <div>
-          <h2 className="text-base font-bold text-slate-900 tracking-tight">
-            {company?.name || "SWIFT Technologies Pvt. Ltd."}
-          </h2>
-          <p className="text-[11px] text-slate-500">{company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096"}</p>
-          <p className="text-[11px] text-slate-500">Email: {company?.email || "hr@swift.io"} | Web: www.swift-technologies.com</p>
+    <div className="w-full max-w-[650px] bg-white text-slate-900 shadow-2xl border border-slate-200 p-8 sm:p-12 rounded-lg text-xs leading-relaxed space-y-6 flex flex-col">
+      {/* 1. Letterhead */}
+      {(!lh || lh.enabled !== false) && (
+        <div className="border-b pb-4 border-slate-200">
+          {lh?.style === "uploaded" && (docAssets?.letterheadDataUrl || lh?.customBannerUrl) ? (
+            <img
+              src={docAssets?.letterheadDataUrl || lh?.customBannerUrl}
+              alt="Letterhead Banner"
+              className="w-full max-h-32 object-contain"
+            />
+          ) : lh?.style === "classic" ? (
+            <div className="text-center space-y-1">
+              {docAssets?.logoDataUrl || company?.logoDataUrl ? (
+                <img
+                  src={docAssets?.logoDataUrl || company?.logoDataUrl}
+                  alt="Company Logo"
+                  className="h-10 w-10 mx-auto rounded-lg object-contain mb-1 bg-white p-0.5"
+                />
+              ) : (
+                <div className="h-8 w-8 mx-auto rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-xs mb-1">
+                  {lh?.companyName ? lh.companyName.charAt(0) : "S"}
+                </div>
+              )}
+              <h2 className="text-base font-bold uppercase tracking-wider text-slate-900">
+                {lh?.companyName || company?.name || "SWIFT TECHNOLOGIES PVT. LTD."}
+              </h2>
+              <p className="text-[10px] text-slate-500">
+                {lh?.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096"}
+              </p>
+              <p className="text-[10px] text-slate-400">
+                Email: {lh?.email || company?.email || "hr@swift.io"} | Web: {lh?.website || "www.swift-technologies.com"}
+              </p>
+            </div>
+          ) : lh?.style === "executive" ? (
+            <div className="bg-slate-900 text-white p-4 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {docAssets?.logoDataUrl || company?.logoDataUrl ? (
+                  <img
+                    src={docAssets?.logoDataUrl || company?.logoDataUrl}
+                    alt="Company Logo"
+                    className="h-8 w-8 rounded-lg object-contain bg-white p-0.5"
+                  />
+                ) : (
+                  <div className="h-8 w-8 rounded-lg bg-white text-indigo-900 font-black flex items-center justify-center text-xs">
+                    {lh?.companyName ? lh.companyName.charAt(0) : "S"}
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-sm font-bold tracking-tight">{lh?.companyName || company?.name || "SWIFT Technologies"}</h2>
+                  <p className="text-[10px] text-slate-300">{lh?.tagline || "Enterprise Workforce Operations"}</p>
+                </div>
+              </div>
+              <div className="text-right text-[9px] text-slate-400 font-mono">
+                <p>{lh?.email || company?.email || "hr@swift.io"}</p>
+                <p>Ref: {doc.docNumber}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  {lh?.companyName || company?.name || "SWIFT Technologies Pvt. Ltd."}
+                </h2>
+                <p className="text-[11px] text-slate-500">{lh?.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096"}</p>
+                <p className="text-[10px] text-slate-500">
+                  Email: {lh?.email || company?.email || "hr@swift.io"} | Phone: {lh?.phone || company?.phone || "+91 44 2876 5400"}
+                  {lh?.cin ? ` | CIN: ${lh.cin}` : ""}
+                </p>
+              </div>
+              {docAssets?.logoDataUrl || company?.logoDataUrl ? (
+                <img
+                  src={docAssets?.logoDataUrl || company?.logoDataUrl}
+                  alt="Company Logo"
+                  className="h-10 w-10 rounded-lg object-contain border border-slate-200 p-0.5 bg-white shrink-0"
+                />
+              ) : (
+                <div className="h-10 w-10 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-xs shrink-0">
+                  {lh?.companyName ? lh.companyName.charAt(0) : "S"}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        <div className="h-10 w-10 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-xs">
-          SWIFT
-        </div>
-      </div>
+      )}
 
-      {/* Title */}
+      {/* 2. Title */}
       <div className="text-center py-1">
         <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
           {doc.name}
         </h3>
       </div>
 
-      {/* Body Content */}
+      {/* 3. Body Content */}
       <div
         className="space-y-3 text-slate-700 font-sans"
         dangerouslySetInnerHTML={{ __html: resolvedHtml }}
       />
 
-      {/* Table Annexure if exists */}
+      {/* 4. Table Annexure if exists */}
       {doc.tableData && doc.tableData.rows.length > 0 && (
         <div className="pt-2">
           <p className="font-bold text-slate-800 mb-1.5">{doc.tableData.caption || "Annexure"}</p>
@@ -3724,19 +4726,165 @@ function RealisticDocumentPaper({
         </div>
       )}
 
-      {/* Signatures */}
-      <div className="pt-10 flex justify-between items-end border-t border-slate-200 text-[11px]">
-        <div>
-          <p className="font-bold text-slate-800">For {company?.name || "SWIFT Technologies"}</p>
-          <div className="h-12" />
-          <p className="text-slate-600 font-medium">Authorized Signatory</p>
+      {/* 5. Signatures (Distributed Left to Right by Organizational Priority) */}
+      {(() => {
+        const docSignatories = getOrderedSignatories(
+          doc.approvers,
+          doc.employeeName || "Employee Signature",
+          lh?.companyName || company?.name || "SWIFT Technologies",
+          docAssets
+        );
+
+        if (docSignatories.length === 0 && doc.includeCompanySeal === false) {
+          return null;
+        }
+
+        return (
+          <div className="pt-10 border-t border-slate-200">
+            <div className="flex flex-wrap items-end justify-between gap-6 text-[11px]">
+              {docSignatories.length === 2 && doc.includeCompanySeal !== false ? (
+                <>
+                  {/* Left: 1st Priority (e.g. Employee Acceptance) */}
+                  <div className="flex flex-col text-left items-start min-w-[140px] flex-1">
+                    <p className="font-bold text-slate-800">{docSignatories[0].label}</p>
+                    <div className="h-12 flex items-center">
+                      {docSignatories[0].dataUrl ? (
+                        <img
+                          src={docSignatories[0].dataUrl}
+                          alt={docSignatories[0].roleTitle}
+                          className="max-h-10 object-contain"
+                        />
+                      ) : docSignatories[0].isEmployee ? (
+                        <span className="text-[10px] text-slate-400 italic">Recipient Sign-off</span>
+                      ) : (
+                        <div className="h-8 border-b border-dashed border-slate-300 w-28" />
+                      )}
+                    </div>
+                    <p className="text-slate-700 font-semibold">{docSignatories[0].signerName}</p>
+                    <p className="text-[10px] text-slate-500">{docSignatories[0].roleTitle}</p>
+                  </div>
+
+                  {/* Center: Official Company Seal */}
+                  <div className="flex flex-col items-center px-4 shrink-0">
+                    {docAssets?.companySealDataUrl ? (
+                      <img
+                        src={docAssets.companySealDataUrl}
+                        alt="Company Seal"
+                        className="h-16 w-16 object-contain filter contrast-125 opacity-90"
+                      />
+                    ) : (
+                      <div className="h-16 w-16 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
+                        <span className="text-[9px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
+                          {company?.name || "SWIFT"}
+                        </span>
+                        <span className="text-[7px] text-indigo-500 font-mono mt-0.5">OFFICIAL SEAL</span>
+                      </div>
+                    )}
+                    <span className="text-[9px] text-slate-400 font-mono mt-1">Official Seal</span>
+                  </div>
+
+                  {/* Right: 2nd Priority (e.g. HR / CEO / Authorized Signatory) */}
+                  <div className="flex flex-col text-right items-end min-w-[140px] flex-1">
+                    <p className="font-bold text-slate-800">{docSignatories[1].label}</p>
+                    <div className="h-12 flex items-center justify-end">
+                      {docSignatories[1].dataUrl ? (
+                        <img
+                          src={docSignatories[1].dataUrl}
+                          alt={docSignatories[1].roleTitle}
+                          className="max-h-10 object-contain"
+                        />
+                      ) : (
+                        <div className="h-8 border-b border-dashed border-slate-300 w-28" />
+                      )}
+                    </div>
+                    <p className="text-slate-700 font-semibold">{docSignatories[1].signerName}</p>
+                    <p className="text-[10px] text-slate-500">{docSignatories[1].roleTitle}</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {docSignatories.map((sig, sIdx) => {
+                    const isFirst = sIdx === 0;
+                    const isLast = sIdx === docSignatories.length - 1;
+                    const alignClass =
+                      docSignatories.length === 1
+                        ? "text-left items-start"
+                        : isFirst
+                        ? "text-left items-start"
+                        : isLast
+                        ? "text-right items-end"
+                        : "text-center items-center";
+
+                    return (
+                      <div
+                        key={sig.key}
+                        className={`flex flex-col ${alignClass} min-w-[130px] flex-1`}
+                      >
+                        <p className="font-bold text-slate-800">{sig.label}</p>
+                        <div className="h-12 flex items-center justify-center">
+                          {sig.dataUrl ? (
+                            <img
+                              src={sig.dataUrl}
+                              alt={sig.roleTitle}
+                              className="max-h-10 object-contain"
+                            />
+                          ) : sig.isEmployee ? (
+                            <span className="text-[10px] text-slate-400 italic">
+                              Recipient Sign-off
+                            </span>
+                          ) : (
+                            <div className="h-8 border-b border-dashed border-slate-300 w-24" />
+                          )}
+                        </div>
+                        <p className="text-slate-700 font-semibold">{sig.signerName}</p>
+                        <p className="text-[10px] text-slate-500">{sig.roleTitle}</p>
+                      </div>
+                    );
+                  })}
+
+                  {doc.includeCompanySeal !== false && docSignatories.length !== 2 && (
+                    <div className="flex flex-col items-center px-2 shrink-0">
+                      {docAssets?.companySealDataUrl ? (
+                        <img
+                          src={docAssets.companySealDataUrl}
+                          alt="Company Seal"
+                          className="h-16 w-16 object-contain filter contrast-125 opacity-90"
+                        />
+                      ) : (
+                        <div className="h-16 w-16 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
+                          <span className="text-[9px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
+                            {company?.name || "SWIFT"}
+                          </span>
+                          <span className="text-[7px] text-indigo-500 font-mono mt-0.5">OFFICIAL SEAL</span>
+                        </div>
+                      )}
+                      <span className="text-[9px] text-slate-400 font-mono mt-1">Official Seal</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 6. Footer */}
+      {(!ft || ft.enabled !== false) && (
+        <div className="pt-4 mt-auto border-t border-slate-100 text-[10px] text-slate-400">
+          {ft?.style === "uploaded" && (docAssets?.footerDataUrl || ft?.customBannerUrl) ? (
+            <img
+              src={docAssets?.footerDataUrl || ft?.customBannerUrl}
+              alt="Footer Graphic"
+              className="w-full max-h-20 object-contain"
+            />
+          ) : (
+            <div className="flex items-center justify-between">
+              <span>{ft?.confidentialText || "STRICTLY CONFIDENTIAL • FOR RECIPIENT USE ONLY"}</span>
+              {ft?.showPageNumbers !== false && <span className="font-mono">Page 1 of 1</span>}
+            </div>
+          )}
         </div>
-        <div className="text-right">
-          <p className="font-bold text-slate-800">Employee Acceptance</p>
-          <div className="h-12" />
-          <p className="text-slate-600 font-medium">{doc.employeeName}</p>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -6,6 +6,40 @@ import type { Company, Employee } from "./store";
 // Types for Digital Document Composer & Lifecycle
 // ============================================================
 
+export type LetterheadStyle = "uploaded" | "modern" | "classic" | "executive" | "minimal" | "custom_banner";
+export type FooterStyle = "uploaded" | "standard" | "verification" | "split" | "custom";
+
+export interface DocLetterheadConfig {
+  enabled: boolean;
+  style: LetterheadStyle;
+  showLogo?: boolean;
+  customLogoUrl?: string;
+  customBannerUrl?: string;
+  companyName?: string;
+  tagline?: string;
+  address?: string;
+  contactInfo?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  cin?: string;
+  gstin?: string;
+  headerRightText?: string;
+  accentColor?: string;
+}
+
+export interface DocFooterConfig {
+  enabled: boolean;
+  style: FooterStyle;
+  customBannerUrl?: string;
+  customText?: string;
+  showPageNumbers?: boolean;
+  showConfidentialNotice?: boolean;
+  showDigitalStamp?: boolean;
+  confidentialText?: string;
+  registeredOfficeText?: string;
+}
+
 export type DocumentTypePreset = {
   id: string;
   name: string;
@@ -15,21 +49,165 @@ export type DocumentTypePreset = {
   templateBody: string;
   defaultApprovalMode: ApprovalMode;
   defaultApprovers: string[];
+  defaultLetterhead?: DocLetterheadConfig;
+  defaultFooter?: DocFooterConfig;
 };
 
 export type ApprovalMode = "sequential" | "all_must_approve" | "any_one";
 
 export type ApprovalStepStatus = "pending" | "approved" | "rejected" | "forwarded" | "skipped";
 
+export type ApproverCategory = "role" | "employee";
+
 export interface ApprovalStepItem {
   id: string;
+  category?: ApproverCategory;
+  roleType?: string;
   approverRoleOrName: string;
+  approverEmployeeIds?: string[];
+  employeeSelectionMode?: "single" | "multiple" | "all";
   approverEmployeeId?: string;
   order: number;
   status: ApprovalStepStatus;
+  requireSignature?: boolean;
+  signatureDataUrl?: string;
+  automationAction?: "manual" | "auto_approve" | "auto_decline";
   actedBy?: string;
   actedAt?: string;
   comment?: string;
+}
+
+/**
+ * Organizational Hierarchy Priority Levels for Signatory Layout
+ * 1: Recipient / Employee (Leftmost)
+ * 2: Team Leader / Supervisor / Reporting Manager
+ * 3: Department Head / Branch Manager / Factory Manager / Finance Head
+ * 4: Human Resources (HR Executive, HR Manager, HR Head) (Middle)
+ * 5: Executive Leadership (Director, MD, CEO, Super Admin, Authorized Signatory) (Rightmost)
+ */
+export const ORG_SIGNATORY_TIERS: Record<string, number> = {
+  employee: 1,
+  recipient: 1,
+  "team leader": 2,
+  "team lead": 2,
+  supervisor: 2,
+  "reporting manager": 2,
+  "project manager": 2,
+  "department head": 3,
+  hod: 3,
+  "branch manager": 3,
+  "factory manager": 3,
+  "finance head": 3,
+  "finance manager": 3,
+  cfo: 3,
+  "hr executive": 4,
+  "talent acquisition lead": 4,
+  "hr manager": 4,
+  "hr head": 4,
+  "priya kumar": 4,
+  "human resources": 4,
+  hr: 4,
+  director: 5,
+  "managing director": 5,
+  md: 5,
+  ceo: 5,
+  "super admin": 5,
+  admin: 5,
+  "authorized signatory": 5,
+  "authorised signatory": 5,
+};
+
+export function getSignatoryRank(roleOrName: string, category?: string): number {
+  if (category === "employee") return 1;
+  const lower = (roleOrName || "").toLowerCase();
+  if (lower.includes("employee") || lower.includes("recipient")) return 1;
+  if (lower.includes("ceo") || lower.includes("md") || lower.includes("director") || lower.includes("signatory") || lower.includes("admin")) return 5;
+  if (lower.includes("hr") || lower.includes("human resources") || lower.includes("priya")) return 4;
+  if (lower.includes("department") || lower.includes("branch") || lower.includes("factory") || lower.includes("finance") || lower.includes("cfo") || lower.includes("hod")) return 3;
+  if (lower.includes("lead") || lower.includes("supervisor") || lower.includes("manager")) return 2;
+  return 3;
+}
+
+export interface SignatorySlot {
+  key: string;
+  label: string;
+  roleTitle: string;
+  signerName: string;
+  rank: number;
+  positionGroup: "left" | "middle" | "right";
+  dataUrl?: string;
+  isEmployee?: boolean;
+}
+
+export function getOrderedSignatories(
+  approvers: ApprovalStepItem[] | undefined,
+  employeeName: string,
+  companyName: string,
+  docAssets?: {
+    authorisedSignatoryDataUrl?: string;
+    hrSignatureDataUrl?: string;
+    mdSignatureDataUrl?: string;
+    branchManagerSignatureDataUrl?: string;
+    factoryManagerSignatureDataUrl?: string;
+    companySealDataUrl?: string;
+    [key: string]: any;
+  }
+): SignatorySlot[] {
+  const slots: SignatorySlot[] = [];
+
+  const activeApprovers = (approvers || []).filter((s) => s.requireSignature !== false);
+
+  activeApprovers.forEach((step) => {
+    const rawRole = step.approverRoleOrName || step.roleType || "Signatory";
+    const rank = getSignatoryRank(rawRole, step.category);
+    const isEmp = rank === 1 || step.category === "employee";
+    const positionGroup: "left" | "middle" | "right" =
+      isEmp ? "left" : rank <= 4 ? "middle" : "right";
+
+    let dataUrl: string | undefined = step.signatureDataUrl;
+    if (!dataUrl && !isEmp) {
+      const lower = rawRole.toLowerCase();
+      if (lower.includes("md") || lower.includes("director")) {
+        dataUrl = docAssets?.mdSignatureDataUrl || docAssets?.authorisedSignatoryDataUrl;
+      } else if (lower.includes("hr") || lower.includes("human resources") || lower.includes("priya")) {
+        dataUrl = docAssets?.hrSignatureDataUrl;
+      } else if (lower.includes("branch")) {
+        dataUrl = docAssets?.branchManagerSignatureDataUrl;
+      } else if (lower.includes("factory")) {
+        dataUrl = docAssets?.factoryManagerSignatureDataUrl;
+      } else if (lower.includes("ceo") || lower.includes("super admin") || lower.includes("signatory") || lower.includes("admin")) {
+        dataUrl = docAssets?.authorisedSignatoryDataUrl;
+      }
+    }
+
+    let cleanSignerName = rawRole;
+    let cleanRoleTitle = rawRole;
+    if (isEmp) {
+      if (rawRole.toLowerCase().startsWith("employee:")) {
+        cleanSignerName = rawRole.replace(/^employee:\s*/i, "").trim() || employeeName || "Employee Signature";
+      } else if (rawRole.toLowerCase().includes("selected") || rawRole.toLowerCase().includes("all employees")) {
+        cleanSignerName = employeeName || rawRole;
+      } else {
+        cleanSignerName = rawRole || employeeName || "Employee Signature";
+      }
+      cleanRoleTitle = "Recipient Acknowledgment";
+    } else {
+      cleanSignerName = rawRole || "Authorized Signatory";
+    }
+
+    slots.push({
+      key: step.id,
+      label: isEmp ? "Employee Acceptance" : `For ${companyName || "SWIFT Technologies"}`,
+      roleTitle: cleanRoleTitle,
+      signerName: cleanSignerName,
+      rank: isEmp ? 1 : rank,
+      positionGroup,
+      dataUrl,
+      isEmployee: isEmp,
+    });
+  });
+
+  return slots.sort((a, b) => a.rank - b.rank);
 }
 
 export interface EscalationRule {
@@ -79,9 +257,12 @@ export interface DocumentVersionSnapshot {
   summary: string;
   content: string;
   tableData?: DocCustomTable | null;
+  letterhead?: DocLetterheadConfig;
+  footer?: DocFooterConfig;
   delivery: DeliveryMethodConfig;
   approvalMode: ApprovalMode;
   approvers: ApprovalStepItem[];
+  includeCompanySeal?: boolean;
 }
 
 export interface DocCustomTable {
@@ -109,6 +290,10 @@ export interface DigitalDocument {
   tableData?: DocCustomTable | null;
   attachedImages?: { id: string; url: string; caption?: string; width?: number }[];
 
+  // Letterhead & Footer Configuration
+  letterhead?: DocLetterheadConfig;
+  footer?: DocFooterConfig;
+
   // Delivery Config
   delivery: DeliveryMethodConfig;
 
@@ -117,6 +302,10 @@ export interface DigitalDocument {
   approvalMode: ApprovalMode;
   approvers: ApprovalStepItem[];
   currentStepIndex: number;
+
+  // Security & Seal
+  includeCompanySeal?: boolean;
+  companySealDataUrl?: string;
 
   // Escalation Config
   escalation: EscalationRule;
@@ -356,6 +545,8 @@ export function resolveDocumentTags(
     const escaped = key.replace(/[{()}]/g, "\\$&");
     resolved = resolved.replace(new RegExp(escaped, "g"), val);
   }
+  // Strip editor-only delete button for clean official documents and PDF exports
+  resolved = resolved.replace(/<button[^>]*class=["'][^"']*delete-payslip-btn[^"']*["'][^>]*>[\s\S]*?<\/button>/gi, "");
   return resolved;
 }
 
@@ -630,7 +821,16 @@ interface DigitalDocStoreState {
   rejectStep: (id: string, stepId: string, actorName: string, reason: string) => void;
   forwardStep: (id: string, stepId: string, forwardTo: string, actorName: string, comment?: string) => void;
   acknowledgeDocument: (id: string, employeeName?: string) => void;
-  createNewVersion: (id: string, updatedContent: string, tableData?: DocCustomTable | null, summary?: string, author?: string) => void;
+  createNewVersion: (
+    id: string,
+    updatedContent: string,
+    tableData?: DocCustomTable | null,
+    summary?: string,
+    author?: string,
+    letterhead?: DocLetterheadConfig,
+    footer?: DocFooterConfig,
+    includeCompanySeal?: boolean
+  ) => void;
   resetToDefaults: () => void;
 }
 
@@ -669,9 +869,12 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
           summary: "Initial Document Creation",
           content: docData.contentHtml,
           tableData: docData.tableData,
+          letterhead: docData.letterhead,
+          footer: docData.footer,
           delivery: docData.delivery,
           approvalMode: docData.approvalMode,
           approvers: docData.approvers,
+          includeCompanySeal: docData.includeCompanySeal,
         };
 
         const newDoc: DigitalDocument = {
@@ -746,8 +949,13 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
         set((state) => ({
           documents: state.documents.map((d) => {
             if (d.id !== id) return d;
-            const hasApproval = d.approvalRequired && d.approvers.length > 0;
-            const newStatus: DigitalDocumentStatus = hasApproval ? "PENDING_APPROVAL" : "SENT";
+
+            let newStatus: DigitalDocumentStatus = d.status;
+            if (!d.approvalRequired || d.approvers.length === 0) {
+              newStatus = "PENDING_EMPLOYEE_ACTION";
+            } else {
+              newStatus = "PENDING_APPROVAL";
+            }
 
             const newLogs: AuditLogItem[] = [
               ...d.auditLogs,
@@ -755,11 +963,11 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
                 id: `log-${Date.now()}`,
                 timestamp: nowFormatted,
                 actor: actorName,
-                actorRole: "HR Admin",
-                action: "Document Sent",
-                details: hasApproval
-                  ? `Dispatched for ${d.approvalMode} approval to: ${d.approvers.map((a) => a.approverRoleOrName).join(", ")}`
-                  : `Dispatched directly via ${d.delivery.channel} to ${d.employeeName}`,
+                actorRole: "Sender",
+                action: "Document Dispatched",
+                details: d.approvalRequired
+                  ? `Initiated ${d.approvalMode} approval workflow with ${d.approvers.length} approver(s)`
+                  : `Dispatched directly to ${d.employeeName} (${d.employeeEmail})`,
                 type: "send",
               },
             ];
@@ -815,8 +1023,8 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
                 nextStepIndex = nextIndex;
                 newStatus = "PARTIALLY_APPROVED";
               }
-            } else {
-              const allDone = updatedApprovers.every((a) => a.status === "approved");
+            } else if (d.approvalMode === "all_must_approve") {
+              const allDone = updatedApprovers.every((a) => a.status === "approved" || a.status === "skipped");
               if (allDone) {
                 newStatus = "PENDING_EMPLOYEE_ACTION";
               } else {
@@ -833,7 +1041,7 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
                 actor: actorName,
                 actorRole: stepObj?.approverRoleOrName || "Approver",
                 action: `${stepObj?.approverRoleOrName || "Step"} Approved`,
-                details: comment ? `Remark: "${comment}"` : "Approved step in workflow",
+                details: `Confirmed approval. Comment: "${comment || "Approved"}"`,
                 type: "approval",
               },
             ];
@@ -1025,7 +1233,7 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
         }));
       },
 
-      createNewVersion: (id, updatedContent, tableData, summary, author) => {
+      createNewVersion: (id, updatedContent, tableData, summary, author, letterhead, footer, includeCompanySeal) => {
         const now = new Date().toISOString();
         const nowFormatted = new Date().toLocaleString("en-IN", {
           day: "2-digit",
@@ -1047,9 +1255,12 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
               summary: summary || `Version ${nextVer} revisions saved`,
               content: updatedContent,
               tableData: tableData ?? d.tableData,
+              letterhead: letterhead ?? d.letterhead,
+              footer: footer ?? d.footer,
               delivery: d.delivery,
               approvalMode: d.approvalMode,
               approvers: d.approvers,
+              includeCompanySeal: includeCompanySeal ?? d.includeCompanySeal,
             };
 
             const resetApprovers = d.approvers.map((a) => ({
@@ -1077,11 +1288,14 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
               ...d,
               contentHtml: updatedContent,
               tableData: tableData ?? d.tableData,
+              letterhead: letterhead ?? d.letterhead,
+              footer: footer ?? d.footer,
+              includeCompanySeal: includeCompanySeal ?? d.includeCompanySeal,
               currentVersion: nextVer,
               versions: [newVersionSnapshot, ...d.versions],
               approvers: resetApprovers,
               currentStepIndex: 0,
-              status: d.approvalRequired ? "PENDING_APPROVAL" : "SENT",
+              status: "PENDING_APPROVAL",
               updatedAt: now,
               auditLogs: newLogs,
             };

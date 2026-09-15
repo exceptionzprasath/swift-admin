@@ -3165,6 +3165,8 @@ export function PayrollPage() {
                         addPayroll({
                           id: `pay-${editingRecord.emp.id}-${selectedMonth}`,
                           employeeId: editingRecord.emp.id,
+                          empCode: editingRecord.emp.empCode,
+                          employeeName: editingRecord.emp.name,
                           month: selectedMonth,
                           daysWorked: editingRecord.daysWorked,
                           otHours: editingRecord.otHours,

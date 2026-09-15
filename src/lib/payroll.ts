@@ -409,20 +409,17 @@ export function computePayroll(opts: {
 
   const extraDeductionsList: { id: string; name: string; amount: number }[] = [];
 
-  // Loss of Pay (LOP) — explicit deduction when employee has absent days.
-  // The prorateFactor already reduces gross; LOP shows the amount lost as a visible line item.
-  // lopBasis: "basic" → deduct only from basic+DA; "gross" → deduct from full gross.
+  // Attendance Proration & Loss of Pay (LOP):
+  // Note: All salary components (Basic, HRA, OA, CA, LTA) are ALREADY prorated by prorateFactor (paidDays / wd).
+  // Thus, gross earnings already only include the days worked (e.g. ₹28,847 for 15 days out of 26 on ₹50,000 salary).
+  // Deducting LOP here as an extra deduction would penalize the employee twice for the same absent days.
+  // We keep absentDays and lopAmount as informative metrics on the computation object.
   const absentDays = Math.max(0, wd - paidDays);
-  let lopAmount = 0;
-  if (absentDays > 0) {
-    const dailyRate = c.lopBasis === "gross"
-      ? fixedGross / wd
-      : (monthlyBasic + (c.daEnabled !== false ? Math.round(fixedGross * ((c.daPct ?? 13.33) / 100)) : 0)) / wd;
-    lopAmount = Math.round(dailyRate * absentDays);
-    if (lopAmount > 0) {
-      extraDeductionsList.push({ id: "lop", name: `Loss of Pay (${absentDays} day${absentDays !== 1 ? "s" : ""} absent)`, amount: lopAmount });
-    }
-  }
+  const dailyRate = c.lopBasis === "gross"
+    ? fixedGross / wd
+    : (monthlyBasic + (c.daEnabled !== false ? Math.round(fixedGross * ((c.daPct ?? 13.33) / 100)) : 0)) / wd;
+  const lopAmount = absentDays > 0 ? Math.round(dailyRate * absentDays) : 0;
+
   if (otherDeductions > 0) {
     extraDeductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: otherDeductions });
   }
@@ -509,6 +506,8 @@ export function computePayroll(opts: {
     monthlyCTC,
     annualCTC,
     daysWorked: paidDays,
+    absentDays,
+    lopAmount,
     prorateFactor,
     fixedGross,
     structureId: structure?.id,
@@ -558,13 +557,14 @@ export function explainPayroll(company: Company, employee: Employee, p: PayrollC
         : `Not eligible: gross ₹${Math.round(p.gross).toLocaleString("en-IN")} exceeds ESI threshold ₹${c.esiRules.threshold.toLocaleString("en-IN")}.`,
     });
   }
-  out.push({ id: "professionalTax", text: `Professional Tax uses state slabs configured under Payroll Settings. Deducted every month; deposited to state treasury.` });
+  if (c.ptEnabled !== false) out.push({ id: "professionalTax", text: `Professional Tax uses state slabs configured under Payroll Settings. Deducted every month; deposited to state treasury.` });
   if (c.tdsRules?.enabled) out.push({ id: "tds", text: `TDS = tax on annualised taxable income divided by 12. Recomputed each month using declared exemptions.` });
   if (p.deductions.lwf > 0 || p.employerContrib.employerLwf > 0) out.push({ id: "lwf", text: `${p.lwfSource} — state-specific Labour Welfare Fund. Employer contribution is typically 2×–3× employee.` });
   if (p.deductions.loan > 0) out.push({ id: "loan", text: `Loan EMI as per sanctioned repayment plan.` });
   if (p.deductions.advance > 0) out.push({ id: "advance", text: `Salary advance recovery this cycle.` });
-  const lopEntry = p.extraDeductions.find((d) => d.id === "lop");
-  if (lopEntry) out.push({ id: "lop", text: `Loss of Pay (LOP): ${lopEntry.name.match(/\d+/)?.[0] || ""} absent day(s) × daily rate. Computed on ${c.lopBasis === "gross" ? "gross salary" : "Basic + DA"} basis per company settings.` });
+  if (p.absentDays && p.absentDays > 0) {
+    out.push({ id: "lop", text: `Attendance Proration: ${p.daysWorked} of ${wd} working days worked (${p.absentDays} absent day(s)). Gross earnings are prorated accordingly without duplicate deduction.` });
+  }
   if (c.gratuityRules?.enabled) out.push({ id: "gratuity", text: `Gratuity accrual = Basic × ${c.gratuityRules.numerator}/${c.gratuityRules.denominator} ÷ 12 (Payment of Gratuity Act 1972; payable on 5 yrs service).` });
 
   out.push({ id: "net", text: `Net Pay = Gross ₹${Math.round(p.gross).toLocaleString("en-IN")} − Total Deductions ₹${Math.round(p.totalDeductions).toLocaleString("en-IN")}. Employer cost adds ₹${Math.round(p.totalEmployer).toLocaleString("en-IN")}/mo making CTC ₹${Math.round(p.annualCTC).toLocaleString("en-IN")}/yr.` });
