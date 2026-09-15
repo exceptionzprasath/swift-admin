@@ -281,7 +281,7 @@ export class AIDataTools {
     const presentCount = teamRoster.filter((t) => t.status === "Present").length;
     const absentCount = teamRoster.length - presentCount;
 
-    const summaryText = `👥 **Team Attendance (${targetDate})**\n\n• **Team Size:** ${teamRoster.length}\n• **Present:** ${presentCount}\n• **Absent:** ${absentCount}\n\n${teamRoster.map((t) => `• **${t.name}**: ${t.status} (${t.checkIn})`).join("\n")}`;
+    const summaryText = `👥 **Team Attendance (${targetDate})**\n\n• **Team Size:** ${teamRoster.length}\n• **Present:** ${presentCount}\n• **Absent:** ${absentCount}\n\n${teamRoster.map((t) => `• **${t.name} (${t.empCode})**: ${t.status} (${t.checkIn})`).join("\n")}`;
 
     return {
       success: true,
@@ -491,7 +491,7 @@ export class AIDataTools {
         recordsUsed: 0,
         permissionChecked: true,
         data: [],
-        summaryText: `No leave applications recorded for ${emp.name}.`,
+        summaryText: `No leave applications recorded for ${emp.name} (${emp.empCode}).`,
       };
     }
 
@@ -500,7 +500,7 @@ export class AIDataTools {
       return `• **${l.type}** (${dates}, ${l.days || 1} days): **${(l.status || "pending").toUpperCase()}**${l.rejectedReason ? ` — Reason: ${l.rejectedReason}` : ""}`;
     });
 
-    const summaryText = `🌴 **Leave History — ${emp.name}**\n\n${lines.join("\n")}`;
+    const summaryText = `🌴 **Leave History — ${emp.name} (${emp.empCode})**\n\n${lines.join("\n")}`;
 
     return {
       success: true,
@@ -568,7 +568,8 @@ export class AIDataTools {
 
     const lines = pending.map((l) => {
       const emp = (context.employees || []).find((e) => e.id === l.employeeId);
-      return `• **${emp?.name || l.employeeName || "Employee"}** — ${l.type} (${l.startDate || l.from} to ${l.endDate || l.to}, ${l.days || 1} days): "${l.reason}"`;
+      const empDisplay = emp ? `${emp.name} (${emp.empCode})` : (l.employeeName ? `${l.employeeName} (${l.employeeId})` : `Employee (${l.employeeId})`);
+      return `• **${empDisplay}** — ${l.type} (${l.startDate || l.from} to ${l.endDate || l.to}, ${l.days || 1} days): "${l.reason}"`;
     });
 
     const summaryText = `🌴 **Pending Leave Requests (${pending.length})**\n\n${lines.join("\n")}\n\n*To approve or reject, navigate to **Requests & Approvals** (/admin/requests).*`;
@@ -684,7 +685,7 @@ export class AIDataTools {
       };
     }
 
-    const summaryText = `🏆 **Performance Overview — ${emp.name}**\n\n• **Designation:** ${emp.designation || "Staff"}\n• **Department:** ${emp.department || "General"}\n• **Appraisal Status:** Eligible for Annual Review\n• **Probation Status:** ${emp.probationDate ? `Completed on ${emp.probationDate}` : "Active / Cleared"}\n• **Background Check:** ${emp.backgroundCheckStatus || "Clear"}`;
+    const summaryText = `🏆 **Performance Overview — ${emp.name} (${emp.empCode})**\n\n• **Designation:** ${emp.designation || "Staff"}\n• **Department:** ${emp.department || "General"}\n• **Appraisal Status:** Eligible for Annual Review\n• **Probation Status:** ${emp.probationDate ? `Completed on ${emp.probationDate}` : "Active / Cleared"}\n• **Background Check:** ${emp.backgroundCheckStatus || "Clear"}`;
 
     return {
       success: true,
@@ -736,7 +737,7 @@ export class AIDataTools {
     const docs = emp.documentsUploaded || [];
     const signed = Object.values(emp.signedDocs || {});
 
-    const summaryText = `📄 **Documents for ${emp.name}**\n\n• **Uploaded Documents:** ${docs.length} on file\n• **Signed Letters/Agreements:** ${signed.length}\n• **Offer/Appointment Letter:** Available in **Documents** (\`/admin/documents\`)`;
+    const summaryText = `📄 **Documents for ${emp.name} (${emp.empCode})**\n\n• **Uploaded Documents:** ${docs.length} on file\n• **Signed Letters/Agreements:** ${signed.length}\n• **Offer/Appointment Letter:** Available in **Documents** (\`/admin/documents\`)`;
 
     return {
       success: true,
@@ -793,7 +794,7 @@ export class AIDataTools {
       graceTime: "15",
     };
 
-    const summaryText = `⏰ **Shift Details — ${emp.name}**\n\n• **Shift Name:** ${shift.name}\n• **Timing:** ${shift.start} to ${shift.end}\n• **Grace Period:** ${shift.graceTime || 15} minutes\n• **Branch Location:** ${emp.branchId || "Headquarters"}`;
+    const summaryText = `⏰ **Shift Details — ${emp.name} (${emp.empCode})**\n\n• **Shift Name:** ${shift.name}\n• **Timing:** ${shift.start} to ${shift.end}\n• **Grace Period:** ${shift.graceTime || 15} minutes\n• **Branch Location:** ${emp.branchId || "Headquarters"}`;
 
     return {
       success: true,
@@ -1029,7 +1030,7 @@ export class AIDataTools {
         recordsUsed: count,
         permissionChecked: true,
         data: { department: matchKey || query.department, count, employees: deptEmployees },
-        summaryText: `👥 **${matchKey || query.department} Department**\n\nThere are **${count} active employees** in this department.${count > 0 ? `\n\n${deptEmployees.map((e) => `• **${e.name}** (${e.designation || "Staff"})`).join("\n")}` : ""}`,
+        summaryText: `👥 **${matchKey || query.department} Department**\n\nThere are **${count} active employees** in this department.${count > 0 ? `\n\n${deptEmployees.map((e) => `• **${e.name} (${e.empCode})** (${e.designation || "Staff"})`).join("\n")}` : ""}`,
       };
     }
 
@@ -1076,7 +1077,7 @@ export class AIDataTools {
     const manager = employees.find((e) => e.id === emp.managerId);
     const directReports = employees.filter((e) => e.managerId === emp.id);
 
-    const summaryText = `👤 **Hierarchy Details — ${emp.name}**\n\n• **Reporting Manager:** ${manager ? `${manager.name} (${manager.designation || "Manager"})` : "Department Head / Admin"}\n• **Direct Reports (${directReports.length}):** ${directReports.length > 0 ? directReports.map((d) => d.name).join(", ") : "None (Individual Contributor)"}`;
+    const summaryText = `👤 **Hierarchy Details — ${emp.name} (${emp.empCode})**\n\n• **Reporting Manager:** ${manager ? `${manager.name} (${manager.empCode}) (${manager.designation || "Manager"})` : "Department Head / Admin"}\n• **Direct Reports (${directReports.length}):** ${directReports.length > 0 ? directReports.map((d) => `${d.name} (${d.empCode})`).join(", ") : "None (Individual Contributor)"}`;
 
     return {
       success: true,
@@ -1157,7 +1158,7 @@ export class AIDataTools {
       (e) => !e.faceRegistered || !e.pan || !e.bankAcc || e.status === "inactive"
     );
 
-    const summaryText = `🚀 **Employee Onboarding Status**\n\n• **Fully Onboarded Staff:** ${employees.length - pendingOnboarding.length}\n• **Pending Registration/Verification Steps:** ${pendingOnboarding.length} employees\n${pendingOnboarding.slice(0, 5).map((e) => `• **${e.name}**: ${!e.faceRegistered ? "Face Registration Pending" : "Bank/PAN Verification Pending"}`).join("\n")}\n\n*Manage onboarding journeys in **AI Lifecycle** (\`/admin/lifecycle\`)*`;
+    const summaryText = `🚀 **Employee Onboarding Status**\n\n• **Fully Onboarded Staff:** ${employees.length - pendingOnboarding.length}\n• **Pending Registration/Verification Steps:** ${pendingOnboarding.length} employees\n${pendingOnboarding.slice(0, 5).map((e) => `• **${e.name} (${e.empCode})**: ${!e.faceRegistered ? "Face Registration Pending" : "Bank/PAN Verification Pending"}`).join("\n")}\n\n*Manage onboarding journeys in **AI Lifecycle** (\`/admin/lifecycle\`)*`;
 
     return {
       success: true,
@@ -1929,7 +1930,7 @@ export class AIDataTools {
         return rec?.checkIn || (rec?.status || "").toLowerCase() === "present" ? "P" : "A";
       });
 
-      summaryText += `| **${emp.name}** | ${daysStatus.join(" | ")} | ... |\n`;
+      summaryText += `| **${emp.name} (${emp.empCode})** | ${daysStatus.join(" | ")} | ... |\n`;
       return { employee: emp.name, empCode: emp.empCode, days: daysStatus };
     });
 
