@@ -59,9 +59,13 @@ import {
   KeyRound,
   EyeOff,
   Loader2,
+  FileSpreadsheet,
+  XCircle,
+  CheckCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { type RevisionTarget, type RevisionReason } from "@/lib/salary-revision";
+import { downloadWageRegisterExcel } from "@/lib/wage-register-excel";
 
 export const Route = createFileRoute("/admin/payroll")({
   head: () => ({ meta: [{ title: "Payroll & Salary Structures · SWIFT" }] }),
@@ -138,6 +142,12 @@ interface CustomAllowanceItem {
 interface MonthlyOverrideData {
   daysWorked?: number;
   otHours?: number;
+  // Overtime (OT) Approval Workflow
+  otStatus?: "pending" | "approved" | "rejected";
+  otApprovedHours?: number;
+  otRemarks?: string;
+  otApprovedAt?: string;
+  otApprovedBy?: string;
   customBasic?: number;
   // Week Off settings & days
   weekOffEnabled?: boolean;
@@ -254,7 +264,7 @@ export function PayrollPage() {
   } = useStore();
 
   // Active Main Tab
-  const [mainTab, setMainTab] = useState<"structure" | "run" | "revision">("structure");
+  const [mainTab, setMainTab] = useState<"structure" | "run" | "revision" | "ot-requests">("structure");
 
   // Selected Month for Payroll Run
   const [selectedMonth, setSelectedMonth] = useState<string>(
@@ -390,6 +400,9 @@ export function PayrollPage() {
   // Saving state
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Wage Register Excel Export Dialog
+  const [wageRegisterOpen, setWageRegisterOpen] = useState(false);
+
   // Live Blueprint Benchmark Salary (from user template: 30000)
   const [benchmarkSalary, setBenchmarkSalary] = useState<number>(30000);
 
@@ -435,6 +448,18 @@ export function PayrollPage() {
 
   // Edit Specific Employee Modal State
   const [editingRecord, setEditingRecord] = useState<EditingPayrollRecord | null>(null);
+
+  // OT Requests Tab Filter & Breakdown Modal State
+  const [otSearch, setOtSearch] = useState("");
+  const [otFilterDept, setOtFilterDept] = useState("all");
+  const [otFilterStatus, setOtFilterStatus] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [otBreakdownTarget, setOtBreakdownTarget] = useState<{
+    emp: Employee;
+    rawOtHours: number;
+    otApprovedHours: number;
+    otStatus: "pending" | "approved" | "rejected";
+    dailyOtRecords: { date: string; checkIn: string; checkOut: string; status: string; workedHours: number; otHours: number }[];
+  } | null>(null);
 
   // AI Revision State
   const [revAmount, setRevAmount] = useState(0);
@@ -674,35 +699,59 @@ export function PayrollPage() {
       const daysLeave = monthAtt.filter((a) => a.status === "leave").length;
       const rawPresentDays = daysPresent + daysHalf * 0.5;
 
-      // Compute OT from actual check-in/check-out timestamps or explicit otHours for each day
-      const otHours = monthAtt.reduce((sum, a) => {
-        if (a.otHours !== undefined && a.otHours !== null) return sum + (Number(a.otHours) || 0);
-        // Derive from timestamps if no stored OT
+      // Compute daily OT breakdown and total OT hours from actual check-in/check-out timestamps or explicit otHours for each day
+      const dailyOtRecords: { date: string; checkIn: string; checkOut: string; status: string; workedHours: number; otHours: number }[] = [];
+
+      monthAtt.forEach((a) => {
+        let dayOt = 0;
+        let workedH = 0;
         const inTime = a.checkIn || a.clockIn;
         const outTime = a.checkOut || a.clockOut;
-        if (!inTime || !outTime) return sum;
-        try {
-          const parseT = (s: string): number => {
-            const cleaned = s.trim().toLowerCase();
-            const m = cleaned.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
-            if (!m) return -1;
-            let h = parseInt(m[1], 10);
-            const mins = parseInt(m[2], 10);
-            const mer = m[3]?.toLowerCase();
-            if (mer === 'pm' && h < 12) h += 12;
-            if (mer === 'am' && h === 12) h = 0;
-            return h * 60 + mins;
-          };
-          const inM = parseT(inTime);
-          const outM = parseT(outTime);
-          if (inM < 0 || outM < 0) return sum;
-          let diffM = outM - inM;
-          if (diffM <= 0) diffM += 24 * 60;
-          const worked = diffM / 60;
-          const stdH = company.workingHoursPerDay || 9;
-          return sum + (worked > stdH ? Math.round((worked - stdH) * 10) / 10 : 0);
-        } catch { return sum; }
-      }, 0);
+
+        if (a.otHours !== undefined && a.otHours !== null) {
+          dayOt = Number(a.otHours) || 0;
+        }
+
+        if (inTime && outTime) {
+          try {
+            const parseT = (s: string): number => {
+              const cleaned = s.trim().toLowerCase();
+              const m = cleaned.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
+              if (!m) return -1;
+              let h = parseInt(m[1], 10);
+              const mins = parseInt(m[2], 10);
+              const mer = m[3]?.toLowerCase();
+              if (mer === "pm" && h < 12) h += 12;
+              if (mer === "am" && h === 12) h = 0;
+              return h * 60 + mins;
+            };
+            const inM = parseT(inTime);
+            const outM = parseT(outTime);
+            if (inM >= 0 && outM >= 0) {
+              let diffM = outM - inM;
+              if (diffM <= 0) diffM += 24 * 60;
+              workedH = Math.round((diffM / 60) * 10) / 10;
+              const stdH = company.workingHoursPerDay || 9;
+              if (a.otHours === undefined || a.otHours === null) {
+                dayOt = workedH > stdH ? Math.round((workedH - stdH) * 10) / 10 : 0;
+              }
+            }
+          } catch {}
+        }
+
+        if (dayOt > 0) {
+          dailyOtRecords.push({
+            date: a.date,
+            checkIn: inTime || "—",
+            checkOut: outTime || "—",
+            status: a.status || "present",
+            workedHours: workedH,
+            otHours: dayOt,
+          });
+        }
+      });
+
+      const rawOtHours = dailyOtRecords.reduce((sum, d) => sum + d.otHours, 0);
 
       // Check for employee-specific monthly override
       const overrideKey = `${effectivePeriodKey}_${emp.id}`;
@@ -773,7 +822,14 @@ export function PayrollPage() {
       const yrBonusEnabled = ov.yrBonusEnabled !== undefined ? ov.yrBonusEnabled : (company.yearlyBonusRules?.enabled === true);
       const yrBonus = yrBonusEnabled ? (ov.yrBonusAmount !== undefined ? ov.yrBonusAmount : (company.yearlyBonusRules?.value ?? 500)) : 0;
 
-      const effectiveOtHours = ov.otHours !== undefined ? ov.otHours : otHours;
+      // Overtime (OT) Approval Workflow:
+      // Overtime is only credited to payroll and payslip AFTER explicit admin approval (ov.otStatus === 'approved').
+      // If unapproved (pending or rejected), effectiveOtHours is strictly 0.
+      const isOtApproved = ov.otStatus === "approved";
+      const otApprovedHours = ov.otApprovedHours !== undefined ? ov.otApprovedHours : (ov.otHours !== undefined && isOtApproved ? ov.otHours : rawOtHours);
+      const effectiveOtHours = isOtApproved ? otApprovedHours : 0;
+      const otStatus: "pending" | "approved" | "rejected" = ov.otStatus ? ov.otStatus : (rawOtHours > 0 ? "pending" : "pending");
+
       const effectiveIncentive = ov.incentive !== undefined ? ov.incentive : 0;
       const effectiveBonus = (ov.bonus !== undefined ? ov.bonus : 0) + attBonus + yrBonus;
       // Automatically calculate approved Advance Loan EMI deductions for this employee in selectedMonth
@@ -837,7 +893,12 @@ export function PayrollPage() {
         weekOffDays,
         weekOffEnabled,
         rosterWeekOffDays,
+        rawOtHours,
+        otStatus,
+        isOtApproved,
+        otApprovedHours,
         otHours: effectiveOtHours,
+        dailyOtRecords,
         comp,
         monthAttCount: monthAtt.length,
         hasOverride: !!monthlyOverrides[overrideKey],
@@ -938,6 +999,364 @@ export function PayrollPage() {
     );
   }, [monthlyRegister]);
 
+  // Overtime (OT) Eligible Employees List (Employees with logged OT hours from attendance or existing OT records)
+  const otEligibleRecords = useMemo(() => {
+    return monthlyRegister.filter((reg) => {
+      return (
+        (reg.rawOtHours !== undefined && reg.rawOtHours > 0) ||
+        (reg.otHours !== undefined && reg.otHours > 0) ||
+        reg.overrideData?.otStatus !== undefined ||
+        reg.overrideData?.otHours !== undefined
+      );
+    });
+  }, [monthlyRegister]);
+
+  // OT KPI Summary Counts
+  const pendingOtCount = useMemo(() => {
+    return otEligibleRecords.filter((r) => r.otStatus === "pending").length;
+  }, [otEligibleRecords]);
+
+  const pendingOtHours = useMemo(() => {
+    return otEligibleRecords
+      .filter((r) => r.otStatus === "pending")
+      .reduce((sum, r) => sum + (r.rawOtHours || 0), 0);
+  }, [otEligibleRecords]);
+
+  const totalClaimedOtHours = useMemo(() => {
+    return otEligibleRecords.reduce((sum, r) => sum + (r.rawOtHours || 0), 0);
+  }, [otEligibleRecords]);
+
+  const totalApprovedOtHours = useMemo(() => {
+    return otEligibleRecords
+      .filter((r) => r.otStatus === "approved")
+      .reduce((sum, r) => sum + (r.otApprovedHours !== undefined ? r.otApprovedHours : (r.otHours || 0)), 0);
+  }, [otEligibleRecords]);
+
+  const totalOtLiability = useMemo(() => {
+    return monthlyRegister.reduce((sum, r) => sum + (r.comp.earnings.overtime || 0), 0);
+  }, [monthlyRegister]);
+
+  // Filtered OT records for OT Requests tab table
+  const filteredOtRecords = useMemo(() => {
+    return otEligibleRecords.filter((reg) => {
+      if (otSearch.trim()) {
+        const q = otSearch.toLowerCase();
+        const matchName = (reg.emp.name || "").toLowerCase().includes(q);
+        const matchCode = (reg.emp.empCode || "").toLowerCase().includes(q);
+        if (!matchName && !matchCode) return false;
+      }
+      if (otFilterDept !== "all" && reg.emp.department !== otFilterDept) return false;
+      if (otFilterStatus !== "all" && reg.otStatus !== otFilterStatus) return false;
+      return true;
+    });
+  }, [otEligibleRecords, otSearch, otFilterDept, otFilterStatus]);
+
+  // Handle Approve Single OT
+  const handleApproveOt = (empId: string, hours?: number, remarks?: string) => {
+    const reg = monthlyRegister.find((r) => r.emp.id === empId);
+    if (!reg) return;
+
+    const overrideKey = `${effectivePeriodKey}_${empId}`;
+    const ov = monthlyOverrides[overrideKey] || monthlyOverrides[`${selectedMonth}_${empId}`] || {};
+    const approvedHours = hours !== undefined ? hours : (ov.otApprovedHours !== undefined ? ov.otApprovedHours : reg.rawOtHours);
+
+    const updatedOv: MonthlyOverrideData = {
+      ...ov,
+      otStatus: "approved",
+      otApprovedHours: approvedHours,
+      otHours: approvedHours,
+      otRemarks: remarks || ov.otRemarks,
+      otApprovedAt: new Date().toISOString(),
+      otApprovedBy: currentUser?.name || "Admin",
+    };
+
+    const nextOverrides = {
+      ...monthlyOverrides,
+      [overrideKey]: updatedOv,
+    };
+    setMonthlyOverrides(nextOverrides);
+
+    const effectiveEmp = updatedOv.customBasic ? { ...reg.emp, basic: updatedOv.customBasic } : reg.emp;
+    const newComp = computePayroll({
+      company,
+      employee: effectiveEmp,
+      daysWorked: reg.paidDays,
+      otHours: approvedHours,
+      incentive: updatedOv.incentive || 0,
+      shiftDays: reg.paidDays,
+      loan: updatedOv.loan || 0,
+      advance: updatedOv.advance || 0,
+      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      otherDeductions: updatedOv.otherDeductions || 0,
+      variablePay: updatedOv.variablePay || 0,
+      otherEarnings: updatedOv.otherEarnings || 0,
+    });
+
+    addPayroll({
+      id: `pay-${empId}-${effectivePeriodKey}`,
+      employeeId: empId,
+      empCode: reg.emp.empCode,
+      employeeName: reg.emp.name,
+      month: effectivePeriodLabel,
+      daysWorked: reg.paidDays,
+      otHours: approvedHours,
+      incentive: updatedOv.incentive || 0,
+      shiftDays: reg.paidDays,
+      loan: updatedOv.loan || 0,
+      advance: updatedOv.advance || 0,
+      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      computed: newComp,
+      overrideData: updatedOv,
+      createdAt: new Date().toISOString(),
+    });
+
+    toast.success(`Approved ${approvedHours}h overtime for ${reg.emp.name}. Added to payroll & payslip!`);
+  };
+
+  // Handle Reject Single OT
+  const handleRejectOt = (empId: string, remarks?: string) => {
+    const reg = monthlyRegister.find((r) => r.emp.id === empId);
+    if (!reg) return;
+
+    const overrideKey = `${effectivePeriodKey}_${empId}`;
+    const ov = monthlyOverrides[overrideKey] || monthlyOverrides[`${selectedMonth}_${empId}`] || {};
+
+    const updatedOv: MonthlyOverrideData = {
+      ...ov,
+      otStatus: "rejected",
+      otApprovedHours: 0,
+      otHours: 0,
+      otRemarks: remarks || ov.otRemarks,
+      otApprovedAt: new Date().toISOString(),
+      otApprovedBy: currentUser?.name || "Admin",
+    };
+
+    const nextOverrides = {
+      ...monthlyOverrides,
+      [overrideKey]: updatedOv,
+    };
+    setMonthlyOverrides(nextOverrides);
+
+    const effectiveEmp = updatedOv.customBasic ? { ...reg.emp, basic: updatedOv.customBasic } : reg.emp;
+    const newComp = computePayroll({
+      company,
+      employee: effectiveEmp,
+      daysWorked: reg.paidDays,
+      otHours: 0,
+      incentive: updatedOv.incentive || 0,
+      shiftDays: reg.paidDays,
+      loan: updatedOv.loan || 0,
+      advance: updatedOv.advance || 0,
+      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      otherDeductions: updatedOv.otherDeductions || 0,
+      variablePay: updatedOv.variablePay || 0,
+      otherEarnings: updatedOv.otherEarnings || 0,
+    });
+
+    addPayroll({
+      id: `pay-${empId}-${effectivePeriodKey}`,
+      employeeId: empId,
+      empCode: reg.emp.empCode,
+      employeeName: reg.emp.name,
+      month: effectivePeriodLabel,
+      daysWorked: reg.paidDays,
+      otHours: 0,
+      incentive: updatedOv.incentive || 0,
+      shiftDays: reg.paidDays,
+      loan: updatedOv.loan || 0,
+      advance: updatedOv.advance || 0,
+      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      computed: newComp,
+      overrideData: updatedOv,
+      createdAt: new Date().toISOString(),
+    });
+
+    toast.info(`Rejected overtime for ${reg.emp.name}. Overtime pay excluded from payroll.`);
+  };
+
+  // Handle Reset Single OT to Pending
+  const handleResetOt = (empId: string) => {
+    const reg = monthlyRegister.find((r) => r.emp.id === empId);
+    if (!reg) return;
+
+    const overrideKey = `${effectivePeriodKey}_${empId}`;
+    const ov = monthlyOverrides[overrideKey] || monthlyOverrides[`${selectedMonth}_${empId}`] || {};
+
+    const updatedOv: MonthlyOverrideData = {
+      ...ov,
+      otStatus: "pending",
+      otApprovedHours: undefined,
+      otHours: 0,
+    };
+
+    const nextOverrides = {
+      ...monthlyOverrides,
+      [overrideKey]: updatedOv,
+    };
+    setMonthlyOverrides(nextOverrides);
+
+    const effectiveEmp = updatedOv.customBasic ? { ...reg.emp, basic: updatedOv.customBasic } : reg.emp;
+    const newComp = computePayroll({
+      company,
+      employee: effectiveEmp,
+      daysWorked: reg.paidDays,
+      otHours: 0,
+      incentive: updatedOv.incentive || 0,
+      shiftDays: reg.paidDays,
+      loan: updatedOv.loan || 0,
+      advance: updatedOv.advance || 0,
+      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      otherDeductions: updatedOv.otherDeductions || 0,
+      variablePay: updatedOv.variablePay || 0,
+      otherEarnings: updatedOv.otherEarnings || 0,
+    });
+
+    addPayroll({
+      id: `pay-${empId}-${effectivePeriodKey}`,
+      employeeId: empId,
+      empCode: reg.emp.empCode,
+      employeeName: reg.emp.name,
+      month: effectivePeriodLabel,
+      daysWorked: reg.paidDays,
+      otHours: 0,
+      incentive: updatedOv.incentive || 0,
+      shiftDays: reg.paidDays,
+      loan: updatedOv.loan || 0,
+      advance: updatedOv.advance || 0,
+      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      computed: newComp,
+      overrideData: updatedOv,
+      createdAt: new Date().toISOString(),
+    });
+
+    toast.info(`Reset OT status to Pending for ${reg.emp.name}.`);
+  };
+
+  // Handle Bulk Approve All Pending OT
+  const handleBulkApprovePendingOt = () => {
+    const pendingRecords = otEligibleRecords.filter((r) => r.otStatus === "pending");
+    if (pendingRecords.length === 0) {
+      toast.info("No pending OT requests to approve for this period.");
+      return;
+    }
+
+    let nextOverrides = { ...monthlyOverrides };
+    pendingRecords.forEach((reg) => {
+      const overrideKey = `${effectivePeriodKey}_${reg.emp.id}`;
+      const ov = nextOverrides[overrideKey] || nextOverrides[`${selectedMonth}_${reg.emp.id}`] || {};
+      const approvedHours = ov.otApprovedHours !== undefined ? ov.otApprovedHours : reg.rawOtHours;
+
+      const updatedOv: MonthlyOverrideData = {
+        ...ov,
+        otStatus: "approved",
+        otApprovedHours: approvedHours,
+        otHours: approvedHours,
+        otApprovedAt: new Date().toISOString(),
+        otApprovedBy: currentUser?.name || "Admin",
+      };
+      nextOverrides[overrideKey] = updatedOv;
+
+      const effectiveEmp = updatedOv.customBasic ? { ...reg.emp, basic: updatedOv.customBasic } : reg.emp;
+      const newComp = computePayroll({
+        company,
+        employee: effectiveEmp,
+        daysWorked: reg.paidDays,
+        otHours: approvedHours,
+        incentive: updatedOv.incentive || 0,
+        shiftDays: reg.paidDays,
+        loan: updatedOv.loan || 0,
+        advance: updatedOv.advance || 0,
+        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        otherDeductions: updatedOv.otherDeductions || 0,
+        variablePay: updatedOv.variablePay || 0,
+        otherEarnings: updatedOv.otherEarnings || 0,
+      });
+
+      addPayroll({
+        id: `pay-${reg.emp.id}-${effectivePeriodKey}`,
+        employeeId: reg.emp.id,
+        empCode: reg.emp.empCode,
+        employeeName: reg.emp.name,
+        month: effectivePeriodLabel,
+        daysWorked: reg.paidDays,
+        otHours: approvedHours,
+        incentive: updatedOv.incentive || 0,
+        shiftDays: reg.paidDays,
+        loan: updatedOv.loan || 0,
+        advance: updatedOv.advance || 0,
+        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        computed: newComp,
+        overrideData: updatedOv,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    setMonthlyOverrides(nextOverrides);
+    toast.success(`Approved overtime for ${pendingRecords.length} employees! Reflected in payroll.`);
+  };
+
+  // Handle Bulk Reject All Pending OT
+  const handleBulkRejectPendingOt = () => {
+    const pendingRecords = otEligibleRecords.filter((r) => r.otStatus === "pending");
+    if (pendingRecords.length === 0) {
+      toast.info("No pending OT requests to reject for this period.");
+      return;
+    }
+
+    let nextOverrides = { ...monthlyOverrides };
+    pendingRecords.forEach((reg) => {
+      const overrideKey = `${effectivePeriodKey}_${reg.emp.id}`;
+      const ov = nextOverrides[overrideKey] || nextOverrides[`${selectedMonth}_${reg.emp.id}`] || {};
+
+      const updatedOv: MonthlyOverrideData = {
+        ...ov,
+        otStatus: "rejected",
+        otApprovedHours: 0,
+        otHours: 0,
+        otApprovedAt: new Date().toISOString(),
+        otApprovedBy: currentUser?.name || "Admin",
+      };
+      nextOverrides[overrideKey] = updatedOv;
+
+      const effectiveEmp = updatedOv.customBasic ? { ...reg.emp, basic: updatedOv.customBasic } : reg.emp;
+      const newComp = computePayroll({
+        company,
+        employee: effectiveEmp,
+        daysWorked: reg.paidDays,
+        otHours: 0,
+        incentive: updatedOv.incentive || 0,
+        shiftDays: reg.paidDays,
+        loan: updatedOv.loan || 0,
+        advance: updatedOv.advance || 0,
+        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        otherDeductions: updatedOv.otherDeductions || 0,
+        variablePay: updatedOv.variablePay || 0,
+        otherEarnings: updatedOv.otherEarnings || 0,
+      });
+
+      addPayroll({
+        id: `pay-${reg.emp.id}-${effectivePeriodKey}`,
+        employeeId: reg.emp.id,
+        empCode: reg.emp.empCode,
+        employeeName: reg.emp.name,
+        month: effectivePeriodLabel,
+        daysWorked: reg.paidDays,
+        otHours: 0,
+        incentive: updatedOv.incentive || 0,
+        shiftDays: reg.paidDays,
+        loan: updatedOv.loan || 0,
+        advance: updatedOv.advance || 0,
+        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        computed: newComp,
+        overrideData: updatedOv,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    setMonthlyOverrides(nextOverrides);
+    toast.info(`Rejected overtime for ${pendingRecords.length} employees.`);
+  };
+
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
       {/* Top Header */}
@@ -963,6 +1382,16 @@ export function PayrollPage() {
 
         {/* Global Action Buttons */}
         <div className="flex items-center gap-2.5 shrink-0">
+          <Button
+            variant="outline"
+            onClick={() => setWageRegisterOpen(true)}
+            className="h-9 px-3.5 rounded-xl border-border hover:bg-muted font-semibold text-xs gap-1.5 text-foreground shadow-xs"
+            title="Export Monthly Wage Register, Salary Slips & ESI Statement into Excel"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Download Wage Register</span>
+          </Button>
+
           <Button
             onClick={handleSavePayrollSettings}
             disabled={savingSettings}
@@ -990,6 +1419,19 @@ export function PayrollPage() {
                   {monthlyRegister.length}
                 </Badge>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="ot-requests" className="rounded-lg gap-2 text-xs font-semibold py-1.5 px-3 relative">
+              <Clock className="h-3.5 w-3.5" />
+              <span>OT Requests</span>
+              {pendingOtCount > 0 ? (
+                <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[10px] px-1.5 py-0 h-4 font-mono shadow-xs">
+                  {pendingOtCount} pending
+                </Badge>
+              ) : otEligibleRecords.length > 0 ? (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-mono">
+                  {otEligibleRecords.length}
+                </Badge>
+              ) : null}
             </TabsTrigger>
             <TabsTrigger value="revision" className="rounded-lg gap-2 text-xs font-semibold py-1.5 px-3">
               <Sparkles className="h-3.5 w-3.5" />
@@ -2135,7 +2577,7 @@ export function PayrollPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {monthlyRegister.map(({ emp, rawEmp, paidDays, rawPresentDays, weekOffDays, weekOffEnabled, rosterWeekOffDays, otHours, comp, hasOverride, overrideData }) => (
+                  {monthlyRegister.map(({ emp, rawEmp, paidDays, rawPresentDays, weekOffDays, weekOffEnabled, rosterWeekOffDays, rawOtHours, otStatus, isOtApproved, otApprovedHours, otHours, dailyOtRecords, comp, hasOverride, overrideData }) => (
                     <tr key={emp.id} className="hover:bg-muted/20 transition-colors">
                       {/* Employee */}
                       <td className="px-4 py-3">
@@ -2169,11 +2611,26 @@ export function PayrollPage() {
                           <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-semibold text-[11px] px-1.5 py-0.5 whitespace-nowrap">
                             {paidDays}/{isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)} Present
                           </Badge>
-                          {otHours > 0 && (
-                            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] px-1.5 py-0 whitespace-nowrap">
+                          {isOtApproved && otHours > 0 ? (
+                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] px-1.5 py-0 whitespace-nowrap flex items-center gap-1 font-semibold">
+                              <Check className="h-2.5 w-2.5" />
                               +{otHours}h OT
                             </Badge>
-                          )}
+                          ) : rawOtHours > 0 && otStatus === "pending" ? (
+                            <button
+                              type="button"
+                              onClick={() => setMainTab("ot-requests")}
+                              className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[10px] px-1.5 py-0.5 rounded-md hover:bg-amber-500/25 transition-colors cursor-pointer"
+                              title="Overtime pending approval. Click to open OT Requests tab."
+                            >
+                              <Clock className="h-2.5 w-2.5 animate-pulse" />
+                              <span>{rawOtHours}h Pending OT</span>
+                            </button>
+                          ) : rawOtHours > 0 && otStatus === "rejected" ? (
+                            <Badge variant="outline" className="bg-rose-500/10 text-rose-600 border-rose-500/20 text-[10px] px-1.5 py-0 whitespace-nowrap line-through">
+                              {rawOtHours}h OT Rejected
+                            </Badge>
+                          ) : null}
                         </div>
                         {isCustomDateRange ? (
                           <div className="text-[10px] text-primary font-medium mt-0.5">
@@ -2247,7 +2704,9 @@ export function PayrollPage() {
                                 emp: rawEmp,
                                 customBasic: overrideData.customBasic !== undefined ? overrideData.customBasic : emp.basic,
                                 daysWorked: overrideData.daysWorked !== undefined ? overrideData.daysWorked : rawPresentDays,
-                                otHours: overrideData.otHours !== undefined ? overrideData.otHours : otHours,
+                                otHours: overrideData.otApprovedHours !== undefined ? overrideData.otApprovedHours : (overrideData.otHours !== undefined ? overrideData.otHours : (isOtApproved ? otHours : rawOtHours)),
+                                otApprovedHours: overrideData.otApprovedHours !== undefined ? overrideData.otApprovedHours : (overrideData.otHours !== undefined ? overrideData.otHours : (isOtApproved ? otHours : rawOtHours)),
+                                otStatus: overrideData.otStatus || (otHours > 0 ? "approved" : (rawOtHours > 0 ? "pending" : "pending")),
                                 weekOffEnabled: overrideData.weekOffEnabled !== undefined ? overrideData.weekOffEnabled : (company.includeWeekOff !== false),
                                 weekOffDays: overrideData.weekOffDays !== undefined ? overrideData.weekOffDays : rosterWeekOffDays,
                                 // Component percentages & toggles:
@@ -2459,7 +2918,459 @@ export function PayrollPage() {
             </Card>
           </div>
         </TabsContent>
+
+        {/* ========================================================================= */}
+        {/* TAB 3: OT REQUESTS & APPROVALS DASHBOARD                                 */}
+        {/* ========================================================================= */}
+        <TabsContent value="ot-requests" className="space-y-5 m-0">
+          {/* Header Card with Information & Bulk Actions */}
+          <div className="p-5 rounded-3xl bg-card border border-border/80 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                  <Clock className="h-4 w-4" />
+                </div>
+                <h2 className="text-lg font-bold font-display tracking-tight text-foreground">
+                  Overtime (OT) Approvals &amp; Requests
+                </h2>
+                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs px-2 py-0.5">
+                  Period: {effectivePeriodLabel}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Review overtime hours logged from attendance punches. Overtime pay is strictly held in pending status until approved by admin.
+                Company OT Multiplier: <strong className="text-foreground">{company.otMultiplier || 2}×</strong> · Standard Shift: <strong className="text-foreground">{company.workingHoursPerDay || 9} hrs/day</strong>.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBulkRejectPendingOt}
+                disabled={pendingOtCount === 0}
+                className="h-8 text-xs rounded-xl gap-1.5 text-destructive hover:bg-destructive/10 border-destructive/30"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                <span>Reject All Pending</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleBulkApprovePendingOt}
+                disabled={pendingOtCount === 0}
+                className="h-8 text-xs rounded-xl gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+                <span>Approve All Pending ({pendingOtCount})</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* 4 Summary KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* Card 1: Pending Requests */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Pending Approvals</span>
+                <Clock className="h-3.5 w-3.5 text-amber-500" />
+              </div>
+              <div className="text-2xl font-bold font-display text-amber-600 tracking-tight">
+                {pendingOtCount} {pendingOtCount === 1 ? "Employee" : "Employees"}
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                {pendingOtHours.toFixed(1)} hrs awaiting admin review
+              </span>
+            </div>
+
+            {/* Card 2: Total Claimed OT */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Total Logged OT</span>
+                <TrendingUp className="h-3.5 w-3.5 text-sky-500" />
+              </div>
+              <div className="text-2xl font-bold font-display text-foreground tracking-tight">
+                {totalClaimedOtHours.toFixed(1)} hrs
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                Accumulated from daily punch records
+              </span>
+            </div>
+
+            {/* Card 3: Approved OT Hours */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Approved OT Hours</span>
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              </div>
+              <div className="text-2xl font-bold font-display text-emerald-600 tracking-tight">
+                {totalApprovedOtHours.toFixed(1)} hrs
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                Active &amp; credited in monthly payslips
+              </span>
+            </div>
+
+            {/* Card 4: Estimated OT Liability */}
+            <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <span>Total OT Payout</span>
+                <DollarSign className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <div className="text-2xl font-bold font-display text-foreground tracking-tight">
+                {inr(totalOtLiability)}
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                Calculated at {company.otMultiplier || 2}× hourly base
+              </span>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="p-3 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search employee or code..."
+                  value={otSearch}
+                  onChange={(e) => setOtSearch(e.target.value)}
+                  className="pl-8 h-8 text-xs rounded-xl bg-muted/20"
+                />
+              </div>
+              <Select value={otFilterDept} onValueChange={setOtFilterDept}>
+                <SelectTrigger className="h-8 text-xs rounded-xl w-36">
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Depts</SelectItem>
+                  {departments.map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
+              <span className="text-[11px] font-semibold text-muted-foreground mr-1">Status:</span>
+              {(["all", "pending", "approved", "rejected"] as const).map((st) => (
+                <Button
+                  key={st}
+                  variant={otFilterStatus === st ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setOtFilterStatus(st)}
+                  className={`h-7 px-2.5 text-xs rounded-lg font-medium capitalize ${
+                    otFilterStatus === st ? "font-bold shadow-xs" : ""
+                  }`}
+                >
+                  {st === "all" ? "All" : st}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Table of OT Requests */}
+          <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-border/80 bg-muted/40 text-muted-foreground font-semibold text-[11px] uppercase tracking-wider">
+                    <th className="px-4 py-3">Employee</th>
+                    <th className="px-4 py-3">Base &amp; Hourly Rate</th>
+                    <th className="px-4 py-3">Logged OT (Punches)</th>
+                    <th className="px-4 py-3">Approved OT</th>
+                    <th className="px-4 py-3">Estimated OT Pay</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Admin Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {filteredOtRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-12 text-muted-foreground">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Clock className="h-8 w-8 text-muted-foreground/40 stroke-1" />
+                          <p className="font-semibold text-sm">No overtime records found</p>
+                          <p className="text-xs text-muted-foreground max-w-sm">
+                            No employees have accumulated overtime hours from attendance punches for {effectivePeriodLabel}.
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredOtRecords.map((reg) => {
+                      const fixedGross = reg.emp.basic || reg.emp.salary || 30000;
+                      const wd = company.workingDaysPerMonth || 26;
+                      const stdH = company.workingHoursPerDay || 9;
+                      const hourlyRate = fixedGross / (wd * stdH);
+                      const otMult = company.otMultiplier || 2;
+                      const approvedHrs = reg.overrideData?.otApprovedHours !== undefined
+                        ? reg.overrideData.otApprovedHours
+                        : (reg.overrideData?.otHours !== undefined ? reg.overrideData.otHours : reg.rawOtHours);
+                      const potentialPay = Math.round(hourlyRate * approvedHrs * otMult);
+
+                      return (
+                        <tr key={reg.emp.id} className="hover:bg-muted/30 transition-colors">
+                          {/* Employee Details */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                                {reg.emp.name?.slice(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-bold text-foreground">{reg.emp.name}</div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  {reg.emp.empCode} · {reg.emp.department || "General"}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Base & Hourly */}
+                          <td className="px-4 py-3">
+                            <div className="font-semibold text-foreground">{inr(fixedGross)}/mo</div>
+                            <div className="text-[11px] text-muted-foreground">
+                              ₹{hourlyRate.toFixed(1)}/hr ({otMult}× mult)
+                            </div>
+                          </td>
+
+                          {/* Logged OT with View Details button */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sky-600 dark:text-sky-400 text-sm">
+                                {reg.rawOtHours} hrs
+                              </span>
+                              {reg.dailyOtRecords && reg.dailyOtRecords.length > 0 && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setOtBreakdownTarget({
+                                    emp: reg.emp,
+                                    rawOtHours: reg.rawOtHours,
+                                    otApprovedHours: approvedHrs,
+                                    otStatus: reg.otStatus,
+                                    dailyOtRecords: reg.dailyOtRecords,
+                                  })}
+                                  className="h-6 text-[10px] px-2 rounded-lg gap-1 border-border/80"
+                                >
+                                  <Eye className="h-2.5 w-2.5" />
+                                  <span>{reg.dailyOtRecords.length} {reg.dailyOtRecords.length === 1 ? "day" : "days"}</span>
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Approved OT Hours Editable Input */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5 max-w-[110px]">
+                              <Input
+                                type="number"
+                                step="0.5"
+                                min="0"
+                                value={approvedHrs}
+                                onChange={(e) => {
+                                  const val = Math.max(0, Number(e.target.value) || 0);
+                                  const overrideKey = `${effectivePeriodKey}_${reg.emp.id}`;
+                                  const ov = monthlyOverrides[overrideKey] || monthlyOverrides[`${selectedMonth}_${reg.emp.id}`] || {};
+                                  setMonthlyOverrides({
+                                    ...monthlyOverrides,
+                                    [overrideKey]: {
+                                      ...ov,
+                                      otApprovedHours: val,
+                                    },
+                                  });
+                                }}
+                                className="h-7 text-xs font-bold text-foreground"
+                              />
+                              <span className="text-[10px] text-muted-foreground">hrs</span>
+                            </div>
+                          </td>
+
+                          {/* Estimated OT Pay */}
+                          <td className="px-4 py-3">
+                            <div className="font-bold text-foreground text-xs">
+                              {reg.otStatus === "approved" ? inr(reg.comp.earnings.overtime || potentialPay) : inr(potentialPay)}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {reg.otStatus === "approved" ? (
+                                <span className="text-emerald-600 font-medium">Added to payslip</span>
+                              ) : (
+                                <span className="text-amber-600">Pending approval</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Status Badge */}
+                          <td className="px-4 py-3">
+                            {reg.otStatus === "approved" ? (
+                              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 text-[11px] font-semibold py-0.5">
+                                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                                <span>Approved</span>
+                              </Badge>
+                            ) : reg.otStatus === "rejected" ? (
+                              <Badge variant="outline" className="bg-rose-500/10 text-rose-600 border-rose-500/30 gap-1 text-[11px] font-semibold py-0.5">
+                                <XCircle className="h-3 w-3 text-rose-600" />
+                                <span>Rejected</span>
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-semibold py-0.5">
+                                <Clock className="h-3 w-3 text-amber-500" />
+                                <span>Pending Approval</span>
+                              </Badge>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {reg.otStatus !== "approved" ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    const overrideKey = `${effectivePeriodKey}_${reg.emp.id}`;
+                                    const ov = monthlyOverrides[overrideKey] || monthlyOverrides[`${selectedMonth}_${reg.emp.id}`] || {};
+                                    const hrs = ov.otApprovedHours !== undefined ? ov.otApprovedHours : (ov.otHours !== undefined ? ov.otHours : reg.rawOtHours);
+                                    handleApproveOt(reg.emp.id, hrs);
+                                  }}
+                                  className="h-7 text-xs px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1 shadow-xs"
+                                >
+                                  <Check className="h-3 w-3" />
+                                  <span>Approve</span>
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRejectOt(reg.emp.id)}
+                                  className="h-7 text-xs px-2.5 rounded-lg text-rose-600 hover:bg-rose-500/10 gap-1"
+                                >
+                                  <X className="h-3 w-3" />
+                                  <span>Revoke</span>
+                                </Button>
+                              )}
+
+                              {reg.otStatus !== "rejected" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRejectOt(reg.emp.id)}
+                                  className="h-7 text-xs px-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                  title="Reject overtime"
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+
+                              {reg.otStatus !== "pending" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleResetOt(reg.emp.id)}
+                                  className="h-7 text-xs px-2 rounded-lg text-muted-foreground hover:bg-muted"
+                                  title="Reset to Pending"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
+
+      {/* ========================================================================= */}
+      {/* MODAL: DAILY OVERTIME BREAKDOWN DIALOG                                    */}
+      {/* ========================================================================= */}
+      <Dialog open={!!otBreakdownTarget} onOpenChange={(open) => !open && setOtBreakdownTarget(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
+          {otBreakdownTarget && (
+            <div className="space-y-4">
+              <DialogHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                      <Clock className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <DialogTitle className="text-base font-bold">
+                        Daily OT Log — {otBreakdownTarget.emp.name} ({otBreakdownTarget.emp.empCode})
+                      </DialogTitle>
+                      <DialogDescription className="text-xs">
+                        Attendance punch timestamps and overtime hours worked for {effectivePeriodLabel}
+                      </DialogDescription>
+                    </div>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="rounded-2xl border border-border overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/50 text-muted-foreground font-semibold uppercase text-[10px] tracking-wider border-b border-border">
+                    <tr>
+                      <th className="px-4 py-2.5">Date</th>
+                      <th className="px-4 py-2.5">Check In</th>
+                      <th className="px-4 py-2.5">Check Out</th>
+                      <th className="px-4 py-2.5">Total Worked</th>
+                      <th className="px-4 py-2.5 text-right">OT Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {otBreakdownTarget.dailyOtRecords.map((d, i) => (
+                      <tr key={i} className="hover:bg-muted/20">
+                        <td className="px-4 py-2.5 font-medium text-foreground">{d.date}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{d.checkIn}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{d.checkOut}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{d.workedHours > 0 ? `${d.workedHours} hrs` : "—"}</td>
+                        <td className="px-4 py-2.5 text-right font-bold text-amber-600 dark:text-amber-400">
+                          +{d.otHours} hrs
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-muted/30 font-bold border-t border-border">
+                    <tr>
+                      <td colSpan={4} className="px-4 py-2.5 text-foreground">Total Overtime Hours</td>
+                      <td className="px-4 py-2.5 text-right text-sm text-amber-600 font-bold">
+                        +{otBreakdownTarget.rawOtHours} hrs
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <DialogFooter className="flex items-center justify-between pt-2">
+                <div className="text-xs text-muted-foreground">
+                  Status: <strong className="capitalize text-foreground">{otBreakdownTarget.otStatus}</strong>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setOtBreakdownTarget(null)} className="h-8 text-xs rounded-xl">
+                    Close
+                  </Button>
+                  {otBreakdownTarget.otStatus !== "approved" && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        handleApproveOt(otBreakdownTarget.emp.id, otBreakdownTarget.otApprovedHours);
+                        setOtBreakdownTarget(null);
+                      }}
+                      className="h-8 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Approve {otBreakdownTarget.otApprovedHours}h Overtime</span>
+                    </Button>
+                  )}
+                </div>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ========================================================================= */}
       {/* MODAL 1: LIVE PAYSLIP PREVIEW DIALOG                                      */}
@@ -2594,7 +3505,15 @@ export function PayrollPage() {
                           type="number"
                           step="0.5"
                           value={editingRecord.otHours}
-                          onChange={(e) => setEditingRecord({ ...editingRecord, otHours: Number(e.target.value) || 0 })}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setEditingRecord({
+                              ...editingRecord,
+                              otHours: val,
+                              otApprovedHours: val,
+                              otStatus: val > 0 ? "approved" : "pending",
+                            });
+                          }}
                           className="h-8 text-xs"
                         />
                       </div>
@@ -3381,6 +4300,8 @@ export function PayrollPage() {
                       const overridePayload: MonthlyOverrideData = {
                         daysWorked: editingRecord.daysWorked,
                         otHours: editingRecord.otHours,
+                        otApprovedHours: editingRecord.otHours,
+                        otStatus: editingRecord.otHours > 0 ? "approved" : (editingRecord.otStatus || "pending"),
                         weekOffEnabled: editingRecord.weekOffEnabled,
                         weekOffDays: editingRecord.weekOffDays,
                         customBasic: editingRecord.customBasic,
@@ -3683,6 +4604,213 @@ export function PayrollPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: WAGE REGISTER & ESI STATEMENT EXCEL EXPORT POPUP DIALOG           */}
+      {/* ========================================================================= */}
+      <WageRegisterDownloadDialog
+        open={wageRegisterOpen}
+        onClose={() => setWageRegisterOpen(false)}
+        company={company}
+        employees={employees}
+        attendance={attendance}
+        roster={roster}
+        requests={requests}
+        monthlyOverrides={monthlyOverrides}
+        defaultMonth={selectedMonth}
+      />
     </div>
   );
 }
+
+function WageRegisterDownloadDialog({
+  open,
+  onClose,
+  company,
+  employees,
+  attendance,
+  roster,
+  requests,
+  monthlyOverrides,
+  defaultMonth,
+}: {
+  open: boolean;
+  onClose: () => void;
+  company: Company;
+  employees: Employee[];
+  attendance: any[];
+  roster: any[];
+  requests: any[];
+  monthlyOverrides: Record<string, any>;
+  defaultMonth: string;
+}) {
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonth || new Date().toISOString().slice(0, 7));
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    if (defaultMonth) {
+      setSelectedMonth(defaultMonth);
+    }
+  }, [defaultMonth]);
+
+  // Generate a list of recent 12 months for quick selection
+  const monthOptions = useMemo(() => {
+    const list: { value: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = d.toISOString().slice(0, 7);
+      const label = d.toLocaleString("en-US", { month: "long", year: "numeric" });
+      list.push({ value: val, label });
+    }
+    return list;
+  }, []);
+
+  const monthLabel = useMemo(() => {
+    if (!selectedMonth) return "";
+    const [y, m] = selectedMonth.split("-").map(Number);
+    if (!y || !m) return selectedMonth;
+    return new Date(y, m - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+  }, [selectedMonth]);
+
+  const activeStaffCount = useMemo(() => {
+    return (
+      employees.filter(
+        (e) => e.status !== "inactive" || (e.doj && e.doj <= `${selectedMonth}-31`)
+      ).length || employees.length
+    );
+  }, [employees, selectedMonth]);
+
+  const handleDownload = () => {
+    try {
+      setDownloading(true);
+      downloadWageRegisterExcel({
+        company,
+        employees,
+        attendance,
+        roster,
+        requests,
+        monthlyOverrides,
+        selectedMonth,
+      });
+      toast.success(`Wage Register & ESI Statement for ${monthLabel} downloaded successfully!`);
+      onClose();
+    } catch (err) {
+      console.error("Wage register export error:", err);
+      toast.error("Failed to generate Wage Register Excel. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
+        <DialogHeader className="pb-3 border-b border-border">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2 font-display text-lg font-bold">
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                <FileSpreadsheet className="h-5 w-5" />
+              </div>
+              <span>Download Wage Register</span>
+            </DialogTitle>
+            <Badge
+              variant="outline"
+              className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-xs font-semibold"
+            >
+              {activeStaffCount} Employees Eligible
+            </Badge>
+          </div>
+          <DialogDescription className="text-xs text-muted-foreground pt-1.5 leading-relaxed">
+            Select the processing month to export the complete statutory Wage Register spreadsheet into Microsoft Excel (<strong className="text-foreground font-semibold">.xlsx</strong>).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-3">
+          {/* Month Selection Box */}
+          <div className="p-4 rounded-2xl border border-primary/20 bg-primary/5 space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-primary" /> Select Processing Month
+              </Label>
+              <Badge variant="secondary" className="text-xs font-semibold text-primary font-mono">
+                {monthLabel}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-[11px] text-muted-foreground">Select from recent months</Label>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="text-xs bg-card h-9">
+                    <SelectValue placeholder="Choose month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-xs font-medium">
+                        {opt.label} ({opt.value})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[11px] text-muted-foreground">Custom Month (YYYY-MM)</Label>
+                <Input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => e.target.value && setSelectedMonth(e.target.value)}
+                  className="text-xs bg-card h-9 font-medium"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Included Columns Breakdown */}
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center justify-between">
+              <span>Included Register Structure</span>
+              <Badge variant="secondary" className="text-[10px] font-mono">
+                50 Statutory Columns (.xlsx)
+              </Badge>
+            </div>
+
+            <div className="p-3 rounded-xl border border-border/80 bg-muted/30 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">✓</span>
+                  Wage Register Columns
+                </span>
+                <Badge variant="secondary" className="text-[9.5px] font-mono">Statutory Master</Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed pl-6.5">
+                S.No, EMP ID, Name of the Employee, UAN No, ESI No, Gender, Present & Permanent Address, Number of days Calculate, No of Days Worked, FH/NH/PL/ML, Sunday, Half day, PAID LEAVES DAYS, Sundays work, No of days in month, Number of days Calculate paid, Absent days, Fixed Salary, Pay Slab, Per hrs, Per Hrs working time, Per hrs Amt, LATE PUNCHING Hrs & Amt, Basic+DA, HRA, Conveyance Allowance, Other Allowances, LTA, Sundays days Amount, Incentives, Gross Salary, Basic+DA for PF, EPF Elig, EPF - 12%, ESI Elig, ESI- 0.75%, Advance, PT, TDS/4% Cass, LWF, Deductions, NCP Days, Net Salary, Month, Remarks, 13%, EPF, ESI.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="flex items-center justify-between sm:justify-between gap-2 pt-3 border-t border-border mt-2">
+          <Button variant="outline" onClick={onClose} disabled={downloading} className="rounded-xl text-xs h-9">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDownload}
+            disabled={downloading || activeStaffCount === 0}
+            className="rounded-xl text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-500/20 gap-1.5"
+          >
+            {downloading ? (
+              <>
+                <RotateCcw className="h-3.5 w-3.5 animate-spin" /> Generating Workbook...
+              </>
+            ) : (
+              <>
+                <FileDown className="h-4 w-4" /> Download Wage Register ({monthLabel})
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
