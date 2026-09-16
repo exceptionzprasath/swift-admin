@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect } from "react";
-import { useStore, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
+import { useStore, safeFetch, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 import { computePayroll, inr, type PayrollComputation } from "@/lib/payroll";
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
 import { PayslipTemplateView } from "@/components/payroll/PayslipTemplateView";
@@ -55,6 +56,9 @@ import {
   CalendarRange,
   X,
   Layers,
+  KeyRound,
+  EyeOff,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { type RevisionTarget, type RevisionReason } from "@/lib/salary-revision";
@@ -245,6 +249,7 @@ export function PayrollPage() {
     currentUser,
     saveAllCompanySettings,
     lockPayrollMonth,
+    verifyPayrollLockPassword,
     docAssets,
   } = useStore();
 
@@ -314,6 +319,73 @@ export function PayrollPage() {
   const effectivePeriodKey = isCustomDateRange ? `${customStartDate}_${customEndDate}` : selectedMonth;
   const effectivePeriodLabel = isCustomDateRange ? `${customStartDate} to ${customEndDate}` : selectedMonth;
   const isPeriodLocked = !!(company.payrollLockedMonths && company.payrollLockedMonths[effectivePeriodKey]);
+
+  // Payroll Lock Password Verification Modal State
+  const [isLockModalOpen, setIsLockModalOpen] = useState(false);
+  const [targetLockAction, setTargetLockAction] = useState<"lock" | "unlock">("lock");
+  const [lockPassword, setLockPassword] = useState("");
+  const [showLockPassword, setShowLockPassword] = useState(false);
+  const [lockPasswordError, setLockPasswordError] = useState<string | null>(null);
+  const [isVerifyingLock, setIsVerifyingLock] = useState(false);
+
+  const handleOpenLockModal = (action: "lock" | "unlock") => {
+    setTargetLockAction(action);
+    setLockPassword("");
+    setLockPasswordError(null);
+    setShowLockPassword(false);
+    setIsLockModalOpen(true);
+
+    // Refresh latest payroll lock password from backend so it connects in real-time with Super Admin
+    try {
+      const tenantId = useAuth.getState().activeTenantId;
+      if (tenantId) {
+        safeFetch(`/api/companies/payroll-lock-config?tenantId=${tenantId}`).then(async (res) => {
+          if (res && res.ok) {
+            const data = await res.json();
+            if (data && data.payrollLockPassword !== undefined) {
+              setCompany({ payrollLockPassword: data.payrollLockPassword });
+            }
+          }
+        }).catch(() => {});
+      }
+    } catch {}
+  };
+
+  const handleConfirmLockAction = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = lockPassword.trim();
+    if (!trimmed) {
+      setLockPasswordError("Please enter your password to proceed.");
+      return;
+    }
+
+    setIsVerifyingLock(true);
+    setLockPasswordError(null);
+
+    try {
+      const result = await verifyPayrollLockPassword(trimmed);
+      if (result.success) {
+        const willLock = targetLockAction === "lock";
+        lockPayrollMonth(effectivePeriodKey, willLock);
+        setIsLockModalOpen(false);
+        setLockPassword("");
+        setLockPasswordError(null);
+        toast.success(
+          willLock
+            ? `Payroll locked securely for ${effectivePeriodLabel}`
+            : `Payroll unlocked successfully for ${effectivePeriodLabel}`
+        );
+      } else {
+        setLockPasswordError(result.error || "Incorrect password. Authorization denied.");
+        toast.error(result.error || "Incorrect password. Please try again.");
+      }
+    } catch (err: any) {
+      setLockPasswordError("An error occurred during verification. Please try again.");
+      toast.error("Verification failed");
+    } finally {
+      setIsVerifyingLock(false);
+    }
+  };
 
   // Saving state
   const [savingSettings, setSavingSettings] = useState(false);
@@ -2012,14 +2084,7 @@ export function PayrollPage() {
                 size="sm"
                 variant={isPeriodLocked ? "destructive" : "outline"}
                 className="h-9 px-3 rounded-xl text-xs gap-1.5 font-semibold shrink-0"
-                onClick={() => {
-                  lockPayrollMonth(effectivePeriodKey, !isPeriodLocked);
-                  toast.success(
-                    isPeriodLocked
-                      ? `Payroll unlocked for ${effectivePeriodLabel}`
-                      : `Payroll locked for ${effectivePeriodLabel}`
-                  );
-                }}
+                onClick={() => handleOpenLockModal(isPeriodLocked ? "unlock" : "lock")}
               >
                 {isPeriodLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
                 <span>{isPeriodLocked ? "Payroll Locked" : "Lock Payroll"}</span>
@@ -2229,7 +2294,9 @@ export function PayrollPage() {
                                 notes: overrideData.notes || "",
                               });
                             }}
-                            className="h-7.5 px-2 text-xs rounded-lg gap-1 text-amber-600 hover:bg-amber-500/10 font-medium"
+                            disabled={isPeriodLocked}
+                            title={isPeriodLocked ? "Payroll is locked for this period. Unlock to edit." : "Edit employee payroll"}
+                            className="h-7.5 px-2 text-xs rounded-lg gap-1 text-amber-600 hover:bg-amber-500/10 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <Edit3 className="h-3.5 w-3.5" />
                             <span>Edit</span>
@@ -3458,6 +3525,162 @@ export function PayrollPage() {
             onPrint={() => window.print()}
             onClose={() => setShowLivePayslipModal(false)}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* MODAL 4: PAYROLL LOCK / UNLOCK PASSWORD VERIFICATION DIALOG               */}
+      {/* ========================================================================= */}
+      <Dialog
+        open={isLockModalOpen}
+        onOpenChange={(open) => {
+          if (!isVerifyingLock) {
+            setIsLockModalOpen(open);
+            if (!open) {
+              setLockPassword("");
+              setLockPasswordError(null);
+            }
+          }
+        }}
+      >
+        <DialogContent className="max-w-md p-6 rounded-3xl border border-border shadow-2xl bg-card">
+          <form onSubmit={handleConfirmLockAction} className="space-y-4">
+            <div className="flex items-start gap-4">
+              <div
+                className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                  targetLockAction === "lock"
+                    ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                    : "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+                }`}
+              >
+                {targetLockAction === "lock" ? (
+                  <Lock className="h-6 w-6" />
+                ) : (
+                  <Unlock className="h-6 w-6" />
+                )}
+              </div>
+              <div className="space-y-1">
+                <DialogTitle className="text-base font-bold text-foreground">
+                  {targetLockAction === "lock" ? "Lock Payroll Period" : "Unlock Payroll Period"}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+                  {targetLockAction === "lock" ? (
+                    <>
+                      Locking payroll for <span className="font-semibold text-foreground">{effectivePeriodLabel}</span> will freeze all salary registers, computed net payouts, and statutory deductions against edits.
+                    </>
+                  ) : (
+                    <>
+                      Unlocking payroll for <span className="font-semibold text-foreground">{effectivePeriodLabel}</span> will permit attendance updates and custom monthly salary overrides.
+                    </>
+                  )}
+                </DialogDescription>
+              </div>
+            </div>
+
+            {(!company.payrollLockPassword || !company.payrollLockPassword.trim()) ? (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-400 text-xs flex items-start gap-2.5">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-semibold">No Password Configured in Super Admin</p>
+                  <p className="text-[11px] opacity-90 leading-normal">
+                    Payroll locking cannot be authorized until a dedicated password is set by a Super Admin under <strong>Companies &gt; Credentials</strong>.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 space-y-1.5">
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  <span>Security Authorization Required</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-normal">
+                  Please enter the dedicated payroll lock password configured by Super Admin to confirm this action.
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="payroll-lock-password" className="text-xs font-semibold text-foreground flex items-center justify-between">
+                <span>Payroll Lock Password</span>
+                <span className="text-[10px] text-muted-foreground font-normal">Super Admin authorization</span>
+              </Label>
+              <div className="relative">
+                <KeyRound className="h-4 w-4 absolute left-3 top-3 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="payroll-lock-password"
+                  type={showLockPassword ? "text" : "password"}
+                  placeholder="Enter payroll lock password from Super Admin..."
+                  value={lockPassword}
+                  onChange={(e) => {
+                    setLockPassword(e.target.value);
+                    if (lockPasswordError) setLockPasswordError(null);
+                  }}
+                  autoFocus
+                  disabled={isVerifyingLock || !company.payrollLockPassword || !company.payrollLockPassword.trim()}
+                  className={`h-10 text-xs pl-9 pr-10 rounded-xl bg-background border-border/80 [&::-ms-reveal]:hidden [&::-ms-clear]:hidden ${
+                    lockPasswordError ? "border-destructive focus-visible:ring-destructive/30" : ""
+                  }`}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  tabIndex={-1}
+                  disabled={isVerifyingLock || !company.payrollLockPassword || !company.payrollLockPassword.trim()}
+                  onClick={() => setShowLockPassword(!showLockPassword)}
+                  className="h-8 w-8 p-0 absolute right-1 top-1 rounded-lg text-muted-foreground hover:text-foreground"
+                >
+                  {showLockPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+
+              {lockPasswordError && (
+                <div className="flex items-center gap-1.5 text-destructive text-[11px] font-medium pt-1 animate-in fade-in">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>{lockPasswordError}</span>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="pt-2 flex sm:justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isVerifyingLock}
+                onClick={() => {
+                  setIsLockModalOpen(false);
+                  setLockPassword("");
+                  setLockPasswordError(null);
+                }}
+                className="h-9 text-xs rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isVerifyingLock || !lockPassword.trim() || !company.payrollLockPassword || !company.payrollLockPassword.trim()}
+                variant={targetLockAction === "lock" ? "default" : "destructive"}
+                className="h-9 text-xs rounded-xl gap-1.5 font-semibold"
+              >
+                {isVerifyingLock ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Verifying...</span>
+                  </>
+                ) : targetLockAction === "lock" ? (
+                  <>
+                    <Lock className="h-3.5 w-3.5" />
+                    <span>Confirm &amp; Lock Payroll</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="h-3.5 w-3.5" />
+                    <span>Confirm &amp; Unlock Payroll</span>
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

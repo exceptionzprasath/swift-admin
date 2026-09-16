@@ -262,6 +262,14 @@
   animation: swift-ping-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
+@keyframes swift-spin-slow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@utility animate-swift-spin-slow {
+  animation: swift-spin-slow 10s linear infinite;
+}
+
 @keyframes live-ticker-scroll {
   0% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
@@ -285,4 +293,15 @@
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none !important;
+}
+
+/* Hide native browser password reveal icons (Edge/Chrome/Windows) to prevent duplicate eye buttons */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear,
+input::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
