@@ -43,7 +43,7 @@ export interface DocFooterConfig {
 export type DocumentTypePreset = {
   id: string;
   name: string;
-  category: "Onboarding" | "Confirmation" | "Movement" | "Discipline" | "Exit" | "Verification" | "Compliance" | "Custom";
+  category: DocumentCategory;
   defaultSubject: string;
   description: string;
   templateBody: string;
@@ -328,15 +328,70 @@ export interface DigitalDocument {
 // Standard Document Presets
 // ============================================================
 
+export const DOCUMENT_CATEGORIES = [
+  "I. Onboarding",
+  "II. After Completion of Probation",
+  "III. Movement",
+  "IV. Discipline",
+  "V. Exit",
+  "VI. Verification",
+] as const;
+
+export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number] | "Custom";
+
 export const PRESET_DOCUMENTS: DocumentTypePreset[] = [
+  // I. Onboarding
+  {
+    id: "doc-joining",
+    name: "Joining Form",
+    category: "I. Onboarding" as any,
+    defaultSubject: "Employee Joining & Candidate Registration Form — {{employee_name}}",
+    description: "Employee initial candidate registration, emergency contacts, and onboarding details form.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["HR Manager", "Reporting Manager"],
+    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+<p style="text-align: center; font-size: 16px;"><strong>EMPLOYEE ONBOARDING & JOINING REGISTRATION FORM</strong></p>
+<br/>
+<p><strong>1. Personal & Employment Details:</strong></p>
+<p>Candidate Full Name: <strong>{{employee_name}}</strong><br/>
+Assigned Employee Code: <strong>{{emp_code}}</strong><br/>
+Designation: <strong>{{designation}}</strong><br/>
+Department: <strong>{{department}}</strong><br/>
+Date of Joining: <strong>{{date_of_joining}}</strong><br/>
+Work Location: <strong>{{company_address}}</strong><br/>
+Reporting Authority: <strong>{{manager_name}}</strong></p>
+<br/>
+<p><strong>2. Undertaking & Acknowledgment:</strong></p>
+<p>I hereby confirm that all information, certificates, and credentials submitted during onboarding are authentic and true to the best of my knowledge.</p>`,
+  },
+  {
+    id: "offer_letter",
+    name: "Offer Letter",
+    category: "I. Onboarding" as any,
+    defaultSubject: "Job Offer from {{company_name}} — {{designation}}",
+    description: "Pre-joining formal job offer outlining CTC, benefits, and joining timelines.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["HR Manager", "Reporting Manager", "Department Head", "Finance Manager", "Authorized Signatory"],
+    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+<p>Ref: <strong>{{reference_no}}</strong></p>
+<br/>
+<p>Dear <strong>{{employee_name}}</strong>,</p>
+<p>We are delighted to extend an offer of employment for the position of <strong>{{designation}}</strong> in the <strong>{{department}}</strong> Department at <strong>{{company_name}}</strong>.</p>
+<br/>
+<p>Your proposed date of joining will be <strong>{{date_of_joining}}</strong>. Your annual Cost to Company (CTC) will be <strong>{{salary}}</strong>.</p>
+<br/>
+<p>Please review the offer details and return a signed copy acknowledging your acceptance within five (5) business days.</p>
+<br/>
+<p>We look forward to welcoming you to our team.</p>`,
+  },
   {
     id: "appointment_letter",
     name: "Appointment Letter",
-    category: "Onboarding",
+    category: "I. Onboarding" as any,
     defaultSubject: "Formal Appointment Letter — {{employee_name}} ({{emp_code}})",
-    description: "Official employment appointment letter with compensation details, role overview, and terms.",
+    description: "Official employment contract and appointment letter with compensation details, role overview, and terms.",
     defaultApprovalMode: "sequential",
-    defaultApprovers: ["HR Manager", "HR Head", "Authorized Signatory"],
+    defaultApprovers: ["HR Manager", "Authorized Signatory"],
     templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
 <p>Ref: <strong>{{reference_no}}</strong></p>
 <br/>
@@ -355,68 +410,202 @@ export const PRESET_DOCUMENTS: DocumentTypePreset[] = [
 <p>The detailed compensation structure is annexed in the table below.</p>`,
   },
   {
-    id: "offer_letter",
-    name: "Offer Letter",
-    category: "Onboarding",
-    defaultSubject: "Job Offer from {{company_name}} — {{designation}}",
-    description: "Pre-joining formal job offer outlining CTC, benefits, and joining timelines.",
+    id: "nda_agreement",
+    name: "NDA",
+    category: "I. Onboarding" as any,
+    defaultSubject: "Non-Disclosure Agreement (NDA) — {{employee_name}}",
+    description: "Non-disclosure agreement for intellectual property and confidentiality protection.",
     defaultApprovalMode: "sequential",
-    defaultApprovers: ["Talent Acquisition Lead", "HR Head"],
-    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
-<p>Ref: <strong>{{reference_no}}</strong></p>
+    defaultApprovers: ["HR Manager", "Authorized Signatory"],
+    templateBody: `<p style="text-align: center;"><strong>NON-DISCLOSURE & CONFIDENTIALITY AGREEMENT</strong></p>
 <br/>
-<p>Dear <strong>{{employee_name}}</strong>,</p>
-<p>We are delighted to extend an offer of employment for the position of <strong>{{designation}}</strong> at <strong>{{company_name}}</strong>. We were thoroughly impressed by your credentials and enthusiasm during the interview process.</p>
+<p>I, <strong>{{employee_name}}</strong> (Employee Code: <strong>{{emp_code}}</strong>), employed as <strong>{{designation}}</strong> at <strong>{{company_name}}</strong>, hereby covenant and agree to maintain absolute confidentiality regarding company data, trade secrets, software source code, client records, and proprietary know-how.</p>
 <br/>
-<p>Your proposed date of joining will be <strong>{{date_of_joining}}</strong>. Your annual Cost to Company (CTC) will be <strong>{{salary}}</strong>.</p>
-<br/>
-<p>Please review the offer details and return a signed copy acknowledging your acceptance within five (5) business days.</p>
-<br/>
-<p>We look forward to welcoming you to our team.</p>`,
+<ol>
+  <li><strong>Confidentiality:</strong> All technical, financial, and operational information shall remain strictly confidential during and after employment tenure.</li>
+  <li><strong>IP Assignment:</strong> All work products, code, and inventions created during employment belong solely to {{company_name}}.</li>
+</ol>`,
   },
   {
-    id: "salary_certificate",
-    name: "Salary Certificate",
-    category: "Verification",
-    defaultSubject: "Salary Certificate — {{employee_name}}",
-    description: "Official proof of employment and salary for bank loan, visa, or personal verification.",
-    defaultApprovalMode: "any_one",
-    defaultApprovers: ["HR Operations Manager", "Finance Lead"],
-    templateBody: `<p style="text-align: center;"><strong>TO WHOMSOEVER IT MAY CONCERN</strong></p>
-<p style="text-align: center;">Date: {{current_date}}</p>
+    id: "doc-code-conduct",
+    name: "Employee Code of Conduct & Workplace Ethics",
+    category: "I. Onboarding" as any,
+    defaultSubject: "Code of Conduct & Workplace Ethics Acknowledgment — {{employee_name}}",
+    description: "Company policy compliance, ethical conduct, and workplace guidelines acknowledgment.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["HR Manager"],
+    templateBody: `<p style="text-align: center;"><strong>EMPLOYEE CODE OF CONDUCT & WORKPLACE ETHICS POLICY</strong></p>
 <br/>
-<p>This is to certify that <strong>{{employee_name}}</strong> (Employee ID: <strong>{{emp_code}}</strong>) is a permanent, full-time employee of <strong>{{company_name}}</strong>, currently designated as <strong>{{designation}}</strong> in the <strong>{{department}}</strong> department.</p>
+<p>This policy outlines the principles and standards of integrity expected of all employees at <strong>{{company_name}}</strong>.</p>
 <br/>
-<p>They have been working with our organization since <strong>{{date_of_joining}}</strong>. Their current gross remuneration is <strong>{{salary}}</strong> per annum.</p>
+<p>Employee: <strong>{{employee_name}}</strong> ({{emp_code}})<br/>
+Designation: <strong>{{designation}}</strong> — {{department}}</p>
 <br/>
-<p>This certificate is issued upon the specific request of the employee for verification purposes without any financial liability on the part of the issuing company.</p>`,
+<p>By signing this undertaking, you acknowledge adherence to anti-harassment, data security, professional conduct, conflict of interest, and equal opportunity standards.</p>`,
+  },
+  {
+    id: "doc-asset-handover",
+    name: "Asset Handover Forms",
+    category: "I. Onboarding" as any,
+    defaultSubject: "IT Asset & Hardware Handover Form — {{employee_name}}",
+    description: "Asset and hardware handover acknowledgment form.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["IT / Admin Manager", "Reporting Manager"],
+    templateBody: `<p style="text-align: center;"><strong>COMPANY ASSET & EQUIPMENT HANDOVER ACKNOWLEDGMENT</strong></p>
+<br/>
+<p>Date: <strong>{{current_date}}</strong></p>
+<p>Employee: <strong>{{employee_name}}</strong> ({{emp_code}}) | Designation: <strong>{{designation}}</strong></p>
+<br/>
+<p>The following company assets have been provisioned in working condition for official use:</p>
+<ul>
+  <li>Laptop / Workstation (Serial / Tag: SW-LT-{{emp_code}})</li>
+  <li>Security Access Keycard & Email Account Credentials</li>
+  <li>Official Accessories & Peripherals</li>
+</ul>`,
+  },
+
+  // II. After Completion of Probation
+  {
+    id: "doc-prob-confirm",
+    name: "Probation Confirmation Letter",
+    category: "II. After Completion of Probation" as any,
+    defaultSubject: "Confirmation of Employment Services — {{employee_name}}",
+    description: "Formal letter confirming successful completion of employee probation period.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["Reporting Manager", "HR Manager", "Authorized Signatory"],
+    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+<br/>
+<p>Dear <strong>{{employee_name}}</strong> ({{emp_code}}),</p>
+<p>Consequent to the review of your performance during your probation period, management is pleased to confirm your services as a permanent employee in the position of <strong>{{designation}}</strong> in the <strong>{{department}}</strong> Department at <strong>{{company_name}}</strong> with effect from <strong>{{current_date}}</strong>.</p>
+<br/>
+<p>All other terms and conditions of your employment as outlined in your original Appointment Letter continue to remain in effect.</p>
+<br/>
+<p>We appreciate your valuable contribution and look forward to your continued success with our organization.</p>`,
+  },
+  {
+    id: "doc-prob-ext",
+    name: "Probation Extension Letter",
+    category: "II. After Completion of Probation" as any,
+    defaultSubject: "Probation Period Extension Notice — {{employee_name}}",
+    description: "Notice informing extension of probation period with specific performance milestones.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["Reporting Manager", "HR Manager"],
+    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+<br/>
+<p>Dear <strong>{{employee_name}}</strong> ({{emp_code}}),</p>
+<p>This is with reference to the evaluation of your performance during your probationary period with <strong>{{company_name}}</strong>.</p>
+<br/>
+<p>Following a review with your reporting authority, management has decided to extend your probation period by an additional three (3) months to enable further observation and achievement of assigned milestones.</p>`,
+  },
+
+  // III. Movement
+  {
+    id: "doc-transfer",
+    name: "Transfer Letter",
+    category: "III. Movement" as any,
+    defaultSubject: "Official Transfer / Branch Relocation Letter — {{employee_name}}",
+    description: "Official relocation or inter-department branch transfer letter.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["Department Head", "HR Manager"],
+    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+<br/>
+<p>Dear <strong>{{employee_name}}</strong> ({{emp_code}}),</p>
+<p>We wish to inform you that in accordance with operational requirements, you are being transferred from your current unit to the <strong>{{department}}</strong> department effective from <strong>{{effective_date}}</strong>.</p>
+<br/>
+<p>You are requested to report to <strong>{{manager_name}}</strong> on the effective date.</p>`,
+  },
+  {
+    id: "promotion_letter",
+    name: "Promotion Letter",
+    category: "III. Movement" as any,
+    defaultSubject: "Congratulations on Your Promotion — {{employee_name}}",
+    description: "Role elevation, designation advancement, and revised responsibility letter.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["Department Head", "HR Manager", "Authorized Signatory"],
+    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+<br/>
+<p>Dear <strong>{{employee_name}}</strong>,</p>
+<p>In recognition of your exceptional performance, leadership, and contribution to <strong>{{company_name}}</strong>, we are delighted to promote you to the position of <strong>{{designation}}</strong> effective <strong>{{current_date}}</strong>.</p>
+<br/>
+<p>Your revised annual compensation package will be <strong>{{salary}}</strong>. Your dedication has been instrumental to the success of the <strong>{{department}}</strong> department.</p>
+<br/>
+<p>Please accept our heartiest congratulations on this well-deserved achievement.</p>`,
+  },
+  {
+    id: "doc-increment",
+    name: "Increment / Compensation Revision Letter",
+    category: "III. Movement" as any,
+    defaultSubject: "Annual Salary Revision & Appraisal Increment — {{employee_name}}",
+    description: "Annual salary revision and appraisal increment confirmation letter.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["HR Manager", "Finance Manager", "Authorized Signatory"],
+    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+<br/>
+<p>Dear <strong>{{employee_name}}</strong> ({{emp_code}}),</p>
+<p>We take this opportunity to thank you for your contributions toward the success of <strong>{{company_name}}</strong> during the past financial year.</p>
+<br/>
+<p>In appreciation of your efforts, management is pleased to revise your annual Cost to Company (CTC) to <strong>{{salary}}</strong> effective from <strong>{{effective_date}}</strong>.</p>`,
+  },
+
+  // IV. Discipline
+  {
+    id: "doc-show-cause",
+    name: "Show Cause Notice",
+    category: "IV. Discipline" as any,
+    defaultSubject: "Show Cause Notice — Request for Explanation — {{emp_code}}",
+    description: "Formal notice demanding explanation for policy or attendance violations.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["HR Manager", "Compliance / Legal Head"],
+    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+<p><strong>CONFIDENTIAL & URGENT</strong></p>
+<br/>
+<p>To: <strong>{{employee_name}}</strong> ({{emp_code}})<br/>
+Designation: <strong>{{designation}}</strong> — {{department}}</p>
+<br/>
+<p>It has been brought to the notice of the management that you have failed to comply with company standard policies. You are hereby called upon to show cause in writing within forty-eight (48) hours of receipt of this notice as to why disciplinary action should not be initiated against you.</p>`,
   },
   {
     id: "warning_letter",
     name: "Warning Letter",
-    category: "Discipline",
+    category: "IV. Discipline" as any,
     defaultSubject: "Official Notice / Written Warning — {{emp_code}}",
     description: "Formal disciplinary notice regarding conduct, attendance, or policy violations.",
     defaultApprovalMode: "sequential",
-    defaultApprovers: ["Department Head", "HR Head"],
+    defaultApprovers: ["Reporting Manager", "HR Manager"],
     templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
 <p><strong>CONFIDENTIAL & STRICTLY PRIVATE</strong></p>
 <br/>
 <p>To: <strong>{{employee_name}}</strong> ({{emp_code}})<br/>
-Designation: <strong>{{designation}}</strong><br/>
-Department: <strong>{{department}}</strong></p>
+Designation: <strong>{{designation}}</strong> — {{department}}</p>
 <br/>
 <p>Dear {{employee_name}},</p>
 <p>This letter serves as a formal written warning regarding recent concerns concerning adherence to workplace standards and attendance policies at <strong>{{company_name}}</strong>.</p>
 <br/>
-<p>Despite previous verbal feedback, required improvements have not been consistently demonstrated. You are required to submit a written explanation within 48 hours and adhere strictly to all company conduct standards going forward.</p>`,
+<p>You are advised to correct the deficiencies immediately. Failure to adhere to standards may lead to further disciplinary measures.</p>`,
+  },
+
+  // V. Exit
+  {
+    id: "doc-relieve",
+    name: "Relieving Letter",
+    category: "V. Exit" as any,
+    defaultSubject: "Relieving Letter — {{employee_name}} ({{emp_code}})",
+    description: "Exit relieving letter upon clearance of handovers and dues.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["HR Manager", "Department Head", "Authorized Signatory"],
+    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+<br/>
+<p>Dear <strong>{{employee_name}}</strong> ({{emp_code}}),</p>
+<p>This has reference to your resignation letter. We would like to confirm that your resignation has been accepted and you are relieved from the services of <strong>{{company_name}}</strong> as of the close of business hours on <strong>{{current_date}}</strong>.</p>
+<br/>
+<p>All company dues and handovers have been cleared in full. We thank you for your contributions and wish you all the best for your future endeavors.</p>`,
   },
   {
     id: "experience_certificate",
-    name: "Experience Certificate",
-    category: "Exit",
+    name: "Experience Letter / Certificate",
+    category: "V. Exit" as any,
     defaultSubject: "Experience Certificate & Relieving Confirmation — {{employee_name}}",
-    description: "Service letter issued upon completion of employment tenure.",
+    description: "Formal service experience certificate with designation and tenure.",
     defaultApprovalMode: "sequential",
     defaultApprovers: ["HR Manager", "Authorized Signatory"],
     templateBody: `<p style="text-align: center;"><strong>EXPERIENCE & SERVICE CERTIFICATE</strong></p>
@@ -428,40 +617,39 @@ Department: <strong>{{department}}</strong></p>
 <br/>
 <p>They have been relieved of all duties following proper clearance of company assets. We wish them success in their future endeavors.</p>`,
   },
+
+  // VI. Verification
   {
-    id: "nda_agreement",
-    name: "Non-Disclosure Agreement (NDA)",
-    category: "Compliance",
-    defaultSubject: "Proprietary Information & Non-Disclosure Agreement — {{employee_name}}",
-    description: "Confidentiality, intellectual property assignment, and trade secret protection agreement.",
-    defaultApprovalMode: "all_must_approve",
-    defaultApprovers: ["Legal Counsel", "HR Head"],
-    templateBody: `<p style="text-align: center;"><strong>EMPLOYEE CONFIDENTIALITY AND NON-DISCLOSURE UNDERTAKING</strong></p>
+    id: "doc-emp-verif",
+    name: "Employment Verification Letter",
+    category: "VI. Verification" as any,
+    defaultSubject: "Employment Verification Certificate — {{employee_name}}",
+    description: "Background verification request response letter.",
+    defaultApprovalMode: "sequential",
+    defaultApprovers: ["HR Manager"],
+    templateBody: `<p style="text-align: center;"><strong>TO WHOMSOEVER IT MAY CONCERN</strong></p>
+<p style="text-align: center;">Date: {{current_date}}</p>
 <br/>
-<p>I, <strong>{{employee_name}}</strong>, residing at {{employee_address}}, employed as <strong>{{designation}}</strong> (Employee ID: <strong>{{emp_code}}</strong>) with <strong>{{company_name}}</strong>, hereby covenant and agree:</p>
+<p>This is to certify that <strong>{{employee_name}}</strong> (Employee Code: <strong>{{emp_code}}</strong>) is currently employed with <strong>{{company_name}}</strong> as <strong>{{designation}}</strong> in the <strong>{{department}}</strong> Department since <strong>{{date_of_joining}}</strong>.</p>
 <br/>
-<ol>
-  <li><strong>Confidential Information:</strong> I shall protect and hold confidential all proprietary code, customer records, financial projections, business methodologies, and trade secrets.</li>
-  <li><strong>Non-Disclosure:</strong> I shall not during or subsequent to my employment disclose or authorize anyone to disclose any confidential information.</li>
-  <li><strong>Return of Materials:</strong> Upon termination of employment, I shall immediately return all physical and digital records, laptops, keys, and access tokens.</li>
-</ol>`,
+<p>This letter is issued upon the request of the employee for verification purposes.</p>`,
   },
   {
-    id: "promotion_letter",
-    name: "Promotion & Increment Letter",
-    category: "Movement",
-    defaultSubject: "Congratulations on Your Promotion — {{employee_name}}",
-    description: "Formal elevation of job designation and compensation revision.",
+    id: "salary_certificate",
+    name: "Salary Certificate / NOC",
+    category: "VI. Verification" as any,
+    defaultSubject: "Salary Certificate & NOC — {{employee_name}}",
+    description: "Income verification certificate for banking or visa requests.",
     defaultApprovalMode: "sequential",
-    defaultApprovers: ["Department Head", "HR Head", "Finance Director"],
-    templateBody: `<p>Date: <strong>{{current_date}}</strong></p>
+    defaultApprovers: ["HR Operations Manager", "Finance Lead"],
+    templateBody: `<p style="text-align: center;"><strong>TO WHOMSOEVER IT MAY CONCERN</strong></p>
+<p style="text-align: center;">Date: {{current_date}}</p>
 <br/>
-<p>Dear <strong>{{employee_name}}</strong>,</p>
-<p>In recognition of your exceptional performance, leadership, and contribution to <strong>{{company_name}}</strong>, we are delighted to promote you to the position of <strong>{{designation}}</strong> effective <strong>{{current_date}}</strong>.</p>
+<p>This is to certify that <strong>{{employee_name}}</strong> (Employee ID: <strong>{{emp_code}}</strong>) is a permanent, full-time employee of <strong>{{company_name}}</strong>, currently designated as <strong>{{designation}}</strong> in the <strong>{{department}}</strong> department.</p>
 <br/>
-<p>Your revised annual compensation package will be <strong>{{salary}}</strong>. Your dedication has been instrumental to the success of the <strong>{{department}}</strong> department.</p>
+<p>They have been working with our organization since <strong>{{date_of_joining}}</strong>. Their current gross remuneration is <strong>{{salary}}</strong> per annum.</p>
 <br/>
-<p>Please accept our heartiest congratulations on this well-deserved achievement.</p>`,
+<p>This certificate is issued upon the specific request of the employee for verification purposes without any financial liability on the part of the issuing company.</p>`,
   },
 ];
 
