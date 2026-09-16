@@ -419,6 +419,7 @@ export type Company = {
   attendanceBonusRules?: { enabled: boolean; type: "flat" | "pct"; value: number; requireFullAttendance?: boolean };
   yearlyBonusRules?: { enabled: boolean; type: "flat" | "pct"; value: number };
   payrollLockedMonths?: Record<string, boolean>;
+  payrollLockPassword?: string;
   ptEnabled?: boolean;
   ptAmount: number;
   geofence: { lat: number; lng: number; radiusM: number };
@@ -1166,6 +1167,7 @@ type State = {
   upsertAttendance: (r: AttendanceRecord) => void;
   addPayroll: (p: PayrollRun) => void;
   lockPayrollMonth: (month: string, locked: boolean) => void;
+  verifyPayrollLockPassword: (password: string) => Promise<{ success: boolean; error?: string }>;
   addLeave: (l: Omit<LeaveRequest, "id" | "status"> & { id?: string; status?: LeaveRequest["status"] }) => LeaveRequest;
   updateLeave: (id: string, status: LeaveRequest["status"], note?: string) => void;
   deleteLeave: (id: string) => void;
@@ -2843,6 +2845,55 @@ export const useStore = create<State>()(
           }
           return { company: nextComp };
         });
+      },
+      verifyPayrollLockPassword: async (password: string) => {
+        const tenantId = useAuth.getState().activeTenantId;
+        const company = get().company;
+        const trimmed = String(password || "").trim();
+
+        if (!trimmed) {
+          return { success: false, error: "Please enter a password" };
+        }
+
+        // Try backend verification first
+        try {
+          const res = await safeFetch("/api/payroll/verify-lock-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tenantId, password: trimmed }),
+          });
+
+          if (res) {
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.success) {
+                if (data.payrollLockPassword) {
+                  set((s) => ({ company: { ...s.company, payrollLockPassword: data.payrollLockPassword } }));
+                }
+                return { success: true };
+              }
+              return { success: false, error: data?.error || "Incorrect password. Authorization denied." };
+            } else {
+              const err = await res.json().catch(() => ({ error: "Incorrect password. Authorization denied." }));
+              return { success: false, error: err.error || "Incorrect password. Authorization denied." };
+            }
+          }
+        } catch (err: any) {
+          console.warn("[Store] verifyPayrollLockPassword API error:", err);
+        }
+
+        // Offline check: strictly verify against password configured by Super Admin
+        if (company.payrollLockPassword && company.payrollLockPassword.trim()) {
+          if (trimmed === company.payrollLockPassword.trim()) {
+            return { success: true };
+          }
+          return { success: false, error: "Incorrect password. Authorization denied." };
+        }
+
+        return {
+          success: false,
+          error: "No payroll lock password has been configured in Super Admin. Please set a password in Super Admin under Company Credentials to use Payroll Lock.",
+        };
       },
       addLeave: (l) => {
         const st = get();

@@ -29,7 +29,7 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
   const scroller = useRef<HTMLDivElement>(null);
 
   const { activeTenantId, user, isSuperAdmin, memberships } = useAuth();
-  const { company, employees, attendance, payrolls, leaves, docRequests } = useStore();
+  const { company, employees, attendance, payrolls, leaves, docRequests, theme } = useStore();
 
   const authContext = useMemo(() => {
     return resolveUserContext(user, isSuperAdmin, memberships, employees, company);
@@ -145,14 +145,18 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 20 }}
-          whileHover={{ scale: 1.05, x: -2 }}
+          whileHover={{ scale: 1.06, x: -3 }}
           onClick={() => setIsMinimized(false)}
-          className="fixed right-0 bottom-24 md:bottom-20 z-50 rounded-l-full bg-gradient-brand text-white pl-3 pr-2 py-2 shadow-lg shadow-primary/20 flex items-center gap-1.5 cursor-pointer border-y border-l border-white/20 backdrop-blur text-xs font-semibold group"
+          className="fixed right-0 bottom-24 md:bottom-20 z-50 rounded-l-full bg-gradient-brand text-white pl-3.5 pr-2.5 py-2 shadow-lg shadow-primary/25 flex items-center gap-2 cursor-pointer border-y border-l border-white/25 backdrop-blur-md text-xs font-semibold group transition-all duration-300"
           title="Click to restore SWIFT AI Copilot"
         >
-          <Bot className="h-4 w-4 animate-pulse" />
-          <span className="hidden group-hover:inline text-[11px] pr-1">SWIFT AI</span>
-          <Sparkles className="h-3 w-3 text-amber-300" />
+          <div className="h-5 w-5 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-white">
+            <Bot className="h-3.5 w-3.5" />
+          </div>
+          <span className="hidden group-hover:inline text-[11px] font-bold text-white tracking-wide pr-0.5">
+            SWIFT AI
+          </span>
+          <Sparkles className="h-3.5 w-3.5 text-amber-200 animate-spin [animation-duration:6s]" />
         </motion.button>
       )}
 
@@ -170,7 +174,7 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
             }, 100);
           }}
           whileDrag={{ scale: 1.08, cursor: "grabbing" }}
-          className="fixed bottom-28 md:bottom-20 right-4 md:right-6 z-50 touch-none group"
+          className="fixed bottom-28 md:bottom-20 right-4 md:right-6 z-50 touch-none group select-none"
         >
           {/* Minimize button on hover */}
           <button
@@ -179,7 +183,7 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
               e.stopPropagation();
               setIsMinimized(true);
             }}
-            className="absolute -top-1 -left-1 z-20 h-5 w-5 rounded-full bg-muted/90 dark:bg-card/90 border border-border/80 text-foreground/70 hover:text-foreground hover:bg-destructive hover:text-destructive-foreground shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[10px]"
+            className="absolute -top-1.5 -left-1.5 z-30 h-5 w-5 rounded-full bg-slate-900/90 border border-white/20 text-white/70 hover:text-white hover:bg-destructive hover:border-destructive shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[10px]"
             title="Minimize to side tab"
           >
             <Minus className="h-3 w-3" />
@@ -196,20 +200,76 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
             transition={{ type: "spring", stiffness: 200, damping: 14 }}
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.94 }}
-            className="relative h-15 w-15 md:h-16 md:w-16 rounded-full flex items-center justify-center bg-background/85 dark:bg-card/85 backdrop-blur-md border border-primary/25 shadow-xl hover:shadow-primary/20 cursor-grab active:cursor-grabbing transition-shadow"
+            className="relative h-16 w-16 md:h-17 md:w-17 rounded-full p-[2px] flex items-center justify-center cursor-grab active:cursor-grabbing focus:outline-none transition-all"
             aria-label="Open SWIFT AI (Drag to reposition)"
-            title="SWIFT AI (Drag anywhere to move • Click to open)"
+            title="SWIFT AI Copilot (Drag anywhere to move • Click to open)"
           >
-            {/* Ambient subtle glow ring */}
-            <span className="absolute inset-0 rounded-full bg-gradient-to-tr from-primary/20 via-primary/5 to-purple-500/20 blur-sm pointer-events-none" />
+            {/* 1. Theme-Adaptive Dynamic Holographic Aura (Breathing Glow) */}
+            <span
+              className="absolute -inset-1.5 rounded-full blur-md opacity-75 group-hover:opacity-100 group-hover:blur-lg transition-all duration-500 animate-swift-glow"
+              style={{
+                background: "radial-gradient(circle, var(--primary) 0%, var(--accent, var(--primary)) 60%, transparent 80%)",
+              }}
+              aria-hidden="true"
+            />
 
-            {/* Lottie Animation */}
-            <span className="relative h-14 w-14 md:h-15 md:w-15 flex items-center justify-center overflow-hidden pointer-events-none">
-              <Lottie animationData={chatbotAnimation} loop={true} className="w-full h-full object-contain scale-105" />
-            </span>
+            {/* 2. Theme-Adaptive Rotating Iridescent Ring */}
+            <span
+              className="absolute inset-0 rounded-full p-[2px] animate-swift-spin-slow opacity-90 group-hover:opacity-100 transition-opacity"
+              style={{
+                background: "conic-gradient(from 0deg, var(--primary), var(--accent, var(--primary)), var(--navbar-accent, var(--teal, var(--primary))), var(--primary))",
+              }}
+              aria-hidden="true"
+            />
 
+            {/* 3. Theme-Harmonized Luxury Cosmic Glass Core */}
+            <div
+              className="relative h-full w-full rounded-full backdrop-blur-xl flex items-center justify-center overflow-hidden border border-white/25 shadow-[inset_0_1px_2px_rgba(255,255,255,0.4),inset_0_-2px_6px_rgba(0,0,0,0.5),0_10px_25px_-5px_rgba(0,0,0,0.4)] transition-all duration-300"
+              style={{
+                background:
+                  "radial-gradient(circle at 35% 25%, color-mix(in srgb, var(--primary) 45%, var(--card, #ffffff)) 0%, color-mix(in srgb, var(--primary) 25%, var(--sidebar, #1e293b)) 55%, var(--sidebar, #1e293b) 100%)",
+              }}
+            >
+              {/* Glossy Curved Glass Reflection Highlight */}
+              <span className="absolute inset-x-2 top-0.5 h-1/2 rounded-t-full bg-gradient-to-b from-white/35 via-white/10 to-transparent pointer-events-none" />
+
+              {/* Inner Radial Ambient Glow matched to Theme Primary */}
+              <span
+                className="absolute h-11 w-11 rounded-full blur-sm pointer-events-none transition-colors duration-300"
+                style={{
+                  background: "radial-gradient(circle, color-mix(in srgb, var(--primary) 45%, transparent) 0%, transparent 70%)",
+                }}
+              />
+
+              {/* Lottie Chatbot Animation */}
+              <span className="relative h-13 w-13 md:h-14 md:w-14 flex items-center justify-center overflow-hidden pointer-events-none drop-shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+                <Lottie animationData={chatbotAnimation} loop={true} className="w-full h-full object-contain scale-110" />
+              </span>
+
+              {/* Theme-Harmonized bottom AI Pill Badge */}
+              <div
+                className="absolute -bottom-0.5 px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1 backdrop-blur-md pointer-events-none border border-white/20 transition-colors duration-300 bg-black/40 text-white"
+              >
+                <Sparkles
+                  className="h-2 w-2 animate-pulse text-amber-300"
+                />
+                <span
+                  className="text-[8px] font-black uppercase tracking-widest text-white font-semibold"
+                >
+                  AI
+                </span>
+              </div>
+            </div>
+
+            {/* Active Alert / Notification Ping */}
             {(guideActive || pulse) && (
-              <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-coral text-[10px] font-bold text-white grid place-items-center ring-2 ring-background z-10 animate-bounce">
+              <span
+                className="absolute -top-1 -right-1 h-5 w-5 rounded-full text-[10px] font-bold text-white grid place-items-center ring-2 ring-background z-30 animate-bounce shadow-lg"
+                style={{
+                  background: "var(--accent, #f43f5e)",
+                  boxShadow: "0 0 12px var(--accent, #f43f5e)",
+                }}
+              >
                 <Zap className="h-3 w-3" />
               </span>
             )}
