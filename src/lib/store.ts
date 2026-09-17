@@ -531,6 +531,8 @@ export type Employee = {
   salary?: number;
   pan?: string;
   aadhaar?: string;
+  nameAsPerAadhaar?: string;
+  aadhaarName?: string;
   bankAcc?: string;
   bankIfsc?: string;
   shiftId?: string;
@@ -1677,7 +1679,8 @@ export const DEFAULT_DOCUMENT_TYPES: DocumentTypeItem[] = [
 
 export function getUpwardHierarchyChain(
   targetEmployee: Employee,
-  employees: Employee[] = []
+  employees: Employee[] = [],
+  strict = false
 ): Employee[] {
   const chain: Employee[] = [];
   const visited = new Set<string>([targetEmployee.id]);
@@ -1715,8 +1718,8 @@ export function getUpwardHierarchyChain(
     }
   }
 
-  // Fallback: If still empty (e.g. top CEO or isolated node), find default HR / Director
-  if (chain.length === 0) {
+  // Fallback: If still empty and not strict, find default HR / Director
+  if (!strict && chain.length === 0) {
     const defaultLead = employees.find(
       (e) =>
         e.id !== targetEmployee.id &&

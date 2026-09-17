@@ -4770,7 +4770,7 @@ function WageRegisterDownloadDialog({
             <div className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center justify-between">
               <span>Included Register Structure</span>
               <Badge variant="secondary" className="text-[10px] font-mono">
-                50 Statutory Columns (.xlsx)
+                58 Statutory & Banking Columns (.xlsx)
               </Badge>
             </div>
 
@@ -4783,7 +4783,7 @@ function WageRegisterDownloadDialog({
                 <Badge variant="secondary" className="text-[9.5px] font-mono">Statutory Master</Badge>
               </div>
               <p className="text-[11px] text-muted-foreground leading-relaxed pl-6.5">
-                S.No, EMP ID, Name of the Employee, UAN No, ESI No, Gender, Present & Permanent Address, Number of days Calculate, No of Days Worked, FH/NH/PL/ML, Sunday, Half day, PAID LEAVES DAYS, Sundays work, No of days in month, Number of days Calculate paid, Absent days, Fixed Salary, Pay Slab, Per hrs, Per Hrs working time, Per hrs Amt, LATE PUNCHING Hrs & Amt, Basic+DA, HRA, Conveyance Allowance, Other Allowances, LTA, Sundays days Amount, Incentives, Gross Salary, Basic+DA for PF, EPF Elig, EPF - 12%, ESI Elig, ESI- 0.75%, Advance, PT, TDS/4% Cass, LWF, Deductions, NCP Days, Net Salary, Month, Remarks, 13%, EPF, ESI.
+                S.No, EMP ID, Name of the Employee, Name as per Aadhaar, Date of Birth, Date of Joining, Designation, Location (Branch), Bank Name, Account Number, IFSC Code, UAN No, ESI No, Gender, Present & Permanent Address, Number of days Calculate, No of Days Worked, FH/NH/PL/ML, Sunday, Half day, PAID LEAVES DAYS, Sundays work, No of days in month, Number of days Calculate paid, Absent days, Fixed Salary, Pay Slab, Per hrs, Per Hrs working time, Per hrs Amt, LATE PUNCHING Hrs & Amt, Basic+DA, HRA, Conveyance Allowance, Other Allowances, LTA, Sundays days Amount, Incentives, Gross Salary, Basic+DA for PF, EPF Elig, EPF - 12%, ESI Elig, ESI- 0.75%, Advance, PT, TDS/4% Cass, LWF, Deductions, NCP Days, Net Salary, Month, Remarks, 13%, EPF, ESI.
               </p>
             </div>
           </div>
