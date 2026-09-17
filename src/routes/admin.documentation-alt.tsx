@@ -139,6 +139,7 @@ export default function DigitalDocumentationPage() {
   const [docTypePresetId, setDocTypePresetId] = useState<string>("appointment_letter");
   const [isCustomDocName, setIsCustomDocName] = useState(false);
   const [customDocName, setCustomDocName] = useState("");
+  const [customCategoryName, setCustomCategoryName] = useState("");
 
   const selectedPreset = useMemo(
     () => PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId) || null,
@@ -542,7 +543,6 @@ export default function DigitalDocumentationPage() {
       setDocTypePresetId("custom");
       return;
     }
-    setIsCustomDocName(false);
     const matchingPresets = cat === "ALL" 
       ? PRESET_DOCUMENTS 
       : PRESET_DOCUMENTS.filter((p) => p.category === cat);
@@ -631,6 +631,7 @@ export default function DigitalDocumentationPage() {
     setComposerCategory(preset.category || "I. Onboarding");
     setIsCustomDocName(false);
     setCustomDocName("");
+    setCustomCategoryName("");
     setDocContentHtml(preset.templateBody);
     setDeliveryChannel("both");
     setDeliverySubject(preset.defaultSubject);
@@ -704,6 +705,7 @@ export default function DigitalDocumentationPage() {
     setEditingDocId(doc.id);
     setIsCustomDocName(doc.isCustomName);
     setCustomDocName(doc.isCustomName ? doc.name : "");
+    setCustomCategoryName(doc.isCustomName ? ((doc as any).category || "") : "");
     const matchedPreset = PRESET_DOCUMENTS.find((p) => p.name === doc.documentType || p.name === doc.name);
     setDocTypePresetId(matchedPreset ? matchedPreset.id : "custom");
     if (matchedPreset?.category) {
@@ -910,7 +912,9 @@ export default function DigitalDocumentationPage() {
       : PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId)?.name || "HR Digital Document";
 
     const matchedPreset = PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId);
-    const matchedCategory = isCustomDocName ? "Custom" : matchedPreset?.category || composerCategory || "General";
+    const matchedCategory = (isCustomDocName || composerCategory === "Custom")
+      ? (customCategoryName.trim() || (composerCategory !== "ALL" && composerCategory !== "Custom" ? composerCategory : "Custom"))
+      : matchedPreset?.category || composerCategory || "General";
     const sampleEmp = employees[0];
 
     const payload = {
@@ -1622,7 +1626,7 @@ export default function DigitalDocumentationPage() {
               </div>
 
               {/* 2. Document Name & Template Dropdown */}
-              <div className={`${isCustomDocName ? "md:col-span-4" : "md:col-span-8"} space-y-1.5`}>
+              <div className="md:col-span-8 space-y-1.5">
                 <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
                   <FileText className="h-3.5 w-3.5 text-primary" /> Document Name & Template
                 </Label>
@@ -1657,23 +1661,42 @@ export default function DigitalDocumentationPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              {/* 3. Custom Document Name Input (if custom active) */}
-              {isCustomDocName && (
-                <div className="md:col-span-4 space-y-1.5 animate-in fade-in-50 duration-200">
+            {/* Custom Category & Custom Document Title Inputs */}
+            {(isCustomDocName || composerCategory === "Custom") && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-primary/5 border border-primary/20 animate-in fade-in-50 duration-200">
+                <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" /> Custom Document Title
+                    <Sliders className="h-3.5 w-3.5 text-primary" /> Custom Document Category
                   </Label>
                   <Input
-                    placeholder="Enter custom document title (e.g., Relocation Letter)..."
+                    placeholder="Enter custom category (e.g., Legal, HR Policy, Operations)..."
+                    value={customCategoryName}
+                    onChange={(e) => setCustomCategoryName(e.target.value)}
+                    className="text-xs h-9 bg-background"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Specify the category or functional area for this custom document.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" /> Custom Document Name / Title
+                  </Label>
+                  <Input
+                    placeholder="Enter custom document title (e.g., Relocation Letter, Project Bonus)..."
                     value={customDocName}
                     onChange={(e) => setCustomDocName(e.target.value)}
                     className="text-xs h-9 bg-background"
                     autoFocus
                   />
+                  <p className="text-[10px] text-muted-foreground">
+                    This document title will appear in document headers, PDFs, and approval matrices.
+                  </p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Active Template Quick Info Description */}
             {!isCustomDocName && selectedPreset && (
@@ -1711,92 +1734,22 @@ export default function DigitalDocumentationPage() {
             }
           />
 
-          {/* Section 9, 10, 11, 12: Delivery, Approval & Escalation Configuration */}
+          {/* Section 9: Approval & Escalation Configuration */}
           <div className="space-y-6">
-            {/* Top Grid: Delivery Configuration (Left) & Auto-Escalation Protocol (Right) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Delivery Settings */}
-              <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
-                <div className="flex items-center gap-2 pb-2.5 border-b border-border">
-                  <Send className="h-4 w-4 text-primary" />
+            {/* Auto-Escalation Protocol */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between pb-2.5 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <BellRing className="h-4 w-4 text-primary" />
                   <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
-                    1. Delivery Configuration
+                    Auto-Escalation & SLA Protocol
                   </h3>
                 </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Send Via Channels</Label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryChannel("email")}
-                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                        deliveryChannel === "email"
-                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                          : "border-border hover:bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      Email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryChannel("app")}
-                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                        deliveryChannel === "app"
-                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                          : "border-border hover:bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      SWIFT App
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryChannel("both")}
-                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                        deliveryChannel === "both"
-                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                          : "border-border hover:bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      Both
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] text-muted-foreground font-semibold">Recipient Resolution</Label>
-                  <Input
-                    disabled
-                    value="Dynamic (Resolved per employee during document issuance)"
-                    className="text-xs h-8 bg-muted/40 font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] text-muted-foreground font-semibold">Subject Line</Label>
-                  <Input
-                    value={deliverySubject}
-                    onChange={(e) => setDeliverySubject(e.target.value)}
-                    placeholder="Document Subject Line"
-                    className="text-xs h-8"
-                  />
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground">Enabled</span>
+                  <Switch checked={escalationEnabled} onCheckedChange={setEscalationEnabled} />
                 </div>
               </div>
-
-              {/* Escalation Rules */}
-              <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between pb-2.5 border-b border-border">
-                  <div className="flex items-center gap-2">
-                    <BellRing className="h-4 w-4 text-primary" />
-                    <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
-                      2. Auto-Escalation Protocol
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground">Enabled</span>
-                    <Switch checked={escalationEnabled} onCheckedChange={setEscalationEnabled} />
-                  </div>
-                </div>
 
                 {escalationEnabled ? (
                   <div className="space-y-3 text-xs">
@@ -1861,7 +1814,6 @@ export default function DigitalDocumentationPage() {
                   </div>
                 )}
               </div>
-            </div>
 
             {/* Prominent Full-Width Approval Matrix & Signatory Workflow Designer */}
             <div className="rounded-2xl border border-border bg-card p-5 space-y-5 shadow-sm">
