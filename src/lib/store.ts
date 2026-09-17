@@ -550,6 +550,7 @@ export type Employee = {
   emergencyContact?: string;
   attendanceProfile?: ResolvedAttendanceProfile;
   category?: string;
+  employmentType?: "regular" | "contract";
   // Extended registration fields
   addressLine1?: string;
   addressLine2?: string;

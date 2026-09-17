@@ -2593,6 +2593,14 @@ export function PayrollPage() {
                           <div>
                             <div className="flex items-center gap-1.5">
                               <span className="font-semibold text-foreground text-xs">{emp.name}</span>
+                              {emp.employmentType === "contract" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                                >
+                                  Contract
+                                </Badge>
+                              )}
                               {hasOverride && (
                                 <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[9px] px-1 py-0">
                                   Custom
@@ -3122,7 +3130,17 @@ export function PayrollPage() {
                                 {reg.emp.name?.slice(0, 2).toUpperCase()}
                               </div>
                               <div>
-                                <div className="font-bold text-foreground">{reg.emp.name}</div>
+                                <div className="font-bold text-foreground flex items-center gap-1.5">
+                                  <span>{reg.emp.name}</span>
+                                  {reg.emp.employmentType === "contract" && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                                    >
+                                      Contract
+                                    </Badge>
+                                  )}
+                                </div>
                                 <div className="text-[11px] text-muted-foreground">
                                   {reg.emp.empCode} · {reg.emp.department || "General"}
                                 </div>
@@ -3442,6 +3460,14 @@ export function PayrollPage() {
                   <DialogTitle className="text-xl font-bold flex items-center gap-2">
                     <Edit3 className="h-5 w-5 text-amber-500" />
                     <span>Edit Payslip — {editingRecord.emp.name} ({editingRecord.emp.empCode})</span>
+                    {editingRecord.emp.employmentType === "contract" && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                      >
+                        Contract
+                      </Badge>
+                    )}
                   </DialogTitle>
                   <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-mono text-xs">
                     {effectivePeriodLabel}

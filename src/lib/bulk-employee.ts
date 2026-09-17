@@ -607,6 +607,7 @@ export const BULK_TEMPLATE_HEADERS = [
   "Department",
   "Designation",
   "Fixed Salary",
+  "Employment Type (regular/contract)",
   "Date of Joining (YYYY-MM-DD)",
   "Assigned Role",
   "Shift",
@@ -647,6 +648,7 @@ export const SAMPLE_EMPLOYEE_ROWS = [
     "Engineering",
     "Senior Frontend Engineer",
     "65000",
+    "regular",
     "2026-08-01",
     "General Employee",
     "General",
@@ -681,6 +683,7 @@ export const SAMPLE_EMPLOYEE_ROWS = [
     "HR",
     "HR Operations Specialist",
     "48000",
+    "regular",
     "2026-08-05",
     "HR Manager",
     "General",
@@ -715,6 +718,7 @@ export const SAMPLE_EMPLOYEE_ROWS = [
     "Finance",
     "Accounts Lead",
     "58000",
+    "contract",
     "2026-08-10",
     "Finance / Payroll Manager",
     "General",
@@ -844,6 +848,8 @@ export function parseEmployeeCsvText(
     const salaryRaw = getVal(["fixedsalary", "salary", "basic", "basicsalary"]);
     const fixedSalary = parseFloat(salaryRaw) || 25000;
     const doj = getVal(["dateofjoining", "doj", "joiningdate"]) || new Date().toISOString().slice(0, 10);
+    const empTypeRaw = getVal(["employmenttype", "employment", "type", "contract", "emptype"]).toLowerCase();
+    const employmentType: Employee["employmentType"] = empTypeRaw.includes("contract") ? "contract" : "regular";
     const dob = getVal(["dateofbirth", "dob", "birthdate"]) || undefined;
     const genderRaw = getVal(["gender", "sex"]).toLowerCase();
     const gender = genderRaw === "female" ? "female" : genderRaw === "other" ? "other" : "male";
@@ -922,6 +928,7 @@ export function parseEmployeeCsvText(
       phone,
       department,
       designation,
+      employmentType,
       fixedSalary,
       basic: fixedSalary,
       doj,
