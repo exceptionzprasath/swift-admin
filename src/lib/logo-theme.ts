@@ -59,6 +59,10 @@ function getLuminance(r: number, g: number, b: number): number {
  * Analyzes an image (data URL or standard URL) via an off-screen HTML5 Canvas
  * to extract the most dominant and vibrant brand colors.
  */
+/**
+ * Analyzes an image (data URL or standard URL) via an off-screen HTML5 Canvas
+ * to extract the most dominant and vibrant brand colors, ignoring paper backgrounds and dark text.
+ */
 export async function extractLogoPalette(imageUrl?: string): Promise<LogoColorPalette> {
   if (!imageUrl || typeof window === "undefined") {
     return DEFAULT_LOGO_PALETTE;
@@ -90,7 +94,6 @@ export async function extractLogoPalette(imageUrl?: string): Promise<LogoColorPa
       }
     };
 
-    // Generous timeout for large base64 data URLs / slow loads
     const timer = setTimeout(() => {
       safeResolve(DEFAULT_LOGO_PALETTE);
     }, 4000);
@@ -100,64 +103,88 @@ export async function extractLogoPalette(imageUrl?: string): Promise<LogoColorPa
       img.crossOrigin = "anonymous";
     }
 
-    img.onload = () => {
+    const processImage = () => {
       clearTimeout(timer);
       try {
         const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (!ctx) {
           safeResolve(DEFAULT_LOGO_PALETTE);
           return;
         }
 
-        // Use 128x128 for detailed sampling of wide letterhead banners and logos
-        const sampleW = 128;
-        const sampleH = 128;
+        const sampleW = 160;
+        const sampleH = 160;
         canvas.width = sampleW;
         canvas.height = sampleH;
         ctx.drawImage(img, 0, 0, sampleW, sampleH);
 
         const imgData = ctx.getImageData(0, 0, sampleW, sampleH).data;
-        const colorBuckets = new Map<string, { r: number; g: number; b: number; count: number; score: number }>();
+        const colorBuckets = new Map<string, { r: number; g: number; b: number; count: number; score: number; sat: number; lum: number }>();
+        const fallbackBuckets = new Map<string, { r: number; g: number; b: number; count: number; score: number; sat: number; lum: number }>();
 
-        for (let i = 0; i < imgData.length; i += 4) {
-          const r = imgData[i];
-          const g = imgData[i + 1];
-          const b = imgData[i + 2];
-          const a = imgData[i + 3];
+        const isPortrait = (img.naturalHeight || img.height) > (img.naturalWidth || img.width);
 
-          // Ignore transparent or nearly transparent pixels
-          if (a < 30) continue;
+        for (let y = 0; y < sampleH; y++) {
+          for (let x = 0; x < sampleW; x++) {
+            const i = (y * sampleW + x) * 4;
+            const r = imgData[i];
+            const g = imgData[i + 1];
+            const b = imgData[i + 2];
+            const a = imgData[i + 3];
 
-          // Relative luminance
-          const lum = getLuminance(r, g, b);
-          // Ignore pure white or near-white background pixels (paper/letterhead canvas) and deep black
-          if (lum > 238 || lum < 12) continue;
+            // Ignore transparent or nearly transparent pixels
+            if (a < 35) continue;
 
-          const sat = getSaturation(r, g, b);
-          // If low saturation and light (e.g. letterhead white/gray paper margins), skip
-          if (sat < 0.12 && lum > 170) continue;
+            const lum = getLuminance(r, g, b);
+            const sat = getSaturation(r, g, b);
 
-          // Bucket colors into 16-step chunks for fine fidelity
-          const quant = 16;
-          const qr = Math.floor(r / quant) * quant;
-          const qg = Math.floor(g / quant) * quant;
-          const qb = Math.floor(b / quant) * quant;
-          const key = `${qr}_${qg}_${qb}`;
+            // Ignore pure/near-white paper backgrounds (lum > 238) and pitch black text/margins (lum < 15)
+            if (lum > 238 || lum < 15) continue;
 
-          // Heavily reward vibrant and identifiable brand colors (high saturation & rich tone)
-          const score = 1 + Math.pow(sat, 1.8) * 15 + (lum >= 40 && lum <= 200 ? 3 : 0);
+            // Quantize into 16-step chunks
+            const quant = 16;
+            const qr = Math.floor(r / quant) * quant;
+            const qg = Math.floor(g / quant) * quant;
+            const qb = Math.floor(b / quant) * quant;
+            const key = `${qr}_${qg}_${qb}`;
 
-          const existing = colorBuckets.get(key);
-          if (existing) {
-            existing.count += 1;
-            existing.score += score;
-          } else {
-            colorBuckets.set(key, { r: qr, g: qg, b: qb, count: 1, score });
+            // Letterheads have branding in the top 35% and bottom 15%
+            const isHeaderArea = y < sampleH * 0.35;
+            const isFooterArea = y > sampleH * 0.85;
+            const positionWeight = isPortrait ? (isHeaderArea ? 4.0 : isFooterArea ? 2.0 : 0.8) : (y < sampleH * 0.45 ? 2.5 : 1.0);
+
+            // Filter out low-saturation neutrals (paper, off-white shadows, gray lines)
+            if (sat < 0.14) {
+              // Store as fallback only in case image is completely monochrome
+              const fbExisting = fallbackBuckets.get(key);
+              if (fbExisting) {
+                fbExisting.count += 1;
+              } else {
+                fallbackBuckets.set(key, { r: qr, g: qg, b: qb, count: 1, score: 1, sat, lum });
+              }
+              continue;
+            }
+
+            // High weight for saturated brand colors
+            const score = (1 + Math.pow(sat, 1.8) * 80 + (lum >= 25 && lum <= 210 ? 10 : 0)) * positionWeight;
+
+            const existing = colorBuckets.get(key);
+            if (existing) {
+              existing.count += 1;
+              existing.score += score;
+            } else {
+              colorBuckets.set(key, { r: qr, g: qg, b: qb, count: 1, score, sat, lum });
+            }
           }
         }
 
-        const sorted = Array.from(colorBuckets.values()).sort((a, b) => b.score - a.score);
+        let sorted = Array.from(colorBuckets.values()).sort((a, b) => b.score - a.score);
+
+        // Fallback to neutrals only if no saturated brand colors were found
+        if (sorted.length === 0) {
+          sorted = Array.from(fallbackBuckets.values()).sort((a, b) => b.count - a.count);
+        }
 
         if (sorted.length === 0) {
           safeResolve(DEFAULT_LOGO_PALETTE);
@@ -168,17 +195,16 @@ export async function extractLogoPalette(imageUrl?: string): Promise<LogoColorPa
         const primaryRgb: [number, number, number] = [top.r, top.g, top.b];
         const primaryHex = rgbToHex(top.r, top.g, top.b);
 
-        // Find an accent color distinct from primary (color distance > 65 with good saturation)
+        // Find a distinct vibrant accent
         let accentCandidate = sorted.find((c) => {
           const dist = Math.abs(c.r - top.r) + Math.abs(c.g - top.g) + Math.abs(c.b - top.b);
-          const sat = getSaturation(c.r, c.g, c.b);
-          return dist > 65 && sat > 0.25;
+          return dist > 60 && c.sat > 0.20;
         });
 
         if (!accentCandidate) {
           accentCandidate = sorted.find((c) => {
             const dist = Math.abs(c.r - top.r) + Math.abs(c.g - top.g) + Math.abs(c.b - top.b);
-            return dist > 60;
+            return dist > 45;
           });
         }
 
@@ -189,18 +215,20 @@ export async function extractLogoPalette(imageUrl?: string): Promise<LogoColorPa
           accentRgb = [accentCandidate.r, accentCandidate.g, accentCandidate.b];
           accentHex = rgbToHex(accentCandidate.r, accentCandidate.g, accentCandidate.b);
         } else {
-          // Compute harmonious accent by shifting brightness
-          const ar = Math.min(255, Math.round(top.r * 1.3 + 30));
-          const ag = Math.min(255, Math.round(top.g * 1.3 + 30));
-          const ab = Math.min(255, Math.round(top.b * 1.3 + 30));
+          // Harmonious complementary accent
+          const ar = Math.min(255, Math.round(top.r * 1.35 + 25));
+          const ag = Math.min(255, Math.round(top.g * 1.35 + 25));
+          const ab = Math.min(255, Math.round(top.b * 1.35 + 25));
           accentRgb = [ar, ag, ab];
           accentHex = rgbToHex(ar, ag, ab);
         }
 
-        // Dark tone for top header banner - retain 65% of rich brand hue
-        const pdr = Math.max(12, Math.round(top.r * 0.65));
-        const pdg = Math.max(12, Math.round(top.g * 0.65));
-        const pdb = Math.max(18, Math.round(top.b * 0.65));
+        // Dark tone for top header banner - retain rich brand hue
+        const maxC = Math.max(top.r, top.g, top.b);
+        const darkScale = maxC > 0 ? Math.max(0.35, Math.min(0.65, 95 / maxC)) : 0.5;
+        const pdr = Math.max(14, Math.round(top.r * darkScale));
+        const pdg = Math.max(14, Math.round(top.g * darkScale));
+        const pdb = Math.max(18, Math.round(top.b * darkScale));
         const primaryDarkRgb: [number, number, number] = [pdr, pdg, pdb];
         const primaryDarkHex = rgbToHex(pdr, pdg, pdb);
 
@@ -208,7 +236,7 @@ export async function extractLogoPalette(imageUrl?: string): Promise<LogoColorPa
         const primaryLightHex = rgbToHex(
           Math.min(255, Math.round(top.r * 0.12 + 240)),
           Math.min(255, Math.round(top.g * 0.12 + 240)),
-          Math.min(255, Math.round(top.b * 0.12 + 240))
+          Math.min(255, Math.round(top.g * 0.12 + 240))
         );
 
         const accentLightHex = rgbToHex(
@@ -239,11 +267,21 @@ export async function extractLogoPalette(imageUrl?: string): Promise<LogoColorPa
       }
     };
 
+    img.onload = processImage;
     img.onerror = () => {
       safeResolve(DEFAULT_LOGO_PALETTE);
     };
 
     img.src = effectiveSrc;
+    if (img.complete && img.naturalWidth > 0) {
+      processImage();
+    } else if (typeof img.decode === "function") {
+      img.decode().then(processImage).catch(() => {
+        if (img.complete && img.naturalWidth > 0) {
+          processImage();
+        }
+      });
+    }
   });
 }
 
@@ -253,7 +291,8 @@ export async function extractLogoPalette(imageUrl?: string): Promise<LogoColorPa
 export function useLogoPalette(logoDataUrl?: string): LogoColorPalette {
   const [palette, setPalette] = useState<LogoColorPalette>(() => {
     if (logoDataUrl && paletteCache.has(logoDataUrl)) {
-      return paletteCache.get(logoDataUrl)!;
+      const cached = paletteCache.get(logoDataUrl)!;
+      if (cached.isExtracted) return cached;
     }
     return DEFAULT_LOGO_PALETTE;
   });
@@ -263,6 +302,14 @@ export function useLogoPalette(logoDataUrl?: string): LogoColorPalette {
     if (!logoDataUrl) {
       setPalette(DEFAULT_LOGO_PALETTE);
       return;
+    }
+
+    if (paletteCache.has(logoDataUrl)) {
+      const cached = paletteCache.get(logoDataUrl)!;
+      if (cached.isExtracted) {
+        setPalette(cached);
+        return;
+      }
     }
 
     extractLogoPalette(logoDataUrl).then((extracted) => {
@@ -278,3 +325,4 @@ export function useLogoPalette(logoDataUrl?: string): LogoColorPalette {
 
   return palette;
 }
+

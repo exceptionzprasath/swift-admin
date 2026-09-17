@@ -410,73 +410,76 @@ const RIGHT = A4_W - MR; // 196
 const CONTENT_W = A4_W - ML - MR; // 182
 const BOTTOM_SAFE = 277;
 const imageCache = new Map<string, string>();
+const imageDimensionCache = new Map<string, { width: number; height: number }>();
 
-/** Converts URL / S3 / blob / relative path / DataURL into a base64 DataURL for jsPDF */
+/** Converts URL / S3 / blob / relative path / DataURL into a guaranteed clean JPEG/PNG base64 DataURL for jsPDF */
 export async function resolveImageToDataUrl(src?: string): Promise<string | undefined> {
   if (!src || typeof src !== "string" || !src.trim()) return undefined;
-  if (src.startsWith("data:")) return src;
   if (imageCache.has(src)) return imageCache.get(src);
 
   return new Promise((resolve) => {
     let done = false;
-    const safeResolve = (val?: string) => {
+    const safeResolve = (val?: string, dim?: { width: number; height: number }) => {
       if (!done) {
         done = true;
-        if (val) imageCache.set(src, val);
+        if (val) {
+          imageCache.set(src, val);
+          if (dim) {
+            imageDimensionCache.set(val, dim);
+            imageDimensionCache.set(src, dim);
+          }
+        }
         resolve(val);
       }
     };
 
-    // Generous timeout: 4000ms to allow network image downloads to complete
     const timer = setTimeout(() => {
-      safeResolve(undefined);
+      safeResolve(src.startsWith("data:") ? src : undefined);
     }, 4000);
 
-    // Try direct fetch first
-    fetch(src)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP status ${res.status}`);
-        return res.blob();
-      })
-      .then((blob) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          clearTimeout(timer);
-          safeResolve(reader.result as string);
-        };
-        reader.onerror = () => {
-          tryLoadViaImage();
-        };
-        reader.readAsDataURL(blob);
-      })
-      .catch(() => {
-        tryLoadViaImage();
-      });
-
-    function tryLoadViaImage() {
-      const img = new Image();
+    const img = new Image();
+    if (!src.startsWith("data:")) {
       img.crossOrigin = "anonymous";
-      img.onload = () => {
-        clearTimeout(timer);
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = img.naturalWidth || img.width;
-          canvas.height = img.naturalHeight || img.height;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            safeResolve(canvas.toDataURL("image/png"));
-            return;
-          }
-        } catch {
-          // ignore canvas error
+    }
+
+    const rasterize = () => {
+      clearTimeout(timer);
+      try {
+        const w = img.naturalWidth || img.width || 400;
+        const h = img.naturalHeight || img.height || 100;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          const cleanJpeg = canvas.toDataURL("image/jpeg", 0.95);
+          safeResolve(cleanJpeg, { width: w, height: h });
+          return;
         }
-        safeResolve(undefined);
-      };
-      img.onerror = () => {
-        safeResolve(undefined);
-      };
-      img.src = src || "";
+      } catch (err) {
+        console.warn("[PDF Image] Canvas rasterize warning:", err);
+      }
+      safeResolve(src);
+    };
+
+    img.onload = rasterize;
+    img.onerror = () => {
+      clearTimeout(timer);
+      safeResolve(src.startsWith("data:") ? src : undefined);
+    };
+
+    img.src = src;
+    if (img.complete && img.naturalWidth > 0) {
+      rasterize();
+    } else if (typeof img.decode === "function") {
+      img.decode().then(rasterize).catch(() => {
+        if (img.complete && img.naturalWidth > 0) {
+          rasterize();
+        }
+      });
     }
   });
 }
@@ -531,7 +534,7 @@ export async function prepareDocAssets(
   return { company: updatedCompany, assets: updatedAssets };
 }
 
-/** Safely renders base64 image (PNG, JPEG, WebP) or Image element in jsPDF without crashing */
+/** Safely renders base64 image or Image/Canvas element in jsPDF without crashing */
 export function drawImageSafe(
   doc: jsPDF,
   imgSource: string | HTMLImageElement | HTMLCanvasElement | undefined | null,
@@ -542,34 +545,33 @@ export function drawImageSafe(
 ): boolean {
   if (!imgSource) return false;
   try {
-    if (typeof imgSource === "string") {
-      let format = "PNG";
-      if (/^data:image\/(jpe?g|jfif)/i.test(imgSource) || /\.(jpe?g|jfif)(\?.*)?$/i.test(imgSource)) format = "JPEG";
-      else if (/^data:image\/webp/i.test(imgSource) || /\.webp(\?.*)?$/i.test(imgSource)) format = "WEBP";
-      else if (/^data:image\/png/i.test(imgSource) || /\.png(\?.*)?$/i.test(imgSource)) format = "PNG";
+    if (typeof imgSource !== "string") {
+      doc.addImage(imgSource, "JPEG", x, y, w, h);
+      return true;
+    }
+    let format = "JPEG";
+    if (/^data:image\/png/i.test(imgSource)) format = "PNG";
 
+    try {
       doc.addImage(imgSource, format, x, y, w, h);
       return true;
-    } else {
-      doc.addImage(imgSource, "PNG", x, y, w, h);
-      return true;
-    }
-  } catch {
-    try {
-      if (typeof imgSource === "string") {
-        doc.addImage(imgSource, x, y, w, h);
-        return true;
-      }
     } catch {
-      // ignore
+      try {
+        doc.addImage(imgSource, "JPEG", x, y, w, h);
+        return true;
+      } catch {
+        // ignore
+      }
     }
-    return false;
+  } catch (err) {
+    console.warn("[PDF] drawImageSafe failed:", err);
   }
+  return false;
 }
 
 /**
- * Proportional aspect-ratio preserving image renderer (object-contain).
- * Ensures logos, letterheads, and footers are never stretched or distorted.
+ * Aspect-ratio preserving image renderer with support for contain and full-width banner modes.
+ * Ensures logos, letterheads, and footers are never stretched, distorted, or dropped.
  */
 export function drawImageContained(
   doc: jsPDF,
@@ -577,54 +579,73 @@ export function drawImageContained(
   boxX: number,
   boxY: number,
   boxW: number,
-  boxH: number
+  boxH: number,
+  fitMode: "contain" | "width" = "contain"
 ): { x: number; y: number; w: number; h: number } | null {
   if (!imgSource || typeof imgSource !== "string" || !imgSource.trim()) return null;
   try {
+    let cleanSource = imgSource;
     let imgW = boxW;
     let imgH = boxH;
-    try {
-      const props = (doc as any).getImageProperties(imgSource);
-      if (props && props.width && props.height && props.width > 0 && props.height > 0) {
-        imgW = props.width;
-        imgH = props.height;
+
+    const cachedDim = imageDimensionCache.get(cleanSource) || imageDimensionCache.get(imgSource);
+    if (cachedDim && cachedDim.width > 0 && cachedDim.height > 0) {
+      imgW = cachedDim.width;
+      imgH = cachedDim.height;
+    } else {
+      try {
+        const props = (doc as any).getImageProperties(cleanSource);
+        if (props && props.width && props.height && props.width > 0 && props.height > 0) {
+          imgW = props.width;
+          imgH = props.height;
+        }
+      } catch {
+        // fallback
       }
-    } catch {
-      // fallback
     }
 
     const ratio = imgW / imgH;
     let renderW = boxW;
-    let renderH = boxW / ratio;
+    let renderH = boxH;
 
-    if (renderH > boxH) {
+    if (fitMode === "width" && ratio >= 2.5) {
+      // Wide banner: span full width (182mm) with proportional height
+      renderW = boxW;
+      renderH = Math.min(boxH, boxW / ratio);
+    } else {
+      // Logo / emblem or standard letterhead: preserve aspect ratio and center horizontally
       renderH = boxH;
       renderW = boxH * ratio;
+      if (renderW > boxW) {
+        renderW = boxW;
+        renderH = boxW / ratio;
+      }
     }
 
     const renderX = boxX + (boxW - renderW) / 2;
     const renderY = boxY + (boxH - renderH) / 2;
 
-    let format: string | undefined = undefined;
-    if (/^data:image\/(jpe?g|jfif)/i.test(imgSource) || /\.(jpe?g|jfif)(\?.*)?$/i.test(imgSource)) format = "JPEG";
-    else if (/^data:image\/webp/i.test(imgSource) || /\.webp(\?.*)?$/i.test(imgSource)) format = "WEBP";
-    else if (/^data:image\/png/i.test(imgSource) || /\.png(\?.*)?$/i.test(imgSource)) format = "PNG";
+    let format = "JPEG";
+    if (/^data:image\/png/i.test(cleanSource)) format = "PNG";
 
     try {
-      if (format) {
-        doc.addImage(imgSource, format, renderX, renderY, renderW, renderH);
-      } else {
-        doc.addImage(imgSource, renderX, renderY, renderW, renderH);
-      }
+      doc.addImage(cleanSource, format, renderX, renderY, renderW, renderH);
+      return { x: renderX, y: renderY, w: renderW, h: renderH };
     } catch {
-      doc.addImage(imgSource, "PNG", renderX, renderY, renderW, renderH);
+      try {
+        doc.addImage(cleanSource, "JPEG", renderX, renderY, renderW, renderH);
+        return { x: renderX, y: renderY, w: renderW, h: renderH };
+      } catch (innerErr) {
+        console.warn("[PDF] addImage direct failed:", innerErr);
+        return null;
+      }
     }
-    return { x: renderX, y: renderY, w: renderW, h: renderH };
   } catch (err) {
     console.warn("[PDF] drawImageContained failed:", err);
     return null;
   }
 }
+
 
 function pdfHeader(doc: jsPDF, company: Company, title: string, logoDataUrl?: string) {
   // Top deep navy brand bar matching payslip (#0F172A / [15, 23, 42])
