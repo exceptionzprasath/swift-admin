@@ -2362,10 +2362,10 @@ export const useStore = create<State>()(
         if (res && res.ok) {
           try {
             const data = await res.json();
-            let nextCompany = get().company;
+            let nextCompany = { ...defaultCompany };
             if (data.config) {
               const { id: _id, tenantId: _tid, ...backendConfig } = data.config;
-              nextCompany = { ...get().company, ...backendConfig };
+              nextCompany = { ...defaultCompany, ...backendConfig };
               if (nextCompany.themePalette) {
                 applyThemePalette(nextCompany.themePalette, get().theme === "dark");
               }
@@ -2386,12 +2386,12 @@ export const useStore = create<State>()(
             loadedDevices = data.devices || [];
 
             // Authoritative employee list from database (purging any legacy mock employees)
-            const rawEmployees: Employee[] = Array.isArray(data.employees) ? data.employees : get().employees;
+            const rawEmployees: Employee[] = Array.isArray(data.employees) ? data.employees : [];
             const cleanEmployees = rawEmployees.filter((e) => !isMockEmployee(e));
 
             set({
               company: nextCompany,
-              docAssets: data.docAssets || get().docAssets,
+              docAssets: data.docAssets || DEFAULT_DOC_ASSETS,
               employees: cleanEmployees,
               attendance: Array.isArray(loadedAttendance) ? loadedAttendance : get().attendance,
               leaves: data.leaves || [],
