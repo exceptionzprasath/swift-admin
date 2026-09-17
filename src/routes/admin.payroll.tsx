@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { computePayroll, inr, type PayrollComputation } from "@/lib/payroll";
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
 import { PayslipTemplateView } from "@/components/payroll/PayslipTemplateView";
+import { EmployeeOtCalendarModal } from "@/components/payroll/EmployeeOtCalendarModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -453,6 +454,10 @@ export function PayrollPage() {
   const [otSearch, setOtSearch] = useState("");
   const [otFilterDept, setOtFilterDept] = useState("all");
   const [otFilterStatus, setOtFilterStatus] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [otCalendarTarget, setOtCalendarTarget] = useState<{
+    emp: Employee;
+    selectedMonth: string;
+  } | null>(null);
   const [otBreakdownTarget, setOtBreakdownTarget] = useState<{
     emp: Employee;
     rawOtHours: number;
@@ -3143,16 +3148,14 @@ export function PayrollPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => setOtBreakdownTarget({
+                                  onClick={() => setOtCalendarTarget({
                                     emp: reg.emp,
-                                    rawOtHours: reg.rawOtHours,
-                                    otApprovedHours: approvedHrs,
-                                    otStatus: reg.otStatus,
-                                    dailyOtRecords: reg.dailyOtRecords,
+                                    selectedMonth,
                                   })}
-                                  className="h-6 text-[10px] px-2 rounded-lg gap-1 border-border/80"
+                                  className="h-6 text-[10px] px-2 rounded-lg gap-1 border-border/80 hover:border-primary/50 text-foreground"
+                                  title="View Overtime Calendar"
                                 >
-                                  <Eye className="h-2.5 w-2.5" />
+                                  <Calendar className="h-2.5 w-2.5 text-primary" />
                                   <span>{reg.dailyOtRecords.length} {reg.dailyOtRecords.length === 1 ? "day" : "days"}</span>
                                 </Button>
                               )}
@@ -3222,6 +3225,21 @@ export function PayrollPage() {
                           {/* Actions */}
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* Extra Option: Calendar View */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setOtCalendarTarget({
+                                  emp: reg.emp,
+                                  selectedMonth,
+                                })}
+                                className="h-7 text-xs px-2.5 rounded-lg border-border hover:bg-muted font-medium gap-1 text-foreground shadow-xs"
+                                title="Open Overtime Calendar View"
+                              >
+                                <Calendar className="h-3.5 w-3.5 text-primary" />
+                                <span>Calendar View</span>
+                              </Button>
+
                               {reg.otStatus !== "approved" ? (
                                 <Button
                                   size="sm"
@@ -4448,6 +4466,20 @@ export function PayrollPage() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* OT Calendar View Modal for Individual Employee */}
+      <EmployeeOtCalendarModal
+        open={!!otCalendarTarget}
+        onClose={() => setOtCalendarTarget(null)}
+        employee={otCalendarTarget?.emp || null}
+        initialMonth={otCalendarTarget?.selectedMonth || selectedMonth}
+        attendance={attendance}
+        company={company}
+        monthlyOverrides={monthlyOverrides}
+        onApproveOt={handleApproveOt}
+        onRejectOt={handleRejectOt}
+        onResetOt={handleResetOt}
+      />
 
       {/* ========================================================================= */}
       {/* MODAL 4: PAYROLL LOCK / UNLOCK PASSWORD VERIFICATION DIALOG               */}

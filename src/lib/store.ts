@@ -537,7 +537,7 @@ export type Employee = {
   bankIfsc?: string;
   shiftId?: string;
   faceRegistered?: boolean;
-  status: "active" | "inactive";
+  status: "active" | "suspended" | "relieved" | "releived" | "terminated" | "inactive";
   managerId?: string;
   about?: string;
   branchId?: string;

@@ -26,8 +26,16 @@ import {
   FileSignature, CheckCircle2, Sparkles, Wand2, Camera, Home, Users as UsersIcon,
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
-  KeyRound, RefreshCw, Copy, Check, Fingerprint, Database,
+  KeyRound, RefreshCw, Copy, Check, Fingerprint, Database, ChevronDown, ShieldAlert,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { downloadEmployeeTemplate, parseEmployeeCsvText, generateEmployeePassword, downloadBulkEmployeesExcel } from "@/lib/bulk-employee";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
 import { toast } from "sonner";
@@ -110,10 +118,45 @@ const DOC_INSERT_AFTER: Record<string, FormStepKey> = {
 
 type FlowStep = { key: FormStepKey; title: string; icon: typeof User };
 
+export function renderEmployeeStatusBadge(status?: string) {
+  const s = (status || "active").toLowerCase().trim();
+  if (s === "suspended") {
+    return (
+      <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 whitespace-nowrap gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+        <span>Suspended</span>
+      </Badge>
+    );
+  }
+  if (s === "relieved" || s === "releived") {
+    return (
+      <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30 whitespace-nowrap gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full bg-purple-500 shrink-0" />
+        <span>Releived</span>
+      </Badge>
+    );
+  }
+  if (s === "terminated") {
+    return (
+      <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30 whitespace-nowrap gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />
+        <span>Terminated</span>
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 whitespace-nowrap gap-1.5">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+      <span>Active</span>
+    </Badge>
+  );
+}
+
 function EmployeesPage() {
   const {
     employees: rawEmployees,
     addEmployee,
+    updateEmployee,
     deleteEmployee,
     company,
     docAssets,
@@ -144,6 +187,38 @@ function EmployeesPage() {
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [docsEmp, setDocsEmp] = useState<Employee | null>(null);
   const [actionKind, setActionKind] = useState<"exit" | "transfer" | "manual">("exit");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "relieved" | "terminated">("all");
+
+  const statusCounts = useMemo(() => {
+    const counts = { all: employees.length, active: 0, suspended: 0, relieved: 0, terminated: 0 };
+    for (const e of employees) {
+      const s = (e.status || "active").toLowerCase().trim();
+      if (s === "suspended") counts.suspended++;
+      else if (s === "relieved" || s === "releived") counts.relieved++;
+      else if (s === "terminated") counts.terminated++;
+      else counts.active++;
+    }
+    return counts;
+  }, [employees]);
+
+  const displayedEmployees = useMemo(() => {
+    if (statusFilter === "all") return employees;
+    return employees.filter((e) => {
+      const s = (e.status || "active").toLowerCase().trim();
+      if (statusFilter === "relieved") return s === "relieved" || s === "releived";
+      return s === statusFilter;
+    });
+  }, [employees, statusFilter]);
+
+  const handleStatusChange = (emp: Employee, newStatus: "active" | "suspended" | "relieved" | "terminated") => {
+    updateEmployee(emp.id, { status: newStatus });
+    const label = newStatus === "relieved" ? "Releived" : newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+    if (newStatus === "active") {
+      toast.success(`${emp.name}'s status set to Active.`);
+    } else {
+      toast.warning(`${emp.name}'s status changed to ${label}. Mobile app login restricted.`);
+    }
+  };
 
   const openWizard = (draftId?: string) => {
     setResumeDraftId(draftId ?? null);
@@ -225,11 +300,42 @@ function EmployeesPage() {
       )}
 
 
+      {/* Status Filter Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 p-1 bg-muted/50 rounded-xl border border-border">
+          {[
+            { id: "all", label: "All Employees", count: statusCounts.all, color: "text-foreground" },
+            { id: "active", label: "Active", count: statusCounts.active, color: "text-emerald-600 dark:text-emerald-400" },
+            { id: "suspended", label: "Suspended", count: statusCounts.suspended, color: "text-amber-600 dark:text-amber-400" },
+            { id: "relieved", label: "Releived", count: statusCounts.relieved, color: "text-purple-600 dark:text-purple-400" },
+            { id: "terminated", label: "Terminated", count: statusCounts.terminated, color: "text-rose-600 dark:text-rose-400" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setStatusFilter(tab.id as any)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                statusFilter === tab.id
+                  ? "bg-background shadow-xs text-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                statusFilter === tab.id ? "bg-muted font-bold " + tab.color : "bg-muted/70 text-muted-foreground"
+              }`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr className="text-left">
               <th className="p-3">Employee</th>
+              <th className="p-3">Status</th>
               <th className="p-3">Department</th>
               <th className="p-3">Branch</th>
               <th className="p-3 text-right">Basic</th>
@@ -238,14 +344,16 @@ function EmployeesPage() {
             </tr>
           </thead>
           <tbody>
-            {employees.length === 0 ? (
+            {displayedEmployees.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-10 text-center text-muted-foreground">
-                  No employees yet. Click <b>Add Employee</b> to start the guided registration.
+                <td colSpan={7} className="p-10 text-center text-muted-foreground">
+                  {statusFilter === "all"
+                    ? "No employees yet. Click Add Employee to start the guided registration."
+                    : `No ${statusFilter} employees found.`}
                 </td>
               </tr>
             ) : (
-              employees.map((e) => {
+              displayedEmployees.map((e) => {
                 const p = computePayroll({ company, employee: e, daysWorked: company.workingDaysPerMonth, otHours: 0, incentive: 0, shiftDays: 0, loan: 0, advance: 0, bonus: 0 });
                 const assignedBranchIds = getEmployeeBranchIds(e);
                 const assignedBranches = (company.branches ?? []).filter((b) => assignedBranchIds.includes(b.id));
@@ -273,6 +381,9 @@ function EmployeesPage() {
                         </div>
                       </div>
                     </td>
+                    <td className="p-3">
+                      {renderEmployeeStatusBadge(e.status)}
+                    </td>
                     <td className="p-3">{e.department}</td>
                     <td className="p-3">
                       {assignedBranches.length > 0 ? (
@@ -296,7 +407,7 @@ function EmployeesPage() {
                     <td className="p-3 text-right">{inr(e.basic)}</td>
                     <td className="p-3 text-right text-primary font-medium">{inr(p.monthlyCTC)}</td>
                     <td className="p-3 text-right">
-                      <div className="inline-flex gap-1">
+                      <div className="inline-flex items-center justify-end gap-1">
                         <Button size="sm" variant="ghost" title="Documents & App Signatures" onClick={() => setDocsEmp(e)} className="text-sky-600 hover:bg-sky-500/10">
                           <FileText className="h-4 w-4" />
                         </Button>
@@ -306,15 +417,58 @@ function EmployeesPage() {
                         <Button size="sm" variant="ghost" title="Appointment letter" onClick={() => void generateAppointmentPDF(company, e, p, docAssets)}>
                           <FileDown className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" title="Transfer" onClick={() => { setActionEmp(e); setActionKind("transfer"); }}>
-                          <ArrowRightLeft className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" title="Relieve / Exit" onClick={() => { setActionEmp(e); setActionKind("exit"); }}>
-                          <DoorOpen className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" title="Manual letter" onClick={() => { setActionEmp(e); setActionKind("manual"); }}>
-                          <FileSignature className="h-4 w-4" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2.5 text-xs font-medium gap-1 border-border hover:bg-muted"
+                              title="Account Status"
+                            >
+                              <ShieldAlert className="h-3.5 w-3.5 text-primary" />
+                              <span>Status</span>
+                              <ChevronDown className="h-3 w-3 opacity-60" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground">
+                              Employee Status
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleStatusChange(e, "active")}
+                              className="gap-2 cursor-pointer"
+                            >
+                              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                              <span className="font-medium">Active</span>
+                              {(e.status === "active" || !e.status) && <Check className="h-3.5 w-3.5 ml-auto text-emerald-600" />}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleStatusChange(e, "suspended")}
+                              className="gap-2 cursor-pointer"
+                            >
+                              <span className="h-2 w-2 rounded-full bg-amber-500" />
+                              <span className="font-medium">Suspended</span>
+                              {e.status === "suspended" && <Check className="h-3.5 w-3.5 ml-auto text-amber-600" />}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleStatusChange(e, "relieved")}
+                              className="gap-2 cursor-pointer"
+                            >
+                              <span className="h-2 w-2 rounded-full bg-purple-500" />
+                              <span className="font-medium">Releived</span>
+                              {(e.status === "relieved" || e.status === "releived") && <Check className="h-3.5 w-3.5 ml-auto text-purple-600" />}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleStatusChange(e, "terminated")}
+                              className="gap-2 cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-500/10"
+                            >
+                              <span className="h-2 w-2 rounded-full bg-rose-500" />
+                              <span className="font-medium">Terminated</span>
+                              {e.status === "terminated" && <Check className="h-3.5 w-3.5 ml-auto text-rose-600" />}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button size="sm" variant="ghost" title="Delete" onClick={() => { deleteEmployee(e.id); toast.success("Removed"); }}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -2250,9 +2404,7 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
             <DialogTitle className="flex items-center gap-2 font-display text-lg font-bold">
               <Pencil className="h-5 w-5 text-primary" /> Edit Employee: {employee.name} ({employee.empCode})
             </DialogTitle>
-            <Badge variant="outline" className={`text-xs ${form.status === "active" ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-rose-500/10 text-rose-700 border-rose-500/30"}`}>
-              {form.status === "active" ? "Active Employee" : "Inactive / On Notice"}
-            </Badge>
+            {renderEmployeeStatusBadge(form.status)}
           </div>
           <DialogDescription className="text-xs">
             Modify any employee profile information, statutory numbers, compensation, geofencing, or background verification.
@@ -2356,11 +2508,13 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     </div>
                     <div>
                       <Label className="text-xs">Employee Status</Label>
-                      <Select value={form.status || "active"} onValueChange={(v) => setForm({ ...form, status: v as "active" | "inactive" })}>
+                      <Select value={form.status || "active"} onValueChange={(v) => setForm({ ...form, status: v as any })}>
                         <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
+                          <SelectItem value="suspended">Suspended</SelectItem>
+                          <SelectItem value="relieved">Releived</SelectItem>
+                          <SelectItem value="terminated">Terminated</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
