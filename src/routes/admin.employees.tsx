@@ -3483,11 +3483,13 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
     setFile(f);
     const reader = new FileReader();
     reader.onload = (event) => {
-      const text = (event.target?.result as string) || "";
-      const result = parseEmployeeCsvText(text, employees, roles);
-      setParsed(result);
+      const buffer = event.target?.result as ArrayBuffer;
+      if (buffer) {
+        const result = parseEmployeeCsvText(buffer, employees, roles);
+        setParsed(result);
+      }
     };
-    reader.readAsText(f);
+    reader.readAsArrayBuffer(f);
   };
 
   const handleImport = async () => {

@@ -600,188 +600,98 @@ export function downloadBulkEmployeesExcel(
 }
 
 export const BULK_TEMPLATE_HEADERS = [
+  // 1. Identity & Profile
   "Employee Code",
   "Full Name",
+  "Employment Type (regular/contract)",
   "Work Email",
-  "Phone",
+  "Personal Email",
+  "Phone Number",
+  "Gender (male/female/other)",
+  "Date of Birth (YYYY-MM-DD)",
+  "Blood Group",
+  "Marital Status (single/married/divorced/widowed)",
+  "Nationality",
+  "Father Name",
+  "Mother Name",
+  "Spouse Name",
+
+  // 2. Employment & Compensation
   "Department",
   "Designation",
-  "Fixed Salary",
-  "Employment Type (regular/contract)",
-  "Date of Joining (YYYY-MM-DD)",
   "Assigned Role",
-  "Shift",
-  "Branch Code",
-  "Date of Birth (YYYY-MM-DD)",
-  "Gender (male/female/other)",
-  "Blood Group",
-  "PAN Number",
-  "Aadhaar Number",
-  "Bank Account Number",
-  "Bank IFSC Code",
-  "PF Eligible (TRUE/FALSE)",
-  "ESI Eligible (TRUE/FALSE)",
-  "PT Eligible (TRUE/FALSE)",
-  "TDS Eligible (TRUE/FALSE)",
+  "Reporting Manager",
+  "Date of Joining (YYYY-MM-DD)",
+  "Fixed Salary (Monthly ₹)",
+  "Basic Salary (₹)",
   "Benefits Eligible Date (YYYY-MM-DD)",
   "Probation End Date (YYYY-MM-DD)",
-  "Leave Apply Eligible (TRUE/FALSE)",
-  "Geofencing Required (TRUE/FALSE)",
-  "Grace Time (always/10/15/20/25/30 mins)",
-  "Allow Half Day Login (TRUE/FALSE)",
-  "Half Day Login Time (HH:MM)",
-  "Marital Status (single/married/divorced/widowed)",
+
+  // 3. Statutory & Tax Deductions
+  "PF Eligible (TRUE/FALSE)",
+  "PF UAN",
+  "PF Number",
+  "ESI Eligible (TRUE/FALSE)",
+  "ESIC Number",
+  "PT Eligible (TRUE/FALSE)",
+  "PT Number",
+  "TDS Eligible (TRUE/FALSE)",
+
+  // 4. KYC & Banking
+  "PAN Number",
+  "Aadhaar Number",
+  "Passport Number",
+  "Driving License",
+  "Bank Account Number",
+  "Bank IFSC Code",
+  "Bank Name",
+  "Bank Branch",
+  "Bank Account Type (savings/current)",
+
+  // 5. Address & Emergency Contact
   "Address Line 1",
+  "Address Line 2",
   "City",
   "State",
+  "Country",
   "Pincode",
-  "Emergency Contact Name",
+  "Emergency Contact Person",
+  "Emergency Relation",
   "Emergency Contact Phone",
+
+  // 6. Branch, Shift & Policy Controls
+  "Branch Code",
+  "Shift",
+  "Morning Grace Time (always/10/15/20/25/30 mins)",
+  "Allow Afternoon Login (TRUE/FALSE)",
+  "Afternoon Login Time (HH:MM)",
+  "Afternoon Grace Time (always/10/15/20/25/30 mins)",
+  "Geofencing Required (TRUE/FALSE)",
+  "Leave Apply Mobile Eligible (TRUE/FALSE)",
+  "Biometric Enabled (TRUE/FALSE)",
 ];
 
-export const SAMPLE_EMPLOYEE_ROWS = [
-  [
-    "SW0101",
-    "Aarav Patel",
-    "aarav.patel@company.com",
-    "9876543210",
-    "Engineering",
-    "Senior Frontend Engineer",
-    "65000",
-    "regular",
-    "2026-08-01",
-    "General Employee",
-    "General",
-    "HQ",
-    "1995-04-12",
-    "male",
-    "O+",
-    "ABCDE1234F",
-    "123456789012",
-    "987654321098",
-    "HDFC0001234",
-    "TRUE",
-    "FALSE",
-    "TRUE",
-    "FALSE",
-    "2026-08-01",
-    "2026-11-01",
-    "TRUE",
-    "married",
-    "Flat 402, Skyline Heights",
-    "Bengaluru",
-    "Karnataka",
-    "560001",
-    "Meera Patel",
-    "9876543211",
-  ],
-  [
-    "SW0102",
-    "Pooja Sundaram",
-    "pooja.sundaram@company.com",
-    "9876543220",
-    "HR",
-    "HR Operations Specialist",
-    "48000",
-    "regular",
-    "2026-08-05",
-    "HR Manager",
-    "General",
-    "HQ",
-    "1997-09-20",
-    "female",
-    "B+",
-    "FGHIJ5678K",
-    "234567890123",
-    "876543210987",
-    "ICIC0005678",
-    "TRUE",
-    "TRUE",
-    "TRUE",
-    "FALSE",
-    "2026-08-05",
-    "2026-11-05",
-    "TRUE",
-    "single",
-    "12/4 Anna Salai",
-    "Chennai",
-    "Tamil Nadu",
-    "600002",
-    "Sundaram K",
-    "9876543222",
-  ],
-  [
-    "SW0103",
-    "Vikram Malhotra",
-    "vikram.malhotra@company.com",
-    "9876543230",
-    "Finance",
-    "Accounts Lead",
-    "58000",
-    "contract",
-    "2026-08-10",
-    "Finance / Payroll Manager",
-    "General",
-    "HQ",
-    "1994-01-18",
-    "male",
-    "A+",
-    "KLMNO9012P",
-    "345678901234",
-    "765432109876",
-    "SBIN0004321",
-    "TRUE",
-    "FALSE",
-    "TRUE",
-    "TRUE",
-    "2026-08-10",
-    "2026-11-10",
-    "TRUE",
-    "married",
-    "7th Cross, MG Road",
-    "Mumbai",
-    "Maharashtra",
-    "400001",
-    "Ritu Malhotra",
-    "9876543233",
-  ],
-];
+export const SAMPLE_EMPLOYEE_ROWS: any[][] = [];
 
 /**
- * Generates and triggers download of the prefilled CSV/Excel template with standard BOM
+ * Generates and triggers download of the clean Excel (.xlsx) template without mock data
  */
 export function downloadEmployeeTemplate(companyName = "SWIFT") {
-  const sanitize = (val: string) => {
-    if (val.includes(",") || val.includes('"') || val.includes("\n")) {
-      return `"${val.replace(/"/g, '""')}"`;
-    }
-    return val;
-  };
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([BULK_TEMPLATE_HEADERS]);
+  ws["!cols"] = autoFitColumns([BULK_TEMPLATE_HEADERS]);
+  XLSX.utils.book_append_sheet(wb, ws, "Employee Template");
 
-  const csvRows: string[] = [];
-  csvRows.push(BULK_TEMPLATE_HEADERS.map(sanitize).join(","));
-  SAMPLE_EMPLOYEE_ROWS.forEach((row) => {
-    csvRows.push(row.map(sanitize).join(","));
-  });
-
-  const csvContent = "\uFEFF" + csvRows.join("\r\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  const filename = `${companyName.replace(/\s+/g, "_")}_Bulk_Employee_Registration_Template.csv`;
-  link.setAttribute("href", url);
-  link.setAttribute("download", filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const fileName = `${companyName.replace(/\s+/g, "_")}_Bulk_Employee_Registration_Template_${dateStr}.xlsx`;
+  XLSX.writeFile(wb, fileName);
 }
 
 /**
- * Parses CSV/TSV or spreadsheet lines into structured Employee objects
+ * Parses CSV/TSV or Excel (.xlsx / .xls) spreadsheet lines/buffers into structured Employee objects
  */
 export function parseEmployeeCsvText(
-  text: string,
+  input: string | ArrayBuffer | Uint8Array,
   existingEmployees: Employee[],
   availableRoles: PredefinedRole[] = []
 ): {
@@ -790,29 +700,55 @@ export function parseEmployeeCsvText(
   errors: string[];
   totalParsed: number;
 } {
-  if (text.startsWith("PK") || text.includes("\u0000") || text.includes("\ufffd")) {
-    return {
-      employees: [],
-      duplicates: [],
-      errors: [
-        "Binary Excel (.xlsx / .xls) file detected.",
-        "Please open your file in Excel and click 'File > Save As' -> 'CSV (Comma delimited) (*.csv)', then upload the .csv file.",
-      ],
-      totalParsed: 0,
-    };
+  let rawRows: string[][] = [];
+
+  if (typeof input !== "string") {
+    try {
+      const wb = XLSX.read(input, { type: "array" });
+      const firstSheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[firstSheetName];
+      const jsonRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      rawRows = jsonRows.map((r) => r.map((c) => (c != null ? String(c).trim() : "")));
+    } catch (err: any) {
+      return {
+        employees: [],
+        duplicates: [],
+        errors: [`Failed to parse Excel file: ${err.message || err}`],
+        totalParsed: 0,
+      };
+    }
+  } else {
+    if (input.startsWith("PK") || input.includes("\u0000") || input.includes("\ufffd")) {
+      try {
+        const wb = XLSX.read(input, { type: "binary" });
+        const firstSheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[firstSheetName];
+        const jsonRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+        rawRows = jsonRows.map((r) => r.map((c) => (c != null ? String(c).trim() : "")));
+      } catch (err: any) {
+        return {
+          employees: [],
+          duplicates: [],
+          errors: [`Failed to parse Excel file: ${err.message || err}`],
+          totalParsed: 0,
+        };
+      }
+    } else {
+      const lines = input
+        .split(/\r\n|\n|\r/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      rawRows = lines.map((l) => parseCsvRow(l));
+    }
   }
 
-  const lines = text
-    .split(/\r\n|\n|\r/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-
-  if (lines.length <= 1) {
-    return { employees: [], duplicates: [], errors: ["File contains no data rows."], totalParsed: 0 };
+  if (rawRows.length <= 1) {
+    return { employees: [], duplicates: [], errors: ["File contains no employee data rows."], totalParsed: 0 };
   }
 
   // Parse header line
-  const headers = parseCsvRow(lines[0]).map((h) => h.toLowerCase().trim().replace(/[^a-z0-9]/g, ""));
+  const headers = rawRows[0].map((h) => h.toLowerCase().trim().replace(/[^a-z0-9]/g, ""));
 
   const parsedList: Omit<Employee, "id">[] = [];
   const duplicates: string[] = [];
@@ -820,12 +756,9 @@ export function parseEmployeeCsvText(
 
   const existingCodes = new Set(existingEmployees.map((e) => e.empCode?.toLowerCase().trim()));
 
-  for (let i = 1; i < lines.length; i++) {
-    const rawLine = lines[i];
-    if (!rawLine) continue;
-
-    const values = parseCsvRow(rawLine);
-    if (values.every((v) => !v.trim())) continue; // empty row
+  for (let i = 1; i < rawRows.length; i++) {
+    const values = rawRows[i];
+    if (!values || values.every((v) => !v.trim())) continue; // empty row
 
     const getVal = (possibleKeys: string[]): string => {
       for (const pk of possibleKeys) {
@@ -840,27 +773,43 @@ export function parseEmployeeCsvText(
 
     const empCode = getVal(["employeecode", "empcode", "code", "empid", "id"]) || `EMP-${1000 + i}`;
     const name = getVal(["fullname", "name", "employeename", "empname", "staffname", "firstname", "firstlast", "employee", "staff"]);
-    const email = getVal(["workemail", "email", "mail", "officialemail"]) || `${empCode.toLowerCase().replace(/[^a-z0-9]/g, "")}@company.com`;
+    const email = getVal(["workemail", "officialemail", "email", "mail"]) || `${empCode.toLowerCase().replace(/[^a-z0-9]/g, "")}@company.com`;
+    const personalEmail = getVal(["personalemail", "personalmail", "email2"]) || undefined;
     const password = getVal(["password", "pass"]) || generateEmployeePassword();
-    const phone = getVal(["phone", "mobile", "contact", "phonenumber", "contactnumber"]) || "9876543210";
+    const phone = getVal(["phonenumber", "phone", "mobile", "contact", "contactnumber", "mobilenumber"]) || "9876543210";
     const department = getVal(["department", "dept", "division"]) || "Engineering";
     const designation = getVal(["designation", "role", "title", "position", "jobtitle"]) || "Software Engineer";
-    const salaryRaw = getVal(["fixedsalary", "salary", "basic", "basicsalary"]);
-    const fixedSalary = parseFloat(salaryRaw) || 25000;
+    
+    const salaryRaw = getVal(["fixedsalary", "salary", "grosssalary", "fixed", "monthlyctc"]);
+    const basicRaw = getVal(["basicsalary", "basic"]);
+    const fixedSalary = parseFloat(salaryRaw) || parseFloat(basicRaw) || 25000;
+    const basic = parseFloat(basicRaw) || fixedSalary;
+
     const doj = getVal(["dateofjoining", "doj", "joiningdate"]) || new Date().toISOString().slice(0, 10);
     const empTypeRaw = getVal(["employmenttype", "employment", "type", "contract", "emptype"]).toLowerCase();
     const employmentType: Employee["employmentType"] = empTypeRaw.includes("contract") ? "contract" : "regular";
     const dob = getVal(["dateofbirth", "dob", "birthdate"]) || undefined;
     const genderRaw = getVal(["gender", "sex"]).toLowerCase();
     const gender = genderRaw === "female" ? "female" : genderRaw === "other" ? "other" : "male";
-    const bloodGroup = getVal(["bloodgroup", "blood"]) || undefined;
+    const bloodGroup = getVal(["bloodgroup", "blood", "bg"]) || undefined;
+    
     const pan = getVal(["pannumber", "pan"]).toUpperCase() || undefined;
-    const aadhaar = getVal(["aadhaarnumber", "aadhaar"]) || undefined;
-    const bankAcc = getVal(["bankaccountnumber", "bankacc", "account"]) || undefined;
-    const bankIfsc = getVal(["bankifsccode", "ifsc", "bankifsc"]).toUpperCase() || undefined;
+    const aadhaar = getVal(["aadhaarnumber", "aadhaar", "uidai", "aadhar"]) || undefined;
+    const passportNumber = getVal(["passportnumber", "passport", "passportno"]) || undefined;
+    const drivingLicense = getVal(["drivinglicense", "dl", "dlno", "license"]) || undefined;
+    
+    const bankAcc = getVal(["bankaccountnumber", "bankacc", "account", "accountnumber", "bankaccountno"]) || undefined;
+    const bankIfsc = getVal(["bankifsccode", "ifsc", "bankifsc", "ifsccode"]).toUpperCase() || undefined;
+    const bankName = getVal(["bankname", "bank"]) || undefined;
+    const bankBranch = getVal(["bankbranch", "branchname"]) || undefined;
+    const bankAccountTypeRaw = getVal(["bankaccounttype", "accounttype"]).toLowerCase();
+    const bankAccountType: "savings" | "current" = bankAccountTypeRaw.includes("current") ? "current" : "savings";
+
     const roleName = getVal(["assignedrole", "role", "rolename"]);
-    const shiftId = getVal(["shift", "shiftid"]) || "gen";
-    const branchRaw = getVal(["branchcode", "branch", "branchid"]) || "";
+    const reportingManager = getVal(["reportingmanager", "manager", "managername", "reportsto"]) || undefined;
+    const shiftId = getVal(["shift", "shiftid", "shifttype"]) || "gen";
+    
+    const branchRaw = getVal(["branchcode", "branch", "branchid", "assignedbranches"]) || "";
     const branchParts = branchRaw ? branchRaw.split(/[,;/|]+/).map((b) => b.trim()).filter(Boolean) : [];
     const branchId = branchParts[0] || undefined;
     const branchIds = branchParts.length > 0 ? branchParts : undefined;
@@ -872,13 +821,21 @@ export function parseEmployeeCsvText(
     };
 
     const pfEligible = parseBool(getVal(["pfeligible", "pf"]), true);
-    const esiEligible = parseBool(getVal(["esieligible", "esi"]), false);
+    const uan = getVal(["pfuan", "uan", "uanno", "pfuannumber"]) || undefined;
+    const pfNumber = getVal(["pfnumber", "pfno", "memberid"]) || undefined;
+    
+    const esiEligible = parseBool(getVal(["esieligible", "esi", "esiceligible"]), false);
+    const esic = getVal(["esicnumber", "esic", "esicno", "esino"]) || undefined;
+    
     const ptEligible = parseBool(getVal(["pteligible", "pt", "professionaltaxeligible"]), true);
+    const ptNumber = getVal(["ptnumber", "ptno", "ptregno"]) || undefined;
+    
     const tdsEligible = parseBool(getVal(["tdseligible", "tds"]), false);
-    const leaveApplyEligible = parseBool(getVal(["leaveapplyeligible", "leaveeligible", "leaveapply"]), true);
+    const leaveApplyEligible = parseBool(getVal(["leaveapplymobileeligible", "leaveapplyeligible", "leaveeligible", "leaveapply"]), true);
     const geofencingEnabled = parseBool(getVal(["geofencingrequired", "geofencingenabled", "geofence", "geofencing"]), true);
+    const biometricEnabled = parseBool(getVal(["biometricenabled", "biometric", "bioenabled"]), false);
 
-    const graceTimeRaw = getVal(["gracetime", "grace", "graceperiod"]).toLowerCase();
+    const graceTimeRaw = getVal(["morninggracetime", "gracetime", "grace", "graceperiod"]).toLowerCase();
     let graceTime: Employee["graceTime"] = "15";
     if (graceTimeRaw.includes("always") || graceTimeRaw.includes("none") || graceTimeRaw.includes("0")) graceTime = "always";
     else if (graceTimeRaw.includes("10")) graceTime = "10";
@@ -887,24 +844,43 @@ export function parseEmployeeCsvText(
     else if (graceTimeRaw.includes("25")) graceTime = "25";
     else if (graceTimeRaw.includes("30")) graceTime = "30";
 
-    const allowHalfDayLogin = parseBool(getVal(["allowhalfdaylogin", "halfdaylogin", "allowafternoonlogin"]), true);
-    const halfDayLoginTime = getVal(["halfdaylogintime", "afternoonlogintime", "halfdaytime"]) || "12:00";
+    const afternoonGraceRaw = getVal(["afternoongracetime", "afternoongrace"]).toLowerCase();
+    let afternoonGraceTime: Employee["afternoonGraceTime"] = "15";
+    if (afternoonGraceRaw.includes("always") || afternoonGraceRaw.includes("none") || afternoonGraceRaw.includes("0")) afternoonGraceTime = "always";
+    else if (afternoonGraceRaw.includes("10")) afternoonGraceTime = "10";
+    else if (afternoonGraceRaw.includes("15")) afternoonGraceTime = "15";
+    else if (afternoonGraceRaw.includes("20")) afternoonGraceTime = "20";
+    else if (afternoonGraceRaw.includes("25")) afternoonGraceTime = "25";
+    else if (afternoonGraceRaw.includes("30")) afternoonGraceTime = "30";
+
+    const allowHalfDayLogin = parseBool(getVal(["allowafternoonlogin", "allowhalfdaylogin", "halfdaylogin", "afternoonlogin"]), true);
+    const halfDayLoginTime = getVal(["afternoonlogintime", "halfdaylogintime", "halfdaytime", "afternoontime"]) || "12:00";
 
     const eligibleDate = getVal(["benefitseligibledate", "eligibledate"]) || doj;
     const probationDate =
       getVal(["probationenddate", "probationdate"]) || new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+    
     const maritalStatusRaw = getVal(["maritalstatus", "marital"]).toLowerCase();
     const maritalStatus =
       maritalStatusRaw === "married" || maritalStatusRaw === "divorced" || maritalStatusRaw === "widowed"
         ? (maritalStatusRaw as Employee["maritalStatus"])
         : "single";
 
-    const addressLine1 = getVal(["addressline1", "address"]) || undefined;
-    const city = getVal(["city"]) || undefined;
-    const state = getVal(["state"]) || undefined;
-    const pincode = getVal(["pincode", "zip"]) || undefined;
-    const emergencyName = getVal(["emergencycontactname", "emergencyname"]) || undefined;
-    const emergencyPhone = getVal(["emergencycontactphone", "emergencyphone", "emergencycontact"]) || undefined;
+    const nationality = getVal(["nationality", "nation"]) || "Indian";
+    const fatherName = getVal(["fathername", "father"]) || undefined;
+    const motherName = getVal(["mothername", "mother"]) || undefined;
+    const spouseName = getVal(["spousename", "spouse"]) || undefined;
+
+    const addressLine1 = getVal(["addressline1", "address", "address1", "street"]) || undefined;
+    const addressLine2 = getVal(["addressline2", "address2"]) || undefined;
+    const city = getVal(["city", "town"]) || undefined;
+    const state = getVal(["state", "province"]) || undefined;
+    const country = getVal(["country", "nation"]) || "India";
+    const pincode = getVal(["pincode", "zip", "postalcode", "zipcode"]) || undefined;
+    
+    const emergencyName = getVal(["emergencycontactperson", "emergencycontactname", "emergencyname", "emergencycontact"]) || undefined;
+    const emergencyRelation = getVal(["emergencyrelation", "relationship", "emergencyrelationship"]) || undefined;
+    const emergencyPhone = getVal(["emergencycontactphone", "emergencyphone", "emergencyphone2", "emergencycontactnumber"]) || undefined;
 
     if (!name) {
       errors.push(`Row ${i + 1}: Missing Full Name`);
@@ -924,47 +900,68 @@ export function parseEmployeeCsvText(
       empCode,
       name,
       email,
+      about: personalEmail,
       password,
       phone,
       department,
       designation,
       employmentType,
       fixedSalary,
-      basic: fixedSalary,
+      basic,
       doj,
       dob,
       gender,
       bloodGroup,
+      maritalStatus,
+      nationality,
+      fatherName,
+      motherName,
+      spouseName,
       pan,
       aadhaar,
+      passportNumber,
+      drivingLicense,
       bankAcc,
       bankIfsc,
+      bankName,
+      bankBranch,
+      bankAccountType,
       roleId: matchedRole?.id,
       roleName: matchedRole ? matchedRole.name : roleName || undefined,
+      reportingManager,
       shiftId,
       branchId,
       branchIds,
       pfEligible,
+      uan,
+      pfNumber,
       esiEligible,
+      esic,
       ptEligible,
+      ptNumber,
       tdsEligible,
       eligibleDate,
       probationDate,
       leaveApplyEligible,
       geofencingEnabled,
+      biometricEnabled,
       graceTime,
+      afternoonGraceTime,
       allowHalfDayLogin,
       halfDayLoginTime,
-      maritalStatus,
       addressLine1,
+      addressLine2,
       city,
       state,
+      country,
       pincode,
       emergencyName,
+      emergencyRelation,
       emergencyContact: emergencyPhone,
+      emergencyPhone2: emergencyPhone,
       status: "active",
       faceRegistered: false,
-      photoDataUrl: undefined, // Bulk imported employees do not have photos initially
+      photoDataUrl: undefined,
     });
   }
 
