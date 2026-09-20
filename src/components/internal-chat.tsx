@@ -67,11 +67,11 @@ export function InternalChat({ me, contacts, title = "Internal Chat" }: Props) {
           exit={{ opacity: 0, x: 20 }}
           whileHover={{ scale: 1.05, x: -2 }}
           onClick={() => setIsMinimized(false)}
-          className="fixed right-0 bottom-10 md:bottom-8 z-50 rounded-l-full bg-gradient-brand text-white pl-3 pr-2 py-2 shadow-lg shadow-primary/20 flex items-center gap-1.5 cursor-pointer border-y border-l border-white/20 backdrop-blur text-xs font-semibold group"
+          className="fixed right-0 bottom-6 z-40 rounded-l-full bg-card/90 dark:bg-card/85 text-foreground hover:text-primary pl-3 pr-2 py-2 shadow-lg shadow-black/10 flex items-center gap-1.5 cursor-pointer border-y border-l border-border/80 backdrop-blur-xl text-xs font-semibold group"
           title="Click to restore Team Chat"
         >
-          <MessageSquare className="h-4 w-4 relative" />
-          <span className="hidden group-hover:inline text-[11px] pr-1">Team Chat</span>
+          <MessageSquare className="h-4 w-4 relative text-primary" />
+          <span className="hidden group-hover:inline text-[11px] pr-1 font-bold">Team Chat</span>
           {totalUnread > 0 && (
             <span className="bg-coral text-white text-[10px] rounded-full h-4 min-w-4 px-1 flex items-center justify-center font-bold ring-1 ring-background">
               {totalUnread}
@@ -82,62 +82,44 @@ export function InternalChat({ me, contacts, title = "Internal Chat" }: Props) {
 
       {!open && !isMinimized && (
         <motion.div
-          drag
-          dragMomentum={false}
-          onDragStart={() => {
-            isDraggingRef.current = true;
-          }}
-          onDragEnd={() => {
-            setTimeout(() => {
-              isDraggingRef.current = false;
-            }, 100);
-          }}
-          whileDrag={{ scale: 1.08, cursor: "grabbing" }}
-          className="fixed z-50 bottom-24 md:bottom-6 right-7 md:right-8 touch-none group"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0, opacity: 0 }}
+          className="fixed bottom-6 right-6 z-40 group select-none"
         >
-          {/* Minimize button on hover */}
+          {/* Quick Minimize Minus Button on Floating Trigger (Visible on Hover) */}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               setIsMinimized(true);
             }}
-            className="absolute -top-1 -left-1 z-20 h-5 w-5 rounded-full bg-muted/90 dark:bg-card/90 border border-border/80 text-foreground/70 hover:text-foreground hover:bg-destructive hover:text-destructive-foreground shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[10px]"
+            className="absolute -top-1.5 -left-1.5 z-50 h-5 w-5 rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-md border border-border/80 flex items-center justify-center cursor-pointer opacity-0 scale-75 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto hover:scale-110 transition-all duration-200"
             title="Minimize to side tab"
+            aria-label="Minimize Team Chat"
           >
-            <Minus className="h-3 w-3" />
+            <Minus className="h-2.5 w-2.5 stroke-[3]" />
           </button>
 
-          <motion.button
-            onClick={() => {
-              if (!isDraggingRef.current) {
-                setOpen((o) => !o);
-              }
-            }}
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.92 }}
-            transition={{ type: "spring", stiffness: 260, damping: 18 }}
-            className="h-13 w-13 rounded-full bg-gradient-brand animate-swift-gradient shadow-glow text-white flex items-center justify-center cursor-grab active:cursor-grabbing transition-shadow relative"
-            style={{ height: 52, width: 52 }}
-            aria-label="Open internal chat"
-            title="Team Chat (Drag anywhere to move • Click to open)"
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="relative h-12 w-12 sm:h-13 sm:w-13 rounded-full bg-card/90 dark:bg-card/85 text-foreground hover:text-primary backdrop-blur-xl border border-border/80 shadow-lg shadow-black/10 dark:shadow-black/30 flex items-center justify-center cursor-pointer transition-all duration-300 hover:scale-105 hover:border-primary/50 hover:shadow-xl focus:outline-none"
+            aria-label="Open Team Chat"
+            title="Team Chat"
           >
-            {totalUnread > 0 && (
-              <span className="absolute inset-0 rounded-full bg-primary/40 animate-swift-ping" />
-            )}
-            <MessageSquare className="h-5 w-5 relative pointer-events-none" />
+            <MessageSquare className="h-5 w-5 text-primary" />
+
             {totalUnread > 0 && (
               <motion.span
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="absolute -top-1 -right-1 bg-coral text-white text-[10px] rounded-full h-5 min-w-5 px-1 flex items-center justify-center font-semibold ring-2 ring-background pointer-events-none"
+                className="absolute -top-1 -right-1 bg-coral text-white text-[10px] rounded-full h-5 min-w-5 px-1 flex items-center justify-center font-bold ring-2 ring-background pointer-events-none"
               >
                 {totalUnread}
               </motion.span>
             )}
-          </motion.button>
+          </button>
         </motion.div>
       )}
 

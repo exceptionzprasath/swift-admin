@@ -19,12 +19,12 @@ export function ThemeInit() {
   return null;
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string } = {}) {
   const { theme, setTheme } = useStore();
   return (
     <button
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      className="rounded-full p-2 hover:bg-accent transition-colors border border-border"
+      className={className || "rounded-full p-2 hover:bg-accent transition-colors border border-border"}
       aria-label="Toggle theme"
     >
       {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

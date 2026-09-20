@@ -940,15 +940,12 @@ function AttendancePage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl lg:text-3xl font-bold tracking-tight">
-                  Real-Time Attendance Hub
-                </h1>
                 <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs px-2 py-0.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5 animate-ping" />
                   Live Sync
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 Live biometric face logs, GPS geofence tracking, punctuality intelligence, and employee dossiers.
               </p>
             </div>

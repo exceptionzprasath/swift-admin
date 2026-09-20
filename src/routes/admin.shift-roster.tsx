@@ -374,10 +374,6 @@ function ShiftRosterPage() {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2.5">
-              <Clock className="h-7 w-7 text-primary" />
-              <span>Swift Roster & Shift Master</span>
-            </h1>
             <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
               Live Scheduler
             </Badge>

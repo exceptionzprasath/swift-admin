@@ -1372,9 +1372,6 @@ export function PayrollPage() {
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-                Payroll Management
-              </h1>
               <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[11px] font-semibold px-2 py-0.5">
                 Statutory Compliant
               </Badge>

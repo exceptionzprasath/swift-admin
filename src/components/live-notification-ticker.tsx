@@ -189,14 +189,9 @@ export function LiveNotificationTicker() {
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      {/* Left LIVE Pill Badge with Radar Pulse */}
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-[11px] tracking-wider shrink-0 shadow-xs z-10">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-        </span>
-        <span>LIVE</span>
-        <Radio className="h-3 w-3 animate-pulse opacity-90" />
+      {/* Left Announcement Icon */}
+      <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-primary/10 text-primary border border-primary/20 shrink-0 z-10">
+        <Bell className="h-3.5 w-3.5" />
       </div>
 
       {/* Infinite Auto-Scrolling Marquee Stream */}

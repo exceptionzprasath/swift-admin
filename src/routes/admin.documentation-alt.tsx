@@ -1208,9 +1208,6 @@ export default function DigitalDocumentationPage() {
                   <FileText className="h-6 w-6" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-foreground font-display">
-                    Digital Document Engine
-                  </h1>
                   <p className="text-sm text-muted-foreground">
                     Compose, approve, dispatch, and track verifiable digital HR documents with one smooth email-like workflow.
                   </p>

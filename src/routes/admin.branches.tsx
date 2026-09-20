@@ -112,9 +112,6 @@ function BranchesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-3xl font-semibold flex items-center gap-2">
-            <Building2 className="h-6 w-6 text-primary" /> Branches
-          </h1>
           <p className="text-sm text-muted-foreground">Multi-branch setup for {company.name} — geo-fence, shifts, Wi-Fi & IP restrictions per branch.</p>
         </div>
         <Button onClick={openNew} className="bg-gradient-brand text-white">
