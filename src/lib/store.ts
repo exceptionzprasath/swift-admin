@@ -3409,7 +3409,7 @@ export const useStore = create<State>()(
 
           const updatedLeave: LeaveRequest = {
             ...targetLeave,
-            status: "rejected",
+            status: "Rejected",
             rejectedReason: comment || `Rejected by ${actorRole} (${actorName})`,
             actedBy: actorName,
             actedByRole: actorRole,
@@ -3448,7 +3448,7 @@ export const useStore = create<State>()(
 
           const updatedLeave: LeaveRequest = {
             ...targetLeave,
-            status: "approved",
+            status: "Approved",
             currentLevel: totalLvls,
             approvedBy: actorName,
             actedBy: actorName,
@@ -3501,7 +3501,7 @@ export const useStore = create<State>()(
         // Default: approve_forward / approve
         const isFinalLevel = currentLvl >= totalLvls;
         const nextLevel = isFinalLevel ? currentLvl : currentLvl + 1;
-        const finalStatus = isFinalLevel ? "approved" : "pending";
+        const finalStatus = isFinalLevel ? "Approved" : "Pending";
 
         const updatedSteps = (targetLeave.approvalSteps || []).map((step) => {
           if (step.level === currentLvl) {

@@ -187,13 +187,13 @@ function LeaveCalendarPage() {
     if (leave.approvalSteps && leave.approvalSteps.length > 0) {
       actOnLeaveApprovalStep(
         leave.id,
-        action === "approved" ? "approve" : "reject",
+        action === "approved" ? "approve_close" : "reject",
         comment.trim(),
         actorName,
         actorRole
       );
     } else {
-      updateLeave(leave.id, action, comment.trim());
+      updateLeave(leave.id, action === "approved" ? "Approved" : "Rejected", comment.trim());
     }
 
     toast.success(
