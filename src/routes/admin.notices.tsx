@@ -221,11 +221,7 @@ function NoticesPage() {
             </span>
             <span className="text-xs text-muted-foreground">· Swift 2.4</span>
           </div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight mt-1 flex items-center gap-2.5 text-foreground">
-            <Megaphone className="h-7 w-7 text-primary shrink-0" />
-            Notice Board
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Publish notices to the entire company, a branch, a department, a role, or specific people.
           </p>
         </div>

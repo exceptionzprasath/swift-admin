@@ -170,9 +170,6 @@ function OrgPage() {
     <div className="space-y-6 pb-20">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="font-display text-3xl font-semibold flex items-center gap-2">
-            <Network className="h-6 w-6 text-primary" /> Organization Structure
-          </h1>
           <p className="text-sm text-muted-foreground">
             Visual reporting hierarchy and team structure. Approvals are automatically orchestrated via the centralized <Link to="/admin/approval-settings" className="font-semibold text-primary underline underline-offset-4">Approval Settings</Link> studio.
           </p>

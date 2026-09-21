@@ -440,9 +440,6 @@ function UnifiedRequestsHubPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl lg:text-3xl font-bold tracking-tight">
-                  Requests & Approvals Hub
-                </h1>
                 {kpis.pending > 0 && (
                   <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs px-2 py-0.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-500 mr-1.5 animate-ping" />
@@ -450,7 +447,7 @@ function UnifiedRequestsHubPage() {
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 Unified inbox for receiving, evaluating, and approving employee requests across all company workflows.
               </p>
             </div>

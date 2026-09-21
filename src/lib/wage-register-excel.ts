@@ -91,12 +91,20 @@ export function downloadWageRegisterExcel({
   const activeList = validEmployees.length > 0 ? validEmployees : employees;
 
   // =========================================================================
-  // WAGE REGISTER (STAFF SALARY with 50 Statutory Columns)
+  // WAGE REGISTER (STAFF SALARY with Statutory & Banking/Demographic Columns)
   // =========================================================================
   const wageRegisterHeaders = [
     "S.No",
     "EMP ID",
     "Name of the Employee",
+    "Name as per Aadhaar",
+    "Date of Birth",
+    "Date of Joining",
+    "Designation",
+    "Location (Branch)",
+    "Bank Name",
+    "Account Number",
+    "IFSC Code",
     "UAN No",
     "ESI No",
     "Gender",
@@ -152,6 +160,24 @@ export function downloadWageRegisterExcel({
     const sNo = index + 1;
     const empId = emp.empCode || `EMP-${1000 + sNo}`;
     const empName = emp.name || "—";
+    const nameAsPerAadhaar =
+      (emp as any).nameAsPerAadhaar ||
+      (emp as any).aadhaarName ||
+      (emp as any).aadhaarCardName ||
+      emp.name ||
+      "—";
+    const dob = emp.dob || "—";
+    const doj = emp.doj || "—";
+    const designation = emp.designation || "—";
+    const branchObj = company.branches?.find(
+      (b) => b.id === emp.branchId || (emp.branchIds && emp.branchIds.includes(b.id))
+    );
+    const locationBranch = branchObj
+      ? (branchObj.city ? `${branchObj.name} (${branchObj.city})` : branchObj.name)
+      : (emp.bankBranch || emp.city || "Head Office");
+    const bankName = emp.bankName || (emp.bankIfsc ? `${emp.bankIfsc.slice(0, 4).toUpperCase()} Bank` : "—");
+    const bankAcc = emp.bankAcc || "—";
+    const bankIfsc = emp.bankIfsc || "—";
     const uanNo = emp.uan || emp.pfNumber || "—";
     const esiNo = emp.esic || emp.phone || "NA";
     const gender = emp.gender ? emp.gender.toUpperCase() : "MALE";
@@ -195,21 +221,15 @@ export function downloadWageRegisterExcel({
     const weekOffEnabled = ov.weekOffEnabled !== undefined ? ov.weekOffEnabled : company.includeWeekOff !== false;
     const weekOffDays = ov.weekOffDays !== undefined ? ov.weekOffDays : rosterWeekOffDays;
 
-    // Calculate Paid Days
+    // Calculate Paid Days (prorated on present days, consistent with monthly register)
     const basePresentDays = workedDays + daysLeave;
-    const calculatedPaidDays =
-      ov.daysWorked !== undefined
-        ? ov.daysWorked
-        : Math.min(
-            totalDaysInMonth,
-            weekOffEnabled ? basePresentDays + weekOffDays : basePresentDays
-          );
+    const calculatedPaidDays = ov.daysWorked !== undefined ? ov.daysWorked : basePresentDays;
 
-    const absentDays = Math.max(0, totalDaysInMonth - calculatedPaidDays);
+    const absentDays = Math.max(0, workingDaysBase - calculatedPaidDays);
     const ncpDays = absentDays;
 
     // Salary & Pay Slab
-    const fixedSalary = emp.fixedSalary ?? emp.basic ?? 25000;
+    const fixedSalary = ov.customBasic ? ov.customBasic : (emp.fixedSalary ?? emp.basic ?? 25000);
     const paySlab = Math.round(fixedSalary / workingDaysBase);
     const perHrAmt = Math.round(paySlab / stdWorkingHours);
     const latePunchingAmt = Math.round(latePunchHours * perHrAmt);
@@ -230,17 +250,35 @@ export function downloadWageRegisterExcel({
       ltaPct: ov.ltaPct !== undefined ? ov.ltaPct : company.ltaPct,
       ptEnabled: ov.ptEnabled !== undefined ? ov.ptEnabled : company.ptEnabled,
       ptAmount: ov.ptAmountOverride !== undefined ? ov.ptAmountOverride : company.ptAmount,
-      employeePfEnabled: ov.pfEmployeeEnabled !== undefined ? ov.pfEmployeeEnabled : (emp.pfEligible !== false),
-      employerPfEnabled: ov.pfEmployerEnabled !== undefined ? ov.pfEmployerEnabled : (emp.pfEligible !== false),
+      employeePfEnabled: ov.pfEmployeeEnabled !== undefined ? ov.pfEmployeeEnabled : true,
+      employerPfEnabled: ov.pfEmployerEnabled !== undefined ? ov.pfEmployerEnabled : true,
       employeePfPct: ov.employeePfPct !== undefined ? ov.employeePfPct : (company.employeePfPct ?? 12),
       employerPfPct: ov.employerPfPct !== undefined ? ov.employerPfPct : (company.employerPfPct ?? 13),
-      employeeEsiEnabled: ov.esiEmployeeEnabled !== undefined ? ov.esiEmployeeEnabled : (emp.esiEligible ?? false),
-      employerEsiEnabled: ov.esiEmployerEnabled !== undefined ? ov.esiEmployerEnabled : (emp.esiEligible ?? false),
+      pfRules: {
+        ...company.pfRules,
+        enabled: ov.pfEnabled !== undefined ? ov.pfEnabled : (company.pfRules?.enabled !== false),
+        employeePct: ov.employeePfPct !== undefined ? ov.employeePfPct : (company.employeePfPct ?? company.pfRules?.employeePct ?? 12),
+        employerPct: ov.employerPfPct !== undefined ? ov.employerPfPct : (company.employerPfPct ?? company.pfRules?.employerPct ?? 13),
+      },
+      employeeEsiEnabled: ov.esiEmployeeEnabled !== undefined ? ov.esiEmployeeEnabled : true,
+      employerEsiEnabled: ov.esiEmployerEnabled !== undefined ? ov.esiEmployerEnabled : true,
       employeeEsiPct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? 0.75),
       employerEsiPct: ov.employerEsiPct !== undefined ? ov.employerEsiPct : (company.employerEsiPct ?? 3.25),
+      esiRules: {
+        ...company.esiRules,
+        enabled: ov.esiEnabled !== undefined ? ov.esiEnabled : (company.esiRules?.enabled !== false),
+        employeePct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75),
+        employerPct: ov.employerEsiPct !== undefined ? ov.employerEsiPct : (company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25),
+      },
+      lwfRules: {
+        ...company.lwfRules,
+        enabled: ov.lwfEnabled !== undefined ? ov.lwfEnabled : (company.lwfRules?.enabled === true),
+        employeeAmount: ov.lwfAmountOverride !== undefined ? ov.lwfAmountOverride : (company.lwfRules?.employeeAmount ?? 10),
+      },
+      earnings: ov.customAllowances !== undefined ? (ov.customAllowances as any) : company.earnings,
     };
 
-    // Calculate Loan deductions
+    // Calculate Active Loan EMI deductions with monthly tenor matching
     const activeLoanRequests = (requests || []).filter((r: any) => {
       if (r.category !== "loan" && r.category !== "advance_loan") return false;
       const matchesEmp =
@@ -248,26 +286,64 @@ export function downloadWageRegisterExcel({
         (emp.empCode && r.empCode === emp.empCode) ||
         r.employeeName === emp.name;
       if (!matchesEmp) return false;
-      return r.status === "Approved" || r.status === "Disbursed";
-    });
-    const autoLoanEmi = activeLoanRequests.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
+      const isApproved = r.status === "Approved" || r.status === "Disbursed";
+      if (!isApproved) return false;
 
-    const effectiveOtHours = ov.otHours !== undefined ? ov.otHours : otHours;
+      const startMonth = r.metadata?.startMonth || (r.date ? r.date.slice(0, 7) : (r.createdAt ? r.createdAt.slice(0, 7) : ""));
+      const tenorMonths = r.metadata?.tenorMonths || (r.tenor?.includes("1") ? 1 : r.tenor?.includes("2") ? 2 : r.tenor?.includes("3") ? 3 : r.tenor?.includes("6") ? 6 : 1);
+      if (!startMonth) return true;
+
+      const [sYear, sMonth] = startMonth.split("-").map(Number);
+      const [curYear, curMonth] = selectedMonth.split("-").map(Number);
+      const startTotalMonths = sYear * 12 + sMonth;
+      const curTotalMonths = curYear * 12 + curMonth;
+      const endTotalMonths = startTotalMonths + tenorMonths - 1;
+
+      return curTotalMonths >= startTotalMonths && curTotalMonths <= endTotalMonths;
+    });
+
+    const autoLoanEmi = activeLoanRequests.reduce((sum: number, r: any) => {
+      const tenorMonths = r.metadata?.tenorMonths || (r.tenor?.includes("1") ? 1 : r.tenor?.includes("2") ? 2 : r.tenor?.includes("3") ? 3 : r.tenor?.includes("6") ? 6 : 1);
+      const emi = r.metadata?.monthlyEmi || Math.round((Number(r.amount) || 0) / tenorMonths);
+      return sum + emi;
+    }, 0);
+
+    // Overtime Approval Workflow
+    const isOtApproved = ov.otStatus === "approved";
+    const otApprovedHours = ov.otApprovedHours !== undefined ? ov.otApprovedHours : (ov.otHours !== undefined && isOtApproved ? ov.otHours : otHours);
+    const effectiveOtHours = isOtApproved ? otApprovedHours : 0;
+
+    // Bonuses & Incentives
+    const attBonusEnabled = ov.attBonusEnabled !== undefined ? ov.attBonusEnabled : (company.attendanceBonusRules?.enabled === true);
+    const attBonusEligible = attBonusEnabled && empAtt.filter((a) => a.status === "absent").length === 0;
+    const attBonus = attBonusEligible ? (ov.attBonusAmount !== undefined ? ov.attBonusAmount : (company.attendanceBonusRules?.value ?? 500)) : 0;
+
+    const yrBonusEnabled = ov.yrBonusEnabled !== undefined ? ov.yrBonusEnabled : (company.yearlyBonusRules?.enabled === true);
+    const yrBonus = yrBonusEnabled ? (ov.yrBonusAmount !== undefined ? ov.yrBonusAmount : (company.yearlyBonusRules?.value ?? 500)) : 0;
+
     const effectiveIncentive = ov.incentive !== undefined ? ov.incentive : 0;
-    const effectiveBonus = ov.bonus !== undefined ? ov.bonus : 0;
+    const effectiveBonus = (ov.bonus !== undefined ? ov.bonus : 0) + attBonus + yrBonus;
     const effectiveLoan = ov.loan !== undefined ? ov.loan : autoLoanEmi;
     const effectiveAdvance = ov.advance !== undefined ? ov.advance : 0;
+    const effectiveOtherDeductions = ov.otherDeductions !== undefined ? ov.otherDeductions : 0;
+    const effectiveVariablePay = ov.variablePay !== undefined ? ov.variablePay : 0;
+    const effectiveOtherEarnings = ov.otherEarnings !== undefined ? ov.otherEarnings : 0;
+
+    const effectiveEmp = ov.customBasic ? { ...emp, basic: ov.customBasic } : { ...emp, basic: fixedSalary };
 
     const comp = computePayroll({
       company: effectiveCompany,
-      employee: { ...emp, basic: fixedSalary },
+      employee: effectiveEmp,
       daysWorked: calculatedPaidDays,
       otHours: effectiveOtHours,
       incentive: effectiveIncentive,
-      shiftDays: calculatedPaidDays,
+      shiftDays: daysPresent + daysHalf,
       loan: effectiveLoan,
       advance: effectiveAdvance,
       bonus: effectiveBonus,
+      otherDeductions: effectiveOtherDeductions,
+      variablePay: effectiveVariablePay,
+      otherEarnings: effectiveOtherEarnings,
     });
 
     const basicDA = comp.earningsList.find((e) => e.id === "basic")?.amount || Math.round(fixedSalary * 0.5 * (calculatedPaidDays / workingDaysBase));
@@ -282,9 +358,9 @@ export function downloadWageRegisterExcel({
     const basicDAPF = Math.min(basicDA, 15000);
     const epfElig = emp.pfEligible !== false && comp.deductions.employeePF > 0 ? "YES" : "NO";
     const epf12 = comp.deductions.employeePF;
-    const esiElig = (emp.esiEligible || fixedSalary <= (company.esiRules?.threshold || 21000)) ? "YES" : "NO";
-    const esi075 = comp.deductions.employeeESI || (esiElig === "YES" ? Math.round(grossSalary * 0.0075) : 0);
-    const advance = effectiveAdvance + effectiveLoan;
+    const esiElig = comp.deductions.employeeESI > 0 || (emp.esiEligible || fixedSalary <= (company.esiRules?.threshold || 21000)) ? "YES" : "NO";
+    const esi075 = comp.deductions.employeeESI;
+    const advance = effectiveAdvance + effectiveLoan + effectiveOtherDeductions;
     const pt = comp.deductions.professionalTax;
     const tds = comp.deductions.tds;
     const lwf = comp.deductions.lwf;
@@ -300,6 +376,14 @@ export function downloadWageRegisterExcel({
       sNo,
       empId,
       empName,
+      nameAsPerAadhaar,
+      dob,
+      doj,
+      designation,
+      locationBranch,
+      bankName,
+      bankAcc,
+      bankIfsc,
       uanNo,
       esiNo,
       gender,

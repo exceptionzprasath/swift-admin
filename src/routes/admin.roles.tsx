@@ -193,11 +193,7 @@ function RoleCreationPage() {
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card p-6 rounded-2xl border border-border shadow-sm">
         <div>
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold tracking-tight">Role Creation & Permissions</h1>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground">
             Define predefined roles and assign granular approval rights to employees during registration.
           </p>
         </div>

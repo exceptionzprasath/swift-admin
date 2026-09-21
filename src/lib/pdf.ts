@@ -427,7 +427,7 @@ export async function generateSalarySlipPDF(
   // TOP LETTERHEAD & BRAND HEADER BANNER (Matching Logo Color Palette)
   // =========================================================================
   if (letterheadUrl) {
-    const renderedLetterhead = drawImageContained(doc, letterheadUrl, 14, 8, 182, 22);
+    const renderedLetterhead = drawImageContained(doc, letterheadUrl, 14, 8, 182, 24, "width");
     const letterheadBottom = renderedLetterhead ? renderedLetterhead.y + renderedLetterhead.h + 2 : 28;
     doc.setFillColor(aR, aG, aB);
     doc.rect(14, letterheadBottom, 182, 0.6, "F");
@@ -704,22 +704,22 @@ export async function generateSalarySlipPDF(
   console.log("[PDF Step] 5: Drawing Security Footer");
 
   // 6. Security Footer & Optional Company Document Footer
-  const yFooter = getLastTableY(248) + 3;
+  const yFooter = Math.min(getLastTableY(248) + 3, 264);
 
   if (footerUrl) {
-    drawImageContained(doc, footerUrl, 14, yFooter, 182, 14);
+    drawImageContained(doc, footerUrl, 14, yFooter, 182, 14, "width");
     doc.setFontSize(6.8);
     doc.setTextColor(148, 163, 184);
     doc.setFont("helvetica", "normal");
     doc.text(
       "This is a computer-generated salary slip and time card issued via SWIFT HRMS and does not require a physical signature.",
       14,
-      yFooter + 16
+      yFooter + 15
     );
     doc.text(
       `Generated on ${new Date().toLocaleString()} · Confidential & Privileged Document`,
       14,
-      yFooter + 19.5
+      yFooter + 18.5
     );
   } else {
     doc.setDrawColor(203, 213, 225);

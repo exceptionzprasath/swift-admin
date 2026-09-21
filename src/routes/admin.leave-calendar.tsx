@@ -452,8 +452,7 @@ function LeaveCalendarPage() {
               <CalendarDays className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="font-display text-2xl font-bold tracking-tight">Leave & Holiday Management</h1>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 Approve employee leave applications, short permissions & configure office holidays.
               </p>
             </div>

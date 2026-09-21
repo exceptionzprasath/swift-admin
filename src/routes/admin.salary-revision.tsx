@@ -74,9 +74,6 @@ function SalaryRevisionPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl font-semibold flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-primary" /> AI Salary Revision Engine
-          </h1>
           <p className="text-sm text-muted-foreground">SWIFT AI acts as your payroll officer — it analyses statutory impact and asks before changing anything.</p>
         </div>
         <div className="flex gap-1">

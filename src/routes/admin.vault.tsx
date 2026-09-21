@@ -328,9 +328,6 @@ function VaultPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl lg:text-3xl font-extrabold tracking-tight">
-                  Company Document Vault
-                </h1>
                 <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs gap-1 font-semibold">
                   <ShieldCheck className="h-3.5 w-3.5" /> AES-256 Cloud Vault
                 </Badge>

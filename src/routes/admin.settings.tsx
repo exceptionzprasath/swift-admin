@@ -175,7 +175,6 @@ function SettingsPage() {
     <div className="space-y-6 max-w-5xl animate-in fade-in duration-200">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-semibold">Company Settings</h1>
           <p className="text-sm text-muted-foreground">
             Manage company profile, working hours, document assets, office locations, and templates.
           </p>

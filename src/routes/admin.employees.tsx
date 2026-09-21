@@ -78,6 +78,7 @@ const empty: Omit<Employee, "id"> = {
   shiftId: "gen",
   faceRegistered: false,
   status: "active",
+  employmentType: "regular",
   branchId: undefined,
   branchIds: [],
   photoDataUrl: undefined,
@@ -231,7 +232,6 @@ function EmployeesPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl font-semibold">Employees</h1>
           <p className="text-sm text-muted-foreground">Guided 20-step registration with AI validation, bulk Excel import, autosave, and audit trail.</p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -367,6 +367,14 @@ function EmployeesPage() {
                         <div>
                           <div className="font-medium flex items-center gap-1.5">
                             <span>{e.name}</span>
+                            {e.employmentType === "contract" && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                              >
+                                Contract
+                              </Badge>
+                            )}
                             {(e.faceRegistered || (e.photoDataUrl && e.photoDataUrl.startsWith("http"))) && (
                               <Badge
                                 variant="outline"
@@ -964,6 +972,19 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Department *" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
                     <Field label="Designation *" value={form.designation} onChange={(v) => setForm({ ...form, designation: v })} />
+                    <div>
+                      <Label>Employment Type</Label>
+                      <Select
+                        value={form.employmentType || "regular"}
+                        onValueChange={(v: "regular" | "contract") => setForm({ ...form, employmentType: v })}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Employment Type" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="regular">Regular Employee</SelectItem>
+                          <SelectItem value="contract">Contract Employee</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <Field label="Date of Joining *" type="date" value={form.doj} onChange={(v) => setForm({ ...form, doj: v })} />
                     <Field
                       label="Fixed Salary (Monthly ₹) *"
@@ -1905,6 +1926,14 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
               <div>
                 <DialogTitle className="text-lg font-bold flex items-center gap-2">
                   <span>{employee.name}</span>
+                  {employee.employmentType === "contract" && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                    >
+                      Contract
+                    </Badge>
+                  )}
                   <Badge variant="outline" className="font-mono text-xs">
                     {employee.empCode}
                   </Badge>
@@ -2402,7 +2431,16 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
         <DialogHeader className="pb-2 border-b border-border">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2 font-display text-lg font-bold">
-              <Pencil className="h-5 w-5 text-primary" /> Edit Employee: {employee.name} ({employee.empCode})
+              <Pencil className="h-5 w-5 text-primary" />
+              <span>Edit Employee: {employee.name} ({employee.empCode})</span>
+              {employee.employmentType === "contract" && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                >
+                  Contract
+                </Badge>
+              )}
             </DialogTitle>
             {renderEmployeeStatusBadge(form.status)}
           </div>
@@ -2606,6 +2644,19 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                   <div>
                     <Label className="text-xs">Phone Number</Label>
                     <Input type="tel" value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Employment Type</Label>
+                    <Select
+                      value={form.employmentType || "regular"}
+                      onValueChange={(v: "regular" | "contract") => setForm({ ...form, employmentType: v })}
+                    >
+                      <SelectTrigger className="text-xs"><SelectValue placeholder="Employment Type" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="regular">Regular Employee</SelectItem>
+                        <SelectItem value="contract">Contract Employee</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label className="text-xs">Department</Label>
@@ -3431,11 +3482,13 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
     setFile(f);
     const reader = new FileReader();
     reader.onload = (event) => {
-      const text = (event.target?.result as string) || "";
-      const result = parseEmployeeCsvText(text, employees, roles);
-      setParsed(result);
+      const buffer = event.target?.result as ArrayBuffer;
+      if (buffer) {
+        const result = parseEmployeeCsvText(buffer, employees, roles);
+        setParsed(result);
+      }
     };
-    reader.readAsText(f);
+    reader.readAsArrayBuffer(f);
   };
 
   const handleImport = async () => {

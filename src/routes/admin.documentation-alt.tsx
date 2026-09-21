@@ -139,6 +139,7 @@ export default function DigitalDocumentationPage() {
   const [docTypePresetId, setDocTypePresetId] = useState<string>("appointment_letter");
   const [isCustomDocName, setIsCustomDocName] = useState(false);
   const [customDocName, setCustomDocName] = useState("");
+  const [customCategoryName, setCustomCategoryName] = useState("");
 
   const selectedPreset = useMemo(
     () => PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId) || null,
@@ -399,10 +400,24 @@ export default function DigitalDocumentationPage() {
 
   // Modals
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
+  const [autoHierarchyModalOpen, setAutoHierarchyModalOpen] = useState(false);
+  const [selectedHierarchyTargetEmpId, setSelectedHierarchyTargetEmpId] = useState<string>("");
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [newTableRows, setNewTableRows] = useState(3);
   const [newTableCols, setNewTableCols] = useState(3);
+
+  // Auto Hierarchy Target Employee & Computed Upward Tree Chain
+  const hierarchyTargetEmployee = useMemo(() => {
+    if (selectedHierarchyTargetEmpId) {
+      return employees.find((e) => e.id === selectedHierarchyTargetEmpId) || employees[0] || null;
+    }
+    return employees.find((e) => !!e.managerId) || employees[0] || null;
+  }, [employees, selectedHierarchyTargetEmpId]);
+
+  const targetUpwardChain = useMemo(() => {
+    if (!hierarchyTargetEmployee) return [];
+    return getUpwardHierarchyChain(hierarchyTargetEmployee, employees, true);
+  }, [hierarchyTargetEmployee, employees]);
 
   // Preloaded Signatures from Settings / docAssets
   const PRELOADED_SIGNATURES = useMemo(
@@ -528,7 +543,6 @@ export default function DigitalDocumentationPage() {
       setDocTypePresetId("custom");
       return;
     }
-    setIsCustomDocName(false);
     const matchingPresets = cat === "ALL" 
       ? PRESET_DOCUMENTS 
       : PRESET_DOCUMENTS.filter((p) => p.category === cat);
@@ -538,59 +552,59 @@ export default function DigitalDocumentationPage() {
     }
   }
 
-  // Handle Auto Hierarchy Action: Build approval flow directly from Organization > Tree Structure
-  function handleAutoHierarchyFromOrg() {
-    // Traverse upward reporting hierarchy using organizational tree structure
-    const sampleEmp = employees.find((e) => !!e.managerId) || employees[0];
-    const chain = sampleEmp ? getUpwardHierarchyChain(sampleEmp, employees) : [];
+  function handleOpenAutoHierarchyModal() {
+    if (!selectedHierarchyTargetEmpId) {
+      const firstWithMgr = employees.find((e) => !!e.managerId) || employees[0];
+      if (firstWithMgr) setSelectedHierarchyTargetEmpId(firstWithMgr.id);
+    }
+    setAutoHierarchyModalOpen(true);
+  }
 
+  // Build approval flow directly from Organization > Tree Structure for a specific employee
+  function handleApplyAutoHierarchy(targetEmp?: Employee | null) {
+    const emp = targetEmp || hierarchyTargetEmployee;
+    if (!emp) {
+      toast.error("Please select an employee to build the hierarchy");
+      return;
+    }
+
+    // Extract exact upward tree branch (e.g. Employee 5 -> Employee 2 -> Employee 1)
+    const upwardChain = getUpwardHierarchyChain(emp, employees, true);
     let newSteps: ApprovalStepItem[] = [];
 
-    if (chain.length > 0) {
-      newSteps = chain.map((mgr, idx) => {
-        let roleLabel = "Reporting Manager";
-        if (idx === 1) roleLabel = "Department Head";
-        else if (idx === 2) roleLabel = "Managing Director / CEO";
-        else if (idx > 2) roleLabel = mgr.designation || `Executive Signatory (L${idx + 1})`;
+    if (upwardChain.length > 0) {
+      newSteps = upwardChain.map((mgr, idx) => {
+        const isDirect = idx === 0;
+        const isTop = idx === upwardChain.length - 1;
+        let rolePosition = isDirect
+          ? "Direct Reporting Manager (L1)"
+          : isTop
+          ? "Top Level Authority / Executive Signatory"
+          : `Reporting Manager (L${idx + 1})`;
 
         return {
-          id: `auto-hier-${Date.now()}-${idx + 1}`,
-          category: "role" as const,
-          roleType: mgr.designation || roleLabel,
-          approverRoleOrName: `${mgr.name} (${mgr.designation || roleLabel})`,
+          id: `auto-hier-${mgr.id}-${idx + 1}`,
+          category: "employee" as const,
+          roleType: mgr.designation || rolePosition,
+          approverEmployeeId: mgr.id,
+          employeeSelectionMode: "single" as const,
+          approverRoleOrName: `${mgr.name} (${mgr.designation || rolePosition})`,
           order: idx + 1,
           status: "pending" as const,
           requireSignature: true,
         };
       });
-    }
-
-    if (newSteps.length < 2) {
+    } else {
+      // Top Level Employee / CEO (has no upward manager in tree)
       newSteps = [
         {
-          id: `auto-hier-1`,
-          category: "role" as const,
-          roleType: "Reporting Manager",
-          approverRoleOrName: "Reporting Manager (L1)",
+          id: `auto-hier-${emp.id}-top`,
+          category: "employee" as const,
+          roleType: emp.designation || "Executive / Authorized Signatory",
+          approverEmployeeId: emp.id,
+          employeeSelectionMode: "single" as const,
+          approverRoleOrName: `${emp.name} (${emp.designation || "Managing Director / CEO"})`,
           order: 1,
-          status: "pending" as const,
-          requireSignature: true,
-        },
-        {
-          id: `auto-hier-2`,
-          category: "role" as const,
-          roleType: "HR Manager",
-          approverRoleOrName: "Department Head / HR Manager (L2)",
-          order: 2,
-          status: "pending" as const,
-          requireSignature: true,
-        },
-        {
-          id: `auto-hier-3`,
-          category: "role" as const,
-          roleType: "Director",
-          approverRoleOrName: "Managing Director / Board Signatory (L3)",
-          order: 3,
           status: "pending" as const,
           requireSignature: true,
         },
@@ -600,10 +614,11 @@ export default function DigitalDocumentationPage() {
     setApprovalRequired(true);
     setApprovalMode("sequential");
     setApprovers(newSteps);
+    setAutoHierarchyModalOpen(false);
 
-    const stepLabels = newSteps.map((s) => s.approverRoleOrName).join(" → ");
-    toast.success(`✨ Auto Hierarchy applied from Organization Tree!`, {
-      description: `Configured ${newSteps.length} approval levels: ${stepLabels}`,
+    const stepSummary = newSteps.map((s) => s.approverRoleOrName).join(" → ");
+    toast.success(`✨ Auto Hierarchy applied for ${emp.name}!`, {
+      description: `Tree Flow: ${emp.name} → ${stepSummary}`,
     });
   }
 
@@ -616,6 +631,7 @@ export default function DigitalDocumentationPage() {
     setComposerCategory(preset.category || "I. Onboarding");
     setIsCustomDocName(false);
     setCustomDocName("");
+    setCustomCategoryName("");
     setDocContentHtml(preset.templateBody);
     setDeliveryChannel("both");
     setDeliverySubject(preset.defaultSubject);
@@ -689,6 +705,7 @@ export default function DigitalDocumentationPage() {
     setEditingDocId(doc.id);
     setIsCustomDocName(doc.isCustomName);
     setCustomDocName(doc.isCustomName ? doc.name : "");
+    setCustomCategoryName(doc.isCustomName ? ((doc as any).category || "") : "");
     const matchedPreset = PRESET_DOCUMENTS.find((p) => p.name === doc.documentType || p.name === doc.name);
     setDocTypePresetId(matchedPreset ? matchedPreset.id : "custom");
     if (matchedPreset?.category) {
@@ -895,7 +912,9 @@ export default function DigitalDocumentationPage() {
       : PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId)?.name || "HR Digital Document";
 
     const matchedPreset = PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId);
-    const matchedCategory = isCustomDocName ? "Custom" : matchedPreset?.category || composerCategory || "General";
+    const matchedCategory = (isCustomDocName || composerCategory === "Custom")
+      ? (customCategoryName.trim() || (composerCategory !== "ALL" && composerCategory !== "Custom" ? composerCategory : "Custom"))
+      : matchedPreset?.category || composerCategory || "General";
     const sampleEmp = employees[0];
 
     const payload = {
@@ -1189,9 +1208,6 @@ export default function DigitalDocumentationPage() {
                   <FileText className="h-6 w-6" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-foreground font-display">
-                    Digital Document Engine
-                  </h1>
                   <p className="text-sm text-muted-foreground">
                     Compose, approve, dispatch, and track verifiable digital HR documents with one smooth email-like workflow.
                   </p>
@@ -1607,7 +1623,7 @@ export default function DigitalDocumentationPage() {
               </div>
 
               {/* 2. Document Name & Template Dropdown */}
-              <div className={`${isCustomDocName ? "md:col-span-4" : "md:col-span-8"} space-y-1.5`}>
+              <div className="md:col-span-8 space-y-1.5">
                 <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
                   <FileText className="h-3.5 w-3.5 text-primary" /> Document Name & Template
                 </Label>
@@ -1642,23 +1658,42 @@ export default function DigitalDocumentationPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              {/* 3. Custom Document Name Input (if custom active) */}
-              {isCustomDocName && (
-                <div className="md:col-span-4 space-y-1.5 animate-in fade-in-50 duration-200">
+            {/* Custom Category & Custom Document Title Inputs */}
+            {(isCustomDocName || composerCategory === "Custom") && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-primary/5 border border-primary/20 animate-in fade-in-50 duration-200">
+                <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" /> Custom Document Title
+                    <Sliders className="h-3.5 w-3.5 text-primary" /> Custom Document Category
                   </Label>
                   <Input
-                    placeholder="Enter custom document title (e.g., Relocation Letter)..."
+                    placeholder="Enter custom category (e.g., Legal, HR Policy, Operations)..."
+                    value={customCategoryName}
+                    onChange={(e) => setCustomCategoryName(e.target.value)}
+                    className="text-xs h-9 bg-background"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Specify the category or functional area for this custom document.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" /> Custom Document Name / Title
+                  </Label>
+                  <Input
+                    placeholder="Enter custom document title (e.g., Relocation Letter, Project Bonus)..."
                     value={customDocName}
                     onChange={(e) => setCustomDocName(e.target.value)}
                     className="text-xs h-9 bg-background"
                     autoFocus
                   />
+                  <p className="text-[10px] text-muted-foreground">
+                    This document title will appear in document headers, PDFs, and approval matrices.
+                  </p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Active Template Quick Info Description */}
             {!isCustomDocName && selectedPreset && (
@@ -1696,92 +1731,22 @@ export default function DigitalDocumentationPage() {
             }
           />
 
-          {/* Section 9, 10, 11, 12: Delivery, Approval & Escalation Configuration */}
+          {/* Section 9: Approval & Escalation Configuration */}
           <div className="space-y-6">
-            {/* Top Grid: Delivery Configuration (Left) & Auto-Escalation Protocol (Right) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Delivery Settings */}
-              <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
-                <div className="flex items-center gap-2 pb-2.5 border-b border-border">
-                  <Send className="h-4 w-4 text-primary" />
+            {/* Auto-Escalation Protocol */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between pb-2.5 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <BellRing className="h-4 w-4 text-primary" />
                   <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
-                    1. Delivery Configuration
+                    Auto-Escalation & SLA Protocol
                   </h3>
                 </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Send Via Channels</Label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryChannel("email")}
-                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                        deliveryChannel === "email"
-                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                          : "border-border hover:bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      Email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryChannel("app")}
-                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                        deliveryChannel === "app"
-                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                          : "border-border hover:bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      SWIFT App
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryChannel("both")}
-                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                        deliveryChannel === "both"
-                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                          : "border-border hover:bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      Both
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] text-muted-foreground font-semibold">Recipient Resolution</Label>
-                  <Input
-                    disabled
-                    value="Dynamic (Resolved per employee during document issuance)"
-                    className="text-xs h-8 bg-muted/40 font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] text-muted-foreground font-semibold">Subject Line</Label>
-                  <Input
-                    value={deliverySubject}
-                    onChange={(e) => setDeliverySubject(e.target.value)}
-                    placeholder="Document Subject Line"
-                    className="text-xs h-8"
-                  />
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground">Enabled</span>
+                  <Switch checked={escalationEnabled} onCheckedChange={setEscalationEnabled} />
                 </div>
               </div>
-
-              {/* Escalation Rules */}
-              <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between pb-2.5 border-b border-border">
-                  <div className="flex items-center gap-2">
-                    <BellRing className="h-4 w-4 text-primary" />
-                    <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
-                      2. Auto-Escalation Protocol
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground">Enabled</span>
-                    <Switch checked={escalationEnabled} onCheckedChange={setEscalationEnabled} />
-                  </div>
-                </div>
 
                 {escalationEnabled ? (
                   <div className="space-y-3 text-xs">
@@ -1846,7 +1811,6 @@ export default function DigitalDocumentationPage() {
                   </div>
                 )}
               </div>
-            </div>
 
             {/* Prominent Full-Width Approval Matrix & Signatory Workflow Designer */}
             <div className="rounded-2xl border border-border bg-card p-5 space-y-5 shadow-sm">
@@ -1877,7 +1841,7 @@ export default function DigitalDocumentationPage() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        onClick={handleAutoHierarchyFromOrg}
+                        onClick={handleOpenAutoHierarchyModal}
                         className="border-primary/40 text-primary bg-primary/5 hover:bg-primary hover:text-white text-xs font-semibold rounded-xl shadow-xs gap-1.5 h-9"
                         title="Automatically generate approval pipeline from Organization Tree Structure"
                       >
@@ -3830,6 +3794,159 @@ export default function DigitalDocumentationPage() {
             </Button>
             <Button size="sm" onClick={handleInsertSignatureBlock} className="bg-primary text-primary-foreground font-semibold">
               <PenTool className="h-3.5 w-3.5 mr-1" /> Insert Signature Block
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AUTO HIERARCHY SELECTION & TREE FLOW MODAL */}
+      <Dialog open={autoHierarchyModalOpen} onOpenChange={setAutoHierarchyModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
+          <DialogHeader className="pb-3 border-b border-border">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
+                <Network className="h-6 w-6" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold font-display">
+                  Auto Hierarchy from Organization Tree
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Select the employee for this document to dynamically calculate their upward reporting chain.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3 text-xs">
+            {/* 1. Target Employee Selector */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-foreground">
+                Select Target Employee (Originating Member)
+              </Label>
+              <Select
+                value={hierarchyTargetEmployee?.id || ""}
+                onValueChange={(val) => setSelectedHierarchyTargetEmpId(val)}
+              >
+                <SelectTrigger className="h-10 text-xs bg-background">
+                  <SelectValue placeholder="Choose employee..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-64 text-xs">
+                  {employees.map((e) => {
+                    const mgr = employees.find((m) => m.id === e.managerId);
+                    return (
+                      <SelectItem key={e.id} value={e.id}>
+                        <div className="flex items-center gap-2 py-0.5">
+                          <span className="font-semibold text-foreground">{e.name}</span>
+                          <span className="text-[11px] text-muted-foreground font-mono">({e.empCode})</span>
+                          <span className="text-[11px] text-muted-foreground">· {e.designation}</span>
+                          {mgr ? (
+                            <span className="text-[10px] text-primary/80 font-medium">↳ reports to {mgr.name}</span>
+                          ) : (
+                            <span className="text-[10px] text-emerald-600 font-medium">★ Top Level</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 2. Visual Upward Tree Flow Preview */}
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <GitBranch className="h-4 w-4 text-primary" /> Generated Approval Tree Pathway
+                </Label>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {targetUpwardChain.length > 0 ? `${targetUpwardChain.length} Approval Level(s)` : "Top Executive / 1 Level"}
+                </Badge>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-muted/40 border border-border space-y-3">
+                {/* Level 0: Requester / Subject Employee */}
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-card border border-primary/20 shadow-xs">
+                  <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
+                    {hierarchyTargetEmployee?.name.slice(0, 2).toUpperCase() || "EM"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-foreground truncate">{hierarchyTargetEmployee?.name}</span>
+                      <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground">
+                        {hierarchyTargetEmployee?.empCode}
+                      </Badge>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {hierarchyTargetEmployee?.designation} · {hierarchyTargetEmployee?.department}
+                    </div>
+                  </div>
+                  <Badge className="bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30 text-[10px] shrink-0 font-medium">
+                    Document Subject
+                  </Badge>
+                </div>
+
+                {/* Arrow up & Chain Steps */}
+                {targetUpwardChain.length > 0 ? (
+                  targetUpwardChain.map((mgr, idx) => {
+                    const isDirect = idx === 0;
+                    const isTop = idx === targetUpwardChain.length - 1;
+                    return (
+                      <div key={mgr.id} className="space-y-3">
+                        <div className="flex items-center justify-center">
+                          <div className="flex items-center gap-1 text-[11px] font-semibold text-primary/80 bg-primary/5 px-2.5 py-0.5 rounded-full border border-primary/20">
+                            <ArrowDown className="h-3 w-3 rotate-180" />
+                            <span>Routes Upward to Level {idx + 1}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border shadow-xs hover:border-primary/40 transition-colors">
+                          <div className="h-9 w-9 rounded-xl bg-primary text-primary-foreground font-bold flex items-center justify-center text-xs shrink-0 shadow-xs">
+                            {mgr.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-foreground truncate">{mgr.name}</span>
+                              <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground">
+                                {mgr.empCode}
+                              </Badge>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground truncate">
+                              {isDirect ? "Direct Reporting Manager" : isTop ? "Top Authority / Final Stage" : "Reporting Manager"} · {mgr.designation} ({mgr.department})
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px] font-bold">
+                              Stage {idx + 1} Approver
+                            </Badge>
+                            <div className="text-[10px] text-emerald-600 font-medium mt-0.5">✓ e-Signature Required</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-3.5 rounded-xl border border-blue-500/20 bg-blue-500/5 text-center space-y-1">
+                    <div className="text-xs font-bold text-foreground">Top-Level Executive / Direct Authority</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      This employee is at the top of the Organization Tree with no higher reporting managers.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 pt-3 border-t border-border">
+            <Button variant="outline" size="sm" onClick={() => setAutoHierarchyModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => handleApplyAutoHierarchy(hierarchyTargetEmployee)}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 gap-1.5"
+            >
+              <Network className="h-3.5 w-3.5" /> Apply Tree Flow to Matrix
             </Button>
           </DialogFooter>
         </DialogContent>

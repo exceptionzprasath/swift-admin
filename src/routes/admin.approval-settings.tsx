@@ -1208,19 +1208,11 @@ function CentralizedApprovalSettingsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 min-w-0">
         <div className="space-y-1 min-w-0">
           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-            <span className="hover:text-foreground cursor-pointer">Approval Settings</span>
+            <span className="hover:text-foreground cursor-pointer">Configuration Workflow</span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0" />
             <span className="text-foreground capitalize">{activeTab === "loan" ? "Advance Loan Request" : activeTab}</span>
           </div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight capitalize text-foreground flex items-center gap-2.5">
-            {activeTab === "documents" && <FileText className="h-7 w-7 text-primary shrink-0" />}
-            {activeTab === "grievance" && <MessageSquareHeart className="h-7 w-7 text-primary shrink-0" />}
-            {activeTab === "attendance" && <CalendarCheck className="h-7 w-7 text-primary shrink-0" />}
-            {activeTab === "loan" && <Banknote className="h-7 w-7 text-primary shrink-0" />}
-            {activeTab === "compoff" && <Coffee className="h-7 w-7 text-primary shrink-0" />}
-            <span>{activeTab === "loan" ? "Advance Loan Request" : activeTab === "compoff" ? "Comp-Off" : activeTab} Approval Settings</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Configure approval workflow, escalation and final level action for {activeTab === "documents" ? "documents" : activeTab === "grievance" ? "grievance requests" : activeTab === "attendance" ? "attendance related requests" : activeTab === "loan" ? "employee advance loan requests" : "compensatory off leave credit requests"}.
           </p>
         </div>
