@@ -161,7 +161,7 @@ function formatNotificationDateTime(timestamp: number | string | undefined, fall
   };
 }
 
-export function LiveNotificationBell() {
+export function LiveNotificationBell({ triggerClassName }: { triggerClassName?: string } = {}) {
   const {
     requests = [],
     leaves = [],
@@ -449,7 +449,7 @@ export function LiveNotificationBell() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative group h-9 w-9 rounded-full"
+          className={triggerClassName || "relative group h-9 w-9 rounded-full"}
           title="Live Notifications & Alerts"
         >
           <BellRing

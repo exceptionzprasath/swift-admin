@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { computePayroll, inr, type PayrollComputation } from "@/lib/payroll";
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
 import { PayslipTemplateView } from "@/components/payroll/PayslipTemplateView";
+import { EmployeeOtCalendarModal } from "@/components/payroll/EmployeeOtCalendarModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -453,6 +454,10 @@ export function PayrollPage() {
   const [otSearch, setOtSearch] = useState("");
   const [otFilterDept, setOtFilterDept] = useState("all");
   const [otFilterStatus, setOtFilterStatus] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [otCalendarTarget, setOtCalendarTarget] = useState<{
+    emp: Employee;
+    selectedMonth: string;
+  } | null>(null);
   const [otBreakdownTarget, setOtBreakdownTarget] = useState<{
     emp: Employee;
     rawOtHours: number;
@@ -1367,9 +1372,6 @@ export function PayrollPage() {
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-                Payroll Management
-              </h1>
               <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[11px] font-semibold px-2 py-0.5">
                 Statutory Compliant
               </Badge>
@@ -2588,6 +2590,14 @@ export function PayrollPage() {
                           <div>
                             <div className="flex items-center gap-1.5">
                               <span className="font-semibold text-foreground text-xs">{emp.name}</span>
+                              {emp.employmentType === "contract" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                                >
+                                  Contract
+                                </Badge>
+                              )}
                               {hasOverride && (
                                 <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[9px] px-1 py-0">
                                   Custom
@@ -3117,7 +3127,17 @@ export function PayrollPage() {
                                 {reg.emp.name?.slice(0, 2).toUpperCase()}
                               </div>
                               <div>
-                                <div className="font-bold text-foreground">{reg.emp.name}</div>
+                                <div className="font-bold text-foreground flex items-center gap-1.5">
+                                  <span>{reg.emp.name}</span>
+                                  {reg.emp.employmentType === "contract" && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                                    >
+                                      Contract
+                                    </Badge>
+                                  )}
+                                </div>
                                 <div className="text-[11px] text-muted-foreground">
                                   {reg.emp.empCode} · {reg.emp.department || "General"}
                                 </div>
@@ -3143,16 +3163,14 @@ export function PayrollPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => setOtBreakdownTarget({
+                                  onClick={() => setOtCalendarTarget({
                                     emp: reg.emp,
-                                    rawOtHours: reg.rawOtHours,
-                                    otApprovedHours: approvedHrs,
-                                    otStatus: reg.otStatus,
-                                    dailyOtRecords: reg.dailyOtRecords,
+                                    selectedMonth,
                                   })}
-                                  className="h-6 text-[10px] px-2 rounded-lg gap-1 border-border/80"
+                                  className="h-6 text-[10px] px-2 rounded-lg gap-1 border-border/80 hover:border-primary/50 text-foreground"
+                                  title="View Overtime Calendar"
                                 >
-                                  <Eye className="h-2.5 w-2.5" />
+                                  <Calendar className="h-2.5 w-2.5 text-primary" />
                                   <span>{reg.dailyOtRecords.length} {reg.dailyOtRecords.length === 1 ? "day" : "days"}</span>
                                 </Button>
                               )}
@@ -3222,6 +3240,21 @@ export function PayrollPage() {
                           {/* Actions */}
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* Extra Option: Calendar View */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setOtCalendarTarget({
+                                  emp: reg.emp,
+                                  selectedMonth,
+                                })}
+                                className="h-7 text-xs px-2.5 rounded-lg border-border hover:bg-muted font-medium gap-1 text-foreground shadow-xs"
+                                title="Open Overtime Calendar View"
+                              >
+                                <Calendar className="h-3.5 w-3.5 text-primary" />
+                                <span>Calendar View</span>
+                              </Button>
+
                               {reg.otStatus !== "approved" ? (
                                 <Button
                                   size="sm"
@@ -3424,6 +3457,14 @@ export function PayrollPage() {
                   <DialogTitle className="text-xl font-bold flex items-center gap-2">
                     <Edit3 className="h-5 w-5 text-amber-500" />
                     <span>Edit Payslip — {editingRecord.emp.name} ({editingRecord.emp.empCode})</span>
+                    {editingRecord.emp.employmentType === "contract" && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                      >
+                        Contract
+                      </Badge>
+                    )}
                   </DialogTitle>
                   <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-mono text-xs">
                     {effectivePeriodLabel}
@@ -4449,6 +4490,20 @@ export function PayrollPage() {
         </DialogContent>
       </Dialog>
 
+      {/* OT Calendar View Modal for Individual Employee */}
+      <EmployeeOtCalendarModal
+        open={!!otCalendarTarget}
+        onClose={() => setOtCalendarTarget(null)}
+        employee={otCalendarTarget?.emp || null}
+        initialMonth={otCalendarTarget?.selectedMonth || selectedMonth}
+        attendance={attendance}
+        company={company}
+        monthlyOverrides={monthlyOverrides}
+        onApproveOt={handleApproveOt}
+        onRejectOt={handleRejectOt}
+        onResetOt={handleResetOt}
+      />
+
       {/* ========================================================================= */}
       {/* MODAL 4: PAYROLL LOCK / UNLOCK PASSWORD VERIFICATION DIALOG               */}
       {/* ========================================================================= */}
@@ -4770,7 +4825,7 @@ function WageRegisterDownloadDialog({
             <div className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center justify-between">
               <span>Included Register Structure</span>
               <Badge variant="secondary" className="text-[10px] font-mono">
-                50 Statutory Columns (.xlsx)
+                58 Statutory & Banking Columns (.xlsx)
               </Badge>
             </div>
 
@@ -4783,7 +4838,7 @@ function WageRegisterDownloadDialog({
                 <Badge variant="secondary" className="text-[9.5px] font-mono">Statutory Master</Badge>
               </div>
               <p className="text-[11px] text-muted-foreground leading-relaxed pl-6.5">
-                S.No, EMP ID, Name of the Employee, UAN No, ESI No, Gender, Present & Permanent Address, Number of days Calculate, No of Days Worked, FH/NH/PL/ML, Sunday, Half day, PAID LEAVES DAYS, Sundays work, No of days in month, Number of days Calculate paid, Absent days, Fixed Salary, Pay Slab, Per hrs, Per Hrs working time, Per hrs Amt, LATE PUNCHING Hrs & Amt, Basic+DA, HRA, Conveyance Allowance, Other Allowances, LTA, Sundays days Amount, Incentives, Gross Salary, Basic+DA for PF, EPF Elig, EPF - 12%, ESI Elig, ESI- 0.75%, Advance, PT, TDS/4% Cass, LWF, Deductions, NCP Days, Net Salary, Month, Remarks, 13%, EPF, ESI.
+                S.No, EMP ID, Name of the Employee, Name as per Aadhaar, Date of Birth, Date of Joining, Designation, Location (Branch), Bank Name, Account Number, IFSC Code, UAN No, ESI No, Gender, Present & Permanent Address, Number of days Calculate, No of Days Worked, FH/NH/PL/ML, Sunday, Half day, PAID LEAVES DAYS, Sundays work, No of days in month, Number of days Calculate paid, Absent days, Fixed Salary, Pay Slab, Per hrs, Per Hrs working time, Per hrs Amt, LATE PUNCHING Hrs & Amt, Basic+DA, HRA, Conveyance Allowance, Other Allowances, LTA, Sundays days Amount, Incentives, Gross Salary, Basic+DA for PF, EPF Elig, EPF - 12%, ESI Elig, ESI- 0.75%, Advance, PT, TDS/4% Cass, LWF, Deductions, NCP Days, Net Salary, Month, Remarks, 13%, EPF, ESI.
               </p>
             </div>
           </div>

@@ -321,7 +321,7 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
         <div
           className="text-white p-4 sm:p-5 border-b-2 relative z-10 transition-colors"
           style={{
-            background: `linear-gradient(135deg, ${palette.primaryDarkHex} 0%, ${palette.primaryHex} 60%, ${palette.primaryDarkHex} 100%)`,
+            background: `linear-gradient(135deg, ${palette.primaryHex} 0%, ${palette.primaryDarkHex} 100%)`,
             borderBottomColor: `${palette.accentHex}90`,
           }}
         >
@@ -589,7 +589,7 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
         <div
           className="relative z-10 text-white px-4 sm:px-6 py-2.5 flex justify-between items-center font-extrabold text-sm border-t-2 shadow-inner transition-colors"
           style={{
-            background: `linear-gradient(90deg, ${palette.primaryDarkHex} 0%, ${palette.primaryHex} 100%)`,
+            background: `linear-gradient(90deg, ${palette.primaryHex} 0%, ${palette.primaryDarkHex} 100%)`,
             borderTopColor: `${palette.accentHex}80`,
           }}
         >

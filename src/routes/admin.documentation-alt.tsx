@@ -1,13 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo, useRef } from "react";
-import { useStore, type Employee } from "@/lib/store";
+import { useStore, getUpwardHierarchyChain, type Employee } from "@/lib/store";
 import {
   useDigitalDocStore,
   PRESET_DOCUMENTS,
+  DOCUMENT_CATEGORIES,
   DYNAMIC_FIELDS,
   resolveDocumentTags,
   type DigitalDocument,
   type DigitalDocumentStatus,
+  type DocumentCategory,
   type ApprovalMode,
   type ApprovalStepItem,
   type DocCustomTable,
@@ -92,6 +94,8 @@ import {
   Crown,
   UserCheck,
   Zap,
+  Network,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -103,7 +107,6 @@ export const Route = createFileRoute("/admin/documentation-alt")({
 });
 
 type ViewMode = "list" | "composer" | "detail";
-type RecipientSelectionMode = "single" | "custom" | "all" | "multiple";
 
 export default function DigitalDocumentationPage() {
   const { company, employees, currentUser, roles, docAssets } = useStore();
@@ -132,24 +135,26 @@ export default function DigitalDocumentationPage() {
 
   // Composer Form State
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [composerCategory, setComposerCategory] = useState<string>("ALL");
   const [docTypePresetId, setDocTypePresetId] = useState<string>("appointment_letter");
   const [isCustomDocName, setIsCustomDocName] = useState(false);
   const [customDocName, setCustomDocName] = useState("");
+  const [customCategoryName, setCustomCategoryName] = useState("");
 
-  // Recipient Selection State
-  const [recipientMode, setRecipientMode] = useState<RecipientSelectionMode>("single");
-  const [selectedEmpId, setSelectedEmpId] = useState<string>("");
-  const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
-  const [previewEmpId, setPreviewEmpId] = useState<string>("");
-  const [multiSelectSearch, setMultiSelectSearch] = useState<string>("");
-  const [customRecipient, setCustomRecipient] = useState({
-    name: "",
-    empCode: "EXT-" + Math.floor(1000 + Math.random() * 9000),
-    designation: "External Consultant",
-    department: "Consulting / Advisory",
-    email: "",
-    phone: "",
-  });
+  const selectedPreset = useMemo(
+    () => PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId) || null,
+    [docTypePresetId]
+  );
+
+  const displayedCategories = useMemo(() => {
+    if (composerCategory === "ALL") {
+      return DOCUMENT_CATEGORIES;
+    }
+    return DOCUMENT_CATEGORIES.filter((c) => c === composerCategory);
+  }, [composerCategory]);
+
+  // Sample employee for WYSIWYG editor placeholder resolution
+  const selectedEmployee = useMemo(() => employees[0] || null, [employees]);
 
   // Content
   const [docContentHtml, setDocContentHtml] = useState<string>("");
@@ -395,10 +400,24 @@ export default function DigitalDocumentationPage() {
 
   // Modals
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
+  const [autoHierarchyModalOpen, setAutoHierarchyModalOpen] = useState(false);
+  const [selectedHierarchyTargetEmpId, setSelectedHierarchyTargetEmpId] = useState<string>("");
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [newTableRows, setNewTableRows] = useState(3);
   const [newTableCols, setNewTableCols] = useState(3);
+
+  // Auto Hierarchy Target Employee & Computed Upward Tree Chain
+  const hierarchyTargetEmployee = useMemo(() => {
+    if (selectedHierarchyTargetEmpId) {
+      return employees.find((e) => e.id === selectedHierarchyTargetEmpId) || employees[0] || null;
+    }
+    return employees.find((e) => !!e.managerId) || employees[0] || null;
+  }, [employees, selectedHierarchyTargetEmpId]);
+
+  const targetUpwardChain = useMemo(() => {
+    if (!hierarchyTargetEmployee) return [];
+    return getUpwardHierarchyChain(hierarchyTargetEmployee, employees, true);
+  }, [hierarchyTargetEmployee, employees]);
 
   // Preloaded Signatures from Settings / docAssets
   const PRELOADED_SIGNATURES = useMemo(
@@ -468,26 +487,6 @@ export default function DigitalDocumentationPage() {
   // Detail View Tab
   const [detailActiveTab, setDetailActiveTab] = useState<"preview" | "tracking" | "versions" | "audit">("preview");
 
-  // Dynamic Selected Employee for Preview / Resolution
-  const selectedEmployee = useMemo(() => {
-    if (recipientMode === "custom") {
-      return {
-        id: "custom-ext",
-        name: customRecipient.name || "Custom Recipient",
-        empCode: customRecipient.empCode || "EXT-001",
-        designation: customRecipient.designation || "External / Consultant",
-        department: customRecipient.department || "External",
-        email: customRecipient.email || "recipient@external.com",
-        phone: customRecipient.phone || "",
-      } as unknown as Employee;
-    }
-    if (recipientMode === "all" || recipientMode === "multiple") {
-      const targetId = previewEmpId || selectedEmpIds[0] || employees[0]?.id;
-      return employees.find((e) => e.id === targetId) || employees[0] || null;
-    }
-    return employees.find((e) => e.id === selectedEmpId) || employees[0] || null;
-  }, [recipientMode, customRecipient, previewEmpId, selectedEmpIds, selectedEmpId, employees]);
-
   // Dynamically ordered signatories for live composer preview based on Org Hierarchy Priority
   const previewSignatories = useMemo(() => {
     return getOrderedSignatories(
@@ -536,51 +535,103 @@ export default function DigitalDocumentationPage() {
     return { total, inApproval, waitingEmp, completed, drafts };
   }, [documents]);
 
-  // Handle Recipient Dropdown Selection
-  function handleRecipientChange(value: string) {
-    if (value === "custom") {
-      setRecipientMode("custom");
-    } else if (value === "select_all") {
-      setRecipientMode("all");
-      const allIds = employees.map((e) => e.id);
-      setSelectedEmpIds(allIds);
-      if (allIds.length > 0) setPreviewEmpId(allIds[0]);
-    } else if (value === "multiple") {
-      setRecipientMode("multiple");
-      if (selectedEmpIds.length === 0) {
-        const initial = selectedEmpId ? [selectedEmpId] : employees.slice(0, 2).map((e) => e.id);
-        setSelectedEmpIds(initial);
-        if (initial.length > 0) setPreviewEmpId(initial[0]);
-      }
-    } else {
-      setRecipientMode("single");
-      setSelectedEmpId(value);
-      setSelectedEmpIds([value]);
-      setPreviewEmpId(value);
+  // Handle Category Filter Change in Composer
+  function handleCategoryFilterChange(cat: string) {
+    setComposerCategory(cat);
+    if (cat === "Custom") {
+      setIsCustomDocName(true);
+      setDocTypePresetId("custom");
+      return;
     }
+    const matchingPresets = cat === "ALL" 
+      ? PRESET_DOCUMENTS 
+      : PRESET_DOCUMENTS.filter((p) => p.category === cat);
+    
+    if (matchingPresets.length > 0 && !matchingPresets.some((p) => p.id === docTypePresetId)) {
+      handlePresetChange(matchingPresets[0].id);
+    }
+  }
+
+  function handleOpenAutoHierarchyModal() {
+    if (!selectedHierarchyTargetEmpId) {
+      const firstWithMgr = employees.find((e) => !!e.managerId) || employees[0];
+      if (firstWithMgr) setSelectedHierarchyTargetEmpId(firstWithMgr.id);
+    }
+    setAutoHierarchyModalOpen(true);
+  }
+
+  // Build approval flow directly from Organization > Tree Structure for a specific employee
+  function handleApplyAutoHierarchy(targetEmp?: Employee | null) {
+    const emp = targetEmp || hierarchyTargetEmployee;
+    if (!emp) {
+      toast.error("Please select an employee to build the hierarchy");
+      return;
+    }
+
+    // Extract exact upward tree branch (e.g. Employee 5 -> Employee 2 -> Employee 1)
+    const upwardChain = getUpwardHierarchyChain(emp, employees, true);
+    let newSteps: ApprovalStepItem[] = [];
+
+    if (upwardChain.length > 0) {
+      newSteps = upwardChain.map((mgr, idx) => {
+        const isDirect = idx === 0;
+        const isTop = idx === upwardChain.length - 1;
+        let rolePosition = isDirect
+          ? "Direct Reporting Manager (L1)"
+          : isTop
+          ? "Top Level Authority / Executive Signatory"
+          : `Reporting Manager (L${idx + 1})`;
+
+        return {
+          id: `auto-hier-${mgr.id}-${idx + 1}`,
+          category: "employee" as const,
+          roleType: mgr.designation || rolePosition,
+          approverEmployeeId: mgr.id,
+          employeeSelectionMode: "single" as const,
+          approverRoleOrName: `${mgr.name} (${mgr.designation || rolePosition})`,
+          order: idx + 1,
+          status: "pending" as const,
+          requireSignature: true,
+        };
+      });
+    } else {
+      // Top Level Employee / CEO (has no upward manager in tree)
+      newSteps = [
+        {
+          id: `auto-hier-${emp.id}-top`,
+          category: "employee" as const,
+          roleType: emp.designation || "Executive / Authorized Signatory",
+          approverEmployeeId: emp.id,
+          employeeSelectionMode: "single" as const,
+          approverRoleOrName: `${emp.name} (${emp.designation || "Managing Director / CEO"})`,
+          order: 1,
+          status: "pending" as const,
+          requireSignature: true,
+        },
+      ];
+    }
+
+    setApprovalRequired(true);
+    setApprovalMode("sequential");
+    setApprovers(newSteps);
+    setAutoHierarchyModalOpen(false);
+
+    const stepSummary = newSteps.map((s) => s.approverRoleOrName).join(" → ");
+    toast.success(`✨ Auto Hierarchy applied for ${emp.name}!`, {
+      description: `Tree Flow: ${emp.name} → ${stepSummary}`,
+    });
   }
 
   // Start new document flow
   function handleStartNewDoc(presetId = "appointment_letter") {
     const preset = PRESET_DOCUMENTS.find((p) => p.id === presetId) || PRESET_DOCUMENTS[0];
-    const firstEmp = employees[0];
 
     setEditingDocId(null);
     setDocTypePresetId(preset.id);
+    setComposerCategory(preset.category || "I. Onboarding");
     setIsCustomDocName(false);
     setCustomDocName("");
-    setRecipientMode("single");
-    setSelectedEmpId(firstEmp?.id || "");
-    setSelectedEmpIds(firstEmp ? [firstEmp.id] : []);
-    setPreviewEmpId(firstEmp?.id || "");
-    setCustomRecipient({
-      name: "",
-      empCode: "EXT-" + Math.floor(1000 + Math.random() * 9000),
-      designation: "External Consultant",
-      department: "Consulting / Advisory",
-      email: "",
-      phone: "",
-    });
+    setCustomCategoryName("");
     setDocContentHtml(preset.templateBody);
     setDeliveryChannel("both");
     setDeliverySubject(preset.defaultSubject);
@@ -654,25 +705,11 @@ export default function DigitalDocumentationPage() {
     setEditingDocId(doc.id);
     setIsCustomDocName(doc.isCustomName);
     setCustomDocName(doc.isCustomName ? doc.name : "");
-    const matchedPreset = PRESET_DOCUMENTS.find((p) => p.name === doc.documentType);
+    setCustomCategoryName(doc.isCustomName ? ((doc as any).category || "") : "");
+    const matchedPreset = PRESET_DOCUMENTS.find((p) => p.name === doc.documentType || p.name === doc.name);
     setDocTypePresetId(matchedPreset ? matchedPreset.id : "custom");
-
-    const matchedEmp = employees.find((e) => e.id === doc.employeeId);
-    if (matchedEmp) {
-      setRecipientMode("single");
-      setSelectedEmpId(doc.employeeId);
-      setSelectedEmpIds([doc.employeeId]);
-      setPreviewEmpId(doc.employeeId);
-    } else {
-      setRecipientMode("custom");
-      setCustomRecipient({
-        name: doc.employeeName,
-        empCode: doc.employeeCode,
-        designation: doc.designation,
-        department: doc.department,
-        email: doc.employeeEmail,
-        phone: "",
-      });
+    if (matchedPreset?.category) {
+      setComposerCategory(matchedPreset.category);
     }
 
     setDocContentHtml(doc.contentHtml);
@@ -728,6 +765,9 @@ export default function DigitalDocumentationPage() {
 
     setIsCustomDocName(false);
     setDocTypePresetId(preset.id);
+    if (preset.category) {
+      setComposerCategory(preset.category);
+    }
     setDocContentHtml(preset.templateBody);
     setDeliverySubject(preset.defaultSubject);
     setApprovalMode(preset.defaultApprovalMode);
@@ -865,140 +905,37 @@ export default function DigitalDocumentationPage() {
     toast.success("Configured signature block added to document!");
   }
 
-  // Save Draft
+  // Save Document Template / Draft
   function handleSaveDraft() {
     const docName = isCustomDocName
       ? customDocName.trim() || "Custom HR Document"
       : PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId)?.name || "HR Digital Document";
 
-    // Custom Mode
-    if (recipientMode === "custom") {
-      if (!customRecipient.name.trim()) {
-        toast.error("Please enter a custom recipient name");
-        return;
-      }
-      const payload = {
-        name: docName,
-        documentType: isCustomDocName ? "Custom" : docName,
-        isCustomName: isCustomDocName,
-        employeeId: "custom-ext",
-        employeeName: customRecipient.name.trim(),
-        employeeCode: customRecipient.empCode.trim() || "EXT-001",
-        designation: customRecipient.designation.trim() || "External / Consultant",
-        department: customRecipient.department.trim() || "External",
-        employeeEmail: customRecipient.email.trim() || "recipient@external.com",
-        contentHtml: docContentHtml,
-        tableData: customTable,
-        letterhead: docLetterhead,
-        footer: docFooter,
-        delivery: {
-          channel: deliveryChannel,
-          recipientEmail: customRecipient.email.trim() || "recipient@external.com",
-          subject: deliverySubject || `${docName} — ${customRecipient.name.trim()}`,
-        },
-        approvalRequired,
-        approvalMode,
-        approvers,
-        includeCompanySeal,
-        currentStepIndex: 0,
-        escalation: {
-          enabled: escalationEnabled,
-          delayDays: escalationDelay,
-          escalateTo: escalationTarget,
-          secondEscalationEnabled,
-          secondDelayDays: secondEscalationDelay,
-          secondEscalateTo: secondEscalationTarget,
-        },
-        status: "DRAFT" as DigitalDocumentStatus,
-      };
-
-      if (editingDocId) {
-        updateDocument(editingDocId, payload, "Saved updated draft");
-        toast.success("Draft updated successfully");
-      } else {
-        const created = addDocument(payload);
-        setEditingDocId(created.id);
-        toast.success("Document saved as Draft");
-      }
-      return;
-    }
-
-    // Bulk Mode (All or Multiple)
-    if (recipientMode === "all" || recipientMode === "multiple") {
-      const targetEmpIds = recipientMode === "all" ? employees.map((e) => e.id) : selectedEmpIds;
-      if (targetEmpIds.length === 0) {
-        toast.error("Please select at least one employee");
-        return;
-      }
-
-      const targetEmps = employees.filter((e) => targetEmpIds.includes(e.id));
-      targetEmps.forEach((emp) => {
-        const payload = {
-          name: docName,
-          documentType: isCustomDocName ? "Custom" : docName,
-          isCustomName: isCustomDocName,
-          employeeId: emp.id,
-          employeeName: emp.name,
-          employeeCode: emp.empCode,
-          designation: emp.designation,
-          department: emp.department,
-          employeeEmail: emp.email,
-          contentHtml: docContentHtml,
-          tableData: customTable,
-          letterhead: docLetterhead,
-          footer: docFooter,
-          delivery: {
-            channel: deliveryChannel,
-            recipientEmail: emp.email,
-            subject: deliverySubject || `${docName} — ${emp.name}`,
-          },
-          approvalRequired,
-          approvalMode,
-          approvers,
-          includeCompanySeal,
-          currentStepIndex: 0,
-          escalation: {
-            enabled: escalationEnabled,
-            delayDays: escalationDelay,
-            escalateTo: escalationTarget,
-            secondEscalationEnabled,
-            secondDelayDays: secondEscalationDelay,
-            secondEscalateTo: secondEscalationTarget,
-          },
-          status: "DRAFT" as DigitalDocumentStatus,
-        };
-        addDocument(payload);
-      });
-
-      toast.success(`Saved drafts for ${targetEmps.length} employees`);
-      setViewMode("list");
-      return;
-    }
-
-    // Single Mode
-    if (!selectedEmployee) {
-      toast.error("Please select a recipient employee");
-      return;
-    }
+    const matchedPreset = PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId);
+    const matchedCategory = (isCustomDocName || composerCategory === "Custom")
+      ? (customCategoryName.trim() || (composerCategory !== "ALL" && composerCategory !== "Custom" ? composerCategory : "Custom"))
+      : matchedPreset?.category || composerCategory || "General";
+    const sampleEmp = employees[0];
 
     const payload = {
       name: docName,
       documentType: isCustomDocName ? "Custom" : docName,
       isCustomName: isCustomDocName,
-      employeeId: selectedEmployee.id,
-      employeeName: selectedEmployee.name,
-      employeeCode: selectedEmployee.empCode,
-      designation: selectedEmployee.designation,
-      department: selectedEmployee.department,
-      employeeEmail: selectedEmployee.email,
+      category: matchedCategory,
+      employeeId: sampleEmp?.id || "sample-emp",
+      employeeName: sampleEmp?.name || "Sample Employee",
+      employeeCode: sampleEmp?.empCode || "EMP-001",
+      designation: sampleEmp?.designation || "Staff Member",
+      department: sampleEmp?.department || "General",
+      employeeEmail: sampleEmp?.email || "employee@company.com",
       contentHtml: docContentHtml,
       tableData: customTable,
       letterhead: docLetterhead,
       footer: docFooter,
       delivery: {
         channel: deliveryChannel,
-        recipientEmail: selectedEmployee.email,
-        subject: deliverySubject || `${docName} — ${selectedEmployee.name}`,
+        recipientEmail: sampleEmp?.email || "employee@company.com",
+        subject: deliverySubject || `${docName} — Template`,
       },
       approvalRequired,
       approvalMode,
@@ -1017,251 +954,12 @@ export default function DigitalDocumentationPage() {
     };
 
     if (editingDocId) {
-      updateDocument(editingDocId, payload, "Saved updated draft");
-      toast.success("Draft updated successfully");
+      updateDocument(editingDocId, payload, "Saved updated document template");
+      toast.success("Document template updated successfully");
     } else {
       const created = addDocument(payload);
       setEditingDocId(created.id);
-      toast.success("Document saved as Draft");
-    }
-  }
-
-  // Send Validation
-  function handleValidateAndPromptSend() {
-    if (recipientMode === "custom") {
-      if (!customRecipient.name.trim()) {
-        toast.error("Validation Failed: Please enter a recipient name");
-        return;
-      }
-      if (deliveryChannel !== "app" && !customRecipient.email.trim()) {
-        toast.error("Validation Failed: Please enter a recipient email address");
-        return;
-      }
-    } else if (recipientMode === "all" || recipientMode === "multiple") {
-      const targetIds = recipientMode === "all" ? employees.map((e) => e.id) : selectedEmpIds;
-      if (targetIds.length === 0) {
-        toast.error("Validation Failed: Please select at least one recipient employee");
-        return;
-      }
-    } else {
-      if (!selectedEmployee) {
-        toast.error("Validation Failed: Please select a recipient employee");
-        return;
-      }
-    }
-
-    const docName = isCustomDocName ? customDocName.trim() : PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId)?.name;
-    if (!docName) {
-      toast.error("Validation Failed: Document name cannot be empty");
-      return;
-    }
-    if (!docContentHtml || docContentHtml.trim().length < 10) {
-      toast.error("Validation Failed: Document content is too short or empty");
-      return;
-    }
-    if (approvalRequired && approvers.length === 0) {
-      toast.error("Validation Failed: Please configure at least one approver");
-      return;
-    }
-
-    setSendConfirmOpen(true);
-  }
-
-  // Final Send Execution
-  function handleConfirmSend() {
-    const docName = isCustomDocName
-      ? customDocName.trim() || "Custom HR Document"
-      : PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId)?.name || "HR Digital Document";
-
-    // Custom Mode Send
-    if (recipientMode === "custom") {
-      const payload = {
-        name: docName,
-        documentType: isCustomDocName ? "Custom" : docName,
-        isCustomName: isCustomDocName,
-        employeeId: "custom-ext",
-        employeeName: customRecipient.name.trim(),
-        employeeCode: customRecipient.empCode.trim() || "EXT-001",
-        designation: customRecipient.designation.trim() || "External / Consultant",
-        department: customRecipient.department.trim() || "External",
-        employeeEmail: customRecipient.email.trim() || "recipient@external.com",
-        contentHtml: docContentHtml,
-        tableData: customTable,
-        letterhead: docLetterhead,
-        footer: docFooter,
-        delivery: {
-          channel: deliveryChannel,
-          recipientEmail: customRecipient.email.trim() || "recipient@external.com",
-          subject: deliverySubject || `${docName} — ${customRecipient.name.trim()}`,
-        },
-        approvalRequired,
-        approvalMode,
-        approvers: approvers.map((a) => ({ ...a, status: "pending" as const })),
-        includeCompanySeal,
-        currentStepIndex: 0,
-        escalation: {
-          enabled: escalationEnabled,
-          delayDays: escalationDelay,
-          escalateTo: escalationTarget,
-          secondEscalationEnabled,
-          secondDelayDays: secondEscalationDelay,
-          secondEscalateTo: secondEscalationTarget,
-        },
-        status: (approvalRequired ? "PENDING_APPROVAL" : "SENT") as DigitalDocumentStatus,
-      };
-
-      let targetDocId = editingDocId;
-
-      if (editingDocId) {
-        const existing = documents.find((d) => d.id === editingDocId);
-        if (existing && (existing.status === "REJECTED" || existing.currentVersion > 1)) {
-          createNewVersion(editingDocId, docContentHtml, customTable, "Dispatched revised version for approval", undefined, docLetterhead, docFooter, includeCompanySeal);
-        } else {
-          updateDocument(editingDocId, payload, "Dispatched document");
-        }
-        sendDocument(editingDocId, currentUser?.name || "HR Admin");
-      } else {
-        const created = addDocument(payload);
-        targetDocId = created.id;
-        sendDocument(created.id, currentUser?.name || "HR Admin");
-      }
-
-      setSendConfirmOpen(false);
-      toast.success(
-        approvalRequired
-          ? `Document sent! Initiated ${approvalMode} approval workflow.`
-          : `Document dispatched successfully to ${customRecipient.name}`
-      );
-
-      if (targetDocId) {
-        setSelectedDocId(targetDocId);
-        setViewMode("detail");
-        setDetailActiveTab("tracking");
-      } else {
-        setViewMode("list");
-      }
-      return;
-    }
-
-    // Bulk Mode Send (All or Multiple)
-    if (recipientMode === "all" || recipientMode === "multiple") {
-      const targetEmpIds = recipientMode === "all" ? employees.map((e) => e.id) : selectedEmpIds;
-      const targetEmps = employees.filter((e) => targetEmpIds.includes(e.id));
-
-      targetEmps.forEach((emp) => {
-        const payload = {
-          name: docName,
-          documentType: isCustomDocName ? "Custom" : docName,
-          isCustomName: isCustomDocName,
-          employeeId: emp.id,
-          employeeName: emp.name,
-          employeeCode: emp.empCode,
-          designation: emp.designation,
-          department: emp.department,
-          employeeEmail: emp.email,
-          contentHtml: docContentHtml,
-          tableData: customTable,
-          letterhead: docLetterhead,
-          footer: docFooter,
-          delivery: {
-            channel: deliveryChannel,
-            recipientEmail: emp.email,
-            subject: deliverySubject || `${docName} — ${emp.name}`,
-          },
-          approvalRequired,
-          approvalMode,
-          approvers: approvers.map((a) => ({ ...a, status: "pending" as const })),
-          includeCompanySeal,
-          currentStepIndex: 0,
-          escalation: {
-            enabled: escalationEnabled,
-            delayDays: escalationDelay,
-            escalateTo: escalationTarget,
-            secondEscalationEnabled,
-            secondDelayDays: secondEscalationDelay,
-            secondEscalateTo: secondEscalationTarget,
-          },
-          status: (approvalRequired ? "PENDING_APPROVAL" : "SENT") as DigitalDocumentStatus,
-        };
-
-        const created = addDocument(payload);
-        sendDocument(created.id, currentUser?.name || "HR Admin");
-      });
-
-      setSendConfirmOpen(false);
-      toast.success(`Dispatched ${targetEmps.length} personalized documents successfully!`);
-      setViewMode("list");
-      return;
-    }
-
-    // Single Mode Send
-    if (!selectedEmployee) return;
-
-    const payload = {
-      name: docName,
-      documentType: isCustomDocName ? "Custom" : docName,
-      isCustomName: isCustomDocName,
-      employeeId: selectedEmployee.id,
-      employeeName: selectedEmployee.name,
-      employeeCode: selectedEmployee.empCode,
-      designation: selectedEmployee.designation,
-      department: selectedEmployee.department,
-      employeeEmail: selectedEmployee.email,
-      contentHtml: docContentHtml,
-      tableData: customTable,
-      letterhead: docLetterhead,
-      footer: docFooter,
-      delivery: {
-        channel: deliveryChannel,
-        recipientEmail: selectedEmployee.email,
-        subject: deliverySubject || `${docName} — ${selectedEmployee.name}`,
-      },
-      approvalRequired,
-      approvalMode,
-      approvers: approvers.map((a) => ({ ...a, status: "pending" as const })),
-      includeCompanySeal,
-      currentStepIndex: 0,
-      escalation: {
-        enabled: escalationEnabled,
-        delayDays: escalationDelay,
-        escalateTo: escalationTarget,
-        secondEscalationEnabled,
-        secondDelayDays: secondEscalationDelay,
-        secondEscalateTo: secondEscalationTarget,
-      },
-      status: (approvalRequired ? "PENDING_APPROVAL" : "SENT") as DigitalDocumentStatus,
-    };
-
-    let targetDocId = editingDocId;
-
-    if (editingDocId) {
-      const existing = documents.find((d) => d.id === editingDocId);
-      if (existing && (existing.status === "REJECTED" || existing.currentVersion > 1)) {
-        // Create new version
-        createNewVersion(editingDocId, docContentHtml, customTable, "Dispatched revised version for approval", undefined, docLetterhead, docFooter, includeCompanySeal);
-      } else {
-        updateDocument(editingDocId, payload, "Dispatched document");
-      }
-      sendDocument(editingDocId, currentUser?.name || "HR Admin");
-    } else {
-      const created = addDocument(payload);
-      targetDocId = created.id;
-      sendDocument(created.id, currentUser?.name || "HR Admin");
-    }
-
-    setSendConfirmOpen(false);
-    toast.success(
-      approvalRequired
-        ? `Document sent! Initiated ${approvalMode} approval workflow.`
-        : `Document dispatched successfully to ${selectedEmployee.name}`
-    );
-
-    if (targetDocId) {
-      setSelectedDocId(targetDocId);
-      setViewMode("detail");
-      setDetailActiveTab("tracking");
-    } else {
-      setViewMode("list");
+      toast.success("Document template saved successfully");
     }
   }
 
@@ -1510,9 +1208,6 @@ export default function DigitalDocumentationPage() {
                   <FileText className="h-6 w-6" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-foreground font-display">
-                    Digital Document Engine
-                  </h1>
                   <p className="text-sm text-muted-foreground">
                     Compose, approve, dispatch, and track verifiable digital HR documents with one smooth email-like workflow.
                   </p>
@@ -1829,7 +1524,7 @@ export default function DigitalDocumentationPage() {
         </div>
       )}
 
-      {/* VIEW 2: DIGITAL DOCUMENT COMPOSER (EMAIL-LIKE FLOW) */}
+      {/* VIEW 2: DIGITAL DOCUMENT COMPOSER */}
       {viewMode === "composer" && (
         <div className="space-y-5">
           {/* Top Header */}
@@ -1856,14 +1551,6 @@ export default function DigitalDocumentationPage() {
 
             <div className="flex items-center gap-2">
               <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveDraft}
-                className="text-xs gap-1.5 h-9"
-              >
-                <Save className="h-3.5 w-3.5" /> Save Draft
-              </Button>
-              <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => setPreviewOpen(true)}
@@ -1873,38 +1560,97 @@ export default function DigitalDocumentationPage() {
               </Button>
               <Button
                 size="sm"
-                onClick={handleValidateAndPromptSend}
+                onClick={handleSaveDraft}
                 className="text-xs gap-1.5 h-9 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm px-4"
               >
-                <Send className="h-3.5 w-3.5" /> Send Document
+                <Save className="h-3.5 w-3.5" /> Save Document
               </Button>
             </div>
           </div>
 
-          {/* Section 2: Document Configuration & Recipient */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-card p-4 rounded-2xl border border-border shadow-xs">
-            {/* Document Name */}
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5 text-primary" /> Document Name & Template
-              </Label>
-              <div className="flex gap-2">
+          {/* Section 2: Document Category, Name & Template Configuration (Reference: Approval Settings > Documents) */}
+          <div className="bg-card p-5 rounded-2xl border border-border shadow-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-foreground uppercase tracking-wider font-display">
+                    Document Category & Template Selection
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    Select standard document category and predefined template, or compose a custom document.
+                  </p>
+                </div>
+              </div>
+              {selectedPreset && !isCustomDocName && (
+                <Badge variant="secondary" className="text-[11px] font-semibold bg-primary/10 text-primary border-primary/20">
+                  {selectedPreset.category}
+                </Badge>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+              {/* 1. Category Dropdown */}
+              <div className="md:col-span-4 space-y-1.5">
+                <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Sliders className="h-3.5 w-3.5 text-primary" /> Document Category
+                </Label>
+                <Select value={composerCategory} onValueChange={handleCategoryFilterChange}>
+                  <SelectTrigger className="text-xs h-9 font-medium bg-background">
+                    <SelectValue placeholder="Filter by Category" />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs max-h-72">
+                    <SelectItem value="ALL" className="font-semibold">
+                      📁 All Categories ({PRESET_DOCUMENTS.length})
+                    </SelectItem>
+                    <DropdownMenuSeparator />
+                    {DOCUMENT_CATEGORIES.map((cat) => {
+                      const count = PRESET_DOCUMENTS.filter((p) => p.category === cat).length;
+                      return (
+                        <SelectItem key={cat} value={cat}>
+                          {cat} ({count})
+                        </SelectItem>
+                      );
+                    })}
+                    <DropdownMenuSeparator />
+                    <SelectItem value="Custom" className="font-semibold text-primary">
+                      ✨ Custom / Other Documents
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 2. Document Name & Template Dropdown */}
+              <div className="md:col-span-8 space-y-1.5">
+                <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5 text-primary" /> Document Name & Template
+                </Label>
                 <Select
                   value={isCustomDocName ? "custom" : docTypePresetId}
                   onValueChange={handlePresetChange}
                 >
-                  <SelectTrigger className="text-xs h-9">
-                    <SelectValue placeholder="Select document type" />
+                  <SelectTrigger className="text-xs h-9 font-medium bg-background">
+                    <SelectValue placeholder="Select document template" />
                   </SelectTrigger>
-                  <SelectContent className="text-xs max-h-72">
-                    <DropdownMenuLabel className="text-[11px] text-muted-foreground uppercase font-bold px-2 py-1">
-                      Standard HR Documents
-                    </DropdownMenuLabel>
-                    {PRESET_DOCUMENTS.map((preset) => (
-                      <SelectItem key={preset.id} value={preset.id}>
-                        {preset.name} ({preset.category})
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="text-xs max-h-80">
+                    {displayedCategories.map((cat) => {
+                      const items = PRESET_DOCUMENTS.filter((p) => p.category === cat);
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={cat}>
+                          <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase font-bold px-2 py-1 bg-muted/30">
+                            {cat}
+                          </DropdownMenuLabel>
+                          {items.map((preset) => (
+                            <SelectItem key={preset.id} value={preset.id}>
+                              {preset.name}
+                            </SelectItem>
+                          ))}
+                        </div>
+                      );
+                    })}
                     <DropdownMenuSeparator />
                     <SelectItem value="custom" className="font-semibold text-primary">
                       ✨ + Create Custom Document Name
@@ -1912,353 +1658,50 @@ export default function DigitalDocumentationPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              {isCustomDocName && (
-                <div className="mt-2 animate-in fade-in-50 duration-200">
+            {/* Custom Category & Custom Document Title Inputs */}
+            {(isCustomDocName || composerCategory === "Custom") && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-primary/5 border border-primary/20 animate-in fade-in-50 duration-200">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Sliders className="h-3.5 w-3.5 text-primary" /> Custom Document Category
+                  </Label>
                   <Input
-                    placeholder="Enter custom document title (e.g., Performance PIP Letter, Relocation Agreement)..."
+                    placeholder="Enter custom category (e.g., Legal, HR Policy, Operations)..."
+                    value={customCategoryName}
+                    onChange={(e) => setCustomCategoryName(e.target.value)}
+                    className="text-xs h-9 bg-background"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Specify the category or functional area for this custom document.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" /> Custom Document Name / Title
+                  </Label>
+                  <Input
+                    placeholder="Enter custom document title (e.g., Relocation Letter, Project Bonus)..."
                     value={customDocName}
                     onChange={(e) => setCustomDocName(e.target.value)}
-                    className="text-xs h-9"
+                    className="text-xs h-9 bg-background"
                     autoFocus
                   />
+                  <p className="text-[10px] text-muted-foreground">
+                    This document title will appear in document headers, PDFs, and approval matrices.
+                  </p>
                 </div>
-              )}
-            </div>
-
-            {/* Recipient Selector */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                  <User className="h-3.5 w-3.5 text-primary" /> Recipient Employee / Audience
-                </Label>
-                {recipientMode !== "single" && (
-                  <Badge variant="outline" className="text-[10px] capitalize font-mono bg-primary/5 text-primary border-primary/20">
-                    Mode: {recipientMode === "all" ? "Select All" : recipientMode === "multiple" ? "Multiple Select" : "Custom Recipient"}
-                  </Badge>
-                )}
               </div>
+            )}
 
-              {/* Main Select Dropdown with custom, select_all, multiple, and individual employees */}
-              <Select
-                value={recipientMode === "single" ? selectedEmpId : recipientMode}
-                onValueChange={handleRecipientChange}
-              >
-                <SelectTrigger className="text-xs h-9 font-medium">
-                  <SelectValue placeholder="Select employee recipient" />
-                </SelectTrigger>
-                <SelectContent className="text-xs max-h-80">
-                  <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase font-bold px-2 py-1 flex items-center gap-1">
-                    <Sparkles className="h-3 w-3 text-primary" /> Special & Bulk Options
-                  </DropdownMenuLabel>
-                  <SelectItem value="custom" className="font-semibold text-primary focus:text-primary">
-                    ✨ Custom / External Recipient (Manual Entry)
-                  </SelectItem>
-                  <SelectItem value="select_all" className="font-semibold text-emerald-600 dark:text-emerald-400 focus:text-emerald-600">
-                    👥 Select All Employees ({employees.length} Total)
-                  </SelectItem>
-                  <SelectItem value="multiple" className="font-semibold text-indigo-600 dark:text-indigo-400 focus:text-indigo-600">
-                    ☑️ Multiple Select... ({selectedEmpIds.length > 0 ? `${selectedEmpIds.length} Selected` : "Choose Multiple"})
-                  </SelectItem>
-
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase font-bold px-2 py-1">
-                    Individual Employees
-                  </DropdownMenuLabel>
-                  {employees.map((emp) => (
-                    <SelectItem key={emp.id} value={emp.id}>
-                      {emp.name} · {emp.empCode} ({emp.designation} — {emp.department})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* 1. CUSTOM RECIPIENT FORM */}
-              {recipientMode === "custom" && (
-                <div className="p-3.5 rounded-xl border border-primary/30 bg-primary/5 space-y-3 animate-in fade-in-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Custom / External Recipient Details</span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setRecipientMode("single");
-                        setSelectedEmpId(employees[0]?.id || "");
-                      }}
-                      className="h-6 text-[11px] px-1.5 text-muted-foreground hover:text-foreground"
-                    >
-                      Reset to Employee List
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                    <div className="space-y-1">
-                      <Label className="text-[11px] text-muted-foreground">Full Name *</Label>
-                      <Input
-                        placeholder="e.g. Rahul Sharma"
-                        value={customRecipient.name}
-                        onChange={(e) => setCustomRecipient({ ...customRecipient, name: e.target.value })}
-                        className="h-8 text-xs bg-background"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-[11px] text-muted-foreground">Email Address *</Label>
-                      <Input
-                        type="email"
-                        placeholder="e.g. rahul@consultant.io"
-                        value={customRecipient.email}
-                        onChange={(e) => setCustomRecipient({ ...customRecipient, email: e.target.value })}
-                        className="h-8 text-xs bg-background"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-[11px] text-muted-foreground">Employee / Ref Code</Label>
-                      <Input
-                        placeholder="e.g. EXT-2026-01"
-                        value={customRecipient.empCode}
-                        onChange={(e) => setCustomRecipient({ ...customRecipient, empCode: e.target.value })}
-                        className="h-8 text-xs bg-background"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-[11px] text-muted-foreground">Designation / Role</Label>
-                      <Input
-                        placeholder="e.g. Senior Tech Advisor"
-                        value={customRecipient.designation}
-                        onChange={(e) => setCustomRecipient({ ...customRecipient, designation: e.target.value })}
-                        className="h-8 text-xs bg-background"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-2 space-y-1">
-                      <Label className="text-[11px] text-muted-foreground">Department / Organization</Label>
-                      <Input
-                        placeholder="e.g. Strategic Advisory / External"
-                        value={customRecipient.department}
-                        onChange={(e) => setCustomRecipient({ ...customRecipient, department: e.target.value })}
-                        className="h-8 text-xs bg-background"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 2. SELECT ALL EMPLOYEES BANNER */}
-              {recipientMode === "all" && (
-                <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-3 animate-in fade-in-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                        <CheckCircle2 className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-xs text-emerald-800 dark:text-emerald-200">
-                          All {employees.length} Employees Selected
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">
-                          Bulk dispatch will generate personalized copies for every staff member.
-                        </div>
-                      </div>
-                    </div>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRecipientMode("multiple")}
-                      className="h-7 text-xs px-2 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
-                    >
-                      Filter / Customize
-                    </Button>
-                  </div>
-
-                  {/* Preview Selector */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-emerald-500/20 text-xs">
-                    <span className="text-muted-foreground text-[11px] shrink-0">Preview template for:</span>
-                    <Select value={previewEmpId} onValueChange={setPreviewEmpId}>
-                      <SelectTrigger className="h-7 text-[11px] bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="text-xs max-h-60">
-                        {employees.map((emp) => (
-                          <SelectItem key={emp.id} value={emp.id}>
-                            {emp.name} ({emp.empCode})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-
-              {/* 3. MULTIPLE SELECT INTERACTIVE PANEL */}
-              {recipientMode === "multiple" && (
-                <div className="p-3.5 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-3 animate-in fade-in-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Badge className="bg-indigo-600 text-white text-[11px]">
-                        {selectedEmpIds.length} of {employees.length} Selected
-                      </Badge>
-                      <span className="text-xs font-semibold text-foreground">Target Recipients</span>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedEmpIds(employees.map((e) => e.id))}
-                        className="h-6 text-[11px] px-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10"
-                      >
-                        Select All
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedEmpIds([])}
-                        className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground"
-                      >
-                        Clear All
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Search inside multiple select */}
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search employees by name, code, dept..."
-                      value={multiSelectSearch}
-                      onChange={(e) => setMultiSelectSearch(e.target.value)}
-                      className="h-8 pl-8 text-xs bg-background"
-                    />
-                  </div>
-
-                  {/* Selected Tags Chips */}
-                  {selectedEmpIds.length > 0 && (
-                    <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto p-1 rounded-lg bg-background/60 border border-border">
-                      {selectedEmpIds.map((id) => {
-                        const emp = employees.find((e) => e.id === id);
-                        if (!emp) return null;
-                        return (
-                          <span
-                            key={id}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-[11px] font-medium border border-indigo-500/20"
-                          >
-                            {emp.name} ({emp.empCode})
-                            <button
-                              type="button"
-                              onClick={() => setSelectedEmpIds(selectedEmpIds.filter((x) => x !== id))}
-                              className="text-indigo-500 hover:text-indigo-700"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Checkbox List of Employees */}
-                  <div className="max-h-48 overflow-y-auto divide-y divide-border rounded-lg border border-border bg-background">
-                    {employees
-                      .filter((emp) => {
-                        const q = multiSelectSearch.toLowerCase().trim();
-                        if (!q) return true;
-                        return (
-                          emp.name.toLowerCase().includes(q) ||
-                          emp.empCode.toLowerCase().includes(q) ||
-                          emp.department?.toLowerCase().includes(q) ||
-                          emp.designation?.toLowerCase().includes(q)
-                        );
-                      })
-                      .map((emp) => {
-                        const isChecked = selectedEmpIds.includes(emp.id);
-                        return (
-                          <label
-                            key={emp.id}
-                            className={`flex items-center gap-2.5 p-2 text-xs cursor-pointer hover:bg-muted/50 transition-colors ${
-                              isChecked ? "bg-indigo-500/5" : ""
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedEmpIds([...selectedEmpIds, emp.id]);
-                                  if (!previewEmpId) setPreviewEmpId(emp.id);
-                                } else {
-                                  setSelectedEmpIds(selectedEmpIds.filter((x) => x !== emp.id));
-                                }
-                              }}
-                              className="rounded border-border text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                            />
-                            <div className="h-6 w-6 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-[10px] shrink-0">
-                              {emp.name[0]}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="font-medium text-foreground truncate">{emp.name}</div>
-                              <div className="text-[10px] text-muted-foreground truncate">
-                                {emp.empCode} · {emp.designation} · {emp.department}
-                              </div>
-                            </div>
-                          </label>
-                        );
-                      })}
-                  </div>
-
-                  {/* Preview Selector for Multiple Mode */}
-                  {selectedEmpIds.length > 0 && (
-                    <div className="flex items-center gap-2 pt-1 border-t border-indigo-500/20 text-xs">
-                      <span className="text-muted-foreground text-[11px] shrink-0">Preview sample:</span>
-                      <Select value={previewEmpId || selectedEmpIds[0]} onValueChange={setPreviewEmpId}>
-                        <SelectTrigger className="h-7 text-[11px] bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="text-xs max-h-60">
-                          {selectedEmpIds.map((id) => {
-                            const emp = employees.find((e) => e.id === id);
-                            if (!emp) return null;
-                            return (
-                              <SelectItem key={emp.id} value={emp.id}>
-                                {emp.name} ({emp.empCode})
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 4. SINGLE EMPLOYEE CARD */}
-              {recipientMode === "single" && selectedEmployee && (
-                <div className="flex items-center gap-3 p-2.5 rounded-xl bg-muted/40 border border-border text-xs">
-                  <div className="h-8 w-8 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-xs shrink-0">
-                    {selectedEmployee.name[0]}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-foreground truncate">{selectedEmployee.name}</div>
-                    <div className="text-[11px] text-muted-foreground truncate">
-                      {selectedEmployee.empCode} · {selectedEmployee.designation} · {selectedEmployee.department}
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground font-mono truncate hidden sm:block">
-                    {selectedEmployee.email}
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Active Template Quick Info Description */}
+            {!isCustomDocName && selectedPreset && (
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/40 border border-border text-xs text-muted-foreground">
+                <Info className="h-4 w-4 text-primary shrink-0" />
+                <span className="truncate">{selectedPreset.description}</span>
+              </div>
+            )}
           </div>
 
           {/* Section 4 & 5: Primary MS Word WYSIWYG Document Editor */}
@@ -2283,105 +1726,27 @@ export default function DigitalDocumentationPage() {
             }
             recipientInfoText={
               selectedEmployee
-                ? `Resolving: ${selectedEmployee.name} (${selectedEmployee.empCode})`
+                ? `Resolving sample: ${selectedEmployee.name} (${selectedEmployee.empCode})`
                 : undefined
             }
           />
 
-          {/* Section 9, 10, 11, 12: Delivery, Approval & Escalation Configuration */}
+          {/* Section 9: Approval & Escalation Configuration */}
           <div className="space-y-6">
-            {/* Top Grid: Delivery Configuration (Left) & Auto-Escalation Protocol (Right) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Delivery Settings */}
-              <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
-                <div className="flex items-center gap-2 pb-2.5 border-b border-border">
-                  <Send className="h-4 w-4 text-primary" />
+            {/* Auto-Escalation Protocol */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between pb-2.5 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <BellRing className="h-4 w-4 text-primary" />
                   <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
-                    1. Delivery Configuration
+                    Auto-Escalation & SLA Protocol
                   </h3>
                 </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Send Via Channels</Label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryChannel("email")}
-                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                        deliveryChannel === "email"
-                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                          : "border-border hover:bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      Email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryChannel("app")}
-                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                        deliveryChannel === "app"
-                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                          : "border-border hover:bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      SWIFT App
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryChannel("both")}
-                      className={`py-2 px-2 text-center rounded-xl text-xs border transition-all ${
-                        deliveryChannel === "both"
-                          ? "bg-primary text-primary-foreground font-semibold border-transparent"
-                          : "border-border hover:bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      Both
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] text-muted-foreground font-semibold">Recipient Email</Label>
-                  <Input
-                    disabled
-                    value={
-                      recipientMode === "all"
-                        ? `Dynamic (All ${employees.length} Employee Emails)`
-                        : recipientMode === "multiple"
-                        ? `Dynamic (${selectedEmpIds.length} Selected Employee Emails)`
-                        : recipientMode === "custom"
-                        ? customRecipient.email || "recipient@external.com"
-                        : selectedEmployee?.email || "employee@swift.io"
-                    }
-                    className="text-xs h-8 bg-muted/40 font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] text-muted-foreground font-semibold">Subject Line</Label>
-                  <Input
-                    value={deliverySubject}
-                    onChange={(e) => setDeliverySubject(e.target.value)}
-                    placeholder="Document Subject Line"
-                    className="text-xs h-8"
-                  />
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground">Enabled</span>
+                  <Switch checked={escalationEnabled} onCheckedChange={setEscalationEnabled} />
                 </div>
               </div>
-
-              {/* Escalation Rules */}
-              <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between pb-2.5 border-b border-border">
-                  <div className="flex items-center gap-2">
-                    <BellRing className="h-4 w-4 text-primary" />
-                    <h3 className="font-bold text-xs text-foreground uppercase tracking-wider">
-                      2. Auto-Escalation Protocol
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground">Enabled</span>
-                    <Switch checked={escalationEnabled} onCheckedChange={setEscalationEnabled} />
-                  </div>
-                </div>
 
                 {escalationEnabled ? (
                   <div className="space-y-3 text-xs">
@@ -2446,7 +1811,6 @@ export default function DigitalDocumentationPage() {
                   </div>
                 )}
               </div>
-            </div>
 
             {/* Prominent Full-Width Approval Matrix & Signatory Workflow Designer */}
             <div className="rounded-2xl border border-border bg-card p-5 space-y-5 shadow-sm">
@@ -2472,14 +1836,26 @@ export default function DigitalDocumentationPage() {
                   </div>
 
                   {approvalRequired && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleAddApproverStep}
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-xl shadow-xs gap-1.5"
-                    >
-                      <Plus className="h-3.5 w-3.5" /> Add Approver
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleOpenAutoHierarchyModal}
+                        className="border-primary/40 text-primary bg-primary/5 hover:bg-primary hover:text-white text-xs font-semibold rounded-xl shadow-xs gap-1.5 h-9"
+                        title="Automatically generate approval pipeline from Organization Tree Structure"
+                      >
+                        <Network className="h-3.5 w-3.5" /> Auto Hierarchy
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleAddApproverStep}
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-xl shadow-xs gap-1.5 h-9"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add Approver
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -3640,28 +3016,15 @@ export default function DigitalDocumentationPage() {
           </DialogHeader>
 
           <div className="py-4 flex flex-col items-center bg-muted/40 rounded-2xl gap-3">
-            {(recipientMode === "all" || recipientMode === "multiple") && (
-              <div className="w-full max-w-[650px] p-2.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-xs flex items-center justify-between">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Showing sample preview for <b>{selectedEmployee?.name}</b> ({selectedEmployee?.empCode}).
-                </span>
-                <Badge variant="secondary" className="text-[10px]">
-                  {recipientMode === "all" ? `All ${employees.length} Staff` : `${selectedEmpIds.length} Selected`}
-                </Badge>
-              </div>
-            )}
-            {recipientMode === "custom" && (
-              <div className="w-full max-w-[650px] p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs flex items-center justify-between">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Previewing for Custom Recipient: <b>{customRecipient.name || "Unnamed"}</b>
-                </span>
-                <Badge variant="secondary" className="text-[10px]">
-                  Custom Entry
-                </Badge>
-              </div>
-            )}
+            <div className="w-full max-w-[650px] p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-medium">
+                <Sparkles className="h-3.5 w-3.5" />
+                Live Template Preview with sample employee data ({selectedEmployee?.name || "Employee"}).
+              </span>
+              <Badge variant="secondary" className="text-[10px]">
+                Template Mode
+              </Badge>
+            </div>
             <div className="w-full max-w-[650px] bg-white text-slate-900 shadow-xl border border-slate-200 p-8 sm:p-12 rounded-lg text-xs leading-relaxed space-y-5">
               {/* Header */}
               {docLetterhead.enabled && (
@@ -3912,17 +3275,17 @@ export default function DigitalDocumentationPage() {
 
           <DialogFooter className="flex-wrap gap-2 pt-2 border-t border-border">
             <Button variant="outline" size="sm" onClick={() => setPreviewOpen(false)}>
-              Back to Edit
+              Close Preview
             </Button>
             <Button
               size="sm"
               onClick={() => {
                 setPreviewOpen(false);
-                handleValidateAndPromptSend();
+                handleSaveDraft();
               }}
               className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
             >
-              <Send className="h-3.5 w-3.5 mr-1" /> Proceed to Send
+              <Save className="h-3.5 w-3.5 mr-1" /> Save Document
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4436,67 +3799,154 @@ export default function DigitalDocumentationPage() {
         </DialogContent>
       </Dialog>
 
-      {/* SEND VALIDATION & CONFIRMATION MODAL */}
-      <Dialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold font-display flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-primary" /> Confirm & Send Document
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              All validations passed. Please verify document configuration summary before dispatch.
-            </DialogDescription>
+      {/* AUTO HIERARCHY SELECTION & TREE FLOW MODAL */}
+      <Dialog open={autoHierarchyModalOpen} onOpenChange={setAutoHierarchyModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
+          <DialogHeader className="pb-3 border-b border-border">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
+                <Network className="h-6 w-6" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold font-display">
+                  Auto Hierarchy from Organization Tree
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Select the employee for this document to dynamically calculate their upward reporting chain.
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
-          <div className="space-y-3 py-2 text-xs">
-            <div className="p-3.5 rounded-xl bg-muted/40 border border-border space-y-2">
+          <div className="space-y-4 py-3 text-xs">
+            {/* 1. Target Employee Selector */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-foreground">
+                Select Target Employee (Originating Member)
+              </Label>
+              <Select
+                value={hierarchyTargetEmployee?.id || ""}
+                onValueChange={(val) => setSelectedHierarchyTargetEmpId(val)}
+              >
+                <SelectTrigger className="h-10 text-xs bg-background">
+                  <SelectValue placeholder="Choose employee..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-64 text-xs">
+                  {employees.map((e) => {
+                    const mgr = employees.find((m) => m.id === e.managerId);
+                    return (
+                      <SelectItem key={e.id} value={e.id}>
+                        <div className="flex items-center gap-2 py-0.5">
+                          <span className="font-semibold text-foreground">{e.name}</span>
+                          <span className="text-[11px] text-muted-foreground font-mono">({e.empCode})</span>
+                          <span className="text-[11px] text-muted-foreground">· {e.designation}</span>
+                          {mgr ? (
+                            <span className="text-[10px] text-primary/80 font-medium">↳ reports to {mgr.name}</span>
+                          ) : (
+                            <span className="text-[10px] text-emerald-600 font-medium">★ Top Level</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 2. Visual Upward Tree Flow Preview */}
+            <div className="space-y-2 pt-2">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Document:</span>
-                <span className="font-bold text-foreground">
-                  {isCustomDocName ? customDocName : PRESET_DOCUMENTS.find((p) => p.id === docTypePresetId)?.name}
-                </span>
+                <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <GitBranch className="h-4 w-4 text-primary" /> Generated Approval Tree Pathway
+                </Label>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {targetUpwardChain.length > 0 ? `${targetUpwardChain.length} Approval Level(s)` : "Top Executive / 1 Level"}
+                </Badge>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Recipient(s):</span>
-                <span className="font-bold text-foreground">
-                  {recipientMode === "all"
-                    ? `👥 All ${employees.length} Employees (Bulk Dispatch)`
-                    : recipientMode === "multiple"
-                    ? `👥 ${selectedEmpIds.length} Selected Employees (Bulk Dispatch)`
-                    : recipientMode === "custom"
-                    ? `✨ ${customRecipient.name || "Custom Recipient"} (${customRecipient.empCode || "EXT-001"})`
-                    : `${selectedEmployee?.name} (${selectedEmployee?.empCode})`}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Delivery Method:</span>
-                <span className="font-bold text-foreground capitalize">{deliveryChannel}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Approval Workflow:</span>
-                <span className="font-bold text-foreground capitalize">
-                  {approvalRequired ? `${approvalMode.replace(/_/g, " ")} (${approvers.length} steps)` : "None (Direct)"}
-                </span>
-              </div>
-              {escalationEnabled && (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Escalation:</span>
-                  <span className="font-bold text-foreground">After {escalationDelay} days → {escalationTarget}</span>
+
+              <div className="p-4 rounded-2xl bg-muted/40 border border-border space-y-3">
+                {/* Level 0: Requester / Subject Employee */}
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-card border border-primary/20 shadow-xs">
+                  <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
+                    {hierarchyTargetEmployee?.name.slice(0, 2).toUpperCase() || "EM"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-foreground truncate">{hierarchyTargetEmployee?.name}</span>
+                      <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground">
+                        {hierarchyTargetEmployee?.empCode}
+                      </Badge>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {hierarchyTargetEmployee?.designation} · {hierarchyTargetEmployee?.department}
+                    </div>
+                  </div>
+                  <Badge className="bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30 text-[10px] shrink-0 font-medium">
+                    Document Subject
+                  </Badge>
                 </div>
-              )}
+
+                {/* Arrow up & Chain Steps */}
+                {targetUpwardChain.length > 0 ? (
+                  targetUpwardChain.map((mgr, idx) => {
+                    const isDirect = idx === 0;
+                    const isTop = idx === targetUpwardChain.length - 1;
+                    return (
+                      <div key={mgr.id} className="space-y-3">
+                        <div className="flex items-center justify-center">
+                          <div className="flex items-center gap-1 text-[11px] font-semibold text-primary/80 bg-primary/5 px-2.5 py-0.5 rounded-full border border-primary/20">
+                            <ArrowDown className="h-3 w-3 rotate-180" />
+                            <span>Routes Upward to Level {idx + 1}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border shadow-xs hover:border-primary/40 transition-colors">
+                          <div className="h-9 w-9 rounded-xl bg-primary text-primary-foreground font-bold flex items-center justify-center text-xs shrink-0 shadow-xs">
+                            {mgr.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-foreground truncate">{mgr.name}</span>
+                              <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 font-mono text-muted-foreground">
+                                {mgr.empCode}
+                              </Badge>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground truncate">
+                              {isDirect ? "Direct Reporting Manager" : isTop ? "Top Authority / Final Stage" : "Reporting Manager"} · {mgr.designation} ({mgr.department})
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px] font-bold">
+                              Stage {idx + 1} Approver
+                            </Badge>
+                            <div className="text-[10px] text-emerald-600 font-medium mt-0.5">✓ e-Signature Required</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-3.5 rounded-xl border border-blue-500/20 bg-blue-500/5 text-center space-y-1">
+                    <div className="text-xs font-bold text-foreground">Top-Level Executive / Direct Authority</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      This employee is at the top of the Organization Tree with no higher reporting managers.
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          <DialogFooter className="gap-2">
-            <Button variant="outline" size="sm" onClick={() => setSendConfirmOpen(false)}>
+          <DialogFooter className="gap-2 pt-3 border-t border-border">
+            <Button variant="outline" size="sm" onClick={() => setAutoHierarchyModalOpen(false)}>
               Cancel
             </Button>
             <Button
               size="sm"
-              onClick={handleConfirmSend}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4"
+              onClick={() => handleApplyAutoHierarchy(hierarchyTargetEmployee)}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4 gap-1.5"
             >
-              <Send className="h-3.5 w-3.5 mr-1" /> Confirm & Send
+              <Network className="h-3.5 w-3.5" /> Apply Tree Flow to Matrix
             </Button>
           </DialogFooter>
         </DialogContent>

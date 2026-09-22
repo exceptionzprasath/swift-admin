@@ -531,11 +531,13 @@ export type Employee = {
   salary?: number;
   pan?: string;
   aadhaar?: string;
+  nameAsPerAadhaar?: string;
+  aadhaarName?: string;
   bankAcc?: string;
   bankIfsc?: string;
   shiftId?: string;
   faceRegistered?: boolean;
-  status: "active" | "inactive";
+  status: "active" | "suspended" | "relieved" | "releived" | "terminated" | "inactive";
   managerId?: string;
   about?: string;
   branchId?: string;
@@ -548,6 +550,7 @@ export type Employee = {
   emergencyContact?: string;
   attendanceProfile?: ResolvedAttendanceProfile;
   category?: string;
+  employmentType?: "regular" | "contract";
   // Extended registration fields
   addressLine1?: string;
   addressLine2?: string;
@@ -1677,7 +1680,8 @@ export const DEFAULT_DOCUMENT_TYPES: DocumentTypeItem[] = [
 
 export function getUpwardHierarchyChain(
   targetEmployee: Employee,
-  employees: Employee[] = []
+  employees: Employee[] = [],
+  strict = false
 ): Employee[] {
   const chain: Employee[] = [];
   const visited = new Set<string>([targetEmployee.id]);
@@ -1715,8 +1719,8 @@ export function getUpwardHierarchyChain(
     }
   }
 
-  // Fallback: If still empty (e.g. top CEO or isolated node), find default HR / Director
-  if (chain.length === 0) {
+  // Fallback: If still empty and not strict, find default HR / Director
+  if (!strict && chain.length === 0) {
     const defaultLead = employees.find(
       (e) =>
         e.id !== targetEmployee.id &&
@@ -2359,10 +2363,10 @@ export const useStore = create<State>()(
         if (res && res.ok) {
           try {
             const data = await res.json();
-            let nextCompany = get().company;
+            let nextCompany = { ...defaultCompany };
             if (data.config) {
               const { id: _id, tenantId: _tid, ...backendConfig } = data.config;
-              nextCompany = { ...get().company, ...backendConfig };
+              nextCompany = { ...defaultCompany, ...backendConfig };
               if (nextCompany.themePalette) {
                 applyThemePalette(nextCompany.themePalette, get().theme === "dark");
               }
@@ -2383,12 +2387,12 @@ export const useStore = create<State>()(
             loadedDevices = data.devices || [];
 
             // Authoritative employee list from database (purging any legacy mock employees)
-            const rawEmployees: Employee[] = Array.isArray(data.employees) ? data.employees : get().employees;
+            const rawEmployees: Employee[] = Array.isArray(data.employees) ? data.employees : [];
             const cleanEmployees = rawEmployees.filter((e) => !isMockEmployee(e));
 
             set({
               company: nextCompany,
-              docAssets: data.docAssets || get().docAssets,
+              docAssets: data.docAssets || DEFAULT_DOC_ASSETS,
               employees: cleanEmployees,
               attendance: Array.isArray(loadedAttendance) ? loadedAttendance : get().attendance,
               leaves: data.leaves || [],
@@ -3409,7 +3413,7 @@ export const useStore = create<State>()(
 
           const updatedLeave: LeaveRequest = {
             ...targetLeave,
-            status: "rejected",
+            status: "Rejected",
             rejectedReason: comment || `Rejected by ${actorRole} (${actorName})`,
             actedBy: actorName,
             actedByRole: actorRole,
@@ -3448,7 +3452,7 @@ export const useStore = create<State>()(
 
           const updatedLeave: LeaveRequest = {
             ...targetLeave,
-            status: "approved",
+            status: "Approved",
             currentLevel: totalLvls,
             approvedBy: actorName,
             actedBy: actorName,
@@ -3501,7 +3505,7 @@ export const useStore = create<State>()(
         // Default: approve_forward / approve
         const isFinalLevel = currentLvl >= totalLvls;
         const nextLevel = isFinalLevel ? currentLvl : currentLvl + 1;
-        const finalStatus = isFinalLevel ? "approved" : "pending";
+        const finalStatus = isFinalLevel ? "Approved" : "Pending";
 
         const updatedSteps = (targetLeave.approvalSteps || []).map((step) => {
           if (step.level === currentLvl) {

@@ -1,42 +1,41 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import LottieRaw from "lottie-react";
-import chatbotAnimationRaw from "@/assets/chatbot.json";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
-import { type Role } from "@/lib/ai-context";
 import { resolveUserContext } from "@/lib/ai-auth-resolver";
 import { checkOpenAiStatus } from "@/lib/ai.functions";
 import { useUnifiedAiStore } from "@/lib/ai-unified-store";
 import { aiOrchestrator } from "@/lib/ai-orchestrator";
 import { AIResponseRenderer } from "@/components/ai/AIResponseRenderer";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Sparkles,
+  Brain,
   Send,
   Loader2,
-  Bot,
   RotateCcw,
   Copy,
   Check,
   FileText,
   FileSpreadsheet,
   Download,
-  Plus,
-  ArrowUp,
   X,
   Paperclip,
+  Search,
+  Globe,
+  Mic,
+  Zap,
+  Lightbulb,
+  Layers,
+  Compass,
+  Smile,
+  Bell,
+  MessageSquare,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import type { AIDocumentMeta } from "@/lib/ai-unified-types";
-
-const Lottie = (LottieRaw as any)?.default || LottieRaw;
-const chatbotAnimation = (chatbotAnimationRaw as any)?.default || chatbotAnimationRaw;
 
 function formatFileSize(bytes?: number): string {
   if (!bytes || bytes === 0) return "0 B";
@@ -83,7 +82,7 @@ async function compressImageToDataUrl(file: File, maxDimension = 1200, quality =
 }
 
 export const Route = createFileRoute("/admin/ai")({
-  head: () => ({ meta: [{ title: "SWIFT AI Copilot · OpenAI ChatGPT" }] }),
+  head: () => ({ meta: [{ title: "SWIFT AI · Intelligence Hub" }] }),
   component: SwiftAiCommandCenter,
 });
 
@@ -91,25 +90,14 @@ function SwiftAiCommandCenter() {
   const { user, isSuperAdmin, activeTenantId, memberships } = useAuth();
   const { company, employees, attendance, payrolls, leaves, docRequests } = useStore();
 
-  // Automatic, invisible role & authorization resolution from authenticated session
   const authContext = useMemo(() => {
     return resolveUserContext(user, isSuperAdmin, memberships, employees, company);
   }, [user, isSuperAdmin, memberships, employees, company]);
 
-  const universalSuggestions = useMemo(() => [
-    "Today's attendance summary",
-    "Show absent employees",
-    "Detailed attendance for this month",
-    "Show pending leave requests",
-    "Generate monthly attendance report",
-    "Who is working overtime today?",
-    "Show employee shift register",
-    "Which department has the highest overtime?",
-  ], []);
-
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [showTeammatePreview, setShowTeammatePreview] = useState(true);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [attachedPhoto, setAttachedPhoto] = useState<{
     file: File;
@@ -136,92 +124,46 @@ function SwiftAiCommandCenter() {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const latestMessageRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
   const checkStatus = useServerFn(checkOpenAiStatus);
 
-  // Sync tenant session
   useEffect(() => {
     if (activeTenantId) {
       setTenant(activeTenantId, company.name);
     }
   }, [activeTenantId, company.name, setTenant]);
 
-  // Check OpenAI connection status on mount
   useEffect(() => {
     let mounted = true;
     checkStatus()
       .then((res) => {
-        if (mounted) {
-          setApiStatus(res as any);
-        }
+        if (mounted) setApiStatus(res as any);
       })
       .catch(() => {
-        if (mounted) {
-          setApiStatus({ ok: false, status: "Offline", configured: false });
-        }
+        if (mounted) setApiStatus({ ok: false, status: "Offline", configured: false });
       });
     return () => {
       mounted = false;
     };
   }, [checkStatus, setApiStatus]);
 
-  // Smooth ChatGPT-style Auto-scroll to AI answer
   useEffect(() => {
     if (!hasConversation) return;
-
     const performSmoothScroll = () => {
-      // 1. Scroll inner container so the bottom anchor is in view
       if (bottomAnchorRef.current) {
-        bottomAnchorRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "end",
-        });
+        bottomAnchorRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
       } else if (scrollerRef.current) {
-        scrollerRef.current.scrollTo({
-          top: scrollerRef.current.scrollHeight,
-          behavior: "smooth",
-        });
-      }
-
-      // 2. Prevent page-level scroll drift on outer <main> container
-      const mainEl = scrollerRef.current?.closest("main");
-      if (mainEl && mainEl.scrollTop > 0) {
-        mainEl.scrollTo({ top: 0, behavior: "smooth" });
+        scrollerRef.current.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" });
       }
     };
-
-    // Trigger immediate smooth scroll
     performSmoothScroll();
-
-    // Multi-frame timeouts to follow markdown tables, badges, and cards as they paint
     const t1 = setTimeout(performSmoothScroll, 50);
-    const t2 = setTimeout(performSmoothScroll, 160);
-    const t3 = setTimeout(performSmoothScroll, 320);
-    const t4 = setTimeout(performSmoothScroll, 600);
-
+    const t2 = setTimeout(performSmoothScroll, 200);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
     };
   }, [messages, busy, hasConversation]);
-
-  const pingOpenAi = async () => {
-    setApiStatus({ ...apiStatus, status: "Pinging..." });
-    try {
-      const res = await checkStatus();
-      setApiStatus(res as any);
-      if (res.ok) {
-        toast.success(`OpenAI Connected (${res.latencyMs}ms)`);
-      } else {
-        toast.error(`OpenAI Ping Failed: ${res.status}`);
-      }
-    } catch (e: any) {
-      setApiStatus({ ok: false, status: "Error", configured: false });
-      toast.error(e?.message || "Connection test failed");
-    }
-  };
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -269,15 +211,11 @@ function SwiftAiCommandCenter() {
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Reset value so identical photo can be selected again
     e.target.value = "";
-
     if (!file.type.startsWith("image/")) {
-      toast.error("Please upload an image or photo (.png, .jpg, .jpeg, .webp)");
+      toast.error("Please upload an image (.png, .jpg, .jpeg, .webp)");
       return;
     }
-
     const sizeStr = formatFileSize(file.size);
     try {
       const dataUrl = await compressImageToDataUrl(file);
@@ -289,11 +227,10 @@ function SwiftAiCommandCenter() {
         type: file.type,
         dataUrl,
       });
-      toast.success(`Photo attached: "${file.name}"`);
+      toast.success(`Attached photo: "${file.name}"`);
     } catch {
       toast.error("Failed to process photo");
     }
-
     inputRef.current?.focus();
   };
 
@@ -305,7 +242,7 @@ function SwiftAiCommandCenter() {
     setAttachedPhoto(null);
     setInput("");
 
-    const text = rawText || (currentPhoto ? "Please analyze this uploaded photo and answer my question." : "");
+    const text = rawText || (currentPhoto ? "Please analyze this uploaded document/photo and summarize the findings." : "");
 
     let docMeta: AIDocumentMeta | undefined = undefined;
     if (currentPhoto) {
@@ -339,18 +276,15 @@ function SwiftAiCommandCenter() {
   };
 
   const recognitionRef = useRef<any>(null);
-
   const toggleVoiceMode = () => {
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
       return;
     }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      toast.error("Voice recognition is not supported in this browser. Please use Chrome or Edge.");
+      toast.error("Voice recognition is not supported in this browser.");
       return;
     }
     try {
@@ -362,9 +296,8 @@ function SwiftAiCommandCenter() {
 
       recognition.onstart = () => {
         setIsListening(true);
-        toast.info("Voice Mode Active · Speak your question...");
+        toast.info("Listening... Speak your request");
       };
-
       recognition.onresult = (event: any) => {
         const transcript = event.results[0]?.[0]?.transcript;
         if (transcript && transcript.trim()) {
@@ -373,18 +306,8 @@ function SwiftAiCommandCenter() {
           handleSend(cleanText);
         }
       };
-
-      recognition.onerror = (e: any) => {
-        setIsListening(false);
-        if (e.error !== "no-speech") {
-          toast.error(`Voice error: ${e.error}`);
-        }
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
+      recognition.onerror = () => setIsListening(false);
+      recognition.onend = () => setIsListening(false);
       recognition.start();
     } catch {
       setIsListening(false);
@@ -399,278 +322,423 @@ function SwiftAiCommandCenter() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `SWIFT_AI_Chat_${Date.now()}.txt`;
+    a.download = `SWIFT_AI_Transcript_${Date.now()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Chat transcript downloaded");
+    toast.success("Transcript downloaded");
   };
 
-  // Reusable ChatGPT Floating Search Capsule
-  const renderChatGptSearchBox = (isHero = false) => {
-    const hasContent = Boolean(input.trim()) || Boolean(attachedPhoto);
-
-    return (
-      <div className={`relative w-full ${isHero ? "max-w-2xl" : "max-w-3xl"} mx-auto transition-all`}>
-        {/* Soft Ambient Halo Glow */}
-        <div className="absolute -inset-1.5 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-emerald-500/10 rounded-full blur-xl opacity-70 pointer-events-none" />
-
-        {/* Hidden Photo Input for Image Upload Only */}
-        <input
-          ref={photoInputRef}
-          type="file"
-          accept="image/*,.png,.jpg,.jpeg,.webp,.gif"
-          className="hidden"
-          onChange={handlePhotoSelect}
-        />
-
-        {/* Selected Photo Thumbnail Preview (ChatGPT style) */}
-        {attachedPhoto && (
-          <div className="mb-2.5 inline-flex items-center gap-2.5 p-1.5 pr-3 rounded-2xl bg-card border border-primary/40 shadow-sm animate-in fade-in slide-in-from-bottom-1 text-xs">
-            <div className="h-10 w-10 rounded-xl overflow-hidden bg-black/10 border border-border/80 shrink-0">
-              <img
-                src={attachedPhoto.dataUrl}
-                alt={attachedPhoto.name}
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div className="flex flex-col text-left min-w-0">
-              <span className="font-semibold text-foreground truncate max-w-[180px] sm:max-w-[280px]">
-                {attachedPhoto.name}
-              </span>
-              <span className="text-[11px] text-muted-foreground font-mono">
-                Photo · {attachedPhoto.sizeStr}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAttachedPhoto(null)}
-              className="ml-1 h-6 w-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition cursor-pointer"
-              title="Remove photo"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
-          className="relative flex items-center gap-2 bg-card/95 dark:bg-card/95 border border-border/80 hover:border-primary/40 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10 rounded-full p-2 pl-3 pr-2.5 shadow-lg shadow-black/5 hover:shadow-xl transition-all"
-        >
-          {/* Plus Action Button -> Trigger Photo Upload */}
-          <button
-            type="button"
-            onClick={() => photoInputRef.current?.click()}
-            className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 transition cursor-pointer shrink-0"
-            title="Upload photo"
-          >
-            <Plus className="h-5 w-5" />
-          </button>
-
-          {/* Search Input Field */}
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              isListening
-                ? "Listening to your voice... Speak now"
-                : attachedPhoto
-                ? "Ask anything about this photo..."
-                : "Ask anything about SWIFT HRMS..."
-            }
-            disabled={busy}
-            className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/70 text-sm sm:text-base px-2 py-1"
-            autoFocus={isHero}
-          />
-
-          {/* Right Tools: Think Button & Blue Circular Voice/Send Button */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Think Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const nextModel = selectedModel === "gpt-4o" ? "gpt-4o-mini" : "gpt-4o";
-                setSelectedModel(nextModel);
-                toast.success(
-                  nextModel === "gpt-4o" ? "Deep reasoning enabled (GPT-4o)" : "Fast reasoning enabled (GPT-4o Mini)"
-                );
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer ${
-                selectedModel === "gpt-4o"
-                  ? "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 shadow-xs"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-              }`}
-              title="Toggle Think / Deep Reasoning"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
-                <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
-                <path d="M12 3v18" />
-              </svg>
-              <span className="hidden sm:inline">Think</span>
-            </button>
-
-            {/* Blue Circular Voice Mode / Send Button */}
-            <button
-              type={hasContent ? "submit" : "button"}
-              onClick={hasContent ? undefined : toggleVoiceMode}
-              disabled={busy}
-              className={`h-9 w-9 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
-                hasContent
-                  ? "bg-gradient-brand text-white hover:opacity-95 active:scale-95"
-                  : isListening
-                  ? "bg-red-500 text-white ring-4 ring-red-500/25 animate-pulse"
-                  : "bg-[#0A84FF] text-white hover:bg-blue-600 active:scale-95"
-              }`}
-              title={
-                hasContent
-                  ? "Send message"
-                  : isListening
-                  ? "Voice Mode Active: Listening... Click to cancel"
-                  : "Voice Mode (Click to speak)"
-              }
-            >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin text-white" />
-              ) : hasContent ? (
-                <ArrowUp className="h-4 w-4" />
-              ) : isListening ? (
-                <div className="flex items-center gap-0.5">
-                  <span className="w-0.5 h-3 bg-white rounded-full animate-bounce [animation-delay:0ms]" />
-                  <span className="w-0.5 h-4 bg-white rounded-full animate-bounce [animation-delay:150ms]" />
-                  <span className="w-0.5 h-2.5 bg-white rounded-full animate-bounce [animation-delay:300ms]" />
-                </div>
-              ) : (
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                  <rect x="4" y="9" width="2.5" height="6" rx="1.25" />
-                  <rect x="9" y="5" width="2.5" height="14" rx="1.25" />
-                  <rect x="14" y="7" width="2.5" height="10" rx="1.25" />
-                  <rect x="19" y="10" width="2.5" height="4" rx="1.25" />
-                </svg>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    );
+  const toggleModel = () => {
+    const nextModel = selectedModel === "gpt-4o" ? "gpt-4o-mini" : "gpt-4o";
+    setSelectedModel(nextModel);
   };
+
+  const filterPills = [
+    { label: "Fast", icon: Zap, query: "Show today's workforce overview and live attendance stats." },
+    { label: "In-depth", icon: Lightbulb, query: "Provide an in-depth analysis of employee attendance and pending leave trends this month." },
+    { label: "In-depth", icon: Layers, query: "Audit recent payroll calculations, bonuses, and tax deductions." },
+    { label: "Holistic", icon: Compass, query: "Give a holistic summary of HR operations, active headcount, and compliance readiness." },
+  ];
+
+  const userName = user?.email ? user.email.split("@")[0] : "Admin";
 
   return (
-    <div className="flex flex-col h-[calc(100vh-5.5rem)] max-w-7xl mx-auto">
-      {/* Minimal Top Navigation Bar */}
-      <header className="flex items-center justify-between gap-4 py-3 px-2 mb-2 border-b border-border/40 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-2xl bg-gradient-brand flex items-center justify-center p-1 shadow-sm shrink-0">
-            <Lottie animationData={chatbotAnimation} loop={true} className="w-full h-full object-contain scale-110" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-base tracking-tight font-display">SWIFT AI Copilot</span>
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] py-0 px-2 font-medium">
-                ChatGPT
-              </Badge>
+    <div className="relative min-h-[calc(100vh-5.5rem)] flex flex-col justify-between overflow-hidden select-none">
+      {/* ======================================================== */}
+      {/* 1. DEEP RICH GLASSMORPHIC AMBIENT DIFFUSION BACKGROUND   */}
+      {/* ======================================================== */}
+      <div
+        className="pointer-events-none fixed inset-0 -z-10 transition-colors duration-700 overflow-hidden"
+        style={{
+          background: `
+            radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--primary) 35%, transparent) 0%, color-mix(in srgb, var(--accent, var(--primary)) 20%, transparent) 40%, transparent 75%),
+            radial-gradient(circle at 10% 20%, color-mix(in srgb, var(--primary) 22%, transparent) 0%, transparent 45%),
+            radial-gradient(circle at 90% 80%, color-mix(in srgb, var(--accent, var(--primary)) 18%, transparent) 0%, transparent 45%),
+            color-mix(in srgb, var(--background) 90%, var(--primary) 10%)
+          `,
+        }}
+      >
+        {/* Soft floating glow orbs */}
+        <div
+          className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] md:w-[900px] md:h-[650px] rounded-full blur-[110px] opacity-80 dark:opacity-50 animate-pulse pointer-events-none"
+          style={{
+            background: "radial-gradient(circle, var(--primary) 0%, var(--accent, var(--primary)) 60%, transparent 80%)",
+            animationDuration: "7s",
+          }}
+        />
+      </div>
+
+      {/* ======================================================== */}
+      {/* 2. TOP FLOATING NAVIGATION BAR (LOGO, NOTIF & PROFILE)   */}
+      {/* ======================================================== */}
+      <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-row flex-nowrap items-center justify-between gap-4 z-20">
+        {/* Left: Brand Logo + Single Line Name */}
+        <div className="flex items-center gap-2.5 shrink-0 whitespace-nowrap">
+          <div
+            className="relative h-10 w-10 rounded-full p-[2px] flex items-center justify-center shadow-lg transition-transform hover:scale-105"
+            style={{
+              background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
+            }}
+          >
+            <div className="h-full w-full rounded-full bg-card/90 backdrop-blur-md flex items-center justify-center text-primary shadow-inner">
+              <Brain className="h-5 w-5 text-primary animate-pulse" />
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              <span>{company.name} · {employees.length} employees</span>
-            </div>
           </div>
+          <span className="font-bold text-lg sm:text-xl tracking-tight text-foreground font-display whitespace-nowrap inline-block">
+            SWIFT AI
+          </span>
         </div>
 
-        {/* Controls */}
-        <div className="flex items-center gap-2.5">
-          {/* OpenAI Status Indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-card border border-border text-[11px]">
-            <div className={`h-2 w-2 rounded-full ${apiStatus.ok ? "bg-emerald-500" : "bg-amber-500"}`} />
-            <span className="text-muted-foreground">{apiStatus.ok ? "OpenAI Connected" : apiStatus.status}</span>
+        {/* Right Tools: Notification Bell & Profile Avatar */}
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 whitespace-nowrap">
+          {/* Notification Bell */}
+          <button
+            type="button"
+            onClick={() => toast.info(`SWIFT AI is monitoring compliance for ${company.name}`)}
+            className="h-9 w-9 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs hover:scale-105 shrink-0"
+            style={{
+              backgroundColor: "rgba(255, 255, 255, 0.35)",
+              borderColor: "rgba(255, 255, 255, 0.6)",
+              backdropFilter: "blur(24px) saturate(180%)",
+              WebkitBackdropFilter: "blur(24px) saturate(180%)",
+            }}
+            title="Notifications"
+          >
+            <Bell className="h-4 w-4 text-foreground/80" />
+          </button>
+
+          {/* User Profile Avatar */}
+          <div
+            className="h-9 w-9 rounded-full p-[1.5px] shadow-sm cursor-pointer hover:scale-105 transition-transform shrink-0"
+            style={{
+              background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
+            }}
+            title={user?.email || "Admin"}
+          >
+            <div className="h-full w-full rounded-full bg-card flex items-center justify-center font-bold text-xs text-primary overflow-hidden">
+              {(user?.email || "A")[0].toUpperCase()}
+            </div>
           </div>
-
-          {/* Model Switcher */}
-          <div className="flex items-center rounded-xl bg-card border border-border p-0.5 text-xs">
-            <button
-              onClick={() => setSelectedModel("gpt-4o-mini")}
-              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                selectedModel === "gpt-4o-mini"
-                  ? "bg-primary text-white shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              GPT-4o Mini
-            </button>
-            <button
-              onClick={() => setSelectedModel("gpt-4o")}
-              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                selectedModel === "gpt-4o"
-                  ? "bg-primary text-white shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              GPT-4o
-            </button>
-          </div>
-
-          {hasConversation && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => clearConversation(company.name)}
-              className="rounded-xl text-xs gap-1.5 cursor-pointer"
-              title="Reset conversation and return to search screen"
-            >
-              <RotateCcw className="h-3.5 w-3.5" /> New Chat
-            </Button>
-          )}
-
-          {hasConversation && (
-            <Button variant="outline" size="sm" onClick={exportChat} className="rounded-xl text-xs gap-1.5 cursor-pointer">
-              <Download className="h-3.5 w-3.5" /> Export
-            </Button>
-          )}
         </div>
       </header>
 
-      {/* Main Body */}
+      {/* ======================================================== */}
+      {/* 3. MAIN HERO VIEW OR FULL CHAT VIEW                      */}
+      {/* ======================================================== */}
       {!hasConversation ? (
-        /* ==================== ChatGPT Centered Hero View ==================== */
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-12 -mt-10 animate-in fade-in duration-300">
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col justify-center items-center relative py-6 md:py-10">
+          {/* Clean Glowing Brain Icon WITHOUT Circle Wrapper */}
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.4 }}
+            className="relative mb-4 flex items-center justify-center"
+          >
+            {/* Soft Ambient Halo behind the icon */}
+            <div
+              className="absolute h-14 w-14 rounded-full blur-xl opacity-70 animate-pulse pointer-events-none"
+              style={{
+                background: "radial-gradient(circle, var(--primary) 0%, var(--accent, var(--primary)) 80%, transparent)",
+              }}
+            />
+            {/* Clean floating Brain icon */}
+            <Brain className="relative h-11 w-11 text-primary animate-swift-float drop-shadow-[0_4px_12px_rgba(0,0,0,0.15)]" />
+          </motion.div>
+
           {/* Centered Heading */}
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-foreground mb-8">
-            What’s on the agenda today?
-          </h1>
+          <motion.h1
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-foreground text-center font-display mb-2 drop-shadow-xs"
+          >
+            Hi, I'm SWIFT AI
+          </motion.h1>
 
-          {/* Centered ChatGPT Search Capsule */}
-          {renderChatGptSearchBox(true)}
+          <motion.p
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.15 }}
+            className="text-sm sm:text-base text-muted-foreground text-center mb-8"
+          >
+            How can I help you today?
+          </motion.p>
 
-          {/* Universal Prompt Suggestion Pills */}
-          <div className="flex flex-wrap items-center justify-center gap-2.5 mt-7 max-w-3xl mx-auto">
-            {universalSuggestions.slice(0, 6).map((s) => (
+          {/* Hidden Photo Input */}
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*,.png,.jpg,.jpeg,.webp"
+            className="hidden"
+            onChange={handlePhotoSelect}
+          />
+
+          {/* Attached Photo Preview Pill */}
+          {attachedPhoto && (
+            <div
+              className="mb-3 inline-flex items-center gap-2 p-1.5 pr-3 rounded-2xl border shadow-lg text-xs animate-in fade-in"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.45)",
+                borderColor: "rgba(255, 255, 255, 0.7)",
+                backdropFilter: "blur(30px) saturate(190%)",
+                WebkitBackdropFilter: "blur(30px) saturate(190%)",
+              }}
+            >
+              <div className="h-9 w-9 rounded-xl overflow-hidden bg-black/10 shrink-0">
+                <img src={attachedPhoto.dataUrl} alt={attachedPhoto.name} className="w-full h-full object-cover" />
+              </div>
+              <span className="font-semibold text-foreground truncate max-w-[200px]">{attachedPhoto.name}</span>
               <button
-                key={s}
-                onClick={() => handleSend(s)}
-                disabled={busy}
-                className="text-xs px-3.5 py-1.5 rounded-full border border-border/70 bg-card/70 hover:bg-primary/10 hover:border-primary/40 transition-all text-muted-foreground hover:text-foreground cursor-pointer shadow-2xs hover:shadow-xs"
+                type="button"
+                onClick={() => setAttachedPhoto(null)}
+                className="h-5 w-5 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
               >
-                {s}
+                <X className="h-3 w-3" />
               </button>
-            ))}
-          </div>
-        </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* THE SIGNATURE HIGH-DEF FROSTED GLASS CAPSULE INPUT BOX  */}
+          {/* ======================================================== */}
+          <motion.div
+            initial={{ y: 15, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="w-full max-w-2xl sm:max-w-3xl"
+          >
+            <div
+              className="relative flex flex-col rounded-[32px] p-5 sm:p-6 border transition-all shadow-2xl"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.38)",
+                borderColor: "rgba(255, 255, 255, 0.65)",
+                backdropFilter: "blur(40px) saturate(190%)",
+                WebkitBackdropFilter: "blur(40px) saturate(190%)",
+                boxShadow: `
+                  0 30px 60px -15px color-mix(in srgb, var(--primary) 25%, transparent),
+                  inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.85),
+                  inset 0 -1px 1px 0 rgba(0, 0, 0, 0.05)
+                `,
+              }}
+            >
+              {/* Text Input */}
+              <textarea
+                ref={inputRef as any}
+                rows={2}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder={
+                  isListening
+                    ? "Listening to voice... Speak now"
+                    : attachedPhoto
+                    ? "Ask anything about this uploaded document or photo..."
+                    : "Ask anything..."
+                }
+                disabled={busy}
+                className="w-full resize-none bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/60 text-base px-1 py-1 leading-relaxed"
+                autoFocus
+              />
+
+              {/* Bottom Toolbar inside the Glass Box */}
+              <div className="flex items-center justify-between gap-2 pt-3 mt-1">
+                {/* Left: Attachment + Deep search + Search pills */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Paperclip Button */}
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground border transition-all cursor-pointer shadow-xs hover:scale-105"
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.5)",
+                      borderColor: "rgba(255, 255, 255, 0.7)",
+                      backdropFilter: "blur(20px)",
+                      WebkitBackdropFilter: "blur(20px)",
+                    }}
+                    title="Attach file or photo"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </button>
+
+                  {/* Deep Search Pill Button */}
+                  <button
+                    type="button"
+                    onClick={toggleModel}
+                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer shadow-xs hover:scale-105 ${
+                      selectedModel === "gpt-4o"
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "text-foreground/80 hover:text-foreground"
+                    }`}
+                    style={
+                      selectedModel !== "gpt-4o"
+                        ? {
+                            backgroundColor: "rgba(255, 255, 255, 0.5)",
+                            borderColor: "rgba(255, 255, 255, 0.7)",
+                            backdropFilter: "blur(20px)",
+                            WebkitBackdropFilter: "blur(20px)",
+                          }
+                        : undefined
+                    }
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    <span>Deep search</span>
+                  </button>
+
+                  {/* Search / HRMS Context Pill */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.info(`Active Workspace: ${company.name} (${employees.length} employees linked)`);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold text-foreground/80 hover:text-foreground border transition-all cursor-pointer shadow-xs hover:scale-105"
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.5)",
+                      borderColor: "rgba(255, 255, 255, 0.7)",
+                      backdropFilter: "blur(20px)",
+                      WebkitBackdropFilter: "blur(20px)",
+                    }}
+                  >
+                    <Globe className="h-3.5 w-3.5" />
+                    <span>Search</span>
+                  </button>
+                </div>
+
+                {/* Right: Voice + Send */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleVoiceMode}
+                    className={`h-9 w-9 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs hover:scale-105 ${
+                      isListening ? "bg-red-500 text-white border-red-500 animate-pulse" : "text-foreground/80"
+                    }`}
+                    style={
+                      !isListening
+                        ? {
+                            backgroundColor: "rgba(255, 255, 255, 0.5)",
+                            borderColor: "rgba(255, 255, 255, 0.7)",
+                            backdropFilter: "blur(20px)",
+                            WebkitBackdropFilter: "blur(20px)",
+                          }
+                        : undefined
+                    }
+                    title="Voice mode"
+                  >
+                    <Mic className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSend()}
+                    disabled={busy || (!input.trim() && !attachedPhoto)}
+                    className="h-9 w-9 rounded-full flex items-center justify-center text-white shadow-md transition-all cursor-pointer hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                      background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
+                    }}
+                    title="Send message"
+                  >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* ======================================================== */}
+          {/* ROW OF FROSTED GLASS PILLS DIRECTLY UNDERNEATH          */}
+          {/* ======================================================== */}
+          <motion.div
+            initial={{ y: 15, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.25 }}
+            className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 mt-6 max-w-2xl mx-auto"
+          >
+            {filterPills.map((p, idx) => {
+              const Icon = p.icon;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => handleSend(p.query)}
+                  disabled={busy}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-semibold text-foreground border transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.42)",
+                    borderColor: "rgba(255, 255, 255, 0.7)",
+                    backdropFilter: "blur(28px) saturate(180%)",
+                    WebkitBackdropFilter: "blur(28px) saturate(180%)",
+                    boxShadow: "0 8px 20px -6px rgba(0, 0, 0, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.8)",
+                  }}
+                >
+                  <Icon className="h-3.5 w-3.5 text-primary" />
+                  <span>{p.label}</span>
+                </button>
+              );
+            })}
+          </motion.div>
+        </main>
       ) : (
-        /* ==================== Active Conversation View ==================== */
-        <div className="flex-1 min-h-0 flex flex-col bg-card/40 border border-border/70 rounded-3xl overflow-hidden shadow-soft animate-in fade-in duration-200">
-          {/* Chat Scroller */}
-          <div ref={scrollerRef} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 max-w-4xl mx-auto w-full scroll-smooth">
+        /* ======================================================== */
+        /* 5. ACTIVE CONVERSATION FULL VIEW (WITH DEEP GLASS)       */
+        /* ======================================================== */
+        <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 flex flex-col justify-between py-2 overflow-hidden z-20">
+          {/* Header Action Strip */}
+          <div className="flex items-center justify-between py-2 border-b border-white/20 mb-2">
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className="border-white/50 text-primary text-xs font-semibold py-1 px-3 shadow-xs"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.4)",
+                  backdropFilter: "blur(20px)",
+                }}
+              >
+                {selectedModel === "gpt-4o" ? "GPT-4o Deep Reasoning" : "GPT-4o Mini Fast"}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {company.name} · {messages.length} messages
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => clearConversation(company.name)}
+                className="rounded-full text-xs gap-1.5 cursor-pointer border-white/50 hover:bg-card"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.4)",
+                  backdropFilter: "blur(20px)",
+                }}
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> New Chat
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportChat}
+                className="rounded-full text-xs gap-1.5 cursor-pointer border-white/50 hover:bg-card"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.4)",
+                  backdropFilter: "blur(20px)",
+                }}
+              >
+                <Download className="h-3.5 w-3.5" /> Export
+              </Button>
+            </div>
+          </div>
+
+          {/* Messages Scroller */}
+          <div ref={scrollerRef} className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-4 space-y-4 scroll-smooth">
             {messages.map((msg, idx) => {
               const isUser = msg.role === "user";
               const isLast = idx === messages.length - 1;
 
               return (
                 <motion.div
-                  key={msg.id}
+                  key={msg.id || idx}
                   ref={isLast ? latestMessageRef : undefined}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -678,78 +746,67 @@ function SwiftAiCommandCenter() {
                   className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
                 >
                   {!isUser && (
-                    <div className="h-9 w-9 rounded-2xl bg-gradient-brand text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-                      <Bot className="h-5 w-5" />
+                    <div
+                      className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 p-[1.5px] shadow-sm mt-0.5"
+                      style={{
+                        background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
+                      }}
+                    >
+                      <div className="h-full w-full rounded-full bg-card flex items-center justify-center text-primary">
+                        <Brain className="h-4 w-4" />
+                      </div>
                     </div>
                   )}
 
                   <div
-                    className={`group relative max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-xs ${
+                    className={`group relative max-w-[88%] sm:max-w-[85%] rounded-[26px] px-5 py-4 text-sm border shadow-xl ${
                       isUser
-                        ? "bg-gradient-brand text-white rounded-br-xs"
-                        : "bg-background border border-border/90 text-foreground rounded-bl-xs"
+                        ? "text-white rounded-br-xs"
+                        : "text-foreground rounded-bl-xs"
                     }`}
+                    style={
+                      isUser
+                        ? {
+                            background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
+                            borderColor: "rgba(255, 255, 255, 0.4)",
+                            boxShadow: "0 15px 30px -10px color-mix(in srgb, var(--primary) 35%, transparent)",
+                          }
+                        : {
+                            backgroundColor: "rgba(255, 255, 255, 0.45)",
+                            borderColor: "rgba(255, 255, 255, 0.7)",
+                            backdropFilter: "blur(36px) saturate(180%)",
+                            WebkitBackdropFilter: "blur(36px) saturate(180%)",
+                            boxShadow: "0 20px 40px -15px rgba(0,0,0,0.06), inset 0 1px 1px rgba(255,255,255,0.85)",
+                          }
+                    }
                   >
-                    {/* Message Header */}
-                    <div className="flex items-center justify-between gap-4 mb-1.5 text-[11px] opacity-75">
+                    {/* Header */}
+                    <div className="flex items-center justify-between gap-4 mb-2 text-[11px] opacity-80">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold">{isUser ? "You" : "SWIFT AI"}</span>
-                        {msg.source && (
-                          <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 opacity-70 font-mono">
-                            {msg.source === "LIVE_BRAIN" ? "Live Brain" : "Copilot"}
-                          </span>
-                        )}
+                        <span className="font-bold">{isUser ? "You" : "SWIFT AI"}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        {msg.model && <span className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 text-[10px]">{msg.model}</span>}
                         <span>{msg.timestamp}</span>
                         {!isUser && (
                           <button
                             onClick={() => copyToClipboard(msg.content, msg.id)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-primary"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-primary cursor-pointer"
                             title="Copy reply"
                           >
-                            {copiedId === msg.id ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                            {copiedId === msg.id ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {/* Attached Photo Preview in User Message */}
+                    {/* Image preview */}
                     {isUser && msg.documentMeta?.imageUrl && (
-                      <div className="mb-2.5 max-w-[280px] rounded-2xl overflow-hidden border border-white/25 bg-black/25 shadow-xs">
-                        <img
-                          src={msg.documentMeta.imageUrl}
-                          alt={msg.documentMeta.filename || "Uploaded photo"}
-                          className="w-full max-h-[220px] object-cover"
-                        />
-                        <div className="px-3 py-1.5 text-[11px] text-white/90 bg-black/40 flex items-center justify-between">
-                          <span className="truncate font-medium">{msg.documentMeta.filename || "Photo"}</span>
-                          {msg.documentMeta.size ? (
-                            <span className="text-[10px] opacity-80 font-mono ml-2 shrink-0">
-                              {formatFileSize(msg.documentMeta.size)}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    )}
-                    {isUser && msg.documentMeta && !msg.documentMeta.imageUrl && (
-                      <div className="mb-2 flex items-center gap-2 p-2 px-3 rounded-xl bg-white/20 border border-white/25 backdrop-blur-xs text-xs text-white">
-                        <FileText className="h-4 w-4 shrink-0 text-white" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold truncate leading-tight">
-                            {msg.documentMeta.filename || msg.documentMeta.title}
-                          </p>
-                          {msg.documentMeta.size ? (
-                            <p className="text-[10px] text-white/80 leading-tight">
-                              {formatFileSize(msg.documentMeta.size)}
-                            </p>
-                          ) : null}
-                        </div>
+                      <div className="mb-2.5 max-w-[280px] rounded-2xl overflow-hidden border border-white/30 bg-black/20 shadow-xs">
+                        <img src={msg.documentMeta.imageUrl} alt="Uploaded" className="w-full max-h-[220px] object-cover" />
                       </div>
                     )}
 
-                    {/* Unified Structured AI Response Renderer */}
+                    {/* Structured AI response */}
                     <div className="my-1">
                       <AIResponseRenderer
                         message={msg}
@@ -758,55 +815,24 @@ function SwiftAiCommandCenter() {
                       />
                     </div>
 
-                    {/* Interactive Format Selection Buttons */}
-                    {msg.isFormatPrompt && (
-                      <div className="mt-3 pt-3 border-t border-border/60 flex flex-col gap-2">
-                        <div className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
-                          <Sparkles className="h-3.5 w-3.5 text-primary" /> Please choose your preferred report format:
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 max-w-xl">
-                          <button
-                            onClick={() => handleSend("PDF format", "pdf")}
-                            className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition shadow-xs cursor-pointer active:scale-95"
-                          >
-                            <FileText className="h-4 w-4" /> 📄 PDF Format (Download)
-                          </button>
-                          <button
-                            onClick={() => handleSend("Excel format", "excel")}
-                            className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition shadow-xs cursor-pointer active:scale-95"
-                          >
-                            <FileSpreadsheet className="h-4 w-4" /> 📊 Excel Format (Download)
-                          </button>
-                          <button
-                            onClick={() => handleSend("Text format", "text")}
-                            className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-muted/80 hover:bg-muted border border-border text-foreground text-xs font-semibold transition cursor-pointer active:scale-95"
-                          >
-                            <Bot className="h-4 w-4 text-primary" /> 💬 Text Format (View in Chat)
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Download as PDF and Excel format option on each and every AI response */}
+                    {/* Export Actions */}
                     {!isUser && !msg.isFormatPrompt && (
-                      <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between gap-3 flex-wrap">
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                          <FileText className="h-3.5 w-3.5 text-primary/80" /> Export official document
+                      <div className="mt-3 pt-2.5 border-t border-white/20 flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                          <FileText className="h-3.5 w-3.5 text-primary" /> Official Export
                         </span>
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => handleGeneratePdfForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content, msg.structuredData)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition cursor-pointer active:scale-95 border border-primary/20 shadow-2xs hover:shadow-xs"
-                            title="Download as PDF format"
+                            className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary transition cursor-pointer"
                           >
-                            <Download className="h-3.5 w-3.5" /> Download as PDF format
+                            <Download className="h-3 w-3" /> PDF
                           </button>
                           <button
                             onClick={() => handleGenerateExcelForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content, msg.structuredData)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold transition cursor-pointer active:scale-95 border border-emerald-500/25 shadow-2xs hover:shadow-xs"
-                            title="Download as Excel sheet"
+                            className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition cursor-pointer"
                           >
-                            <FileSpreadsheet className="h-3.5 w-3.5" /> Download as Excel sheet
+                            <FileSpreadsheet className="h-3 w-3" /> Excel
                           </button>
                         </div>
                       </div>
@@ -814,7 +840,12 @@ function SwiftAiCommandCenter() {
                   </div>
 
                   {isUser && (
-                    <div className="h-9 w-9 rounded-2xl bg-primary/20 border border-primary/30 text-primary flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                    <div
+                      className="h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 mt-0.5 shadow-sm"
+                      style={{
+                        background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
+                      }}
+                    >
                       {(user?.email || "Admin")[0].toUpperCase()}
                     </div>
                   )}
@@ -823,41 +854,111 @@ function SwiftAiCommandCenter() {
             })}
 
             {busy && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3 items-center">
-                <div className="h-9 w-9 rounded-2xl bg-gradient-brand text-white flex items-center justify-center shrink-0">
-                  <Bot className="h-5 w-5" />
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3 items-center">
+                <div
+                  className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 p-[1.5px]"
+                  style={{
+                    background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
+                  }}
+                >
+                  <div className="h-full w-full rounded-full bg-card flex items-center justify-center text-primary">
+                    <Brain className="h-4 w-4 animate-pulse" />
+                  </div>
                 </div>
-                <div className="bg-background border border-border rounded-2xl rounded-bl-xs px-4 py-3 flex items-center gap-2 text-xs text-muted-foreground shadow-xs">
+                <div
+                  className="rounded-2xl px-4 py-3 border text-xs text-muted-foreground flex items-center gap-2"
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.45)",
+                    borderColor: "rgba(255, 255, 255, 0.7)",
+                    backdropFilter: "blur(28px)",
+                  }}
+                >
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   <span>SWIFT AI is reasoning with OpenAI ({selectedModel})...</span>
                 </div>
               </motion.div>
             )}
 
-            {/* Bottom Anchor for Smooth Scrolling */}
-            <div ref={bottomAnchorRef} className="h-6 w-full shrink-0" />
+            <div ref={bottomAnchorRef} className="h-4 w-full shrink-0" />
           </div>
 
-          {/* Universal Quick Suggestions Pills (Above bottom input) */}
-          <div className="px-4 py-2 border-t border-border/40 bg-background/50 backdrop-blur overflow-x-auto flex items-center justify-center gap-2 no-scrollbar">
-            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1 shrink-0">
-              <Sparkles className="h-3 w-3 text-primary" /> Quick:
-            </span>
-            {universalSuggestions.slice(0, 5).map((s) => (
-              <button
-                key={s}
-                onClick={() => handleSend(s)}
+          {/* Bottom Docked Frosted Glass Capsule */}
+          <div className="pt-2">
+            <div
+              className="relative flex flex-col rounded-[28px] p-3 sm:p-4 border transition-all shadow-xl"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.4)",
+                borderColor: "rgba(255, 255, 255, 0.65)",
+                backdropFilter: "blur(36px) saturate(180%)",
+                WebkitBackdropFilter: "blur(36px) saturate(180%)",
+                boxShadow: "0 20px 40px -15px color-mix(in srgb, var(--primary) 15%, transparent), inset 0 1px 1px rgba(255, 255, 255, 0.8)",
+              }}
+            >
+              <textarea
+                ref={inputRef as any}
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder={isListening ? "Listening..." : "Ask follow-up query..."}
                 disabled={busy}
-                className="shrink-0 text-xs px-3 py-1 rounded-full border border-border bg-card hover:border-primary/40 hover:bg-primary/5 transition-all text-muted-foreground hover:text-foreground cursor-pointer"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
+                className="w-full resize-none bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/60 text-sm px-2 py-1 leading-relaxed"
+              />
 
-          {/* Bottom Docked ChatGPT Search Capsule */}
-          <div className="p-4 bg-card/60 border-t border-border/40 backdrop-blur">
-            {renderChatGptSearchBox(false)}
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/20 mt-1">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="h-8 w-8 rounded-full flex items-center justify-center border border-white/50 text-muted-foreground hover:text-foreground cursor-pointer"
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.5)",
+                    }}
+                  >
+                    <Paperclip className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleModel}
+                    className="px-3 py-1 rounded-full text-xs font-semibold border border-white/50 text-foreground cursor-pointer"
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.5)",
+                    }}
+                  >
+                    {selectedModel === "gpt-4o" ? "Deep search" : "Fast mode"}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleVoiceMode}
+                    className="h-8 w-8 rounded-full flex items-center justify-center border border-white/50 text-foreground cursor-pointer"
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.5)",
+                    }}
+                  >
+                    <Mic className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSend()}
+                    disabled={busy || !input.trim()}
+                    className="h-8 w-8 rounded-full flex items-center justify-center text-white shadow-md cursor-pointer disabled:opacity-40"
+                    style={{
+                      background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
+                    }}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

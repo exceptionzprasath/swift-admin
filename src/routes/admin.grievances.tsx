@@ -179,9 +179,6 @@ function GrievancesPage() {
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-semibold flex items-center gap-2">
-            <MessageSquareHeart className="h-6 w-6 text-primary" /> Grievance Management
-          </h1>
           <p className="text-sm text-muted-foreground">
             Track, respond to, and resolve employee requests and grievances across the multi-level hierarchy.
           </p>

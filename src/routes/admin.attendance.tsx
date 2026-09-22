@@ -940,15 +940,12 @@ function AttendancePage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl lg:text-3xl font-bold tracking-tight">
-                  Real-Time Attendance Hub
-                </h1>
                 <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs px-2 py-0.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5 animate-ping" />
                   Live Sync
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 Live biometric face logs, GPS geofence tracking, punctuality intelligence, and employee dossiers.
               </p>
             </div>
@@ -1337,6 +1334,14 @@ function AttendancePage() {
                             <div>
                               <div className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-1.5">
                                 <span>{emp.name}</span>
+                                {emp.employmentType === "contract" && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                                  >
+                                    Contract
+                                  </Badge>
+                                )}
                                 <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary" />
                               </div>
                               <div className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -1653,7 +1658,17 @@ function AttendancePage() {
                           className="p-3 sticky left-0 bg-card z-10 font-medium text-foreground hover:text-primary cursor-pointer"
                           onClick={() => setDossierEmployee(emp)}
                         >
-                          <div className="font-semibold">{emp.name}</div>
+                          <div className="font-semibold flex items-center gap-1.5">
+                            <span>{emp.name}</span>
+                            {emp.employmentType === "contract" && (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                              >
+                                Contract
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-[10px] text-muted-foreground">{emp.empCode}</div>
                         </td>
 
@@ -1779,7 +1794,17 @@ function AttendancePage() {
                         #{i + 1}
                       </span>
                       <div>
-                        <div className="font-semibold text-sm">{emp.name}</div>
+                        <div className="font-semibold text-sm flex items-center gap-1.5">
+                          <span>{emp.name}</span>
+                          {emp.employmentType === "contract" && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                            >
+                              Contract
+                            </Badge>
+                          )}
+                        </div>
                         <div className="text-[11px] text-muted-foreground">{emp.department}</div>
                       </div>
                     </div>
@@ -2834,6 +2859,14 @@ function EmployeeAttendanceDossierModal({
             <div>
               <div className="flex items-center gap-2.5">
                 <h2 className="font-display text-2xl font-bold">{employee.name}</h2>
+                {employee.employmentType === "contract" && (
+                  <Badge
+                    variant="outline"
+                    className="text-xs px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                  >
+                    Contract
+                  </Badge>
+                )}
                 <Badge variant="outline" className="font-mono text-xs px-2 py-0.5">
                   {employee.empCode}
                 </Badge>
