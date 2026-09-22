@@ -5,7 +5,8 @@ import {
   Search, Plus, MoreVertical, Send, Paperclip, Smile, Image as ImageIcon,
   FileText, Check, CheckCheck, Clock, Reply, Edit3, Trash2, Info,
   Sparkles, ShieldCheck, Users, X, Download, ShieldAlert, ArrowLeft,
-  ChevronRight, Lock, BellOff, Eye, Palette, CheckCircle2, AlertCircle
+  ChevronRight, Lock, BellOff, Eye, Palette, CheckCircle2, AlertCircle,
+  Play, Pause, Mic, MicOff, Volume2, Camera, Video
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,161 @@ export const Route = createFileRoute("/admin/team-chat")({
   component: AdminTeamChatPage,
 });
 
+// -------------------------------------------------------------
+// Voice Message Audio Player Component (WhatsApp Style)
+// -------------------------------------------------------------
+function VoiceMessagePlayer({
+  mediaUrl,
+  durationText,
+  isMe,
+}: {
+  mediaUrl?: string;
+  durationText?: string;
+  isMe: boolean;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(() => {
+    if (durationText) {
+      const match = durationText.match(/(\d+):(\d+)/);
+      if (match) {
+        return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+      }
+    }
+    return 6;
+  });
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const intervalRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (mediaUrl && !mediaUrl.startsWith("https://swift-mock-audio")) {
+      const audio = new Audio(mediaUrl);
+      audioRef.current = audio;
+      audio.onloadedmetadata = () => {
+        if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+          setDuration(Math.round(audio.duration));
+        }
+      };
+      audio.ontimeupdate = () => {
+        setCurrentTime(audio.currentTime);
+      };
+      audio.onended = () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+      };
+      return () => {
+        audio.pause();
+        audioRef.current = null;
+      };
+    }
+  }, [mediaUrl]);
+
+  const togglePlay = () => {
+    if (audioRef.current && mediaUrl && !mediaUrl.startsWith("https://swift-mock-audio")) {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current.play().then(() => {
+          setIsPlaying(true);
+        }).catch(() => {
+          startSimulatedPlay();
+        });
+      }
+    } else {
+      if (isPlaying) {
+        clearInterval(intervalRef.current);
+        setIsPlaying(false);
+      } else {
+        startSimulatedPlay();
+      }
+    }
+  };
+
+  const startSimulatedPlay = () => {
+    setIsPlaying(true);
+    clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      setCurrentTime((prev) => {
+        if (prev >= duration) {
+          clearInterval(intervalRef.current);
+          setIsPlaying(false);
+          return 0;
+        }
+        return prev + 0.5;
+      });
+    }, 500);
+  };
+
+  useEffect(() => {
+    return () => clearInterval(intervalRef.current);
+  }, []);
+
+  const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const displayTime = isPlaying
+    ? `${Math.floor(currentTime / 60)}:${Math.floor(currentTime % 60).toString().padStart(2, "0")}`
+    : (durationText?.replace(/[()]/g, "") || `${Math.floor(duration / 60)}:${Math.floor(duration % 60).toString().padStart(2, "0")}`);
+
+  const bars = [4, 10, 16, 8, 14, 20, 12, 6, 18, 14, 8, 12, 16, 6, 10, 14, 8];
+
+  return (
+    <div
+      className={`flex items-center gap-3 p-2.5 rounded-2xl my-1 select-none min-w-[240px] max-w-[320px] transition-all shadow-xs ${
+        isMe
+          ? "bg-emerald-600/10 border border-emerald-600/20 text-emerald-950 dark:text-emerald-100"
+          : "bg-muted/80 border border-border text-foreground"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={togglePlay}
+        className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 transition-transform hover:scale-105 active:scale-95 shadow-sm ${
+          isMe
+            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+            : "bg-primary hover:bg-primary/90 text-primary-foreground"
+        }`}
+        title={isPlaying ? "Pause voice message" : "Play voice message"}
+      >
+        {isPlaying ? (
+          <Pause className="h-4 w-4 fill-current" />
+        ) : (
+          <Play className="h-4 w-4 fill-current ml-0.5" />
+        )}
+      </button>
+
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="flex items-center gap-1 h-6 px-1">
+          {bars.map((height, i) => {
+            const barProgress = (i / bars.length) * 100;
+            const isFilled = progressPercent >= barProgress;
+            return (
+              <div
+                key={i}
+                className={`w-1 rounded-full transition-all duration-150 ${
+                  isFilled
+                    ? isMe
+                      ? "bg-emerald-600 dark:bg-emerald-400"
+                      : "bg-primary"
+                    : "bg-muted-foreground/30"
+                } ${isPlaying ? "animate-pulse" : ""}`}
+                style={{ height: `${height}px` }}
+              />
+            );
+          })}
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] font-medium text-muted-foreground px-1">
+          <span className="flex items-center gap-1">
+            <Mic className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+            Voice message
+          </span>
+          <span className="font-mono">{displayTime}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminTeamChatPage() {
   const { user, activeTenantId } = useAuth();
   const { company, employees } = useStore();
@@ -79,8 +235,16 @@ function AdminTeamChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<TeamGroupMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<TeamGroupMessage | null>(null);
-  const [selectedWallpaper, setSelectedWallpaper] = useState<ChatWallpaperOption>(CHAT_WALLPAPERS[3]); // warm cream doodle by default
   const [isUploading, setIsUploading] = useState(false);
+
+  // Voice recording state in Admin
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
+
+  const [selectedWallpaper, setSelectedWallpaper] = useState<ChatWallpaperOption>(CHAT_WALLPAPERS[3]); // warm cream doodle by default
 
   // In-Chat Search
   const [isChatSearchOpen, setIsChatSearchOpen] = useState(false);
@@ -589,6 +753,153 @@ function AdminTeamChatPage() {
   };
 
   // -------------------------------------------------------------
+  // Voice Recording Handlers (Web Audio API)
+  // -------------------------------------------------------------
+  const startVoiceRecording = async () => {
+    if (!activeGroupId) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecordingVoice(true);
+      setRecordingDuration(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } catch (err: any) {
+      console.warn("Could not access microphone:", err);
+      alert("Microphone permission is required to record voice notes.");
+    }
+  };
+
+  const cancelVoiceRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    clearInterval(recordingTimerRef.current);
+    setIsRecordingVoice(false);
+    setRecordingDuration(0);
+    audioChunksRef.current = [];
+  };
+
+  const finishAndSendVoiceRecording = async () => {
+    if (!mediaRecorderRef.current || !activeGroupId) return;
+
+    clearInterval(recordingTimerRef.current);
+    const durationSecs = recordingDuration;
+    setIsRecordingVoice(false);
+    setRecordingDuration(0);
+
+    const minutes = Math.floor(durationSecs / 60);
+    const seconds = durationSecs % 60;
+    const durationFormatted = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+
+    mediaRecorderRef.current.onstop = async () => {
+      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        const fileName = `voice_${Date.now()}.webm`;
+        const s3Path = `team_chat/${activeGroupId}/${Date.now()}_${fileName}`;
+
+        let mediaUrl = base64;
+        try {
+          const upRes = await uploadChatFile(effectiveTenantId, s3Path, base64);
+          if (upRes && upRes.url) {
+            mediaUrl = upRes.url;
+          }
+        } catch (e) {
+          console.warn("Audio upload fallback to data url:", e);
+        }
+
+        const effectiveText = `🎤 Voice message (${durationFormatted})`;
+        const tempId = `temp-${Date.now()}`;
+        const timeNow = formatMessageTime(new Date());
+
+        const optimisticMsg: TeamGroupMessage = {
+          id: tempId,
+          clientMessageId: tempId,
+          groupId: activeGroupId,
+          senderId: adminId,
+          senderName: adminName,
+          senderRole: adminRole,
+          text: effectiveText,
+          time: timeNow,
+          createdAt: new Date().toISOString(),
+          mediaType: "audio",
+          mediaUrl,
+          fileName,
+          fileSize: durationFormatted,
+          status: "sending",
+        };
+
+        setMessages((prev) => [...prev, optimisticMsg]);
+        setTimeout(() => scrollToBottom("smooth"), 50);
+
+        // Send via WS
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(
+            JSON.stringify({
+              type: "send_message",
+              id: tempId,
+              tenantId: effectiveTenantId,
+              groupId: activeGroupId,
+              senderId: adminId,
+              senderName: adminName,
+              text: effectiveText,
+              time: timeNow,
+              mediaType: "audio",
+              mediaUrl,
+              fileName,
+              fileSize: durationFormatted,
+            })
+          );
+        }
+
+        try {
+          const res = await sendTeamChatMessage({
+            tenantId: effectiveTenantId,
+            groupId: activeGroupId,
+            senderId: adminId,
+            senderName: adminName,
+            senderRole: adminRole,
+            text: effectiveText,
+            mediaType: "audio",
+            mediaUrl,
+            fileName,
+            fileSize: durationFormatted,
+            clientMessageId: tempId,
+          });
+          if (res.success && res.message) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === tempId ? { ...res.message!, status: "sent" } : m))
+            );
+          }
+        } catch (err) {
+          console.warn("[AdminTeamChat] Failed to send voice message:", err);
+        }
+      };
+      reader.readAsDataURL(audioBlob);
+    };
+
+    if (mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  // -------------------------------------------------------------
   // File / Image Attachment Upload
   // -------------------------------------------------------------
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -599,30 +910,91 @@ function AdminTeamChatPage() {
     const isImage = file.type.startsWith("image/");
     const isVideo = file.type.startsWith("video/");
     const mediaType = isImage ? "image" : isVideo ? "video" : "document";
+    const fileSizeFormatted = file.size < 1024 * 1024 ? `${Math.round(file.size / 1024)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+    const effectiveText = isImage ? "📷 Photo" : isVideo ? "🎥 Video" : file.name;
 
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = reader.result as string;
       const s3Path = `team_chat/${activeGroupId}/${Date.now()}_${file.name}`;
       
-      const uploadRes = await uploadChatFile(effectiveTenantId, s3Path, base64);
-      const mediaUrl = uploadRes.url || base64;
+      let mediaUrl = base64;
+      try {
+        const uploadRes = await uploadChatFile(effectiveTenantId, s3Path, base64);
+        if (uploadRes?.url) mediaUrl = uploadRes.url;
+      } catch (upErr) {
+        console.warn("Upload fallback to data url:", upErr);
+      }
 
-      await sendTeamChatMessage({
-        tenantId: effectiveTenantId,
+      const tempId = `temp-${Date.now()}`;
+      const timeNow = formatMessageTime(new Date());
+
+      const optimisticMsg: TeamGroupMessage = {
+        id: tempId,
+        clientMessageId: tempId,
         groupId: activeGroupId,
         senderId: adminId,
         senderName: adminName,
         senderRole: adminRole,
-        text: isImage ? "" : file.name,
+        text: effectiveText,
+        time: timeNow,
+        createdAt: new Date().toISOString(),
         mediaType,
         mediaUrl,
         fileName: file.name,
-        fileSize: file.size < 1024 * 1024 ? `${Math.round(file.size / 1024)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-      });
+        fileSize: fileSizeFormatted,
+        status: "sending",
+      };
 
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setMessages((prev) => [...prev, optimisticMsg]);
+      setTimeout(() => scrollToBottom("smooth"), 50);
+
+      // Fast-path: Send via open WebSocket
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "send_message",
+            id: tempId,
+            tenantId: effectiveTenantId,
+            groupId: activeGroupId,
+            senderId: adminId,
+            senderName: adminName,
+            text: effectiveText,
+            time: timeNow,
+            mediaType,
+            mediaUrl,
+            fileName: file.name,
+            fileSize: fileSizeFormatted,
+          })
+        );
+      }
+
+      try {
+        const res = await sendTeamChatMessage({
+          tenantId: effectiveTenantId,
+          groupId: activeGroupId,
+          senderId: adminId,
+          senderName: adminName,
+          senderRole: adminRole,
+          text: effectiveText,
+          mediaType,
+          mediaUrl,
+          fileName: file.name,
+          fileSize: fileSizeFormatted,
+          clientMessageId: tempId,
+        });
+
+        if (res.success && res.message) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...res.message!, status: "sent" } : m))
+          );
+        }
+      } catch (err) {
+        console.warn("[AdminTeamChat] Failed to send attachment:", err);
+      } finally {
+        setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -1058,13 +1430,30 @@ function AdminTeamChatPage() {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] text-muted-foreground truncate max-w-[210px]">
+                      <p className="text-[11px] text-muted-foreground truncate max-w-[210px] flex items-center gap-1">
                         {group.lastMessageSender ? (
-                          <span className="font-medium text-foreground/80">
+                          <span className="font-medium text-foreground/80 shrink-0">
                             {group.lastMessageSender}:{" "}
                           </span>
                         ) : null}
-                        {group.lastMessageText || "No messages yet"}
+                        {group.lastMessageText === "📷 Photo" || group.lastMessageText?.startsWith("📷 ") ? (
+                          <span className="flex items-center gap-1">
+                            <Camera className="h-3 w-3 text-primary shrink-0" />
+                            Photo
+                          </span>
+                        ) : group.lastMessageText?.startsWith("🎤 Voice") || group.lastMessageText?.startsWith("🎤 ") ? (
+                          <span className="flex items-center gap-1">
+                            <Mic className="h-3 w-3 text-emerald-600 shrink-0" />
+                            Voice message
+                          </span>
+                        ) : group.lastMessageText?.startsWith("📄 ") ? (
+                          <span className="flex items-center gap-1">
+                            <FileText className="h-3 w-3 text-primary shrink-0" />
+                            Document
+                          </span>
+                        ) : (
+                          group.lastMessageText || "No messages yet"
+                        )}
                       </p>
 
                       {group.unreadCount > 0 && !isSelected && (
@@ -1402,15 +1791,77 @@ function AdminTeamChatPage() {
                           </div>
                         )}
 
-                        {/* Attached Image / Media */}
-                        {msg.mediaType === "image" && msg.mediaUrl && (
-                          <div className="my-1.5 rounded-xl overflow-hidden border border-black/10 dark:border-white/10 max-h-72">
-                            <img
-                              src={msg.mediaUrl}
-                              alt="Attached image"
-                              onClick={() => setLightboxUrl(msg.mediaUrl || null)}
-                              className="w-full h-auto object-cover cursor-pointer hover:opacity-95 transition-opacity"
-                            />
+                        {/* Attached Image / Photo (WhatsApp Web style) */}
+                        {(msg.mediaType === "image" || (typeof msg.mediaUrl === "string" && msg.mediaUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?.*)?$/i)) || (typeof msg.text === "string" && (msg.text === "📷 Photo" || msg.text.startsWith("📷 ")))) && (
+                          msg.mediaUrl ? (
+                            <div className="my-1.5 rounded-xl overflow-hidden border border-black/10 dark:border-white/10 max-w-[320px] max-h-[360px] relative group bg-black/5 dark:bg-white/5">
+                              <img
+                                src={msg.mediaUrl}
+                                alt={msg.fileName || "Photo"}
+                                onClick={() => setLightboxUrl(msg.mediaUrl || null)}
+                                className="w-full h-auto max-h-[340px] object-cover cursor-pointer hover:opacity-95 transition-all block rounded-xl shadow-xs"
+                                loading="lazy"
+                              />
+                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-black/60 backdrop-blur-md rounded-lg p-1 text-white shadow-md">
+                                <button
+                                  type="button"
+                                  onClick={() => setLightboxUrl(msg.mediaUrl || null)}
+                                  className="p-1.5 hover:bg-white/20 rounded cursor-pointer transition-colors"
+                                  title="View full size"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </button>
+                                <a
+                                  href={msg.mediaUrl}
+                                  download={msg.fileName || "photo.jpg"}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 hover:bg-white/20 rounded text-white transition-colors"
+                                  title="Download photo"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                </a>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="my-1.5 p-3 rounded-2xl bg-black/5 dark:bg-white/10 border border-border/70 flex items-center gap-3 max-w-[280px]">
+                              <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center shrink-0 shadow-sm">
+                                <Camera className="h-6 w-6" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-semibold text-xs text-foreground flex items-center gap-1">
+                                  <span>Photo</span>
+                                  <span className="text-[10px] text-muted-foreground font-normal">
+                                    {msg.fileSize || "Image"}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground truncate">
+                                  {msg.fileName || "Photo attachment"}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        )}
+
+                        {/* Voice Note Audio Player */}
+                        {(msg.mediaType === "audio" || (typeof msg.text === "string" && (msg.text.startsWith("🎤 Voice message") || msg.text.startsWith("🎤 Voice note") || msg.text.startsWith("🎤 ")))) && (
+                          <VoiceMessagePlayer
+                            mediaUrl={msg.mediaUrl}
+                            durationText={msg.fileSize || (typeof msg.text === "string" ? msg.text : "0:06")}
+                            isMe={isMe}
+                          />
+                        )}
+
+                        {/* Attached Video */}
+                        {msg.mediaType === "video" && (
+                          <div className="my-1.5 p-2.5 rounded-xl bg-black/5 dark:bg-white/10 flex items-center gap-3 max-w-[280px]">
+                            <div className="h-10 w-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                              <Video className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-xs truncate">{msg.fileName || "Video"}</p>
+                              <p className="text-[10px] text-muted-foreground">{msg.fileSize || "Video clip"}</p>
+                            </div>
                           </div>
                         )}
 
@@ -1434,11 +1885,19 @@ function AdminTeamChatPage() {
                           </a>
                         )}
 
-                        {/* Message Text */}
-                        {msg.text && (
-                          <p className="whitespace-pre-wrap break-words leading-relaxed text-[12px]">
-                            {msg.text}
-                          </p>
+                        {/* Message Text Caption (suppress placeholder labels so they aren't repeated under media) */}
+                        {msg.text &&
+                          msg.text !== "📷 Photo" &&
+                          !msg.text.startsWith("📷 ") &&
+                          msg.text !== "🎥 Video" &&
+                          !msg.text.startsWith("🎥 ") &&
+                          !msg.text.startsWith("🎤 Voice message") &&
+                          !msg.text.startsWith("🎤 Voice note") &&
+                          !msg.text.startsWith("🎤 ") &&
+                          !msg.text.startsWith("📄 ") && (
+                            <p className="whitespace-pre-wrap break-words leading-relaxed text-[12px]">
+                              {msg.text}
+                            </p>
                         )}
 
                         {/* Footer: timestamp + read ticks + edited tag */}
@@ -1592,118 +2051,169 @@ function AdminTeamChatPage() {
 
             {/* Input Bar Controls */}
             <div className="flex items-end gap-2">
-              {/* Emoji Picker Popover */}
-              <DropdownMenu open={isEmojiPickerOpen} onOpenChange={setIsEmojiPickerOpen}>
-                <DropdownMenuTrigger asChild>
+              {isRecordingVoice ? (
+                <div className="flex-1 flex items-center justify-between bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-red-500 animate-ping" />
+                    <span className="font-semibold text-red-600 dark:text-red-400">
+                      Recording voice note...
+                    </span>
+                    <span className="font-mono text-muted-foreground ml-2 font-bold">
+                      {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, "0")}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={cancelVoiceRecording}
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10 rounded-full"
+                      title="Discard voice recording"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+
+                    <Button
+                      onClick={finishAndSendVoiceRecording}
+                      size="sm"
+                      className="h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-full gap-1.5 text-xs shadow-sm"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      <span>Send</span>
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Emoji Picker Popover */}
+                  <DropdownMenu open={isEmojiPickerOpen} onOpenChange={setIsEmojiPickerOpen}>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-muted-foreground hover:text-foreground shrink-0 rounded-full"
+                      >
+                        <Smile className="h-5 w-5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="top" align="start" className="w-64 p-3">
+                      <div className="text-[11px] font-semibold text-muted-foreground mb-2">Emojis</div>
+                      <div className="grid grid-cols-6 gap-2 text-xl max-h-48 overflow-y-auto">
+                        {EMOJI_OPTIONS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => {
+                              setMessageText((prev) => prev + emoji);
+                              setIsEmojiPickerOpen(false);
+                              textareaRef.current?.focus();
+                            }}
+                            className="h-8 w-8 hover:bg-muted rounded flex items-center justify-center transition-transform hover:scale-125"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Attachment Button */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.mp4"
+                  />
                   <Button
                     variant="ghost"
                     size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
                     className="h-9 w-9 text-muted-foreground hover:text-foreground shrink-0 rounded-full"
+                    title="Attach Document or Image"
                   >
-                    <Smile className="h-5 w-5" />
+                    {isUploading ? (
+                      <Clock className="h-5 w-5 animate-spin text-primary" />
+                    ) : (
+                      <Paperclip className="h-5 w-5" />
+                    )}
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="start" className="w-64 p-3">
-                  <div className="text-[11px] font-semibold text-muted-foreground mb-2">Emojis</div>
-                  <div className="grid grid-cols-6 gap-2 text-xl max-h-48 overflow-y-auto">
-                    {EMOJI_OPTIONS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => {
-                          setMessageText((prev) => prev + emoji);
-                          setIsEmojiPickerOpen(false);
-                          textareaRef.current?.focus();
-                        }}
-                        className="h-8 w-8 hover:bg-muted rounded flex items-center justify-center transition-transform hover:scale-125"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
 
-              {/* Attachment Button */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFileUpload}
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="h-9 w-9 text-muted-foreground hover:text-foreground shrink-0 rounded-full"
-                title="Attach Document or Image"
-              >
-                {isUploading ? (
-                  <Clock className="h-5 w-5 animate-spin text-primary" />
-                ) : (
-                  <Paperclip className="h-5 w-5" />
-                )}
-              </Button>
-
-              {/* Textarea Input */}
-              <div className="flex-1 bg-muted/40 rounded-2xl px-3 py-1.5 border border-border focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all">
-                <textarea
-                  ref={textareaRef}
-                  value={messageText}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setMessageText(val);
-                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && activeGroupId) {
-                      wsRef.current.send(
-                        JSON.stringify({
-                          type: "typing_start",
-                          groupId: activeGroupId,
-                          userId: adminId,
-                          userName: adminName,
-                        })
-                      );
-                      clearTimeout(typingTimerRef.current);
-                      typingTimerRef.current = setTimeout(() => {
+                  {/* Textarea Input */}
+                  <div className="flex-1 bg-muted/40 rounded-2xl px-3 py-1.5 border border-border focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all">
+                    <textarea
+                      ref={textareaRef}
+                      value={messageText}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMessageText(val);
                         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && activeGroupId) {
                           wsRef.current.send(
                             JSON.stringify({
-                              type: "typing_stop",
+                              type: "typing_start",
                               groupId: activeGroupId,
                               userId: adminId,
                               userName: adminName,
                             })
                           );
+                          clearTimeout(typingTimerRef.current);
+                          typingTimerRef.current = setTimeout(() => {
+                            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && activeGroupId) {
+                              wsRef.current.send(
+                                JSON.stringify({
+                                  type: "typing_stop",
+                                  groupId: activeGroupId,
+                                  userId: adminId,
+                                  userName: adminName,
+                                })
+                              );
+                            }
+                          }, 2500);
                         }
-                      }, 2500);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                    if (e.key === "Escape" && editingMessage) {
-                      setEditingMessage(null);
-                      setMessageText("");
-                    }
-                  }}
-                  placeholder="Type a message or press Shift+Enter for new line..."
-                  rows={1}
-                  className="w-full bg-transparent border-0 resize-none text-xs outline-none max-h-28 overflow-y-auto leading-relaxed"
-                />
-              </div>
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage();
+                        }
+                        if (e.key === "Escape" && editingMessage) {
+                          setEditingMessage(null);
+                          setMessageText("");
+                        }
+                      }}
+                      placeholder="Type a message or press Shift+Enter for new line..."
+                      rows={1}
+                      className="w-full bg-transparent border-0 resize-none text-xs outline-none max-h-28 overflow-y-auto leading-relaxed"
+                    />
+                  </div>
 
-              {/* Send Button */}
-              <Button
-                onClick={handleSendMessage}
-                disabled={(!messageText.trim() && !isUploading) || isSending}
-                size="icon"
-                className="h-9 w-9 rounded-full bg-gradient-brand shadow-md text-white shrink-0 hover:opacity-95 transition-transform active:scale-95"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
+                  {/* Send or Voice Note Button */}
+                  {messageText.trim() ? (
+                    <Button
+                      onClick={handleSendMessage}
+                      disabled={isSending}
+                      size="icon"
+                      className="h-9 w-9 rounded-full bg-gradient-brand shadow-md text-white shrink-0 hover:opacity-95 transition-transform active:scale-95"
+                      title="Send message"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      onClick={startVoiceRecording}
+                      disabled={isUploading}
+                      size="icon"
+                      className="h-9 w-9 rounded-full bg-emerald-600 hover:bg-emerald-700 shadow-md text-white shrink-0 transition-transform active:scale-95"
+                      title="Click to record voice message"
+                    >
+                      <Mic className="h-4 w-4" />
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
