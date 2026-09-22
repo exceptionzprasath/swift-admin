@@ -148,7 +148,7 @@ function getRecordHours(
 }
 
 export const Route = createFileRoute("/admin/attendance")({
-  head: () => ({ meta: [{ title: "Attendance & Dossier · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Attendance & Dossier · CreatonsHR" }] }),
   component: AttendancePage,
 });
 

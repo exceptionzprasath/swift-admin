@@ -3,7 +3,7 @@ import { Package, Boxes } from "lucide-react";
 import { ComingSoonPage } from "@/components/coming-soon";
 
 export const Route = createFileRoute("/admin/assets")({
-  head: () => ({ meta: [{ title: "Asset Management · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Asset Management · CreatonsHR" }] }),
   component: AssetsPage,
 });
 

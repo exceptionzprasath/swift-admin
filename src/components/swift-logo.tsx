@@ -1,4 +1,4 @@
-import logoBanner from "@/assets/swift-logo-banner.jpeg";
+import logoBanner from "@/assets/CreatonsHR-Banner.png";
 
 export function SwiftLogo({
   className = "",
@@ -9,14 +9,16 @@ export function SwiftLogo({
   height?: number;
 }) {
   return (
-    <div className={`w-full flex items-center justify-center overflow-hidden select-none bg-white py-2 px-3 ${className}`}>
+    <div className={`flex items-center justify-center overflow-hidden select-none bg-white py-1.5 px-3 rounded-xl shadow-xs ${className}`}>
       <img
         src={logoBanner}
-        alt="SWIFT HRMS"
-        className="h-12 sm:h-24 w-auto max-w-full object-contain mx-auto block"
+        alt="CreatonsHR"
+        className="h-8 sm:h-10 w-auto max-w-full object-contain mx-auto block"
         loading="eager"
       />
     </div>
   );
 }
+
+export const CreatonsLogo = SwiftLogo;
 

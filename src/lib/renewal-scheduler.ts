@@ -23,7 +23,7 @@ export const defaultReminderConfig: ReminderConfig = {
   channels: { email: true, sms: true, whatsapp: true, push: true, banner: true },
   autoSuspend: true,
   templates: {
-    "pre-30": "Your SWIFT subscription renews in 30 days. Review your plan to avoid disruption.",
+    "pre-30": "Your CreatonsHR subscription renews in 30 days. Review your plan to avoid disruption.",
     "pre-15": "Heads up — 15 days until renewal. Confirm billing details are up to date.",
     "pre-7":  "7 days to renewal. Renew now to lock in current pricing.",
     "pre-3":  "3 days left. Please complete renewal to keep all modules active.",

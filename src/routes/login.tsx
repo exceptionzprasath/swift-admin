@@ -21,7 +21,7 @@ type SearchParams = {
 };
 
 export const Route = createFileRoute("/login")({
-  head: () => ({ meta: [{ title: "Company Admin Sign in · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Company Admin Sign in · CreatonsHR" }] }),
   component: LoginPage,
   validateSearch: (search: Record<string, unknown>): SearchParams => {
     return {
@@ -64,7 +64,7 @@ function LoginPage() {
           }
         ];
         
-        localStorage.setItem("swift-auth-user", JSON.stringify({ id: crypto.randomUUID(), email: "impersonated-admin@demo.swift" }));
+        localStorage.setItem("swift-auth-user", JSON.stringify({ id: crypto.randomUUID(), email: "impersonated-admin@demo.creatonshr.com" }));
         localStorage.setItem("swift-auth-role", "user");
         localStorage.setItem("swift-auth-memberships", JSON.stringify(customMemberships));
         localStorage.setItem("swift-active-tenant", impersonateTenantId);
@@ -124,7 +124,7 @@ function LoginPage() {
       <div className="hidden lg:flex flex-col justify-between p-10 bg-gradient-brand text-white relative overflow-hidden">
         <SwiftLogo />
         <div className="relative z-10">
-          <h2 className="font-display text-4xl font-semibold">SWIFT Workspace Admin.</h2>
+          <h2 className="font-display text-4xl font-semibold">CreatonsHR Workspace Admin.</h2>
           <p className="mt-4 max-w-md text-white/85">
             Configure company branches, structure departments, process monthly payroll,
             run statutory compliance audits, and issue branded employee documents.

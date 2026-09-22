@@ -3,7 +3,7 @@ import { CreditCard } from "lucide-react";
 import { ComingSoonPage } from "@/components/coming-soon";
 
 export const Route = createFileRoute("/admin/subscription")({
-  head: () => ({ meta: [{ title: "Subscription · SWIFT AI" }] }),
+  head: () => ({ meta: [{ title: "Subscription · CreatonsHR" }] }),
   component: SubscriptionPage,
 });
 

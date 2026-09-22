@@ -21,7 +21,7 @@ export function generateEmployeePassword(): string {
 function autoFitColumns(rows: any[][]): { wch: number }[] {
   if (!rows || rows.length === 0) return [];
   const colCount = Math.max(...rows.map((r) => r.length));
-  const colWidths: number[] = new Array(colCount).fill(12);
+  const colWidths: number[] = new Array(colCount).fill(14);
 
   rows.forEach((row) => {
     row.forEach((val, idx) => {
@@ -32,7 +32,114 @@ function autoFitColumns(rows: any[][]): { wch: number }[] {
     });
   });
 
-  return colWidths.map((w) => ({ wch: Math.max(w, 12) }));
+  return colWidths.map((w) => ({ wch: Math.max(w, 14) }));
+}
+
+/**
+ * Normalizes Excel date representations (Date objects, numeric serial numbers, or formatted strings)
+ * into ISO format YYYY-MM-DD.
+ */
+export function normalizeExcelDate(val: any): string {
+  if (val == null || val === "") return "";
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, "0");
+    const d = String(val.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  const str = String(val).trim();
+  if (!str) return "";
+
+  // Check if it's an Excel numeric serial date (e.g. 45000)
+  if (/^\d{5}$/.test(str)) {
+    const serial = parseInt(str, 10);
+    // Excel epoch starts 1899-12-30 (accounting for leap year 1900 bug)
+    const excelEpoch = new Date(1899, 11, 30);
+    const dateObj = new Date(excelEpoch.getTime() + serial * 86400000);
+    if (!isNaN(dateObj.getTime())) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+      const d = String(dateObj.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
+  // DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmyMatch) {
+    const [, d, m, y] = dmyMatch;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  // YYYY/MM/DD
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (ymdMatch) {
+    const [, y, m, d] = ymdMatch;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  // Native Date fallback
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  return str;
+}
+
+/**
+ * Cleans string cells: handles scientific notation, trailing .0, and whitespace
+ */
+function cleanCellString(val: any): string {
+  if (val == null) return "";
+  if (val instanceof Date) return normalizeExcelDate(val);
+  let str = String(val).trim();
+
+  // Strip trailing .0 from numeric codes (e.g. 1001.0 -> 1001)
+  if (/^\d+\.0+$/.test(str)) {
+    str = str.replace(/\.0+$/, "");
+  }
+
+  // Convert scientific notation if present (e.g. 9.87654E+09)
+  if (/^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)$/.test(str)) {
+    const num = Number(str);
+    if (!isNaN(num)) {
+      str = num.toLocaleString("fullwide", { useGrouping: false });
+    }
+  }
+
+  return str;
+}
+
+/**
+ * Parses numeric currency/salary strings, stripping currency symbols and commas
+ */
+function parseSalaryNumber(val: any, fallback = 0): number {
+  if (val == null) return fallback;
+  if (typeof val === "number") return isNaN(val) ? fallback : val;
+  const cleaned = String(val).replace(/[^0-9.-]+/g, "");
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? fallback : num;
+}
+
+/**
+ * Parses boolean strings ("TRUE", "YES", "1", "T") vs ("FALSE", "NO", "0", "N")
+ */
+function parseBoolString(str: string, def = true): boolean {
+  if (!str) return def;
+  const s = str.toLowerCase().trim();
+  if (s === "true" || s === "yes" || s === "1" || s === "y" || s === "t" || s === "eligible" || s === "enabled") return true;
+  if (s === "false" || s === "no" || s === "0" || s === "n" || s === "f" || s === "ineligible" || s === "disabled") return false;
+  return def;
 }
 
 /**
@@ -52,7 +159,7 @@ export function downloadBulkEmployeesExcel(
   const getBranchName = (bId?: string) => {
     if (!bId) return "—";
     const found = (branches || []).find((b) => b.id === bId);
-    return found ? `${found.name} (${found.code})` : bId;
+    return found ? `${found.name} (${found.code || found.id})` : bId;
   };
 
   const getBranchNamesList = (emp: Employee) => {
@@ -95,6 +202,7 @@ export function downloadBulkEmployeesExcel(
     "Employee Code",
     "Full Name",
     "Status",
+    "Employment Type",
     "Gender",
     "Date of Birth",
     "Blood Group",
@@ -130,8 +238,9 @@ export function downloadBulkEmployeesExcel(
     "State",
     "Country",
     "Pincode",
-    "Aadhaar Number",
     "PAN Number",
+    "Aadhaar Number",
+    "Name as per Aadhaar",
     "Passport Number",
     "Driving License",
     "Bank Account Number",
@@ -140,8 +249,8 @@ export function downloadBulkEmployeesExcel(
     "Bank Branch",
     "Bank Account Type",
     // 4. Branches & Policy
-    "Assigned Branches",
     "Primary Branch",
+    "Assigned Branches",
     "Shift",
     "Morning Grace Time",
     "Allow Afternoon Login",
@@ -185,9 +294,10 @@ export function downloadBulkEmployeesExcel(
     return [
       e.empCode || "—",
       e.name || "—",
-      e.status === "active" ? "Active" : "Inactive",
+      e.status ? e.status.toUpperCase() : "ACTIVE",
+      e.employmentType ? e.employmentType.toUpperCase() : "REGULAR",
       e.gender ? e.gender.toUpperCase() : "—",
-      e.dob || "—",
+      normalizeExcelDate(e.dob) || "—",
       e.bloodGroup || "—",
       e.maritalStatus ? e.maritalStatus.toUpperCase() : "SINGLE",
       e.nationality || "Indian",
@@ -204,9 +314,9 @@ export function downloadBulkEmployeesExcel(
       e.designation || "—",
       getRoleTitle(e),
       getManagerName(e),
-      e.doj || "—",
-      e.eligibleDate || e.doj || "—",
-      e.probationDate || "—",
+      normalizeExcelDate(e.doj) || "—",
+      normalizeExcelDate(e.eligibleDate || e.doj) || "—",
+      normalizeExcelDate(e.probationDate) || "—",
       e.fixedSalary ?? e.basic ?? 0,
       e.basic ?? e.fixedSalary ?? 0,
       e.uan || "—",
@@ -219,8 +329,9 @@ export function downloadBulkEmployeesExcel(
       e.state || "—",
       e.country || "India",
       e.pincode || "—",
-      e.aadhaar || "—",
       e.pan || "—",
+      e.aadhaar || "—",
+      e.nameAsPerAadhaar || e.aadhaarName || e.name || "—",
       e.passportNumber || "—",
       e.drivingLicense || "—",
       e.bankAcc || "—",
@@ -228,8 +339,8 @@ export function downloadBulkEmployeesExcel(
       e.bankName || "—",
       e.bankBranch || "—",
       e.bankAccountType ? e.bankAccountType.toUpperCase() : "SAVINGS",
-      getBranchNamesList(e),
       getBranchName(e.branchId),
+      getBranchNamesList(e),
       getShiftName(e.shiftId),
       e.graceTime ? `${e.graceTime} mins` : "15 mins",
       formatBool(e.allowHalfDayLogin, true),
@@ -273,6 +384,7 @@ export function downloadBulkEmployeesExcel(
     "Employee Code",
     "Full Name",
     "Status",
+    "Employment Type",
     "Gender",
     "Date of Birth",
     "Blood Group",
@@ -281,7 +393,7 @@ export function downloadBulkEmployeesExcel(
     "Father's Name",
     "Mother's Name",
     "Spouse's Name",
-    "Personal Email (Alt)",
+    "Personal Email",
     "Emergency Contact Person",
     "Emergency Relation",
     "Emergency Phone Number",
@@ -291,9 +403,10 @@ export function downloadBulkEmployeesExcel(
   const identityRows = employees.map((e) => [
     e.empCode || "—",
     e.name || "—",
-    e.status === "active" ? "Active" : "Inactive",
+    e.status ? e.status.toUpperCase() : "ACTIVE",
+    e.employmentType ? e.employmentType.toUpperCase() : "REGULAR",
     e.gender ? e.gender.toUpperCase() : "—",
-    e.dob || "—",
+    normalizeExcelDate(e.dob) || "—",
     e.bloodGroup || "—",
     e.maritalStatus ? e.maritalStatus.toUpperCase() : "SINGLE",
     e.nationality || "Indian",
@@ -342,9 +455,9 @@ export function downloadBulkEmployeesExcel(
     e.designation || "—",
     getRoleTitle(e),
     getManagerName(e),
-    e.doj || "—",
-    e.eligibleDate || e.doj || "—",
-    e.probationDate || "—",
+    normalizeExcelDate(e.doj) || "—",
+    normalizeExcelDate(e.eligibleDate || e.doj) || "—",
+    normalizeExcelDate(e.probationDate) || "—",
     e.fixedSalary ?? e.basic ?? 0,
     e.basic ?? e.fixedSalary ?? 0,
     e.uan || "—",
@@ -368,8 +481,9 @@ export function downloadBulkEmployeesExcel(
     "State",
     "Country",
     "Pincode",
-    "Aadhaar Number",
     "PAN Card Number",
+    "Aadhaar Number",
+    "Name as per Aadhaar",
     "Passport Number",
     "Driving License Number",
     "Bank Account Number",
@@ -387,8 +501,9 @@ export function downloadBulkEmployeesExcel(
     e.state || "—",
     e.country || "India",
     e.pincode || "—",
-    e.aadhaar || "—",
     e.pan || "—",
+    e.aadhaar || "—",
+    e.nameAsPerAadhaar || e.aadhaarName || e.name || "—",
     e.passportNumber || "—",
     e.drivingLicense || "—",
     e.bankAcc || "—",
@@ -407,8 +522,8 @@ export function downloadBulkEmployeesExcel(
   const policyHeaders = [
     "Employee Code",
     "Full Name",
-    "Authorized Branches",
     "Primary Branch",
+    "Authorized Branches",
     "Assigned Shift",
     "Morning Grace Time",
     "Allow Afternoon Login",
@@ -428,8 +543,8 @@ export function downloadBulkEmployeesExcel(
     return [
       e.empCode || "—",
       e.name || "—",
-      getBranchNamesList(e),
       getBranchName(e.branchId),
+      getBranchNamesList(e),
       getShiftName(e.shiftId),
       e.graceTime ? `${e.graceTime} mins` : "15 mins",
       formatBool(e.allowHalfDayLogin, true),
@@ -472,7 +587,7 @@ export function downloadBulkEmployeesExcel(
         "Family & Nominee",
         f.name || "—",
         f.relation || "—",
-        f.dob || "—",
+        normalizeExcelDate(f.dob) || "—",
         f.dependent ? "Dependent" : "Non-dependent",
       ]);
     });
@@ -529,8 +644,8 @@ export function downloadBulkEmployeesExcel(
           e.name || "—",
           ex.company || "—",
           ex.role || "—",
-          ex.from || "—",
-          ex.to || "—",
+          normalizeExcelDate(ex.from) || "—",
+          normalizeExcelDate(ex.to) || "—",
           ex.ctc ? `₹${ex.ctc}` : "—",
           skillsStr,
           langsStr,
@@ -585,7 +700,7 @@ export function downloadBulkEmployeesExcel(
     (e.aiVerification?.issues || []).join("; ") || "None",
     e.finalApproval?.status ? e.finalApproval.status.toUpperCase() : "PENDING",
     e.finalApproval?.approvedBy || "—",
-    e.finalApproval?.approvedAt || "—",
+    normalizeExcelDate(e.finalApproval?.approvedAt) || "—",
   ]);
   const wsCompliance = XLSX.utils.aoa_to_sheet([complianceHeaders, ...complianceRows]);
   wsCompliance["!cols"] = autoFitColumns([complianceHeaders, ...complianceRows]);
@@ -603,13 +718,14 @@ export const BULK_TEMPLATE_HEADERS = [
   // 1. Identity & Profile
   "Employee Code",
   "Full Name",
+  "Status (active/inactive/suspended)",
   "Employment Type (regular/contract)",
   "Work Email",
   "Personal Email",
   "Phone Number",
   "Gender (male/female/other)",
   "Date of Birth (YYYY-MM-DD)",
-  "Blood Group",
+  "Blood Group (A+/A-/B+/B-/AB+/AB-/O+/O-)",
   "Marital Status (single/married/divorced/widowed)",
   "Nationality",
   "Father Name",
@@ -620,7 +736,7 @@ export const BULK_TEMPLATE_HEADERS = [
   "Department",
   "Designation",
   "Assigned Role",
-  "Reporting Manager",
+  "Reporting Manager (Name or Code)",
   "Date of Joining (YYYY-MM-DD)",
   "Fixed Salary (Monthly ₹)",
   "Basic Salary (₹)",
@@ -640,6 +756,7 @@ export const BULK_TEMPLATE_HEADERS = [
   // 4. KYC & Banking
   "PAN Number",
   "Aadhaar Number",
+  "Name as per Aadhaar",
   "Passport Number",
   "Driving License",
   "Bank Account Number",
@@ -660,8 +777,9 @@ export const BULK_TEMPLATE_HEADERS = [
   "Emergency Contact Phone",
 
   // 6. Branch, Shift & Policy Controls
-  "Branch Code",
-  "Shift",
+  "Primary Branch (Code or Name)",
+  "Assigned Branches (comma separated)",
+  "Shift (General/Morning/Night)",
   "Morning Grace Time (always/10/15/20/25/30 mins)",
   "Allow Afternoon Login (TRUE/FALSE)",
   "Afternoon Login Time (HH:MM)",
@@ -669,18 +787,217 @@ export const BULK_TEMPLATE_HEADERS = [
   "Geofencing Required (TRUE/FALSE)",
   "Leave Apply Mobile Eligible (TRUE/FALSE)",
   "Biometric Enabled (TRUE/FALSE)",
+
+  // 7. Compliance & Verification
+  "Background Check (pending/clear/flagged)",
+  "Police Verification (TRUE/FALSE)",
+  "Medical Fitness (TRUE/FALSE)",
+  "NDA Signed (TRUE/FALSE)",
+  "Compliance Notes",
 ];
 
-export const SAMPLE_EMPLOYEE_ROWS: any[][] = [];
+export const SAMPLE_EMPLOYEE_ROWS: any[][] = [
+  [
+    "EMP-1001",
+    "Aarav Sharma",
+    "active",
+    "regular",
+    "aarav.sharma@example.com",
+    "aarav.personal@gmail.com",
+    "9876543210",
+    "male",
+    "1994-06-15",
+    "O+",
+    "married",
+    "Indian",
+    "Ramesh Sharma",
+    "Sunita Sharma",
+    "Pooja Sharma",
+    "Engineering",
+    "Senior Software Engineer",
+    "Senior Engineer",
+    "Priya Iyer",
+    "2023-04-01",
+    50000,
+    30000,
+    "2023-04-01",
+    "2023-07-01",
+    "TRUE",
+    "100987654321",
+    "PF-12345/678",
+    "FALSE",
+    "",
+    "TRUE",
+    "PT-KAR-56789",
+    "FALSE",
+    "ABCDE1234F",
+    "1234 5678 9012",
+    "Aarav Sharma",
+    "Z1234567",
+    "DL-0420110012345",
+    "50100123456789",
+    "HDFC0001234",
+    "HDFC Bank",
+    "Koramangala, Bangalore",
+    "savings",
+    "123 Tech Park, 4th Cross",
+    "Indiranagar",
+    "Bengaluru",
+    "Karnataka",
+    "India",
+    "560038",
+    "Pooja Sharma",
+    "Spouse",
+    "9876543211",
+    "Headquarters",
+    "Headquarters, Branch-2",
+    "General Shift",
+    "15",
+    "TRUE",
+    "12:00",
+    "15",
+    "TRUE",
+    "TRUE",
+    "FALSE",
+    "clear",
+    "TRUE",
+    "TRUE",
+    "TRUE",
+    "Verified all original identity documents.",
+  ],
+  [
+    "EMP-1002",
+    "Priya Iyer",
+    "active",
+    "regular",
+    "priya.iyer@example.com",
+    "priya.iyer@gmail.com",
+    "9876543211",
+    "female",
+    "1992-09-20",
+    "A+",
+    "single",
+    "Indian",
+    "Sundaram Iyer",
+    "Lakshmi Iyer",
+    "",
+    "HR",
+    "HR Manager",
+    "HR Executive",
+    "",
+    "2022-08-15",
+    55000,
+    35000,
+    "2022-08-15",
+    "2022-11-15",
+    "TRUE",
+    "100987654322",
+    "PF-12345/679",
+    "FALSE",
+    "",
+    "TRUE",
+    "PT-KAR-56790",
+    "FALSE",
+    "PQRST5678K",
+    "2345 6789 0123",
+    "Priya Iyer",
+    "A9876543",
+    "DL-0420120023456",
+    "50100987654321",
+    "ICIC0004321",
+    "ICICI Bank",
+    "MG Road, Bangalore",
+    "savings",
+    "45 Palm Grove, 2nd Main",
+    "Jayanagar",
+    "Bengaluru",
+    "Karnataka",
+    "India",
+    "560041",
+    "Sundaram Iyer",
+    "Father",
+    "9876543212",
+    "Headquarters",
+    "Headquarters",
+    "General Shift",
+    "15",
+    "TRUE",
+    "12:00",
+    "15",
+    "TRUE",
+    "TRUE",
+    "FALSE",
+    "clear",
+    "TRUE",
+    "TRUE",
+    "TRUE",
+    "Background verification completed successfully.",
+  ],
+];
 
 /**
- * Generates and triggers download of the clean Excel (.xlsx) template without mock data
+ * Generates and triggers download of the formatted Excel (.xlsx) template
  */
 export function downloadEmployeeTemplate(companyName = "SWIFT") {
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([BULK_TEMPLATE_HEADERS]);
-  ws["!cols"] = autoFitColumns([BULK_TEMPLATE_HEADERS]);
+
+  // Sheet 1: Template with sample rows
+  const templateData = [BULK_TEMPLATE_HEADERS, ...SAMPLE_EMPLOYEE_ROWS];
+  const ws = XLSX.utils.aoa_to_sheet(templateData);
+  ws["!cols"] = autoFitColumns(templateData);
   XLSX.utils.book_append_sheet(wb, ws, "Employee Template");
+
+  // Sheet 2: Field Reference & Instructions Guide
+  const instructions = [
+    ["Employee Bulk Import — Field & Format Guide"],
+    [""],
+    ["Field Name", "Format / Allowed Values", "Example", "Mandatory / Default"],
+    ["Employee Code", "Unique alphanumeric ID", "EMP-1001", "Mandatory (Auto-generated if empty)"],
+    ["Full Name", "Employee full legal name", "Aarav Sharma", "Mandatory"],
+    ["Status", "active / inactive / suspended / relieved", "active", "Default: active"],
+    ["Employment Type", "regular / contract", "regular", "Default: regular"],
+    ["Work Email", "Official work email address", "aarav@company.com", "Mandatory"],
+    ["Personal Email", "Alternate/Personal email", "aarav.personal@gmail.com", "Optional"],
+    ["Phone Number", "10-digit mobile number", "9876543210", "Mandatory"],
+    ["Gender", "male / female / other", "male", "Default: male"],
+    ["Date of Birth", "YYYY-MM-DD or Excel date", "1994-06-15", "Optional"],
+    ["Blood Group", "A+, A-, B+, B-, AB+, AB-, O+, O-", "O+", "Optional"],
+    ["Marital Status", "single / married / divorced / widowed", "single", "Default: single"],
+    ["Department", "Department name", "Engineering", "Default: Engineering"],
+    ["Designation", "Job title / Designation", "Senior Software Engineer", "Default: Software Engineer"],
+    ["Assigned Role", "Role name configured in HRMS", "Senior Engineer", "Optional"],
+    ["Reporting Manager", "Manager name or employee code", "Priya Iyer", "Optional"],
+    ["Date of Joining", "YYYY-MM-DD or Excel date", "2023-04-01", "Mandatory (Default: Today)"],
+    ["Fixed Salary (Monthly ₹)", "Gross fixed salary in INR (number)", "50000", "Default: 25000"],
+    ["Basic Salary (₹)", "Basic pay component in INR (number)", "30000", "Default: 50% of Fixed Salary"],
+    ["PF Eligible", "TRUE / FALSE", "TRUE", "Default: TRUE"],
+    ["PF UAN", "12-digit Universal Account Number", "100987654321", "Optional"],
+    ["ESI Eligible", "TRUE / FALSE", "FALSE", "Default: FALSE"],
+    ["ESIC Number", "17-digit ESIC Insurance Number", "31001234560010001", "Optional"],
+    ["PT Eligible", "TRUE / FALSE", "TRUE", "Default: TRUE"],
+    ["PAN Number", "10-digit alphanumeric PAN", "ABCDE1234F", "Optional"],
+    ["Aadhaar Number", "12-digit Aadhaar Number", "1234 5678 9012", "Optional"],
+    ["Name as per Aadhaar", "Name matching Aadhaar card", "Aarav Sharma", "Optional"],
+    ["Bank Account Number", "Numeric account number", "50100123456789", "Optional"],
+    ["Bank IFSC Code", "11-character IFSC", "HDFC0001234", "Optional"],
+    ["Bank Account Type", "savings / current", "savings", "Default: savings"],
+    ["Address Line 1", "Street address / building", "123 Tech Park", "Optional"],
+    ["City", "City name", "Bengaluru", "Optional"],
+    ["State", "State name", "Karnataka", "Optional"],
+    ["Pincode", "6-digit postal code", "560038", "Optional"],
+    ["Emergency Contact Person", "Full name of emergency contact", "Pooja Sharma", "Optional"],
+    ["Emergency Relation", "Spouse / Father / Mother / Friend / etc.", "Spouse", "Optional"],
+    ["Emergency Contact Phone", "10-digit phone number", "9876543211", "Optional"],
+    ["Primary Branch", "Branch Code or Branch Name", "HQ", "Optional"],
+    ["Shift", "Shift Name or Shift Code", "General Shift", "Default: General Shift"],
+    ["Morning Grace Time", "always / 10 / 15 / 20 / 25 / 30", "15", "Default: 15"],
+    ["Geofencing Required", "TRUE / FALSE", "TRUE", "Default: TRUE"],
+    ["Leave Apply Mobile Eligible", "TRUE / FALSE", "TRUE", "Default: TRUE"],
+    ["Biometric Enabled", "TRUE / FALSE", "FALSE", "Default: FALSE"],
+  ];
+  const wsGuide = XLSX.utils.aoa_to_sheet(instructions);
+  wsGuide["!cols"] = autoFitColumns(instructions);
+  XLSX.utils.book_append_sheet(wb, wsGuide, "Field Guide & Instructions");
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const fileName = `${companyName.replace(/\s+/g, "_")}_Bulk_Employee_Registration_Template_${dateStr}.xlsx`;
@@ -688,27 +1005,37 @@ export function downloadEmployeeTemplate(companyName = "SWIFT") {
 }
 
 /**
- * Parses CSV/TSV or Excel (.xlsx / .xls) spreadsheet lines/buffers into structured Employee objects
+ * Parses CSV/TSV or Excel (.xlsx / .xls) spreadsheet lines/buffers into structured Employee objects.
+ * Features exact-key-prioritized column mapping, date normalizers, and branch/shift/manager resolution.
  */
 export function parseEmployeeCsvText(
   input: string | ArrayBuffer | Uint8Array,
-  existingEmployees: Employee[],
-  availableRoles: PredefinedRole[] = []
+  existingEmployees: Employee[] = [],
+  availableRoles: PredefinedRole[] = [],
+  availableBranches: Branch[] = [],
+  availableShifts: ShiftType[] = []
 ): {
   employees: Omit<Employee, "id">[];
   duplicates: string[];
   errors: string[];
   totalParsed: number;
 } {
-  let rawRows: string[][] = [];
+  let rawRows: any[][] = [];
 
   if (typeof input !== "string") {
     try {
-      const wb = XLSX.read(input, { type: "array" });
-      const firstSheetName = wb.SheetNames[0];
+      const wb = XLSX.read(input, { type: "array", cellDates: true });
+      // Pick first non-empty sheet
+      let firstSheetName = wb.SheetNames[0];
+      for (const name of wb.SheetNames) {
+        if (name.toLowerCase().includes("template") || name.toLowerCase().includes("employee") || name.toLowerCase().includes("master") || name.toLowerCase().includes("sheet1")) {
+          firstSheetName = name;
+          break;
+        }
+      }
       const ws = wb.Sheets[firstSheetName];
       const jsonRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
-      rawRows = jsonRows.map((r) => r.map((c) => (c != null ? String(c).trim() : "")));
+      rawRows = jsonRows.map((r) => r.map((c) => (c != null ? cleanCellString(c) : "")));
     } catch (err: any) {
       return {
         employees: [],
@@ -720,11 +1047,11 @@ export function parseEmployeeCsvText(
   } else {
     if (input.startsWith("PK") || input.includes("\u0000") || input.includes("\ufffd")) {
       try {
-        const wb = XLSX.read(input, { type: "binary" });
+        const wb = XLSX.read(input, { type: "binary", cellDates: true });
         const firstSheetName = wb.SheetNames[0];
         const ws = wb.Sheets[firstSheetName];
         const jsonRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
-        rawRows = jsonRows.map((r) => r.map((c) => (c != null ? String(c).trim() : "")));
+        rawRows = jsonRows.map((r) => r.map((c) => (c != null ? cleanCellString(c) : "")));
       } catch (err: any) {
         return {
           employees: [],
@@ -747,8 +1074,23 @@ export function parseEmployeeCsvText(
     return { employees: [], duplicates: [], errors: ["File contains no employee data rows."], totalParsed: 0 };
   }
 
-  // Parse header line
-  const headers = rawRows[0].map((h) => h.toLowerCase().trim().replace(/[^a-z0-9]/g, ""));
+  // Find header row (skip introductory banner rows if any)
+  let headerRowIndex = 0;
+  for (let r = 0; r < Math.min(rawRows.length, 5); r++) {
+    const rowStr = rawRows[r].join(" ").toLowerCase();
+    if (rowStr.includes("employee") || rowStr.includes("name") || rowStr.includes("email") || rowStr.includes("empcode")) {
+      headerRowIndex = r;
+      break;
+    }
+  }
+
+  // Clean and normalize headers
+  const headers = rawRows[headerRowIndex].map((h: any) =>
+    String(h || "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]/g, "")
+  );
 
   const parsedList: Omit<Employee, "id">[] = [];
   const duplicates: string[] = [];
@@ -756,84 +1098,225 @@ export function parseEmployeeCsvText(
 
   const existingCodes = new Set(existingEmployees.map((e) => e.empCode?.toLowerCase().trim()));
 
-  for (let i = 1; i < rawRows.length; i++) {
+  for (let i = headerRowIndex + 1; i < rawRows.length; i++) {
     const values = rawRows[i];
-    if (!values || values.every((v) => !v.trim())) continue; // empty row
+    if (!values || values.every((v) => !v || !String(v).trim())) continue; // empty row
 
+    // Prioritized header extraction to prevent substring mis-matching
     const getVal = (possibleKeys: string[]): string => {
-      for (const pk of possibleKeys) {
-        const cleanKey = pk.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const idx = headers.findIndex((h) => h === cleanKey || h.includes(cleanKey));
-        if (idx !== -1 && values[idx] !== undefined) {
-          return values[idx].trim();
+      const cleanedKeys = possibleKeys.map((k) => k.toLowerCase().replace(/[^a-z0-9]/g, ""));
+
+      // Pass 1: EXACT MATCH across all possible keys
+      for (const k of cleanedKeys) {
+        const exactIdx = headers.findIndex((h) => h === k);
+        if (exactIdx !== -1 && values[exactIdx] !== undefined) {
+          const val = cleanCellString(values[exactIdx]);
+          if (val) return val;
         }
       }
+
+      // Pass 2: Exact prefix or suffix match (e.g. "fullname" matching "name")
+      for (const k of cleanedKeys) {
+        if (k.length < 3) continue;
+        const fixIdx = headers.findIndex((h) => h.startsWith(k) || h.endsWith(k));
+        if (fixIdx !== -1 && values[fixIdx] !== undefined) {
+          const val = cleanCellString(values[fixIdx]);
+          if (val) return val;
+        }
+      }
+
+      // Pass 3: Substring match for longer descriptive keys
+      for (const k of cleanedKeys) {
+        if (k.length < 5) continue;
+        const subIdx = headers.findIndex((h) => h.includes(k));
+        if (subIdx !== -1 && values[subIdx] !== undefined) {
+          const val = cleanCellString(values[subIdx]);
+          if (val) return val;
+        }
+      }
+
       return "";
     };
 
+    // 1. Identity & Profile
     const empCode = getVal(["employeecode", "empcode", "code", "empid", "id"]) || `EMP-${1000 + i}`;
-    const name = getVal(["fullname", "name", "employeename", "empname", "staffname", "firstname", "firstlast", "employee", "staff"]);
-    const email = getVal(["workemail", "officialemail", "email", "mail"]) || `${empCode.toLowerCase().replace(/[^a-z0-9]/g, "")}@company.com`;
-    const personalEmail = getVal(["personalemail", "personalmail", "email2"]) || undefined;
-    const password = getVal(["password", "pass"]) || generateEmployeePassword();
-    const phone = getVal(["phonenumber", "phone", "mobile", "contact", "contactnumber", "mobilenumber"]) || "9876543210";
-    const department = getVal(["department", "dept", "division"]) || "Engineering";
-    const designation = getVal(["designation", "role", "title", "position", "jobtitle"]) || "Software Engineer";
-    
-    const salaryRaw = getVal(["fixedsalary", "salary", "grosssalary", "fixed", "monthlyctc"]);
-    const basicRaw = getVal(["basicsalary", "basic"]);
-    const fixedSalary = parseFloat(salaryRaw) || parseFloat(basicRaw) || 25000;
-    const basic = parseFloat(basicRaw) || fixedSalary;
+    const name = getVal(["fullname", "name", "employeename", "empname", "staffname", "firstname", "firstlast"]);
+    const statusRaw = getVal(["status", "employeestatus", "state"]).toLowerCase();
+    const status: Employee["status"] = statusRaw.includes("inact")
+      ? "inactive"
+      : statusRaw.includes("susp")
+      ? "suspended"
+      : statusRaw.includes("relie")
+      ? "relieved"
+      : statusRaw.includes("term")
+      ? "terminated"
+      : "active";
 
-    const doj = getVal(["dateofjoining", "doj", "joiningdate"]) || new Date().toISOString().slice(0, 10);
+    const email = getVal(["workemail", "officialemail", "officeemail", "email", "mail"]) || `${empCode.toLowerCase().replace(/[^a-z0-9]/g, "")}@company.com`;
+    const personalEmail = getVal(["personalemail", "personalmail", "alternateemail", "email2"]) || undefined;
+    const password = getVal(["password", "pass"]) || generateEmployeePassword();
+    const phone = getVal(["phonenumber", "phone", "mobile", "mobilenumber", "contactnumber", "cell"]) || "9876543210";
+    const department = getVal(["department", "dept", "division", "team"]) || "Engineering";
+    const designation = getVal(["designation", "jobtitle", "title", "position"]) || "Software Engineer";
+
     const empTypeRaw = getVal(["employmenttype", "employment", "type", "contract", "emptype"]).toLowerCase();
     const employmentType: Employee["employmentType"] = empTypeRaw.includes("contract") ? "contract" : "regular";
-    const dob = getVal(["dateofbirth", "dob", "birthdate"]) || undefined;
+
     const genderRaw = getVal(["gender", "sex"]).toLowerCase();
-    const gender = genderRaw === "female" ? "female" : genderRaw === "other" ? "other" : "male";
+    const gender: Employee["gender"] = genderRaw === "female" ? "female" : genderRaw === "other" ? "other" : "male";
+    const dobRaw = getVal(["dateofbirth", "dob", "birthdate"]);
+    const dob = normalizeExcelDate(dobRaw) || undefined;
     const bloodGroup = getVal(["bloodgroup", "blood", "bg"]) || undefined;
-    
-    const pan = getVal(["pannumber", "pan"]).toUpperCase() || undefined;
+
+    const maritalStatusRaw = getVal(["maritalstatus", "marital"]).toLowerCase();
+    const maritalStatus: Employee["maritalStatus"] =
+      maritalStatusRaw === "married" || maritalStatusRaw === "divorced" || maritalStatusRaw === "widowed"
+        ? (maritalStatusRaw as Employee["maritalStatus"])
+        : "single";
+
+    const nationality = getVal(["nationality", "nation"]) || "Indian";
+    const fatherName = getVal(["fathername", "father"]) || undefined;
+    const motherName = getVal(["mothername", "mother"]) || undefined;
+    const spouseName = getVal(["spousename", "spouse"]) || undefined;
+
+    // 2. Employment & Compensation
+    const dojRaw = getVal(["dateofjoining", "doj", "joiningdate", "hiredate"]);
+    const doj = normalizeExcelDate(dojRaw) || new Date().toISOString().slice(0, 10);
+
+    const salaryRaw = getVal(["fixedsalary", "monthlyfixedsalary", "grosssalary", "fixed", "monthlyctc", "salary"]);
+    const basicRaw = getVal(["basicsalary", "basic", "basicpay"]);
+    const fixedSalary = parseSalaryNumber(salaryRaw) || parseSalaryNumber(basicRaw) || 25000;
+    const basic = parseSalaryNumber(basicRaw) || Math.round(fixedSalary * 0.5);
+
+    const eligibleDateRaw = getVal(["benefitseligibledate", "eligibledate", "eligibilitydate"]);
+    const eligibleDate = normalizeExcelDate(eligibleDateRaw) || doj;
+
+    const probationDateRaw = getVal(["probationenddate", "probationdate", "probationend"]);
+    const probationDate =
+      normalizeExcelDate(probationDateRaw) ||
+      new Date(new Date(doj).getTime() + 90 * 86400000).toISOString().slice(0, 10);
+
+    // 3. Statutory & Deductions
+    const pfEligible = parseBoolString(getVal(["pfeligible", "pf", "pfopted"]), true);
+    const uan = getVal(["pfuan", "uan", "uanno", "pfuannumber"]) || undefined;
+    const pfNumber = getVal(["pfnumber", "pfno", "memberid"]) || undefined;
+
+    const esiEligible = parseBoolString(getVal(["esieligible", "esi", "esiceligible"]), false);
+    const esic = getVal(["esicnumber", "esic", "esicno", "esino"]) || undefined;
+
+    const ptEligible = parseBoolString(getVal(["pteligible", "pt", "professionaltaxeligible"]), true);
+    const ptNumber = getVal(["ptnumber", "ptno", "ptregno"]) || undefined;
+
+    const tdsEligible = parseBoolString(getVal(["tdseligible", "tds", "tdsdeduction"]), false);
+
+    // 4. KYC & Banking
+    const pan = getVal(["pannumber", "pan", "pancard"]).toUpperCase() || undefined;
     const aadhaar = getVal(["aadhaarnumber", "aadhaar", "uidai", "aadhar"]) || undefined;
+    const nameAsPerAadhaar = getVal(["nameasperaadhaar", "aadhaarname", "nameonaadhaar"]) || name || undefined;
     const passportNumber = getVal(["passportnumber", "passport", "passportno"]) || undefined;
     const drivingLicense = getVal(["drivinglicense", "dl", "dlno", "license"]) || undefined;
-    
-    const bankAcc = getVal(["bankaccountnumber", "bankacc", "account", "accountnumber", "bankaccountno"]) || undefined;
+
+    const bankAcc = getVal(["bankaccountnumber", "bankacc", "accountnumber", "bankaccountno", "accountno"]) || undefined;
     const bankIfsc = getVal(["bankifsccode", "ifsc", "bankifsc", "ifsccode"]).toUpperCase() || undefined;
     const bankName = getVal(["bankname", "bank"]) || undefined;
-    const bankBranch = getVal(["bankbranch", "branchname"]) || undefined;
+    const bankBranch = getVal(["bankbranch", "branchname", "bankcity"]) || undefined;
     const bankAccountTypeRaw = getVal(["bankaccounttype", "accounttype"]).toLowerCase();
     const bankAccountType: "savings" | "current" = bankAccountTypeRaw.includes("current") ? "current" : "savings";
 
-    const roleName = getVal(["assignedrole", "role", "rolename"]);
-    const reportingManager = getVal(["reportingmanager", "manager", "managername", "reportsto"]) || undefined;
-    const shiftId = getVal(["shift", "shiftid", "shifttype"]) || "gen";
-    
-    const branchRaw = getVal(["branchcode", "branch", "branchid", "assignedbranches"]) || "";
-    const branchParts = branchRaw ? branchRaw.split(/[,;/|]+/).map((b) => b.trim()).filter(Boolean) : [];
-    const branchId = branchParts[0] || undefined;
-    const branchIds = branchParts.length > 0 ? branchParts : undefined;
+    // 5. Address & Emergency Contact
+    const addressLine1 = getVal(["addressline1", "address", "address1", "street"]) || undefined;
+    const addressLine2 = getVal(["addressline2", "address2"]) || undefined;
+    const city = getVal(["city", "town"]) || undefined;
+    const state = getVal(["state", "province"]) || undefined;
+    const country = getVal(["country", "nation"]) || "India";
+    const pincode = getVal(["pincode", "zip", "postalcode", "zipcode"]) || undefined;
 
-    const parseBool = (str: string, def = true): boolean => {
-      if (!str) return def;
-      const s = str.toLowerCase().trim();
-      return s === "true" || s === "yes" || s === "1" || s === "y";
-    };
+    const emergencyName = getVal(["emergencycontactperson", "emergencycontactname", "emergencyname"]) || undefined;
+    const emergencyRelation = getVal(["emergencyrelation", "relationship", "emergencyrelationship"]) || undefined;
+    const emergencyPhone = getVal(["emergencycontactphone", "emergencyphone", "emergencyphone2", "emergencycontactnumber"]) || undefined;
 
-    const pfEligible = parseBool(getVal(["pfeligible", "pf"]), true);
-    const uan = getVal(["pfuan", "uan", "uanno", "pfuannumber"]) || undefined;
-    const pfNumber = getVal(["pfnumber", "pfno", "memberid"]) || undefined;
-    
-    const esiEligible = parseBool(getVal(["esieligible", "esi", "esiceligible"]), false);
-    const esic = getVal(["esicnumber", "esic", "esicno", "esino"]) || undefined;
-    
-    const ptEligible = parseBool(getVal(["pteligible", "pt", "professionaltaxeligible"]), true);
-    const ptNumber = getVal(["ptnumber", "ptno", "ptregno"]) || undefined;
-    
-    const tdsEligible = parseBool(getVal(["tdseligible", "tds"]), false);
-    const leaveApplyEligible = parseBool(getVal(["leaveapplymobileeligible", "leaveapplyeligible", "leaveeligible", "leaveapply"]), true);
-    const geofencingEnabled = parseBool(getVal(["geofencingrequired", "geofencingenabled", "geofence", "geofencing"]), true);
-    const biometricEnabled = parseBool(getVal(["biometricenabled", "biometric", "bioenabled"]), false);
+    // 6. Branch, Shift, Role & Manager Resolution
+    const branchRaw = getVal(["primarybranch", "branchcode", "branch", "branchid", "assignedbranches"]) || "";
+    let branchId: string | undefined = undefined;
+    let branchIds: string[] | undefined = undefined;
+    if (branchRaw) {
+      const parts = branchRaw.split(/[,;/|]+/).map((b) => b.trim()).filter(Boolean);
+      const matchedIds: string[] = [];
+      for (const p of parts) {
+        const found = (availableBranches || []).find(
+          (b) =>
+            b.id.toLowerCase() === p.toLowerCase() ||
+            b.code?.toLowerCase() === p.toLowerCase() ||
+            b.name.toLowerCase() === p.toLowerCase()
+        );
+        if (found) matchedIds.push(found.id);
+      }
+      if (matchedIds.length > 0) {
+        branchId = matchedIds[0];
+        branchIds = matchedIds;
+      } else if (parts.length > 0) {
+        branchId = parts[0];
+        branchIds = parts;
+      }
+    }
+
+    const shiftRaw = getVal(["shift", "shiftid", "shifttype", "assignedshift"]) || "";
+    let shiftId = "gen";
+    if (shiftRaw) {
+      const foundShift = (availableShifts || []).find(
+        (s) =>
+          s.id.toLowerCase() === shiftRaw.toLowerCase() ||
+          s.name.toLowerCase().includes(shiftRaw.toLowerCase()) ||
+          shiftRaw.toLowerCase().includes(s.name.toLowerCase())
+      );
+      if (foundShift) {
+        shiftId = foundShift.id;
+      } else if (shiftRaw.toLowerCase().includes("night")) {
+        shiftId = "night";
+      } else if (shiftRaw.toLowerCase().includes("morn")) {
+        shiftId = "morn";
+      }
+    }
+
+    const roleRaw = getVal(["assignedrole", "role", "rolename"]);
+    let roleId: string | undefined = undefined;
+    let roleName: string | undefined = undefined;
+    if (roleRaw) {
+      const foundRole = (availableRoles || []).find(
+        (r) =>
+          r.id.toLowerCase() === roleRaw.toLowerCase() ||
+          r.name.toLowerCase() === roleRaw.toLowerCase()
+      );
+      if (foundRole) {
+        roleId = foundRole.id;
+        roleName = foundRole.name;
+      } else {
+        roleName = roleRaw;
+      }
+    }
+
+    const managerRaw = getVal(["reportingmanager", "manager", "managername", "reportsto"]);
+    let managerId: string | undefined = undefined;
+    let reportingManager: string | undefined = undefined;
+    if (managerRaw) {
+      const foundEmp = existingEmployees.find(
+        (e) =>
+          e.id.toLowerCase() === managerRaw.toLowerCase() ||
+          e.empCode?.toLowerCase() === managerRaw.toLowerCase() ||
+          e.name?.toLowerCase() === managerRaw.toLowerCase()
+      );
+      if (foundEmp) {
+        managerId = foundEmp.id;
+        reportingManager = foundEmp.name;
+      } else {
+        reportingManager = managerRaw;
+      }
+    }
+
+    // 7. Policy & Controls
+    const leaveApplyEligible = parseBoolString(getVal(["leaveapplymobileeligible", "leaveapplyeligible", "leaveeligible", "leaveapply"]), true);
+    const geofencingEnabled = parseBoolString(getVal(["geofencingrequired", "geofencingenabled", "geofence", "geofencing"]), true);
+    const biometricEnabled = parseBoolString(getVal(["biometricenabled", "biometric", "bioenabled"]), false);
 
     const graceTimeRaw = getVal(["morninggracetime", "gracetime", "grace", "graceperiod"]).toLowerCase();
     let graceTime: Employee["graceTime"] = "15";
@@ -853,34 +1336,21 @@ export function parseEmployeeCsvText(
     else if (afternoonGraceRaw.includes("25")) afternoonGraceTime = "25";
     else if (afternoonGraceRaw.includes("30")) afternoonGraceTime = "30";
 
-    const allowHalfDayLogin = parseBool(getVal(["allowafternoonlogin", "allowhalfdaylogin", "halfdaylogin", "afternoonlogin"]), true);
+    const allowHalfDayLogin = parseBoolString(getVal(["allowafternoonlogin", "allowhalfdaylogin", "halfdaylogin", "afternoonlogin"]), true);
     const halfDayLoginTime = getVal(["afternoonlogintime", "halfdaylogintime", "halfdaytime", "afternoontime"]) || "12:00";
 
-    const eligibleDate = getVal(["benefitseligibledate", "eligibledate"]) || doj;
-    const probationDate =
-      getVal(["probationenddate", "probationdate"]) || new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
-    
-    const maritalStatusRaw = getVal(["maritalstatus", "marital"]).toLowerCase();
-    const maritalStatus =
-      maritalStatusRaw === "married" || maritalStatusRaw === "divorced" || maritalStatusRaw === "widowed"
-        ? (maritalStatusRaw as Employee["maritalStatus"])
-        : "single";
+    // 8. Compliance & BGV
+    const bgvRaw = getVal(["backgroundcheck", "bgvstatus", "bgv", "backgroundverification"]).toLowerCase();
+    const backgroundCheckStatus: Employee["backgroundCheckStatus"] = bgvRaw.includes("clear")
+      ? "clear"
+      : bgvRaw.includes("flag")
+      ? "flagged"
+      : "pending";
 
-    const nationality = getVal(["nationality", "nation"]) || "Indian";
-    const fatherName = getVal(["fathername", "father"]) || undefined;
-    const motherName = getVal(["mothername", "mother"]) || undefined;
-    const spouseName = getVal(["spousename", "spouse"]) || undefined;
-
-    const addressLine1 = getVal(["addressline1", "address", "address1", "street"]) || undefined;
-    const addressLine2 = getVal(["addressline2", "address2"]) || undefined;
-    const city = getVal(["city", "town"]) || undefined;
-    const state = getVal(["state", "province"]) || undefined;
-    const country = getVal(["country", "nation"]) || "India";
-    const pincode = getVal(["pincode", "zip", "postalcode", "zipcode"]) || undefined;
-    
-    const emergencyName = getVal(["emergencycontactperson", "emergencycontactname", "emergencyname", "emergencycontact"]) || undefined;
-    const emergencyRelation = getVal(["emergencyrelation", "relationship", "emergencyrelationship"]) || undefined;
-    const emergencyPhone = getVal(["emergencycontactphone", "emergencyphone", "emergencyphone2", "emergencycontactnumber"]) || undefined;
+    const policeVerification = parseBoolString(getVal(["policeverification", "policeverificationsubmitted"]), false);
+    const medicalFitness = parseBoolString(getVal(["medicalfitness", "medicalfitnesscertificate"]), false);
+    const ndaSigned = parseBoolString(getVal(["ndasigned", "nda"]), false);
+    const complianceNotes = getVal(["compliancenotes", "notes", "remarks"]) || undefined;
 
     if (!name) {
       errors.push(`Row ${i + 1}: Missing Full Name`);
@@ -890,11 +1360,6 @@ export function parseEmployeeCsvText(
     if (existingCodes.has(empCode.toLowerCase())) {
       duplicates.push(empCode);
     }
-
-    // Match role
-    const matchedRole = (availableRoles || []).find(
-      (r) => r.name.toLowerCase().trim() === (roleName || "").toLowerCase().trim()
-    );
 
     parsedList.push({
       empCode,
@@ -919,6 +1384,8 @@ export function parseEmployeeCsvText(
       spouseName,
       pan,
       aadhaar,
+      nameAsPerAadhaar,
+      aadhaarName: nameAsPerAadhaar,
       passportNumber,
       drivingLicense,
       bankAcc,
@@ -926,8 +1393,9 @@ export function parseEmployeeCsvText(
       bankName,
       bankBranch,
       bankAccountType,
-      roleId: matchedRole?.id,
-      roleName: matchedRole ? matchedRole.name : roleName || undefined,
+      roleId,
+      roleName,
+      managerId,
       reportingManager,
       shiftId,
       branchId,
@@ -959,7 +1427,12 @@ export function parseEmployeeCsvText(
       emergencyRelation,
       emergencyContact: emergencyPhone,
       emergencyPhone2: emergencyPhone,
-      status: "active",
+      status,
+      backgroundCheckStatus,
+      policeVerification,
+      medicalFitness,
+      ndaSigned,
+      complianceNotes,
       faceRegistered: false,
       photoDataUrl: undefined,
     });

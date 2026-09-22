@@ -68,7 +68,7 @@ import {
 } from "recharts";
 
 export const Route = createFileRoute("/admin/")({
-  head: () => ({ meta: [{ title: "Dashboard · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Dashboard · CreatonsHR" }] }),
   component: Dashboard,
 });
 

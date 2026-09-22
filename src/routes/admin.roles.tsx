@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
 export const Route = createFileRoute("/admin/roles")({
-  head: () => ({ meta: [{ title: "Role Creation · SWIFT HRMS" }] }),
+  head: () => ({ meta: [{ title: "Role Creation · CreatonsHR" }] }),
   component: RoleCreationPage,
 });
 

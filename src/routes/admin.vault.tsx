@@ -66,7 +66,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/vault")({
-  head: () => ({ meta: [{ title: "Company Document Vault · SWIFT HRMS" }] }),
+  head: () => ({ meta: [{ title: "Company Document Vault · CreatonsHR" }] }),
   component: VaultPage,
 });
 
@@ -293,7 +293,7 @@ function VaultPage() {
       // Create a dummy text blob if dataUrl is empty
       const blob = new Blob(
         [
-          `--- SWIFT HRMS ENCRYPTED VAULT DOCUMENT ---\n\nDocument Name: ${file.name}\nCategory: ${file.category}\nConfidentiality: ${file.confidentiality}\nUploaded By: ${file.uploadedBy}\nUploaded At: ${file.uploadedAt}\n\nOfficial Notes:\n${file.notes || "Secure corporate compliance record."}`,
+          `--- CREATONSHR ENCRYPTED VAULT DOCUMENT ---\n\nDocument Name: ${file.name}\nCategory: ${file.category}\nConfidentiality: ${file.confidentiality}\nUploaded By: ${file.uploadedBy}\nUploaded At: ${file.uploadedAt}\n\nOfficial Notes:\n${file.notes || "Secure corporate compliance record."}`,
         ],
         { type: "text/plain;charset=utf-8" }
       );
@@ -333,7 +333,7 @@ function VaultPage() {
                 </Badge>
               </div>
               <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                Centralized, high-security archive for {company.name || "SWIFT"} corporate registrations, agreements, licenses &amp; tax filings.
+                Centralized, high-security archive for {company.name || "CreatonsHR"} corporate registrations, agreements, licenses &amp; tax filings.
               </p>
             </div>
           </div>
@@ -1393,7 +1393,7 @@ function VaultPage() {
                     Document Description &amp; Notes
                   </span>
                   <p className="text-xs text-foreground/90 leading-relaxed bg-muted/30 p-3 rounded-xl border border-border/50">
-                    {previewFile.notes || "Official authenticated compliance record stored in SWIFT HRMS company vault."}
+                    {previewFile.notes || "Official authenticated compliance record stored in CreatonsHR company vault."}
                   </p>
                 </div>
               </div>

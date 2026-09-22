@@ -440,6 +440,6 @@ export function downloadWageRegisterExcel({
   XLSX.utils.book_append_sheet(wb, wsWage, "Wage Register");
 
   // Generate and save file
-  const fileName = `${(company.name || "SWIFT").replace(/\s+/g, "_")}_Wage_Register_${selectedMonth}.xlsx`;
+  const fileName = `${(company.name || "CreatonsHR").replace(/\s+/g, "_")}_Wage_Register_${selectedMonth}.xlsx`;
   XLSX.writeFile(wb, fileName);
 }

@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DesignationSelect } from "@/components/designation-select";
 import {
   DoorOpen, ArrowRightLeft, FileSignature, FileDown, PackageCheck,
   MessageSquareQuote, CheckCircle2, Wallet, Building2, Sparkles,
@@ -425,7 +426,15 @@ We wish you the very best in this new assignment.`;
                 </Select>
               </Field>
               <Field label="Effective Date"><Input type="date" value={transferEffective} onChange={(e) => setTransferEffective(e.target.value)} /></Field>
-              <Field label="New Designation (optional)"><Input value={newDesignation} onChange={(e) => setNewDesignation(e.target.value)} placeholder={employee.designation} /></Field>
+              <div>
+                <Label className="text-xs">New Designation (optional)</Label>
+                <DesignationSelect
+                  value={newDesignation}
+                  onChange={setNewDesignation}
+                  placeholder={employee.designation || "Select or enter new designation…"}
+                  triggerClassName="h-9 text-xs"
+                />
+              </div>
               <Field label="New Department (optional)"><Input value={newDepartment} onChange={(e) => setNewDepartment(e.target.value)} placeholder={employee.department} /></Field>
             </div>
             <Field label="Reason"><Textarea rows={2} value={transferReason} onChange={(e) => setTransferReason(e.target.value)} /></Field>

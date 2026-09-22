@@ -3,8 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
-import swiftLogoBanner from "@/assets/swift-logo-banner.jpeg";
-import swiftLogoIcon from "@/assets/swift-logo.jpeg";
+import creatonsLogoBanner from "@/assets/CreatonsHR-Banner.png";
+import creatonsLogoIcon from "@/assets/CreatonHR.png";
 import { ThemeToggle } from "@/components/theme";
 import {
   LayoutDashboard,
@@ -64,7 +64,7 @@ import { LiveNotificationBell } from "@/components/live-notification-bell";
 import { AdminInternalChat } from "@/components/internal-chat";
 
 export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "Admin · SWIFT HRMS" }] }),
+  head: () => ({ meta: [{ title: "Admin · CreatonsHR" }] }),
   component: AdminLayout,
 });
 
@@ -99,7 +99,7 @@ const nav: NavItem[] = [
   { to: "/admin/employees", label: "Employees", icon: Users },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays },
-  { to: "/admin/shift-roster", label: "Swift Roster", icon: Clock },
+  { to: "/admin/shift-roster", label: "Shift Roster", icon: Clock },
   { to: "/admin/payroll", label: "Payroll", icon: Calculator },
   { to: "/admin/documentation-alt", label: "Documentations", icon: FileText },
   { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal },
@@ -172,7 +172,7 @@ function AdminLayout() {
 
   const activeTenant = memberships.find((m) => m.tenant_id === activeTenantId)?.tenant;
   const displayName = demoMode ? `${company.name} · DEMO` : (activeTenant?.name ?? company.name);
-  const userEmail = demoMode ? "admin@demo.swift" : user?.email;
+  const userEmail = demoMode ? "admin@demo.creatonshr.com" : user?.email;
 
   const effectiveCompanyLogo =
     company?.logoDataUrl ||
@@ -197,8 +197,8 @@ function AdminLayout() {
             <div className="flex items-center justify-between gap-2 px-3.5 py-3 border-b border-sidebar-border shrink-0 bg-white dark:bg-card min-h-[68px]">
               <div className="flex-1 flex items-center justify-start min-w-0 overflow-hidden">
                 <img
-                  src={swiftLogoBanner}
-                  alt="SWIFT HRMS"
+                  src={creatonsLogoBanner}
+                  alt="CreatonsHR"
                   className="h-14 sm:h-16 w-auto max-w-[195px] object-contain block"
                 />
               </div>
@@ -224,8 +224,8 @@ function AdminLayout() {
                     className="h-11 w-11 aspect-square rounded-full overflow-hidden bg-sidebar-accent border border-sidebar-border p-1.5 flex items-center justify-center shadow-xs cursor-pointer hover:scale-105 hover:bg-sidebar-accent/80 hover:border-sidebar-primary/40 transition shrink-0"
                   >
                     <img
-                      src={swiftLogoIcon}
-                      alt="SWIFT"
+                      src={creatonsLogoIcon}
+                      alt="CreatonsHR"
                       className="h-full w-full object-contain rounded-full"
                     />
                   </button>

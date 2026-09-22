@@ -69,7 +69,7 @@ import { type RevisionTarget, type RevisionReason } from "@/lib/salary-revision"
 import { downloadWageRegisterExcel } from "@/lib/wage-register-excel";
 
 export const Route = createFileRoute("/admin/payroll")({
-  head: () => ({ meta: [{ title: "Payroll & Salary Structures · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Payroll & Salary Structures · CreatonsHR" }] }),
   component: PayrollPage,
 });
 
@@ -189,8 +189,19 @@ interface MonthlyOverrideData {
   ptEnabled?: boolean;
   ptAmountOverride?: number;
   lwfEnabled?: boolean;
+  lwfMode?: "flat" | "pctOfGross" | "pctOfBasic";
+  lwfValue?: number;
   lwfAmountOverride?: number;
+  tdsEnabled?: boolean;
+  tdsMode?: "flat" | "pctOfGross" | "pctOfBasic";
+  tdsValue?: number;
   tds?: number;
+  fineAndDamagesEnabled?: boolean;
+  fineAndDamagesMode?: "flat" | "pctOfGross" | "pctOfBasic";
+  fineAndDamagesValue?: number;
+  otherDeductionsEnabled?: boolean;
+  otherDeductionsMode?: "flat" | "pctOfGross" | "pctOfBasic";
+  otherDeductionsValue?: number;
   loan?: number;
   advance?: number;
   otherDeductions?: number;
@@ -237,8 +248,19 @@ interface EditingPayrollRecord extends MonthlyOverrideData {
   ptEnabled: boolean;
   ptAmountOverride: number;
   lwfEnabled: boolean;
+  lwfMode: "flat" | "pctOfGross" | "pctOfBasic";
+  lwfValue: number;
   lwfAmountOverride: number;
+  tdsEnabled: boolean;
+  tdsMode: "flat" | "pctOfGross" | "pctOfBasic";
+  tdsValue: number;
   tds: number;
+  fineAndDamagesEnabled: boolean;
+  fineAndDamagesMode: "flat" | "pctOfGross" | "pctOfBasic";
+  fineAndDamagesValue: number;
+  otherDeductionsEnabled: boolean;
+  otherDeductionsMode: "flat" | "pctOfGross" | "pctOfBasic";
+  otherDeductionsValue: number;
   loan: number;
   advance: number;
   otherDeductions: number;
@@ -567,7 +589,39 @@ export function PayrollPage() {
     const ptEnabled = company.ptEnabled !== false;
     const pt = ptEnabled ? (company.ptAmount ?? 208) : 0;
 
-    const totalEmployeeDeductions = pfEmployee + esiEmployee + pt;
+    // TDS
+    const tdsEnabled = company.tdsEnabled === true;
+    const tdsMode = company.tdsMode || "flat";
+    const tdsValue = company.tdsValue ?? 0;
+    const tdsAmount = tdsEnabled
+      ? (tdsMode === "pctOfGross" ? Math.round(gross * (tdsValue / 100)) : tdsMode === "pctOfBasic" ? Math.round(basic * (tdsValue / 100)) : Math.round(tdsValue))
+      : 0;
+
+    // Fine & Damages
+    const fineAndDamagesEnabled = company.fineAndDamagesEnabled === true;
+    const fineAndDamagesMode = company.fineAndDamagesMode || "flat";
+    const fineAndDamagesValue = company.fineAndDamagesValue ?? 0;
+    const fineAndDamagesAmount = fineAndDamagesEnabled
+      ? (fineAndDamagesMode === "pctOfGross" ? Math.round(gross * (fineAndDamagesValue / 100)) : fineAndDamagesMode === "pctOfBasic" ? Math.round(basic * (fineAndDamagesValue / 100)) : Math.round(fineAndDamagesValue))
+      : 0;
+
+    // LWF (Labour Welfare Fund)
+    const lwfEnabled = company.lwfEnabled !== false && company.lwfRules?.enabled !== false;
+    const lwfMode = company.lwfMode || "flat";
+    const lwfValue = company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20;
+    const lwfAmount = lwfEnabled
+      ? (lwfMode === "pctOfGross" ? Math.round(gross * (lwfValue / 100)) : lwfMode === "pctOfBasic" ? Math.round(basic * (lwfValue / 100)) : Math.round(lwfValue))
+      : 0;
+
+    // Other Deductions
+    const otherDeductionsEnabled = company.otherDeductionsEnabled === true;
+    const otherDeductionsMode = company.otherDeductionsMode || "flat";
+    const otherDeductionsValue = company.otherDeductionsValue ?? 0;
+    const otherDeductionsAmount = otherDeductionsEnabled
+      ? (otherDeductionsMode === "pctOfGross" ? Math.round(gross * (otherDeductionsValue / 100)) : otherDeductionsMode === "pctOfBasic" ? Math.round(basic * (otherDeductionsValue / 100)) : Math.round(otherDeductionsValue))
+      : 0;
+
+    const totalEmployeeDeductions = pfEmployee + esiEmployee + pt + tdsAmount + fineAndDamagesAmount + lwfAmount + otherDeductionsAmount;
 
     // Salary In Hand
     const salaryInHand = totalEarnings + totalBonuses - totalEmployeeDeductions;
@@ -617,6 +671,22 @@ export function PayrollPage() {
       esiEmployee,
       ptEnabled,
       pt,
+      tdsEnabled,
+      tdsMode,
+      tdsValue,
+      tdsAmount,
+      fineAndDamagesEnabled,
+      fineAndDamagesMode,
+      fineAndDamagesValue,
+      fineAndDamagesAmount,
+      lwfEnabled,
+      lwfMode,
+      lwfValue,
+      lwfAmount,
+      otherDeductionsEnabled,
+      otherDeductionsMode,
+      otherDeductionsValue,
+      otherDeductionsAmount,
       totalEmployeeDeductions,
       salaryInHand,
       totalMonthlyCtc,
@@ -869,9 +939,32 @@ export function PayrollPage() {
 
       const effectiveLoan = ov.loan !== undefined ? ov.loan : activeLoanEmiSum;
       const effectiveAdvance = ov.advance !== undefined ? ov.advance : 0;
-      const effectiveOtherDeductions = ov.otherDeductions !== undefined ? ov.otherDeductions : 0;
       const effectiveVariablePay = ov.variablePay !== undefined ? ov.variablePay : 0;
       const effectiveOtherEarnings = ov.otherEarnings !== undefined ? ov.otherEarnings : 0;
+
+      const effectiveTds = {
+        enabled: ov.tdsEnabled !== undefined ? ov.tdsEnabled : (company.tdsEnabled === true || (ov.tds || 0) > 0),
+        mode: ov.tdsMode || company.tdsMode || "flat",
+        value: ov.tdsValue !== undefined ? ov.tdsValue : (ov.tds !== undefined ? ov.tds : (company.tdsValue ?? 0)),
+      };
+
+      const effectiveFineAndDamages = {
+        enabled: ov.fineAndDamagesEnabled !== undefined ? ov.fineAndDamagesEnabled : (company.fineAndDamagesEnabled === true),
+        mode: ov.fineAndDamagesMode || company.fineAndDamagesMode || "flat",
+        value: ov.fineAndDamagesValue !== undefined ? ov.fineAndDamagesValue : (company.fineAndDamagesValue ?? 0),
+      };
+
+      const effectiveLwf = {
+        enabled: ov.lwfEnabled !== undefined ? ov.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false),
+        mode: ov.lwfMode || company.lwfMode || "flat",
+        value: ov.lwfValue !== undefined ? ov.lwfValue : (ov.lwfAmountOverride !== undefined ? ov.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20)),
+      };
+
+      const effectiveOtherDeductions = {
+        enabled: ov.otherDeductionsEnabled !== undefined ? ov.otherDeductionsEnabled : (company.otherDeductionsEnabled === true || (ov.otherDeductions || 0) > 0),
+        mode: ov.otherDeductionsMode || company.otherDeductionsMode || "flat",
+        value: ov.otherDeductionsValue !== undefined ? ov.otherDeductionsValue : (ov.otherDeductions !== undefined ? ov.otherDeductions : (company.otherDeductionsValue ?? 0)),
+      };
 
       const effectiveEmp = ov.customBasic ? { ...emp, basic: ov.customBasic } : emp;
 
@@ -885,6 +978,9 @@ export function PayrollPage() {
         loan: effectiveLoan,
         advance: effectiveAdvance,
         bonus: effectiveBonus,
+        tds: effectiveTds,
+        fineAndDamages: effectiveFineAndDamages,
+        lwf: effectiveLwf,
         otherDeductions: effectiveOtherDeductions,
         variablePay: effectiveVariablePay,
         otherEarnings: effectiveOtherEarnings,
@@ -965,7 +1061,7 @@ export function PayrollPage() {
       lwfRules: {
         ...company.lwfRules,
         enabled: editingRecord.lwfEnabled,
-        employeeAmount: editingRecord.lwfAmountOverride,
+        employeeAmount: editingRecord.lwfValue ?? editingRecord.lwfAmountOverride,
       },
       earnings: editingRecord.customAllowances as any,
     };
@@ -985,7 +1081,26 @@ export function PayrollPage() {
       loan: editingRecord.loan,
       advance: editingRecord.advance,
       bonus: totalBonus,
-      otherDeductions: editingRecord.otherDeductions,
+      tds: {
+        enabled: editingRecord.tdsEnabled,
+        mode: editingRecord.tdsMode,
+        value: editingRecord.tdsValue,
+      },
+      fineAndDamages: {
+        enabled: editingRecord.fineAndDamagesEnabled,
+        mode: editingRecord.fineAndDamagesMode,
+        value: editingRecord.fineAndDamagesValue,
+      },
+      lwf: {
+        enabled: editingRecord.lwfEnabled,
+        mode: editingRecord.lwfMode,
+        value: editingRecord.lwfValue ?? editingRecord.lwfAmountOverride,
+      },
+      otherDeductions: {
+        enabled: editingRecord.otherDeductionsEnabled,
+        mode: editingRecord.otherDeductionsMode,
+        value: editingRecord.otherDeductionsValue ?? editingRecord.otherDeductions,
+      },
       variablePay: editingRecord.variablePay,
       otherEarnings: editingRecord.otherEarnings,
     });
@@ -2033,13 +2148,13 @@ export function PayrollPage() {
                     </td>
                   </tr>
 
-                  {/* ATTENDANCE & SWIFT ROSTER WEEK OFF SETTINGS */}
+                  {/* ATTENDANCE & SHIFT ROSTER WEEK OFF SETTINGS */}
                   <tr className="bg-muted/30 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
                     <td colSpan={3} className="px-5 py-2.5">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Clock className="h-3.5 w-3.5 text-sky-500" />
-                          <span>Attendance &amp; Swift Roster Integration</span>
+                          <span>Attendance &amp; Shift Roster Integration</span>
                         </div>
                         <Badge variant="outline" className="bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[9px] border-sky-500/20 font-mono">
                           Auto-Sync
@@ -2057,7 +2172,7 @@ export function PayrollPage() {
                         />
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-semibold">Weekly Offs (Swift Roster Planner)</span>
+                            <span className="text-xs font-semibold">Weekly Offs (Shift Roster Planner)</span>
                             <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">Auto</Badge>
                           </div>
                           <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
@@ -2353,6 +2468,230 @@ export function PayrollPage() {
                     </td>
                     <td className="px-5 py-3 text-right font-semibold text-rose-600 text-xs">
                       {benchmarkCalc.ptEnabled ? `-${inr(benchmarkCalc.pt)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
+                    </td>
+                  </tr>
+
+                  {/* TDS (Tax Deducted at Source) */}
+                  <tr className={`transition-colors ${benchmarkCalc.tdsEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.tdsEnabled}
+                          onCheckedChange={(checked) => setCompany({ tdsEnabled: checked })}
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold">TDS (Tax Deducted at Source)</span>
+                            <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/20">
+                              Income Tax
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">Statutory withholding under Income Tax Act</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Select
+                          disabled={!benchmarkCalc.tdsEnabled}
+                          value={company.tdsMode || "flat"}
+                          onValueChange={(val: any) => setCompany({ tdsMode: val })}
+                        >
+                          <SelectTrigger className="h-7.5 w-28 text-xs font-semibold rounded-lg bg-background">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="flat">₹ Flat</SelectItem>
+                            <SelectItem value="pctOfGross">% Gross</SelectItem>
+                            <SelectItem value="pctOfBasic">% Basic</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.tdsEnabled}
+                          value={company.tdsValue ?? 0}
+                          onChange={(e) => setCompany({ tdsValue: Number(e.target.value) || 0 })}
+                          className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {company.tdsMode === "pctOfGross" ? "% Gross" : company.tdsMode === "pctOfBasic" ? "% Basic" : "₹ Amount"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-rose-600 text-xs">
+                      {benchmarkCalc.tdsEnabled ? `-${inr(benchmarkCalc.tdsAmount)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
+                    </td>
+                  </tr>
+
+                  {/* FINE AND DAMAGES */}
+                  <tr className={`transition-colors ${benchmarkCalc.fineAndDamagesEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.fineAndDamagesEnabled}
+                          onCheckedChange={(checked) => setCompany({ fineAndDamagesEnabled: checked })}
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold">Fine and Damages</span>
+                            <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/20">
+                              Disciplinary / Asset
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">Fines, asset damage, loss recovery &amp; penalties</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Select
+                          disabled={!benchmarkCalc.fineAndDamagesEnabled}
+                          value={company.fineAndDamagesMode || "flat"}
+                          onValueChange={(val: any) => setCompany({ fineAndDamagesMode: val })}
+                        >
+                          <SelectTrigger className="h-7.5 w-28 text-xs font-semibold rounded-lg bg-background">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="flat">₹ Flat</SelectItem>
+                            <SelectItem value="pctOfGross">% Gross</SelectItem>
+                            <SelectItem value="pctOfBasic">% Basic</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.fineAndDamagesEnabled}
+                          value={company.fineAndDamagesValue ?? 0}
+                          onChange={(e) => setCompany({ fineAndDamagesValue: Number(e.target.value) || 0 })}
+                          className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {company.fineAndDamagesMode === "pctOfGross" ? "% Gross" : company.fineAndDamagesMode === "pctOfBasic" ? "% Basic" : "₹ Amount"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-rose-600 text-xs">
+                      {benchmarkCalc.fineAndDamagesEnabled ? `-${inr(benchmarkCalc.fineAndDamagesAmount)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
+                    </td>
+                  </tr>
+
+                  {/* LABOUR WELFARE FUND (LWF) */}
+                  <tr className={`transition-colors ${benchmarkCalc.lwfEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.lwfEnabled}
+                          onCheckedChange={(checked) =>
+                            setCompany({
+                              lwfEnabled: checked,
+                              lwfRules: { ...(company.lwfRules || { employeeAmount: 20 }), enabled: checked },
+                            })
+                          }
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold">Labour Welfare Fund (LWF)</span>
+                            <Badge variant="outline" className="text-[9px] bg-teal-500/10 text-teal-600 border-teal-500/20">
+                              State Welfare
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">Statutory employee contribution for worker welfare</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Select
+                          disabled={!benchmarkCalc.lwfEnabled}
+                          value={company.lwfMode || "flat"}
+                          onValueChange={(val: any) => setCompany({ lwfMode: val })}
+                        >
+                          <SelectTrigger className="h-7.5 w-28 text-xs font-semibold rounded-lg bg-background">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="flat">₹ Flat</SelectItem>
+                            <SelectItem value="pctOfGross">% Gross</SelectItem>
+                            <SelectItem value="pctOfBasic">% Basic</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.lwfEnabled}
+                          value={company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setCompany({
+                              lwfValue: val,
+                              lwfAmount: val,
+                              lwfRules: { ...(company.lwfRules || { employeeAmount: 20 }), employeeAmount: val },
+                            });
+                          }}
+                          className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {company.lwfMode === "pctOfGross" ? "% Gross" : company.lwfMode === "pctOfBasic" ? "% Basic" : "₹ Amount"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-rose-600 text-xs">
+                      {benchmarkCalc.lwfEnabled ? `-${inr(benchmarkCalc.lwfAmount)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
+                    </td>
+                  </tr>
+
+                  {/* OTHER DEDUCTIONS */}
+                  <tr className={`transition-colors ${benchmarkCalc.otherDeductionsEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-3 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={benchmarkCalc.otherDeductionsEnabled}
+                          onCheckedChange={(checked) => setCompany({ otherDeductionsEnabled: checked })}
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold">Other Deductions</span>
+                            <Badge variant="outline" className="text-[9px] bg-muted text-muted-foreground border-border">
+                              Custom / Misc
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">Miscellaneous deductions, uniforms, welfare, club fees</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Select
+                          disabled={!benchmarkCalc.otherDeductionsEnabled}
+                          value={company.otherDeductionsMode || "flat"}
+                          onValueChange={(val: any) => setCompany({ otherDeductionsMode: val })}
+                        >
+                          <SelectTrigger className="h-7.5 w-28 text-xs font-semibold rounded-lg bg-background">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="flat">₹ Flat</SelectItem>
+                            <SelectItem value="pctOfGross">% Gross</SelectItem>
+                            <SelectItem value="pctOfBasic">% Basic</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          disabled={!benchmarkCalc.otherDeductionsEnabled}
+                          value={company.otherDeductionsValue ?? 0}
+                          onChange={(e) => setCompany({ otherDeductionsValue: Number(e.target.value) || 0 })}
+                          className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {company.otherDeductionsMode === "pctOfGross" ? "% Gross" : company.otherDeductionsMode === "pctOfBasic" ? "% Basic" : "₹ Amount"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-rose-600 text-xs">
+                      {benchmarkCalc.otherDeductionsEnabled ? `-${inr(benchmarkCalc.otherDeductionsAmount)}` : <span className="text-xs text-muted-foreground">Disabled</span>}
                     </td>
                   </tr>
                 </tbody>
@@ -2754,9 +3093,20 @@ export function PayrollPage() {
                                 employerEsiPct: overrideData.employerEsiPct !== undefined ? overrideData.employerEsiPct : (company.employerEsiPct ?? 3.25),
                                 ptEnabled: overrideData.ptEnabled !== undefined ? overrideData.ptEnabled : (company.ptEnabled !== false),
                                 ptAmountOverride: overrideData.ptAmountOverride !== undefined ? overrideData.ptAmountOverride : (comp.deductions.professionalTax || company.ptAmount || 208),
-                                lwfEnabled: overrideData.lwfEnabled !== undefined ? overrideData.lwfEnabled : (company.lwfRules?.enabled === true),
-                                lwfAmountOverride: overrideData.lwfAmountOverride !== undefined ? overrideData.lwfAmountOverride : (company.lwfRules?.employeeAmount ?? 10),
-                                tds: overrideData.tds !== undefined ? overrideData.tds : 0,
+                                lwfEnabled: overrideData.lwfEnabled !== undefined ? overrideData.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false),
+                                lwfMode: overrideData.lwfMode !== undefined ? overrideData.lwfMode : (company.lwfMode || "flat"),
+                                lwfValue: overrideData.lwfValue !== undefined ? overrideData.lwfValue : (overrideData.lwfAmountOverride !== undefined ? overrideData.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20)),
+                                lwfAmountOverride: overrideData.lwfAmountOverride !== undefined ? overrideData.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20),
+                                tdsEnabled: overrideData.tdsEnabled !== undefined ? overrideData.tdsEnabled : (company.tdsEnabled === true || (overrideData.tds || 0) > 0),
+                                tdsMode: overrideData.tdsMode !== undefined ? overrideData.tdsMode : (company.tdsMode || "flat"),
+                                tdsValue: overrideData.tdsValue !== undefined ? overrideData.tdsValue : (overrideData.tds !== undefined ? overrideData.tds : (company.tdsValue ?? 0)),
+                                tds: overrideData.tds !== undefined ? overrideData.tds : (company.tdsValue ?? 0),
+                                fineAndDamagesEnabled: overrideData.fineAndDamagesEnabled !== undefined ? overrideData.fineAndDamagesEnabled : (company.fineAndDamagesEnabled === true),
+                                fineAndDamagesMode: overrideData.fineAndDamagesMode !== undefined ? overrideData.fineAndDamagesMode : (company.fineAndDamagesMode || "flat"),
+                                fineAndDamagesValue: overrideData.fineAndDamagesValue !== undefined ? overrideData.fineAndDamagesValue : (company.fineAndDamagesValue ?? 0),
+                                otherDeductionsEnabled: overrideData.otherDeductionsEnabled !== undefined ? overrideData.otherDeductionsEnabled : (company.otherDeductionsEnabled === true || (overrideData.otherDeductions || 0) > 0),
+                                otherDeductionsMode: overrideData.otherDeductionsMode !== undefined ? overrideData.otherDeductionsMode : (company.otherDeductionsMode || "flat"),
+                                otherDeductionsValue: overrideData.otherDeductionsValue !== undefined ? overrideData.otherDeductionsValue : (overrideData.otherDeductions !== undefined ? overrideData.otherDeductions : (company.otherDeductionsValue ?? 0)),
                                 loan: overrideData.loan !== undefined ? overrideData.loan : 0,
                                 advance: overrideData.advance !== undefined ? overrideData.advance : 0,
                                 otherDeductions: overrideData.otherDeductions !== undefined ? overrideData.otherDeductions : 0,
@@ -3486,7 +3836,7 @@ export function PayrollPage() {
                         1. Benchmark Salary, Attendance &amp; Week Off
                       </div>
                       <Badge variant="outline" className="bg-sky-500/10 text-sky-600 border-sky-500/20 text-[10px] gap-1">
-                        <Clock className="h-3 w-3" /> Swift Roster Synced
+                        <Clock className="h-3 w-3" /> Shift Roster Synced
                       </Badge>
                     </div>
 
@@ -4078,12 +4428,113 @@ export function PayrollPage() {
                         </div>
                       </div>
 
+                      {/* TDS (Tax Deducted at Source) */}
+                      <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-rose-500" />
+                            <span className="text-xs font-bold">TDS (Income Tax)</span>
+                            <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 border-rose-500/20">
+                              Income Tax
+                            </Badge>
+                          </div>
+                          <Switch
+                            checked={editingRecord.tdsEnabled}
+                            onCheckedChange={(val) => setEditingRecord({ ...editingRecord, tdsEnabled: val })}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-1.5">
+                            <Select
+                              disabled={!editingRecord.tdsEnabled}
+                              value={editingRecord.tdsMode || "flat"}
+                              onValueChange={(val: any) => setEditingRecord({ ...editingRecord, tdsMode: val })}
+                            >
+                              <SelectTrigger className="h-7 w-24 text-[11px] font-medium">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="flat">₹ Flat</SelectItem>
+                                <SelectItem value="pctOfGross">% Gross</SelectItem>
+                                <SelectItem value="pctOfBasic">% Basic</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              disabled={!editingRecord.tdsEnabled}
+                              value={editingRecord.tdsValue}
+                              onChange={(e) => setEditingRecord({ ...editingRecord, tdsValue: Number(e.target.value) || 0, tds: Number(e.target.value) || 0 })}
+                              className="h-7 w-16 text-xs text-right font-semibold"
+                            />
+                            <span className="text-[10px] text-muted-foreground">
+                              {editingRecord.tdsMode === "pctOfGross" ? "% Gross" : editingRecord.tdsMode === "pctOfBasic" ? "% Basic" : "₹"}
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold text-rose-600">
+                            {editingRecord.tdsEnabled && editingComp ? `-${inr(editingComp.deductions.tds)}` : <span className="text-muted-foreground font-normal">₹0</span>}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Fine and Damages */}
+                      <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-amber-500" />
+                            <span className="text-xs font-bold">Fine &amp; Damages</span>
+                            <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/20">
+                              Disciplinary
+                            </Badge>
+                          </div>
+                          <Switch
+                            checked={editingRecord.fineAndDamagesEnabled}
+                            onCheckedChange={(val) => setEditingRecord({ ...editingRecord, fineAndDamagesEnabled: val })}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-1.5">
+                            <Select
+                              disabled={!editingRecord.fineAndDamagesEnabled}
+                              value={editingRecord.fineAndDamagesMode || "flat"}
+                              onValueChange={(val: any) => setEditingRecord({ ...editingRecord, fineAndDamagesMode: val })}
+                            >
+                              <SelectTrigger className="h-7 w-24 text-[11px] font-medium">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="flat">₹ Flat</SelectItem>
+                                <SelectItem value="pctOfGross">% Gross</SelectItem>
+                                <SelectItem value="pctOfBasic">% Basic</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              disabled={!editingRecord.fineAndDamagesEnabled}
+                              value={editingRecord.fineAndDamagesValue}
+                              onChange={(e) => setEditingRecord({ ...editingRecord, fineAndDamagesValue: Number(e.target.value) || 0 })}
+                              className="h-7 w-16 text-xs text-right font-semibold"
+                            />
+                            <span className="text-[10px] text-muted-foreground">
+                              {editingRecord.fineAndDamagesMode === "pctOfGross" ? "% Gross" : editingRecord.fineAndDamagesMode === "pctOfBasic" ? "% Basic" : "₹"}
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold text-rose-600">
+                            {editingRecord.fineAndDamagesEnabled && editingComp ? `-${inr(editingComp.deductions.fineAndDamages)}` : <span className="text-muted-foreground font-normal">₹0</span>}
+                          </span>
+                        </div>
+                      </div>
+
                       {/* LWF Switch & Amount */}
                       <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
                             <span className="h-2 w-2 rounded-full bg-teal-500" />
                             <span className="text-xs font-bold">Labour Fund (LWF)</span>
+                            <Badge variant="outline" className="text-[9px] bg-teal-500/10 text-teal-600 border-teal-500/20">
+                              Welfare
+                            </Badge>
                           </div>
                           <Switch
                             checked={editingRecord.lwfEnabled}
@@ -4092,24 +4543,89 @@ export function PayrollPage() {
                         </div>
                         <div className="flex items-center justify-between pt-1 border-t border-border/40">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-muted-foreground">₹</span>
+                            <Select
+                              disabled={!editingRecord.lwfEnabled}
+                              value={editingRecord.lwfMode || "flat"}
+                              onValueChange={(val: any) => setEditingRecord({ ...editingRecord, lwfMode: val })}
+                            >
+                              <SelectTrigger className="h-7 w-24 text-[11px] font-medium">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="flat">₹ Flat</SelectItem>
+                                <SelectItem value="pctOfGross">% Gross</SelectItem>
+                                <SelectItem value="pctOfBasic">% Basic</SelectItem>
+                              </SelectContent>
+                            </Select>
                             <Input
                               type="number"
+                              step="0.1"
                               disabled={!editingRecord.lwfEnabled}
-                              value={editingRecord.lwfAmountOverride}
-                              onChange={(e) => setEditingRecord({ ...editingRecord, lwfAmountOverride: Number(e.target.value) || 0 })}
-                              className="h-7 w-20 text-xs text-right font-bold text-foreground"
+                              value={editingRecord.lwfValue}
+                              onChange={(e) => setEditingRecord({ ...editingRecord, lwfValue: Number(e.target.value) || 0, lwfAmountOverride: Number(e.target.value) || 0 })}
+                              className="h-7 w-16 text-xs text-right font-semibold"
                             />
-                            <span className="text-[10px] text-muted-foreground">Amount</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {editingRecord.lwfMode === "pctOfGross" ? "% Gross" : editingRecord.lwfMode === "pctOfBasic" ? "% Basic" : "₹"}
+                            </span>
                           </div>
                           <span className="text-xs font-bold text-rose-600">
                             {editingRecord.lwfEnabled && editingComp ? `-${inr(editingComp.deductions.lwf)}` : <span className="text-muted-foreground font-normal">₹0</span>}
                           </span>
                         </div>
                       </div>
+
+                      {/* Other Deductions */}
+                      <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-slate-500" />
+                            <span className="text-xs font-bold">Other Deductions</span>
+                            <Badge variant="outline" className="text-[9px] bg-muted text-muted-foreground border-border">
+                              Misc
+                            </Badge>
+                          </div>
+                          <Switch
+                            checked={editingRecord.otherDeductionsEnabled}
+                            onCheckedChange={(val) => setEditingRecord({ ...editingRecord, otherDeductionsEnabled: val })}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-1.5">
+                            <Select
+                              disabled={!editingRecord.otherDeductionsEnabled}
+                              value={editingRecord.otherDeductionsMode || "flat"}
+                              onValueChange={(val: any) => setEditingRecord({ ...editingRecord, otherDeductionsMode: val })}
+                            >
+                              <SelectTrigger className="h-7 w-24 text-[11px] font-medium">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="flat">₹ Flat</SelectItem>
+                                <SelectItem value="pctOfGross">% Gross</SelectItem>
+                                <SelectItem value="pctOfBasic">% Basic</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              disabled={!editingRecord.otherDeductionsEnabled}
+                              value={editingRecord.otherDeductionsValue}
+                              onChange={(e) => setEditingRecord({ ...editingRecord, otherDeductionsValue: Number(e.target.value) || 0, otherDeductions: Number(e.target.value) || 0 })}
+                              className="h-7 w-16 text-xs text-right font-semibold"
+                            />
+                            <span className="text-[10px] text-muted-foreground">
+                              {editingRecord.otherDeductionsMode === "pctOfGross" ? "% Gross" : editingRecord.otherDeductionsMode === "pctOfBasic" ? "% Basic" : "₹"}
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold text-rose-600">
+                            {editingRecord.otherDeductionsEnabled && editingComp ? `-${inr(editingComp.deductions.otherDeductions)}` : <span className="text-muted-foreground font-normal">₹0</span>}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                       <div className="space-y-1">
                         <Label className="text-xs font-semibold">Advance Recovery (₹)</Label>
                         <Input
@@ -4125,15 +4641,6 @@ export function PayrollPage() {
                           type="number"
                           value={editingRecord.loan}
                           onChange={(e) => setEditingRecord({ ...editingRecord, loan: Number(e.target.value) || 0 })}
-                          className="h-8 text-xs font-semibold text-rose-600"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs font-semibold">Other Deductions (₹)</Label>
-                        <Input
-                          type="number"
-                          value={editingRecord.otherDeductions}
-                          onChange={(e) => setEditingRecord({ ...editingRecord, otherDeductions: Number(e.target.value) || 0 })}
                           className="h-8 text-xs font-semibold text-rose-600"
                         />
                       </div>
@@ -4208,64 +4715,38 @@ export function PayrollPage() {
                           <div className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border/50 pb-1">
                             Deductions
                           </div>
-                          <div className="space-y-1 text-[11px]">
-                            {editingComp.deductions.employeePF > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Employee PF</span>
-                                <span className="font-semibold">-{inr(editingComp.deductions.employeePF)}</span>
-                              </div>
-                            )}
-                            {editingComp.deductions.employeeESI > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Employee ESI</span>
-                                <span className="font-semibold">-{inr(editingComp.deductions.employeeESI)}</span>
-                              </div>
-                            )}
-                            {editingComp.deductions.professionalTax > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Prof. Tax (PT)</span>
-                                <span className="font-semibold">-{inr(editingComp.deductions.professionalTax)}</span>
-                              </div>
-                            )}
-                            {editingComp.deductions.lwf > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Labour Fund (LWF)</span>
-                                <span className="font-semibold">-{inr(editingComp.deductions.lwf)}</span>
-                              </div>
-                            )}
-                            {editingComp.deductions.advance > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Advance Recovery</span>
-                                <span className="font-semibold">-{inr(editingComp.deductions.advance)}</span>
-                              </div>
-                            )}
-                            {editingComp.deductions.loan > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Loan EMI</span>
-                                <span className="font-semibold">-{inr(editingComp.deductions.loan)}</span>
-                              </div>
-                            )}
-                            {editingComp.extraDeductions.map((ed) => (
-                              <div key={ed.id} className="flex justify-between text-rose-600">
-                                <span>{ed.name}</span>
-                                <span className="font-semibold">-{inr(ed.amount)}</span>
+                          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                            {editingComp.deductionsList.map((dl) => (
+                              <div key={dl.id} className="flex justify-between text-[11px]">
+                                <span className="text-muted-foreground truncate max-w-[170px]">{dl.name}</span>
+                                <span className="font-semibold text-rose-600">-{inr(dl.amount)}</span>
                               </div>
                             ))}
-                            {editingComp.totalDeductions === 0 && (
-                              <div className="text-[11px] text-muted-foreground italic">No active deductions</div>
-                            )}
                           </div>
                         </div>
 
-                        {/* Summary Bar */}
-                        <div className="flex justify-between items-center px-3 py-2 rounded-xl bg-muted/60 text-xs font-bold border border-border">
-                          <div>
-                            <span className="text-muted-foreground font-normal text-[10px] block">Gross Earned</span>
-                            <span>{inr(editingComp.gross)}</span>
+                        {/* Net Pay and CTC summary */}
+                        <div className="pt-2 border-t border-border space-y-1 text-xs">
+                          <div className="flex justify-between font-medium">
+                            <span className="text-muted-foreground">Gross Earned:</span>
+                            <span className="font-semibold text-foreground">{inr(editingComp.gross)}</span>
                           </div>
-                          <div className="text-right">
-                            <span className="text-muted-foreground font-normal text-[10px] block">Total Deductions</span>
-                            <span className="text-rose-600">-{inr(editingComp.totalDeductions)}</span>
+                          <div className="flex justify-between font-medium text-rose-600">
+                            <span>Total Deductions:</span>
+                            <span>-{inr(editingComp.totalDeductions)}</span>
+                          </div>
+                          <div className="flex justify-between font-bold text-base text-emerald-600 dark:text-emerald-400 pt-1 border-t border-border/40">
+                            <span>Net In-Hand:</span>
+                            <span>{inr(editingComp.net)}</span>
+                          </div>
+                          {editingRecord.weekOffEnabled && (
+                            <div className="text-[10px] text-muted-foreground">
+                              (Includes {editingRecord.weekOffDays} week offs credited into paid days)
+                            </div>
+                          )}
+                          <div className="flex justify-between font-bold text-foreground pt-1 border-t border-border/40">
+                            <span>Monthly CTC:</span>
+                            <span className="font-bold text-primary">{inr(editingComp.monthlyCTC)}</span>
                           </div>
                         </div>
 
@@ -4371,11 +4852,22 @@ export function PayrollPage() {
                         ptEnabled: editingRecord.ptEnabled,
                         ptAmountOverride: editingRecord.ptAmountOverride,
                         lwfEnabled: editingRecord.lwfEnabled,
-                        lwfAmountOverride: editingRecord.lwfAmountOverride,
-                        tds: editingRecord.tds,
+                        lwfMode: editingRecord.lwfMode,
+                        lwfValue: editingRecord.lwfValue,
+                        lwfAmountOverride: editingRecord.lwfValue,
+                        tdsEnabled: editingRecord.tdsEnabled,
+                        tdsMode: editingRecord.tdsMode,
+                        tdsValue: editingRecord.tdsValue,
+                        tds: editingRecord.tdsValue,
+                        fineAndDamagesEnabled: editingRecord.fineAndDamagesEnabled,
+                        fineAndDamagesMode: editingRecord.fineAndDamagesMode,
+                        fineAndDamagesValue: editingRecord.fineAndDamagesValue,
+                        otherDeductionsEnabled: editingRecord.otherDeductionsEnabled,
+                        otherDeductionsMode: editingRecord.otherDeductionsMode,
+                        otherDeductionsValue: editingRecord.otherDeductionsValue,
+                        otherDeductions: editingRecord.otherDeductionsValue,
                         loan: editingRecord.loan,
                         advance: editingRecord.advance,
-                        otherDeductions: editingRecord.otherDeductions,
                         notes: editingRecord.notes,
                       };
 

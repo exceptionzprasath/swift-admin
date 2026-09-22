@@ -239,8 +239,14 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
   if (computation.deductions.tds > 0) {
     deductionItems.push({ name: "TDS (INCOME TAX)", amount: computation.deductions.tds });
   }
+  if (computation.deductions.fineAndDamages > 0) {
+    deductionItems.push({ name: "FINE & DAMAGES", amount: computation.deductions.fineAndDamages });
+  }
   if (computation.deductions.lwf > 0) {
     deductionItems.push({ name: "LABOUR WELFARE (LWF)", amount: computation.deductions.lwf });
+  }
+  if (computation.deductions.otherDeductions > 0 && !deductionItems.some((d) => d.name.includes("OTHER"))) {
+    deductionItems.push({ name: "OTHER DEDUCTIONS", amount: computation.deductions.otherDeductions });
   }
   if (computation.deductions.advance > 0) {
     deductionItems.push({ name: "SALARY ADVANCE", amount: computation.deductions.advance });
@@ -330,7 +336,7 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
             {/* Left: Company Name & Title */}
             <div className="md:col-span-7 space-y-1.5">
               <h2 className="text-lg sm:text-2xl font-black font-display tracking-tight text-white drop-shadow-sm">
-                {company.legalName || company.name || "SWIFT HRMS"}
+                {company.legalName || company.name || "CreatonsHR"}
               </h2>
               <div
                 className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-extrabold tracking-wider uppercase border shadow-xs"

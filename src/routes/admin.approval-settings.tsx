@@ -32,7 +32,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/approval-settings")({
-  head: () => ({ meta: [{ title: "Approval Settings · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Approval Matrix & Workflows · CreatonsHR" }] }),
   component: CentralizedApprovalSettingsPage,
 });
 
@@ -2610,7 +2610,7 @@ function CentralizedApprovalSettingsPage() {
                 <div className="border-b-2 border-primary pb-2 flex items-center justify-between">
                   <div>
                     <div className="font-sans font-bold text-sm text-foreground">
-                      {(company as any)?.legalName || company?.name || "SWIFT HRMS ENTERPRISE"}
+                      {(company as any)?.legalName || company?.name || "CREATONSHR ENTERPRISE"}
                     </div>
                     <div className="font-sans text-[10px] text-muted-foreground">
                       {company?.address || "Technology Hub, Tamil Nadu, India"}

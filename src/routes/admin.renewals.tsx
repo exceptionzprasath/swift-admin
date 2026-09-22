@@ -3,7 +3,7 @@ import { BellRing } from "lucide-react";
 import { ComingSoonPage } from "@/components/coming-soon";
 
 export const Route = createFileRoute("/admin/renewals")({
-  head: () => ({ meta: [{ title: "Renewal Scheduler · SWIFT AI" }] }),
+  head: () => ({ meta: [{ title: "Renewal Scheduler · CreatonsHR" }] }),
   component: RenewalsPage,
 });
 

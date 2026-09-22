@@ -38,7 +38,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
 export const Route = createFileRoute("/admin/notices")({
-  head: () => ({ meta: [{ title: "Notice Board & Push Broadcast · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Notice Board & Push Broadcast · CreatonsHR" }] }),
   component: NoticesPage,
 });
 
@@ -208,7 +208,7 @@ function NoticesPage() {
     });
   }, [notices, searchQuery, filterPriority]);
 
-  const appDisplayName = (company.name || "SWIFT HR").toUpperCase();
+  const appDisplayName = (company.name || "CreatonsHR").toUpperCase();
 
   return (
     <div className="space-y-6 pb-12">
@@ -219,7 +219,7 @@ function NoticesPage() {
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20">
               <Radio className="h-3 w-3 animate-pulse text-red-500" /> Live HR Broadcast Center
             </span>
-            <span className="text-xs text-muted-foreground">· Swift 2.4</span>
+            <span className="text-xs text-muted-foreground">· CreatonsHR 2.4</span>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Publish notices to the entire company, a branch, a department, a role, or specific people.
