@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/theme";
 import {
   LayoutDashboard, Users, CalendarCheck, CalendarDays, Calculator, FileText, Settings,
   LogOut, Menu, Shield, Building2, ChevronDown, Network, Sparkles, BarChart3, Megaphone, Rocket, Package, ShieldCheck, CreditCard, BellRing, Scale, Clock, FolderLock, MessageSquareHeart,
-  SlidersHorizontal, Inbox,
+  SlidersHorizontal, Inbox, MessagesSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -30,6 +30,7 @@ const nav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox },
   { to: "/admin/ai", label: "SWIFT AI", icon: Sparkles },
+  { to: "/admin/team-chat", label: "Team Chat", icon: MessagesSquare },
   { to: "/admin/notices", label: "Notice Board", icon: Megaphone },
   { to: "/admin/employees", label: "Employees", icon: Users },
   { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket, comingSoon: true },
@@ -147,14 +148,16 @@ function AdminLayout() {
     </div>
   );
 
+  const isFullBleed = path === "/admin/team-chat" || path.startsWith("/admin/team-chat");
+
   return (
-    <div className="min-h-screen flex bg-background text-foreground transition-colors duration-200">
+    <div className={`flex bg-background text-foreground transition-colors duration-200 ${isFullBleed ? "h-screen max-h-screen overflow-hidden" : "min-h-screen"}`}>
       <aside className="hidden md:flex w-64 flex-col border-r border-sidebar-border bg-sidebar shrink-0 sticky top-0 h-screen overflow-hidden">
         {SidebarBody}
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 border-b border-navbar-border flex items-center justify-between px-4 sm:px-6 gap-3 sticky top-0 bg-navbar text-navbar-foreground backdrop-blur z-30 shadow-xs transition-colors duration-200">
+      <div className={`flex-1 flex flex-col min-w-0 ${isFullBleed ? "h-screen max-h-screen overflow-hidden" : ""}`}>
+        <header className="h-16 border-b border-navbar-border flex items-center justify-between px-4 sm:px-6 gap-3 shrink-0 bg-navbar text-navbar-foreground backdrop-blur z-30 shadow-xs transition-colors duration-200">
           <div className="flex items-center gap-3 min-w-0">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
@@ -216,12 +219,12 @@ function AdminLayout() {
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-4 sm:p-6 pb-24 md:pb-6 safe-bottom">
+        <main className={`flex-1 min-w-0 min-h-0 ${isFullBleed ? "h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden p-0" : "overflow-auto p-4 sm:p-6 pb-24 md:pb-6 safe-bottom"}`}>
           <Outlet />
         </main>
       </div>
       <SwiftAiCopilot role={isSuperAdmin ? "super_admin" : "admin"} />
-      <AdminInternalChat />
+      {!isFullBleed && <AdminInternalChat />}
     </div>
   );
 }
