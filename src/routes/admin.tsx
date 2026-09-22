@@ -37,6 +37,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
+  MessagesSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -93,6 +94,7 @@ const nav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox, badge: 2 },
   { to: "/admin/ai", label: "SWIFT AI", icon: Brain, badge: "AI" },
+  { to: "/admin/team-chat", label: "Team Chat", icon: MessagesSquare },
   { to: "/admin/notices", label: "Notice Board", icon: Megaphone },
   { to: "/admin/employees", label: "Employees", icon: Users },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
@@ -436,8 +438,10 @@ function AdminLayout() {
     </TooltipProvider>
   );
 
+  const isFullBleed = path === "/admin/team-chat" || path.startsWith("/admin/team-chat");
+
   return (
-    <div className="min-h-screen flex bg-background text-foreground transition-colors duration-200">
+    <div className={`flex bg-background text-foreground transition-colors duration-200 ${isFullBleed ? "h-screen max-h-screen overflow-hidden" : "min-h-screen"}`}>
       {/* Corner-Attached Desktop Sidebar */}
       <aside
         className={`hidden md:flex flex-col shrink-0 sticky top-0 h-screen transition-all duration-300 ease-in-out border-r border-sidebar-border bg-sidebar z-40 relative group/sidebar ${
@@ -461,8 +465,8 @@ function AdminLayout() {
       </aside>
 
       {/* Main App Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 sm:h-20 border-b border-border/40 flex items-center justify-between px-4 sm:px-8 gap-3 sm:gap-4 sticky top-0 bg-background/60 dark:bg-background/40 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50 z-30 shadow-xs transition-colors duration-200 relative">
+      <div className={`flex-1 flex flex-col min-w-0 ${isFullBleed ? "h-screen max-h-screen overflow-hidden" : ""}`}>
+        <header className="h-16 sm:h-20 border-b border-border/40 flex items-center justify-between px-4 sm:px-8 gap-3 sm:gap-4 sticky top-0 bg-background/60 dark:bg-background/40 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50 z-30 shadow-xs transition-colors duration-200 relative shrink-0">
           {/* Subtle bottom theme highlight glow */}
           <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent pointer-events-none" />
 
@@ -632,7 +636,6 @@ function AdminLayout() {
             </TooltipProvider>
           </div>
         </header>
-
         {/* Global Command / Quick Search Dialog (Ctrl+K) */}
         <CommandDialog open={searchDialogOpen} onOpenChange={setSearchDialogOpen}>
           <CommandInput placeholder="Search navigation, employees, actions... (ESC to close)" />
@@ -687,13 +690,19 @@ function AdminLayout() {
           </CommandList>
         </CommandDialog>
 
-        <main className="flex-1 overflow-auto p-4 sm:p-6 pb-24 md:pb-6 safe-bottom">
+        <main
+          className={`flex-1 min-w-0 min-h-0 ${
+            isFullBleed
+              ? "h-[calc(100vh-4rem)] sm:h-[calc(100vh-5rem)] max-h-[calc(100vh-4rem)] sm:max-h-[calc(100vh-5rem)] overflow-hidden p-0"
+              : "overflow-auto p-4 sm:p-6 pb-24 md:pb-6 safe-bottom"
+          }`}
+        >
           <Outlet />
         </main>
       </div>
 
       {!path.startsWith("/admin/ai") && <SwiftAiCopilot role={isSuperAdmin ? "super_admin" : "admin"} />}
-      <AdminInternalChat />
+      {!isFullBleed && <AdminInternalChat />}
     </div>
   );
 }

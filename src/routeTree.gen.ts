@@ -16,6 +16,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminVaultRouteImport } from './routes/admin.vault'
+import { Route as AdminTeamChatRouteImport } from './routes/admin.team-chat'
 import { Route as AdminSubscriptionRouteImport } from './routes/admin.subscription'
 import { Route as AdminShiftRosterRouteImport } from './routes/admin.shift-roster'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
@@ -75,6 +76,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const AdminVaultRoute = AdminVaultRouteImport.update({
   id: '/vault',
   path: '/vault',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminTeamChatRoute = AdminTeamChatRouteImport.update({
+  id: '/team-chat',
+  path: '/team-chat',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminSubscriptionRoute = AdminSubscriptionRouteImport.update({
@@ -234,6 +240,7 @@ export interface FileRoutesByFullPath {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/shift-roster': typeof AdminShiftRosterRoute
   '/admin/subscription': typeof AdminSubscriptionRoute
+  '/admin/team-chat': typeof AdminTeamChatRoute
   '/admin/vault': typeof AdminVaultRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -267,6 +274,7 @@ export interface FileRoutesByTo {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/shift-roster': typeof AdminShiftRosterRoute
   '/admin/subscription': typeof AdminSubscriptionRoute
+  '/admin/team-chat': typeof AdminTeamChatRoute
   '/admin/vault': typeof AdminVaultRoute
   '/admin': typeof AdminIndexRoute
 }
@@ -302,6 +310,7 @@ export interface FileRoutesById {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/shift-roster': typeof AdminShiftRosterRoute
   '/admin/subscription': typeof AdminSubscriptionRoute
+  '/admin/team-chat': typeof AdminTeamChatRoute
   '/admin/vault': typeof AdminVaultRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -338,6 +347,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/shift-roster'
     | '/admin/subscription'
+    | '/admin/team-chat'
     | '/admin/vault'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -371,6 +381,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/shift-roster'
     | '/admin/subscription'
+    | '/admin/team-chat'
     | '/admin/vault'
     | '/admin'
   id:
@@ -405,6 +416,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/shift-roster'
     | '/admin/subscription'
+    | '/admin/team-chat'
     | '/admin/vault'
     | '/admin/'
   fileRoutesById: FileRoutesById
@@ -466,6 +478,13 @@ declare module '@tanstack/react-router' {
       path: '/vault'
       fullPath: '/admin/vault'
       preLoaderRoute: typeof AdminVaultRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/team-chat': {
+      id: '/admin/team-chat'
+      path: '/team-chat'
+      fullPath: '/admin/team-chat'
+      preLoaderRoute: typeof AdminTeamChatRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/subscription': {
@@ -672,6 +691,7 @@ interface AdminRouteChildren {
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminShiftRosterRoute: typeof AdminShiftRosterRoute
   AdminSubscriptionRoute: typeof AdminSubscriptionRoute
+  AdminTeamChatRoute: typeof AdminTeamChatRoute
   AdminVaultRoute: typeof AdminVaultRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -702,6 +722,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminSettingsRoute: AdminSettingsRoute,
   AdminShiftRosterRoute: AdminShiftRosterRoute,
   AdminSubscriptionRoute: AdminSubscriptionRoute,
+  AdminTeamChatRoute: AdminTeamChatRoute,
   AdminVaultRoute: AdminVaultRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
