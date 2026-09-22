@@ -147,7 +147,7 @@ function evalDeduction(
       const map: Record<string, number> = {
         loan: inputs.loan,
         advance: inputs.advance,
-        otherDeductions: inputs.otherDeductions || 0,
+        otherDeductions: typeof inputs.otherDeductions === "number" ? inputs.otherDeductions : (inputs.otherDeductions?.amount ?? inputs.otherDeductions?.value ?? 0),
       };
       return asNum(map[d.inputKey || d.id]);
     }
@@ -567,6 +567,22 @@ export function computePayroll(opts: {
     variablePay: inputs.variablePay || 0,
   };
 
+  const deductionsList: { id: string; name: string; amount: number }[] = [];
+  if (employeePF > 0) deductionsList.push({ id: "pf", name: "Provident Fund (PF)", amount: employeePF });
+  if (employeeESI > 0) deductionsList.push({ id: "esi", name: "ESI (Employee)", amount: employeeESI });
+  if (professionalTax > 0) deductionsList.push({ id: "pt", name: "Professional Tax (PT)", amount: professionalTax });
+  if (tds > 0) deductionsList.push({ id: "tds", name: "TDS / Income Tax", amount: tds });
+  if (lwf > 0) deductionsList.push({ id: "lwf", name: "Labour Welfare Fund (LWF)", amount: lwf });
+  if (fineAndDamages > 0) deductionsList.push({ id: "fineAndDamages", name: "Fine & Damages", amount: fineAndDamages });
+  if (loan > 0) deductionsList.push({ id: "loan", name: "Loan EMI", amount: loan });
+  if (advance > 0) deductionsList.push({ id: "advance", name: "Salary Advance", amount: advance });
+  if (otherDeductions > 0) deductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: otherDeductions });
+  for (const ed of extraDeductionsList) {
+    if (!deductionsList.some((d) => d.id === ed.id)) {
+      deductionsList.push(ed);
+    }
+  }
+
   // Resolve structure & age
   const structure = resolveSalaryStructure(c, e);
   const age = e.dob ? Math.floor((Date.now() - new Date(e.dob).getTime()) / (365.25 * 24 * 3600 * 1000)) : undefined;
@@ -574,8 +590,9 @@ export function computePayroll(opts: {
   return {
     earnings,
     deductions,
+    deductionsList,
     extraDeductions: extraDeductionsList,
-    earningsList: earningsList.map(({ id, name, amount }) => ({ id, name, amount })),
+    earningsList: (earningsList || []).map(({ id, name, amount }) => ({ id, name, amount })),
     employerContrib,
     hourly,
     gross,

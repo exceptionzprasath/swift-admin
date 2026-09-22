@@ -309,7 +309,7 @@ export function PayrollPage() {
   // Keep custom start & end dates in sync whenever selectedMonth changes (unless custom mode is already modified)
   useEffect(() => {
     if (selectedMonth && !isCustomDateRange) {
-      const [y, m] = selectedMonth.split("-").map(Number);
+      const [y, m] = (selectedMonth || "").split("-").map(Number);
       if (y && m) {
         const lastDay = new Date(y, m, 0).getDate();
         setCustomStartDate(`${selectedMonth}-01`);
@@ -321,9 +321,9 @@ export function PayrollPage() {
   // Derived Range Working Days and Calendar Days
   const { totalRangeDays, rangeWorkingDays } = useMemo(() => {
     if (!isCustomDateRange || !customStartDate || !customEndDate) {
-      const [y, m] = selectedMonth.split("-").map(Number);
+      const [y, m] = (selectedMonth || "").split("-").map(Number);
       const days = new Date(y || 2026, m || 9, 0).getDate();
-      return { totalRangeDays: days, rangeWorkingDays: company.workingDaysPerMonth || 26 };
+      return { totalRangeDays: days, rangeWorkingDays: company?.workingDaysPerMonth || 26 };
     }
     try {
       const start = new Date(customStartDate);
@@ -430,7 +430,7 @@ export function PayrollPage() {
   const [benchmarkSalary, setBenchmarkSalary] = useState<number>(30000);
 
   // Payroll Run State
-  const [selectedEmpId, setSelectedEmpId] = useState<string>(employees[0]?.id || "");
+  const [selectedEmpId, setSelectedEmpId] = useState<string>(employees?.[0]?.id || "");
   const [searchEmployee, setSearchEmployee] = useState("");
   const [filterDepartment, setFilterDepartment] = useState("all");
 
@@ -608,7 +608,7 @@ export function PayrollPage() {
     // LWF (Labour Welfare Fund)
     const lwfEnabled = company.lwfEnabled !== false && company.lwfRules?.enabled !== false;
     const lwfMode = company.lwfMode || "flat";
-    const lwfValue = company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20;
+    const lwfValue = company.lwfValue ?? company.lwfRules?.employeeAmount ?? (company as any).lwfAmount ?? 20;
     const lwfAmount = lwfEnabled
       ? (lwfMode === "pctOfGross" ? Math.round(gross * (lwfValue / 100)) : lwfMode === "pctOfBasic" ? Math.round(basic * (lwfValue / 100)) : Math.round(lwfValue))
       : 0;
@@ -697,22 +697,22 @@ export function PayrollPage() {
   // Departments List
   const departments = useMemo(() => {
     const set = new Set<string>();
-    employees.forEach((e) => {
-      if (e.department) set.add(e.department);
+    (employees || []).forEach((e) => {
+      if (e?.department) set.add(e.department);
     });
     return Array.from(set);
   }, [employees]);
 
   // Filtered employees for monthly run
   const filteredEmployees = useMemo(() => {
-    return employees.filter((emp) => {
+    return (employees || []).filter((emp) => {
       if (searchEmployee.trim()) {
         const q = searchEmployee.toLowerCase();
-        const matchName = (emp.name || "").toLowerCase().includes(q);
-        const matchCode = (emp.empCode || "").toLowerCase().includes(q);
+        const matchName = (emp?.name || "").toLowerCase().includes(q);
+        const matchCode = (emp?.empCode || "").toLowerCase().includes(q);
         if (!matchName && !matchCode) return false;
       }
-      if (filterDepartment !== "all" && emp.department !== filterDepartment) return false;
+      if (filterDepartment !== "all" && emp?.department !== filterDepartment) return false;
       return true;
     });
   }, [employees, searchEmployee, filterDepartment]);
@@ -720,7 +720,7 @@ export function PayrollPage() {
   // Sample employee for live receipt preview
   const sampleEmployee: Employee = useMemo(() => {
     return (
-      employees[0] || {
+      (employees && employees[0]) || {
         id: "emp-sample",
         empCode: "SW009",
         name: "YUJI",
@@ -740,7 +740,7 @@ export function PayrollPage() {
 
   // Live Benchmark Sample Payroll Computation
   const liveBenchmarkComp: PayrollComputation = useMemo(() => {
-    const wd = company.workingDaysPerMonth || 26;
+    const wd = company?.workingDaysPerMonth || 26;
     return computePayroll({
       company,
       employee: { ...sampleEmployee, basic: benchmarkSalary },
@@ -758,10 +758,10 @@ export function PayrollPage() {
 
   // Monthly Register Calculations for all employees (reflecting per-employee overrides)
   const monthlyRegister = useMemo(() => {
-    const wd = company.workingDaysPerMonth || 26;
+    const wd = company?.workingDaysPerMonth || 26;
 
-    return filteredEmployees.map((emp) => {
-      const monthAtt = attendance.filter((a) => {
+    return (filteredEmployees || []).map((emp) => {
+      const monthAtt = (attendance || []).filter((a) => {
         if (a.employeeId !== emp.id && a.employeeName !== emp.name) return false;
         if (isCustomDateRange && customStartDate && customEndDate) {
           return a.date >= customStartDate && a.date <= customEndDate;
@@ -957,7 +957,7 @@ export function PayrollPage() {
       const effectiveLwf = {
         enabled: ov.lwfEnabled !== undefined ? ov.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false),
         mode: ov.lwfMode || company.lwfMode || "flat",
-        value: ov.lwfValue !== undefined ? ov.lwfValue : (ov.lwfAmountOverride !== undefined ? ov.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20)),
+        value: ov.lwfValue !== undefined ? ov.lwfValue : (ov.lwfAmountOverride !== undefined ? ov.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? (company as any).lwfAmount ?? 20)),
       };
 
       const effectiveOtherDeductions = {
@@ -2621,14 +2621,13 @@ export function PayrollPage() {
                           type="number"
                           step="0.1"
                           disabled={!benchmarkCalc.lwfEnabled}
-                          value={company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20}
+                          value={company.lwfValue ?? company.lwfRules?.employeeAmount ?? (company as any).lwfAmount ?? 20}
                           onChange={(e) => {
                             const val = Number(e.target.value) || 0;
                             setCompany({
                               lwfValue: val,
-                              lwfAmount: val,
                               lwfRules: { ...(company.lwfRules || { employeeAmount: 20 }), employeeAmount: val },
-                            });
+                            } as any);
                           }}
                           className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
                         />
@@ -3095,8 +3094,8 @@ export function PayrollPage() {
                                 ptAmountOverride: overrideData.ptAmountOverride !== undefined ? overrideData.ptAmountOverride : (comp.deductions.professionalTax || company.ptAmount || 208),
                                 lwfEnabled: overrideData.lwfEnabled !== undefined ? overrideData.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false),
                                 lwfMode: overrideData.lwfMode !== undefined ? overrideData.lwfMode : (company.lwfMode || "flat"),
-                                lwfValue: overrideData.lwfValue !== undefined ? overrideData.lwfValue : (overrideData.lwfAmountOverride !== undefined ? overrideData.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20)),
-                                lwfAmountOverride: overrideData.lwfAmountOverride !== undefined ? overrideData.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? company.lwfAmount ?? 20),
+                                lwfValue: overrideData.lwfValue !== undefined ? overrideData.lwfValue : (overrideData.lwfAmountOverride !== undefined ? overrideData.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? (company as any).lwfAmount ?? 20)),
+                                lwfAmountOverride: overrideData.lwfAmountOverride !== undefined ? overrideData.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? (company as any).lwfAmount ?? 20),
                                 tdsEnabled: overrideData.tdsEnabled !== undefined ? overrideData.tdsEnabled : (company.tdsEnabled === true || (overrideData.tds || 0) > 0),
                                 tdsMode: overrideData.tdsMode !== undefined ? overrideData.tdsMode : (company.tdsMode || "flat"),
                                 tdsValue: overrideData.tdsValue !== undefined ? overrideData.tdsValue : (overrideData.tds !== undefined ? overrideData.tds : (company.tdsValue ?? 0)),
@@ -3704,7 +3703,7 @@ export function PayrollPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {otBreakdownTarget.dailyOtRecords.map((d, i) => (
+                    {(otBreakdownTarget?.dailyOtRecords || []).map((d, i) => (
                       <tr key={i} className="hover:bg-muted/20">
                         <td className="px-4 py-2.5 font-medium text-foreground">{d.date}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{d.checkIn}</td>
@@ -4074,7 +4073,7 @@ export function PayrollPage() {
                       </div>
 
                       {/* Dynamic Custom Allowances */}
-                      {editingRecord.customAllowances.map((ca, idx) => (
+                      {(editingRecord.customAllowances || []).map((ca, idx) => (
                         <div key={ca.id} className="flex items-center justify-between p-2.5 rounded-xl bg-card border border-border/60 gap-2">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             <Switch
@@ -4701,7 +4700,7 @@ export function PayrollPage() {
                             Earned Components
                           </div>
                           <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                            {editingComp.earningsList.map((el) => (
+                            {(editingComp.earningsList || []).map((el) => (
                               <div key={el.id} className="flex justify-between text-[11px]">
                                 <span className="text-muted-foreground truncate max-w-[170px]">{el.name}</span>
                                 <span className="font-semibold text-foreground">{inr(el.amount)}</span>
@@ -4716,7 +4715,7 @@ export function PayrollPage() {
                             Deductions
                           </div>
                           <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                            {editingComp.deductionsList.map((dl) => (
+                            {(editingComp.deductionsList || []).map((dl) => (
                               <div key={dl.id} className="flex justify-between text-[11px]">
                                 <span className="text-muted-foreground truncate max-w-[170px]">{dl.name}</span>
                                 <span className="font-semibold text-rose-600">-{inr(dl.amount)}</span>
