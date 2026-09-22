@@ -70,7 +70,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/requests")({
-  head: () => ({ meta: [{ title: "Requests & Approvals Hub · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Requests & Approvals Hub · CreatonsHR" }] }),
   component: UnifiedRequestsHubPage,
 });
 

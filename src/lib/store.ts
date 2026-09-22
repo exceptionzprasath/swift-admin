@@ -342,6 +342,7 @@ export type Branch = {
   address: string;
   city: string;
   state: string;
+  pincode?: string;
   gstin?: string;
   isHead?: boolean;
   lat?: number;
@@ -422,6 +423,18 @@ export type Company = {
   payrollLockPassword?: string;
   ptEnabled?: boolean;
   ptAmount: number;
+  tdsEnabled?: boolean;
+  tdsMode?: "flat" | "pctOfGross" | "pctOfBasic";
+  tdsValue?: number;
+  fineAndDamagesEnabled?: boolean;
+  fineAndDamagesMode?: "flat" | "pctOfGross" | "pctOfBasic";
+  fineAndDamagesValue?: number;
+  lwfEnabled?: boolean;
+  lwfMode?: "flat" | "pctOfGross" | "pctOfBasic";
+  lwfValue?: number;
+  otherDeductionsEnabled?: boolean;
+  otherDeductionsMode?: "flat" | "pctOfGross" | "pctOfBasic";
+  otherDeductionsValue?: number;
   geofence: { lat: number; lng: number; radiusM: number };
   leaveTypes: LeaveType[];
   permissionTypes?: PermissionType[];
@@ -447,6 +460,8 @@ export type Company = {
   minimumWageMonthly?: number;
   /** Whether to include and credit weekly offs from Swift Roster into attendance and salary computation */
   includeWeekOff?: boolean;
+  /** Custom company designations configured for this tenant */
+  designations?: string[];
   grievanceTypes?: GrievanceTypeItem[];
   attendanceRequestCategories?: AttendanceRequestCategory[];
   documentTypes?: DocumentTypeItem[];
@@ -1164,6 +1179,8 @@ type State = {
   setTheme: (t: "light" | "dark") => void;
   setThemePalette: (paletteId: ThemePaletteId) => void;
   setCompany: (c: Partial<Company>) => void;
+  addDesignation: (name: string) => void;
+  deleteDesignation: (name: string) => void;
   addEmployee: (e: Omit<Employee, "id">) => Employee;
   updateEmployee: (id: string, patch: Partial<Employee>) => void;
   deleteEmployee: (id: string) => void;
@@ -1325,8 +1342,8 @@ export const defaultCompanyHolidaysList: CompanyHoliday[] = [
 
 const defaultCompany: Company = {
   themePalette: "copper-wave",
-  name: "SWIFT Demo Pvt Ltd",
-  legalName: "SWIFT Demo Private Limited",
+  name: "CreatonsHR Demo Pvt Ltd",
+  legalName: "CreatonsHR Demo Private Limited",
   address: "123 Business Ave, Suite 100, Bangalore, India",
   gstin: "29ABCDE1234F1Z5",
   workingDaysPerMonth: 26,
@@ -1360,6 +1377,7 @@ const defaultCompany: Company = {
   branches: [
     { id: "br-hq", name: "Head Office", code: "HQ", address: "123 Business Ave", city: "Erode", state: "Tamil Nadu", isHead: true, lat: 11.30564, lng: 77.70347, radiusMeters: 50, shiftStart: "09:00", shiftEnd: "18:00", weeklyOff: ["Sun"] },
   ],
+  designations: [],
 
   appointmentTemplate: `Dear {{name}},
 
@@ -1396,6 +1414,18 @@ HR Department
     { upTo: 999999999, amount: 200 },
   ],
   tdsRules: { enabled: false },
+  tdsEnabled: false,
+  tdsMode: "pctOfGross",
+  tdsValue: 10,
+  fineAndDamagesEnabled: false,
+  fineAndDamagesMode: "flat",
+  fineAndDamagesValue: 0,
+  lwfEnabled: false,
+  lwfMode: "flat",
+  lwfValue: 25,
+  otherDeductionsEnabled: false,
+  otherDeductionsMode: "flat",
+  otherDeductionsValue: 0,
   tdsSlabs: [
     { upTo: 300000, pct: 0 },
     { upTo: 700000, pct: 5 },
@@ -2589,6 +2619,34 @@ export const useStore = create<State>()(
           }
           return { company: nextCompany };
         }),
+      addDesignation: (name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        set((s) => {
+          const currentList = s.company.designations || [];
+          if (currentList.some((d) => d.toLowerCase() === trimmed.toLowerCase())) return s;
+          const nextDesignations = [...currentList, trimmed];
+          const nextCompany = { ...s.company, designations: nextDesignations };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+      },
+      deleteDesignation: (name: string) => {
+        set((s) => {
+          const nextDesignations = (s.company.designations || []).filter(
+            (d) => d.toLowerCase() !== name.trim().toLowerCase()
+          );
+          const nextCompany = { ...s.company, designations: nextDesignations };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+      },
       addEmployee: (e) => {
         const st = get();
         const company = st.company;
@@ -2658,7 +2716,7 @@ export const useStore = create<State>()(
                 employeeName: emp.name,
                 empCode: emp.empCode,
                 password: emp.password,
-                companyName: company.name || "SwiftHR",
+                companyName: company.name || "CreatonsHR",
               }),
             }).catch((err) => console.warn("[WelcomeEmail] Error sending email:", err));
           }

@@ -88,9 +88,6 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
     });
     const off2 = aiGuide.mode.on((m) => {
       setGuideActive(!!m.active);
-      if (m.active && !currentPath.startsWith("/admin/ai")) {
-        setOpen(true);
-      }
     });
     return () => {
       off1();

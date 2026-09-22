@@ -3,7 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { ComingSoonPage } from "@/components/coming-soon";
 
 export const Route = createFileRoute("/admin/compliance-docs")({
-  head: () => ({ meta: [{ title: "Compliance Documents · SWIFT AI" }] }),
+  head: () => ({ meta: [{ title: "Compliance Documents · CreatonsHR" }] }),
   component: ComplianceDocsPage,
 });
 

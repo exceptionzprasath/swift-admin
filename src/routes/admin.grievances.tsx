@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/grievances")({
-  head: () => ({ meta: [{ title: "Grievances & Employee Tickets · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Grievances & Employee Tickets · CreatonsHR" }] }),
   component: GrievancesPage,
 });
 

@@ -1,5 +1,16 @@
 import type { Company, Employee, EarningComponent, DeductionComponent, SalaryStructure } from "./store";
 
+export type DeductionCalculationMode = "flat" | "pctOfGross" | "pctOfBasic";
+
+export type DeductionInput =
+  | number
+  | {
+      enabled?: boolean;
+      mode?: DeductionCalculationMode;
+      value?: number;
+      amount?: number;
+    };
+
 export type PayrollInputs = {
   daysWorked: number;
   otHours: number;
@@ -13,8 +24,44 @@ export type PayrollInputs = {
   nightHours?: number;
   variablePay?: number;
   otherEarnings?: number;
-  otherDeductions?: number;
+  otherDeductions?: DeductionInput;
+  tds?: DeductionInput;
+  fineAndDamages?: DeductionInput;
+  lwf?: DeductionInput;
 };
+
+export function evaluateDeductionValue(
+  input: DeductionInput | undefined,
+  gross: number,
+  earnedBasic: number,
+  defaultEnabled = true,
+  defaultMode: DeductionCalculationMode = "flat",
+  defaultValue = 0
+): number {
+  if (input === undefined || input === null) {
+    if (!defaultEnabled) return 0;
+    if (defaultMode === "pctOfGross") return Math.max(0, Math.round(gross * (defaultValue / 100)));
+    if (defaultMode === "pctOfBasic") return Math.max(0, Math.round(earnedBasic * (defaultValue / 100)));
+    return Math.max(0, Math.round(defaultValue));
+  }
+
+  if (typeof input === "number") {
+    return Math.max(0, Math.round(input));
+  }
+
+  if (input.enabled === false) return 0;
+
+  const mode = input.mode || defaultMode;
+  const val = input.value !== undefined ? input.value : (input.amount !== undefined ? input.amount : defaultValue);
+
+  if (mode === "pctOfGross") {
+    return Math.max(0, Math.round(gross * (val / 100)));
+  }
+  if (mode === "pctOfBasic") {
+    return Math.max(0, Math.round(earnedBasic * (val / 100)));
+  }
+  return Math.max(0, Math.round(val));
+}
 
 export type PayrollComputation = ReturnType<typeof computePayroll>;
 
@@ -394,26 +441,56 @@ export function computePayroll(opts: {
   }
 
   // 4. Labour Welfare Fund (LWF)
+  let lwf = 0;
+  let employerLwf = 0;
   const lwfInfo = resolveLwf(c, e);
-  const lwf = (lwfInfo.enabled && gross > 0) ? lwfInfo.employee : 0;
-  const employerLwf = (lwfInfo.enabled && gross > 0) ? lwfInfo.employer : 0;
+
+  if (inputs.lwf !== undefined) {
+    lwf = evaluateDeductionValue(inputs.lwf, gross, earnedBasic, c.lwfEnabled !== false, c.lwfMode || "flat", c.lwfValue ?? (lwfInfo.enabled ? lwfInfo.employee : 0));
+    employerLwf = lwf > 0 ? (lwfInfo.employer || lwf * 2) : 0;
+  } else if (c.lwfEnabled !== undefined) {
+    lwf = evaluateDeductionValue(undefined, gross, earnedBasic, c.lwfEnabled !== false, c.lwfMode || "flat", c.lwfValue ?? (lwfInfo.enabled ? lwfInfo.employee : 0));
+    employerLwf = lwf > 0 ? (lwfInfo.employer || lwf * 2) : 0;
+  } else {
+    lwf = (lwfInfo.enabled && gross > 0) ? lwfInfo.employee : 0;
+    employerLwf = (lwfInfo.enabled && gross > 0) ? lwfInfo.employer : 0;
+  }
 
   // 5. TDS (Tax Deducted at Source)
   const taxableAnnual = gross * 12;
-  const tds = c.tdsRules?.enabled ? Math.round(tdsFromSlabs(taxableAnnual, c.tdsSlabs || []) / 12) : 0;
+  const slabTds = c.tdsRules?.enabled ? Math.round(tdsFromSlabs(taxableAnnual, c.tdsSlabs || []) / 12) : 0;
+  let tds = 0;
 
-  // 6. Loans, Advance & Other Ad-hoc Deductions
+  if (inputs.tds !== undefined) {
+    tds = evaluateDeductionValue(inputs.tds, gross, earnedBasic, c.tdsEnabled !== false, c.tdsMode || (slabTds > 0 ? "flat" : "pctOfGross"), c.tdsValue ?? slabTds);
+  } else if (c.tdsEnabled !== undefined) {
+    tds = evaluateDeductionValue(undefined, gross, earnedBasic, c.tdsEnabled !== false, c.tdsMode || (slabTds > 0 ? "flat" : "pctOfGross"), c.tdsValue ?? slabTds);
+  } else {
+    tds = slabTds;
+  }
+
+  // 6. Fine and Damages
+  let fineAndDamages = 0;
+  if (inputs.fineAndDamages !== undefined) {
+    fineAndDamages = evaluateDeductionValue(inputs.fineAndDamages, gross, earnedBasic, c.fineAndDamagesEnabled !== false, c.fineAndDamagesMode || "flat", c.fineAndDamagesValue ?? 0);
+  } else if (c.fineAndDamagesEnabled) {
+    fineAndDamages = evaluateDeductionValue(undefined, gross, earnedBasic, true, c.fineAndDamagesMode || "flat", c.fineAndDamagesValue ?? 0);
+  }
+
+  // 7. Loans, Advance & Other Ad-hoc Deductions
   const loan = inputs.loan || 0;
   const advance = inputs.advance || 0;
-  const otherDeductions = inputs.otherDeductions || 0;
+
+  let otherDeductions = 0;
+  if (inputs.otherDeductions !== undefined) {
+    otherDeductions = evaluateDeductionValue(inputs.otherDeductions, gross, earnedBasic, c.otherDeductionsEnabled !== false, c.otherDeductionsMode || "flat", c.otherDeductionsValue ?? 0);
+  } else if (c.otherDeductionsEnabled) {
+    otherDeductions = evaluateDeductionValue(undefined, gross, earnedBasic, true, c.otherDeductionsMode || "flat", c.otherDeductionsValue ?? 0);
+  }
 
   const extraDeductionsList: { id: string; name: string; amount: number }[] = [];
 
   // Attendance Proration & Loss of Pay (LOP):
-  // Note: All salary components (Basic, HRA, OA, CA, LTA) are ALREADY prorated by prorateFactor (paidDays / wd).
-  // Thus, gross earnings already only include the days worked (e.g. ₹28,847 for 15 days out of 26 on ₹50,000 salary).
-  // Deducting LOP here as an extra deduction would penalize the employee twice for the same absent days.
-  // We keep absentDays and lopAmount as informative metrics on the computation object.
   const absentDays = Math.max(0, wd - paidDays);
   const dailyRate = c.lopBasis === "gross"
     ? fixedGross / wd
@@ -422,6 +499,9 @@ export function computePayroll(opts: {
 
   if (otherDeductions > 0) {
     extraDeductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: otherDeductions });
+  }
+  if (fineAndDamages > 0) {
+    extraDeductionsList.push({ id: "fineAndDamages", name: "Fine & Damages", amount: fineAndDamages });
   }
 
   // Configured extra deductions
@@ -439,8 +519,10 @@ export function computePayroll(opts: {
     professionalTax,
     tds,
     lwf,
+    fineAndDamages,
     loan,
     advance,
+    otherDeductions,
   };
 
   const totalDeductions =
@@ -449,9 +531,11 @@ export function computePayroll(opts: {
     professionalTax +
     tds +
     lwf +
+    fineAndDamages +
     loan +
     advance +
-    extraDeductionsList.reduce((sum, item) => sum + item.amount, 0);
+    otherDeductions +
+    extraDeductionsList.filter((x) => x.id !== "otherDeductions" && x.id !== "fineAndDamages").reduce((sum, item) => sum + item.amount, 0);
 
   // NET SALARY PAYABLE IN-HAND
   const net = Math.max(0, gross - totalDeductions);
@@ -562,6 +646,8 @@ export function explainPayroll(company: Company, employee: Employee, p: PayrollC
   if (p.deductions.lwf > 0 || p.employerContrib.employerLwf > 0) out.push({ id: "lwf", text: `${p.lwfSource} — state-specific Labour Welfare Fund. Employer contribution is typically 2×–3× employee.` });
   if (p.deductions.loan > 0) out.push({ id: "loan", text: `Loan EMI as per sanctioned repayment plan.` });
   if (p.deductions.advance > 0) out.push({ id: "advance", text: `Salary advance recovery this cycle.` });
+  if (p.deductions.fineAndDamages > 0) out.push({ id: "fineAndDamages", text: `Fine & Damages = ₹${Math.round(p.deductions.fineAndDamages).toLocaleString("en-IN")} penalty / property damage recovery deduction.` });
+  if (p.deductions.otherDeductions > 0) out.push({ id: "otherDeductions", text: `Other Deductions = ₹${Math.round(p.deductions.otherDeductions).toLocaleString("en-IN")} ad-hoc authorized deduction.` });
   if (p.absentDays && p.absentDays > 0) {
     out.push({ id: "lop", text: `Attendance Proration: ${p.daysWorked} of ${wd} working days worked (${p.absentDays} absent day(s)). Gross earnings are prorated accordingly without duplicate deduction.` });
   }

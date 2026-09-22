@@ -1138,7 +1138,7 @@ export function DocWordEditor({
                       )}
                       <div>
                         <h2 className="text-base font-bold text-slate-950 tracking-tight leading-tight">
-                          {letterhead.companyName || company?.name || "SWIFT Technologies Pvt. Ltd."}
+                          {letterhead.companyName || company?.name || "CreatonsHR Technologies Pvt. Ltd."}
                         </h2>
                         <p className="text-[11px] text-slate-500 font-medium">
                           {letterhead.tagline || "Enterprise Workforce & People Operations"}
@@ -1149,7 +1149,7 @@ export function DocWordEditor({
                       </div>
                     </div>
                     <div className="text-right text-[10px] text-slate-500 space-y-0.5 shrink-0">
-                      <p className="font-semibold text-slate-700">{letterhead.email || company?.email || "hr@swift.io"}</p>
+                      <p className="font-semibold text-slate-700">{letterhead.email || company?.email || "hr@creatonshr.com"}</p>
                       <p>{letterhead.phone || company?.phone || "+91 44 2876 5400"}</p>
                       <p className="font-mono text-[9px] text-indigo-600 font-semibold">
                         CIN: {letterhead.cin || "U72200TN2026PTC109823"}
@@ -1170,18 +1170,18 @@ export function DocWordEditor({
                         />
                       ) : (
                         <div className="h-10 w-10 mx-auto rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-xs mb-1.5">
-                          {letterhead.companyName ? letterhead.companyName.charAt(0) : "S"}
+                          {letterhead.companyName ? letterhead.companyName.charAt(0) : "C"}
                         </div>
                       )
                     )}
                     <h2 className="text-lg font-bold uppercase tracking-wider text-slate-900">
-                      {letterhead.companyName || company?.name || "SWIFT TECHNOLOGIES PVT. LTD."}
+                      {letterhead.companyName || company?.name || "CREATONSHR TECHNOLOGIES PVT. LTD."}
                     </h2>
                     <p className="text-[11px] text-slate-500 max-w-md mx-auto">
                       {letterhead.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096"}
                     </p>
                     <p className="text-[10px] text-slate-400 font-medium">
-                      Email: {letterhead.email || company?.email || "hr@swift.io"} | Web: {letterhead.website || "www.swift-technologies.com"}
+                      Email: {letterhead.email || company?.email || "hr@creatonshr.com"} | Web: {letterhead.website || "www.creatonshr.com"}
                     </p>
                     <div className="pt-1 flex items-center justify-center gap-2">
                       <div className="h-px bg-slate-300 w-16" />
@@ -1205,12 +1205,12 @@ export function DocWordEditor({
                         />
                       ) : (
                         <div className="h-10 w-10 rounded-lg bg-white text-indigo-900 font-black flex items-center justify-center text-base shadow-xs">
-                          {letterhead.companyName ? letterhead.companyName.charAt(0) : "S"}
+                          {letterhead.companyName ? letterhead.companyName.charAt(0) : "C"}
                         </div>
                       )}
                       <div>
                         <h2 className="text-base font-bold tracking-tight">
-                          {letterhead.companyName || company?.name || "SWIFT Technologies"}
+                          {letterhead.companyName || company?.name || "CreatonsHR"}
                         </h2>
                         <p className="text-[11px] text-indigo-200">
                           {letterhead.tagline || "Official Corporate Human Resources Document"}
@@ -1219,7 +1219,7 @@ export function DocWordEditor({
                     </div>
                     <div className="text-right text-[10px] text-slate-300 font-mono">
                       <p>Ref: DOC-{new Date().getFullYear()}-OFFICIAL</p>
-                      <p className="text-indigo-300 font-sans">{letterhead.website || "www.swift-technologies.com"}</p>
+                      <p className="text-indigo-300 font-sans">{letterhead.website || "www.creatonshr.com"}</p>
                     </div>
                   </div>
                 )}
@@ -1229,14 +1229,14 @@ export function DocWordEditor({
                   <div className="border-t-4 border-indigo-600 pt-3 flex items-center justify-between">
                     <div>
                       <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                        {letterhead.companyName || company?.name || "SWIFT Technologies"}
+                        {letterhead.companyName || company?.name || "CreatonsHR"}
                       </h2>
                       <p className="text-[10px] text-slate-500">
                         {letterhead.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096"}
                       </p>
                     </div>
                     <span className="text-[11px] font-mono text-indigo-600 font-semibold">
-                      {letterhead.email || company?.email || "hr@swift.io"}
+                      {letterhead.email || company?.email || "hr@creatonshr.com"}
                     </span>
                   </div>
                 )}
@@ -1443,8 +1443,8 @@ export function DocWordEditor({
                       )}
                     </div>
                     <div className="flex items-center justify-between text-slate-400 text-[9px] pt-1 border-t border-slate-100">
-                      <span>{footer.registeredOfficeText || `${company?.name || "SWIFT Technologies"} | Reg. Office: ${company?.address || "OMR, Chennai"}`}</span>
-                      <span>Doc Ref: SWIFT-DIGITAL-AUTH</span>
+                      <span>{footer.registeredOfficeText || `${company?.name || "CreatonsHR"} | Reg. Office: ${company?.address || "OMR, Chennai"}`}</span>
+                      <span>Doc Ref: CREATONSHR-DIGITAL-AUTH</span>
                     </div>
                   </div>
                 )}
@@ -1458,7 +1458,7 @@ export function DocWordEditor({
                       </div>
                       <div>
                         <p className="font-semibold text-slate-800 text-[10px]">
-                          Digitally Verified Document · SWIFT HRMS
+                          Digitally Verified Document · CreatonsHR
                         </p>
                         <p className="font-mono text-[9px] text-slate-500">
                           Auth Hash: 4f8a-9e12-d28c-771a · Timestamp: {new Date().toLocaleDateString()}
@@ -1475,7 +1475,7 @@ export function DocWordEditor({
                 {footer.style === "split" && (
                   <div className="grid grid-cols-3 gap-2 text-[9px] text-slate-500">
                     <div>
-                      <p className="font-bold text-slate-700">{company?.name || "SWIFT Technologies"}</p>
+                      <p className="font-bold text-slate-700">{company?.name || "CreatonsHR"}</p>
                       <p>Corporate HR Compliance</p>
                     </div>
                     <div className="text-center">
@@ -1654,7 +1654,7 @@ export function DocWordEditor({
                   <Input
                     value={letterhead.companyName || company?.name || ""}
                     onChange={(e) => onLetterheadChange({ ...letterhead, companyName: e.target.value })}
-                    placeholder="SWIFT Technologies Pvt. Ltd."
+                    placeholder="CreatonsHR Technologies Pvt. Ltd."
                     className="h-8 text-xs"
                   />
                 </div>
@@ -1681,7 +1681,7 @@ export function DocWordEditor({
                   <Input
                     value={letterhead.email || company?.email || ""}
                     onChange={(e) => onLetterheadChange({ ...letterhead, email: e.target.value })}
-                    placeholder="hr@swift.io"
+                    placeholder="hr@creatonshr.com"
                     className="h-8 text-xs"
                   />
                 </div>
@@ -1708,7 +1708,7 @@ export function DocWordEditor({
                   <Input
                     value={letterhead.website || ""}
                     onChange={(e) => onLetterheadChange({ ...letterhead, website: e.target.value })}
-                    placeholder="www.swift-technologies.com"
+                    placeholder="www.creatonshr.com"
                     className="h-8 text-xs"
                   />
                 </div>
@@ -1839,7 +1839,7 @@ export function DocWordEditor({
                   <Input
                     value={footer.registeredOfficeText || ""}
                     onChange={(e) => onFooterChange({ ...footer, registeredOfficeText: e.target.value })}
-                    placeholder="SWIFT Technologies Pvt. Ltd. | Registered Office: Tower B, OMR, Chennai"
+                    placeholder="CreatonsHR Technologies Pvt. Ltd. | Registered Office: Tower B, OMR, Chennai"
                     className="h-8 text-xs"
                   />
                 </div>

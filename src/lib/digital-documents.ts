@@ -745,7 +745,7 @@ export function resolveDocumentTags(
 export const INITIAL_DIGITAL_DOCS: DigitalDocument[] = [
   {
     id: "doc-101",
-    docNumber: "SWIFT-DOC-2026-001",
+    docNumber: "CHR-DOC-2026-001",
     name: "Appointment Letter",
     documentType: "Appointment Letter",
     isCustomName: false,
@@ -756,10 +756,10 @@ export const INITIAL_DIGITAL_DOCS: DigitalDocument[] = [
     department: "Sales",
     employeeEmail: "jawahar.k@swift.io",
     contentHtml: `<p>Date: <strong>10 September 2026</strong></p>
-<p>Ref: <strong>SWIFT/HR/2026/DOC-1024</strong></p>
+<p>Ref: <strong>CHR/HR/2026/DOC-1024</strong></p>
 <br/>
 <p>Dear <strong>Jawahar Kumar</strong>,</p>
-<p>With reference to your acceptance of our offer, we are pleased to appoint you as <strong>Business Development Manager</strong> in the <strong>Sales</strong> department at <strong>SWIFT Technologies Pvt. Ltd.</strong> with effect from <strong>01 October 2026</strong>.</p>
+<p>With reference to your acceptance of our offer, we are pleased to appoint you as <strong>Business Development Manager</strong> in the <strong>Sales</strong> department at <strong>CreatonsHR Technologies Pvt. Ltd.</strong> with effect from <strong>01 October 2026</strong>.</p>
 <br/>
 <p>Your Employee Code is <strong>EMP-1024</strong>. Your consolidated CTC is <strong>₹ 8,40,000</strong> per annum. The detailed salary components and allowances are structured below.</p>
 <br/>
@@ -843,7 +843,7 @@ export const INITIAL_DIGITAL_DOCS: DigitalDocument[] = [
         id: "log-2",
         timestamp: "10 Sep 2026, 2:31 PM",
         actor: "System",
-        actorRole: "SWIFT Engine",
+        actorRole: "CreatonsHR Engine",
         action: "Sent for Approval",
         details: "Initiated sequential approval workflow (Step 1: HR Manager)",
         type: "send",
@@ -873,7 +873,7 @@ export const INITIAL_DIGITAL_DOCS: DigitalDocument[] = [
   },
   {
     id: "doc-102",
-    docNumber: "SWIFT-DOC-2026-002",
+    docNumber: "CHR-DOC-2026-002",
     name: "Non-Disclosure & Confidentiality Agreement",
     documentType: "Non-Disclosure Agreement (NDA)",
     isCustomName: false,
@@ -886,9 +886,9 @@ export const INITIAL_DIGITAL_DOCS: DigitalDocument[] = [
     contentHtml: `<p style="text-align: center;"><strong>NON-DISCLOSURE & CONFIDENTIALITY UNDERTAKING</strong></p>
 <p>Date: <strong>08 September 2026</strong></p>
 <br/>
-<p>I, <strong>Arun Kumar</strong> (Employee Code: <strong>EMP-1018</strong>), engaged as <strong>Senior Full Stack Engineer</strong> with <strong>SWIFT Technologies Pvt. Ltd.</strong>, hereby confirm that I have reviewed, understood, and agreed to abide by the company's data security covenants, trade secret confidentiality, and intellectual property assignment guidelines.</p>
+<p>I, <strong>Arun Kumar</strong> (Employee Code: <strong>EMP-1018</strong>), engaged as <strong>Senior Full Stack Engineer</strong> with <strong>CreatonsHR Technologies Pvt. Ltd.</strong>, hereby confirm that I have reviewed, understood, and agreed to abide by the company's data security covenants, trade secret confidentiality, and intellectual property assignment guidelines.</p>
 <br/>
-<p>I acknowledge that unauthorized duplication, distribution, or disclosure of SWIFT codebase, client databases, or authentication secrets constitutes a material breach and grounds for immediate legal remedy.</p>`,
+<p>I acknowledge that unauthorized duplication, distribution, or disclosure of CreatonsHR codebase, client databases, or authentication secrets constitutes a material breach and grounds for immediate legal remedy.</p>`,
     delivery: {
       channel: "app",
       recipientEmail: "arun.k@swift.io",
@@ -915,7 +915,7 @@ export const INITIAL_DIGITAL_DOCS: DigitalDocument[] = [
   },
   {
     id: "doc-103",
-    docNumber: "SWIFT-DOC-2026-003",
+    docNumber: "CHR-DOC-2026-003",
     name: "Salary Certificate",
     documentType: "Salary Certificate",
     isCustomName: false,
@@ -928,7 +928,7 @@ export const INITIAL_DIGITAL_DOCS: DigitalDocument[] = [
     contentHtml: `<p style="text-align: center;"><strong>TO WHOMSOEVER IT MAY CONCERN</strong></p>
 <p style="text-align: center;">Date: <strong>05 September 2026</strong></p>
 <br/>
-<p>This is to certify that <strong>Rahul Sundaram</strong> (Employee ID: <strong>EMP-1005</strong>) is a confirmed, full-time employee of <strong>SWIFT Technologies Pvt. Ltd.</strong>, designated as <strong>Lead UI/UX Designer</strong>.</p>
+<p>This is to certify that <strong>Rahul Sundaram</strong> (Employee ID: <strong>EMP-1005</strong>) is a confirmed, full-time employee of <strong>CreatonsHR Technologies Pvt. Ltd.</strong>, designated as <strong>Lead UI/UX Designer</strong>.</p>
 <br/>
 <p>He has been with our organization since <strong>15 March 2023</strong>. His current gross remuneration is <strong>₹ 14,40,000</strong> per annum. This certificate is issued on the employee's request for bank processing.</p>`,
     delivery: {
@@ -954,7 +954,7 @@ export const INITIAL_DIGITAL_DOCS: DigitalDocument[] = [
   },
   {
     id: "doc-104",
-    docNumber: "SWIFT-DOC-2026-004",
+    docNumber: "CHR-DOC-2026-004",
     name: "Warning Letter — Unauthorized Absence",
     documentType: "Warning Letter",
     isCustomName: true,
@@ -1038,7 +1038,7 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
         });
         const id = `doc-${Date.now()}`;
         const count = get().documents.length + 1;
-        const docNumber = `SWIFT-DOC-2026-${String(count).padStart(3, "0")}`;
+        const docNumber = `CHR-DOC-2026-${String(count).padStart(3, "0")}`;
 
         const initialLog: AuditLogItem = {
           id: `log-${Date.now()}`,
@@ -1238,7 +1238,7 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
               newLogs.push({
                 id: `log-ack-${Date.now()}`,
                 timestamp: nowFormatted,
-                actor: "SWIFT Delivery Engine",
+                actor: "CreatonsHR Delivery Engine",
                 actorRole: "System",
                 action: "Awaiting Employee Acknowledgement",
                 details: `All required approvals completed. Notification dispatched to ${d.employeeName} (${d.employeeEmail})`,
@@ -1401,7 +1401,7 @@ export const useDigitalDocStore = create<DigitalDocStoreState>()(
               {
                 id: `log-done-${Date.now()}`,
                 timestamp: nowFormatted,
-                actor: "SWIFT Engine",
+                actor: "CreatonsHR Engine",
                 actorRole: "System",
                 action: "Workflow Completed",
                 details: `Document status transitioned to COMPLETED. Stored in employee vault.`,

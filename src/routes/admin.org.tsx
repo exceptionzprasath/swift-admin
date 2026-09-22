@@ -24,7 +24,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/org")({
-  head: () => ({ meta: [{ title: "Organization Structure · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Organization Structure · CreatonsHR" }] }),
   component: OrgPage,
 });
 

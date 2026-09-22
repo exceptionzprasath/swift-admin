@@ -28,7 +28,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/documents")({
-  head: () => ({ meta: [{ title: "AI Documents · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "AI Documents · CreatonsHR" }] }),
   component: DocumentsPage,
 });
 

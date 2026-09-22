@@ -110,7 +110,7 @@ export function drawCorporateHeader(
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
-  doc.text((c.name || "SWIFT HRMS").toUpperCase(), textLeft, 13);
+  doc.text((c.name || "CreatonsHR").toUpperCase(), textLeft, 13);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
@@ -387,7 +387,11 @@ export async function generateSalarySlipPDF(
   if ((deductions.employeeESI || 0) > 0) deductionItems.push({ name: "ESIC (ESI)", amount: deductions.employeeESI });
   if ((deductions.professionalTax || 0) > 0) deductionItems.push({ name: "PROFESSIONAL TAX", amount: deductions.professionalTax });
   if ((deductions.tds || 0) > 0) deductionItems.push({ name: "TDS (INCOME TAX)", amount: deductions.tds });
+  if ((deductions.fineAndDamages || 0) > 0) deductionItems.push({ name: "FINE & DAMAGES", amount: deductions.fineAndDamages });
   if ((deductions.lwf || 0) > 0) deductionItems.push({ name: "LABOUR WELFARE", amount: deductions.lwf });
+  if ((deductions.otherDeductions || 0) > 0 && !deductionItems.some((d) => d.name.includes("OTHER"))) {
+    deductionItems.push({ name: "OTHER DEDUCTIONS", amount: deductions.otherDeductions });
+  }
   if ((deductions.advance || 0) > 0) deductionItems.push({ name: "SALARY ADVANCE", amount: deductions.advance });
   if ((deductions.loan || 0) > 0) deductionItems.push({ name: "LOAN EMI DEDUCTION", amount: deductions.loan });
 
@@ -447,7 +451,7 @@ export async function generateSalarySlipPDF(
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(letterheadUrl ? 10.5 : 12);
-  doc.text((company.legalName || company.name || "SWIFT HRMS").toUpperCase(), 18, currentHeaderY + (letterheadUrl ? 6.5 : 7.5));
+  doc.text((company.legalName || company.name || "CreatonsHR").toUpperCase(), 18, currentHeaderY + (letterheadUrl ? 6.5 : 7.5));
 
   // Subtitle Badge (Left)
   doc.setFontSize(7.5);
@@ -712,7 +716,7 @@ export async function generateSalarySlipPDF(
     doc.setTextColor(148, 163, 184);
     doc.setFont("helvetica", "normal");
     doc.text(
-      "This is a computer-generated salary slip and time card issued via SWIFT HRMS and does not require a physical signature.",
+      "This is a computer-generated salary slip and time card issued via CreatonsHR and does not require a physical signature.",
       14,
       yFooter + 15
     );
@@ -729,7 +733,7 @@ export async function generateSalarySlipPDF(
     doc.setTextColor(148, 163, 184);
     doc.setFont("helvetica", "normal");
     doc.text(
-      "This is a computer-generated salary slip and time card issued via SWIFT HRMS and does not require a physical signature.",
+      "This is a computer-generated salary slip and time card issued via CreatonsHR and does not require a physical signature.",
       14,
       yFooter + 3.5
     );
@@ -791,7 +795,7 @@ export async function generateAppointmentPDFDoc(
   doc.setFontSize(8.5);
   doc.setTextColor(71, 85, 105);
   doc.text(`Date: ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}`, 14, 39);
-  doc.text(`Ref: SWIFT/APT/${e.empCode || "EMP"}`, 196, 39, { align: "right" });
+  doc.text(`Ref: CREATONSHR/APT/${e.empCode || "EMP"}`, 196, 39, { align: "right" });
 
   const body = (c.appointmentTemplate || "")
     .replaceAll("{{name}}", e.name || "")
@@ -868,7 +872,7 @@ export async function generateAppointmentPDFDoc(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
-  doc.text("For " + (c.legalName || c.name || "SWIFT ENTERPRISE"), 14, yEnd);
+  doc.text("For " + (c.legalName || c.name || "CREATONSHR ENTERPRISE"), 14, yEnd);
 
   const authSig = prepAssets?.authorisedSignatoryDataUrl;
   if (authSig) {
@@ -937,7 +941,7 @@ export async function generateAppointmentPDFDoc(
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
   doc.setFont("helvetica", "normal");
-  doc.text(`Generated via SWIFT HRMS · Confidential Employment Document · ${c.legalName || c.name}`, 14, 290);
+  doc.text(`Generated via CreatonsHR · Confidential Employment Document · ${c.legalName || c.name}`, 14, 290);
   doc.text(`Page 1 of 1`, 196, 290, { align: "right" });
 
   return doc;

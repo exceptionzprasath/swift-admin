@@ -29,7 +29,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 
 export const Route = createFileRoute("/admin/settings")({
-  head: () => ({ meta: [{ title: "Company Settings · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Company Settings · CreatonsHR" }] }),
   component: SettingsPage,
 });
 

@@ -38,14 +38,29 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { downloadEmployeeTemplate, parseEmployeeCsvText, generateEmployeePassword, downloadBulkEmployeesExcel } from "@/lib/bulk-employee";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
+import { DesignationSelect } from "@/components/designation-select";
 import { toast } from "sonner";
-import { aiNotify, setAiGuideMode } from "@/lib/ai-guide-bus";
 import { motion, AnimatePresence } from "framer-motion";
+import { INDIAN_STATES } from "@/lib/india-locations";
 
 export const Route = createFileRoute("/admin/employees")({
-  head: () => ({ meta: [{ title: "Employees · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Employees · CreatonsHR" }] }),
   component: EmployeesPage,
 });
+
+export const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "Unknown"] as const;
+export const EMERGENCY_RELATIONS = [
+  "Spouse",
+  "Father",
+  "Mother",
+  "Brother",
+  "Sister",
+  "Son",
+  "Daughter",
+  "Friend",
+  "Guardian",
+  "Other",
+] as const;
 
 const empty: Omit<Employee, "id"> = {
   empCode: "",
@@ -224,8 +239,6 @@ function EmployeesPage() {
   const openWizard = (draftId?: string) => {
     setResumeDraftId(draftId ?? null);
     setOpen(true);
-    setAiGuideMode({ active: true, scope: "employee-registration" });
-    aiNotify({ title: "SWIFT AI is guiding employee onboarding", body: "Step-by-step registration wizard. Progress auto-saves.", kind: "info" });
   };
 
   return (
@@ -267,14 +280,14 @@ function EmployeesPage() {
             <FileSpreadsheet className="mr-2 h-4 w-4" /> Bulk Upload
           </Button>
 
-          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setAiGuideMode({ active: false }); }}>
+          <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button className="bg-gradient-brand text-white shadow-glow" onClick={() => openWizard()}>
                 <Plus className="mr-2 h-4 w-4" /> Add Employee
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl h-[80vh] max-h-[calc(100vh-40px)] p-0 overflow-hidden">
-              <RegistrationWizard key={resumeDraftId ?? "new"} draftId={resumeDraftId} onDone={() => { setOpen(false); setAiGuideMode({ active: false }); }} />
+            <DialogContent className="max-w-4xl w-[95vw] sm:w-full h-[85vh] max-h-[85vh] flex flex-col p-0 overflow-hidden rounded-3xl border border-primary/25 shadow-2xl bg-card/95 backdrop-blur-xl transition-colors">
+              <RegistrationWizard key={resumeDraftId ?? "new"} draftId={resumeDraftId} onDone={() => setOpen(false)} />
             </DialogContent>
           </Dialog>
         </div>
@@ -580,18 +593,25 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
   return (
     <div className="grid grid-cols-[260px_1fr] h-full max-h-full overflow-hidden">
       {/* Rail */}
-      <aside className="border-r border-border bg-muted/30 p-3 flex flex-col overflow-hidden h-full max-h-full">
-        <DialogHeader className="mb-3 px-1">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4 text-primary" /> Guided Registration
-          </DialogTitle>
-        </DialogHeader>
-        <Progress value={((step + 1) / flow.length) * 100} className="h-1.5 mb-1" />
-        <div className="text-[10px] text-muted-foreground mb-3 flex items-center gap-1">
-          <Save className="h-3 w-3" />
-          {savedAt ? `Autosaved ${new Date(savedAt).toLocaleTimeString()}` : "Draft not saved yet"}
+      <aside className="border-r border-border/80 bg-muted/40 p-3 flex flex-col overflow-hidden h-full max-h-full">
+        <div className="px-2 pt-1 pb-3 mb-2 border-b border-primary/15 relative overflow-hidden shrink-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent rounded-2xl">
+          <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full bg-primary/15 blur-2xl pointer-events-none" />
+          <DialogHeader className="mb-2">
+            <DialogTitle className="flex items-center gap-2 text-sm font-bold font-display text-foreground">
+              <div className="h-7 w-7 rounded-lg bg-gradient-brand text-white flex items-center justify-center shrink-0 shadow-glow ring-1 ring-primary/25">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <span>Guided Registration</span>
+            </DialogTitle>
+          </DialogHeader>
+          <Progress value={((step + 1) / flow.length) * 100} className="h-1.5 mb-1.5 bg-primary/15" />
+          <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+            <Save className="h-3 w-3 text-primary" />
+            {savedAt ? `Autosaved ${new Date(savedAt).toLocaleTimeString()}` : "Draft not saved yet"}
+          </div>
         </div>
-        <ol className="space-y-0.5 text-sm overflow-y-auto pr-1 flex-1">
+
+        <ol className="space-y-1 text-sm overflow-y-auto pr-1 flex-1">
           {flow.map((s, i) => {
             const Icon = s.icon;
             const done = i < step;
@@ -600,23 +620,37 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
               <li key={s.key}>
                 <button
                   onClick={() => setStep(i)}
-                  className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${active ? "bg-gradient-brand text-white shadow-soft" : done ? "text-emerald-600 hover:bg-muted" : "text-muted-foreground hover:bg-muted"
-                    }`}
+                  className={`w-full relative flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-left transition-all ${
+                    active
+                      ? "bg-gradient-brand text-white shadow-glow font-semibold"
+                      : done
+                      ? "text-emerald-600 dark:text-emerald-400 hover:bg-muted font-medium"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
                 >
-                  <div className={`h-5 w-5 rounded-full grid place-items-center text-[10px] font-semibold shrink-0 ${active ? "bg-white/20 text-white" : done ? "bg-emerald-500 text-white" : "bg-muted-foreground/15"
-                    }`}>
+                  <div
+                    className={`h-5 w-5 rounded-full grid place-items-center text-[10px] font-bold shrink-0 ${
+                      active
+                        ? "bg-white/20 text-white"
+                        : done
+                        ? "bg-emerald-500 text-white"
+                        : "bg-muted-foreground/15 text-muted-foreground"
+                    }`}
+                  >
                     {done ? "✓" : i + 1}
                   </div>
                   <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate text-[12px]">{s.title}</span>
+                  <span className="truncate text-xs">{s.title}</span>
                 </button>
               </li>
             );
           })}
         </ol>
-        <div className="mt-3 pt-3 text-[11px] text-muted-foreground border-t border-border">
-          <div className="flex items-center gap-1"><Sparkles className="h-3 w-3 text-primary" /> SWIFT AI Onboarding</div>
-          <div className="mt-1">Documents and signatures are moved to the employee app.</div>
+        <div className="mt-3 pt-3 text-[11px] text-muted-foreground border-t border-border/80">
+          <div className="flex items-center gap-1 font-semibold text-foreground">
+            <Sparkles className="h-3 w-3 text-primary" /> Creatons AI Onboarding
+          </div>
+          <div className="mt-0.5 text-[10.5px]">Documents & signatures are handled via employee app.</div>
         </div>
       </aside>
 
@@ -756,7 +790,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                     <div>
                       <Label>Gender</Label>
                       <Select value={form.gender || ""} onValueChange={(v) => setForm({ ...form, gender: v as Employee["gender"] })}>
-                        <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select Gender" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="male">Male</SelectItem>
                           <SelectItem value="female">Female</SelectItem>
@@ -764,7 +798,17 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                         </SelectContent>
                       </Select>
                     </div>
-                    <Field label="Blood Group" value={form.bloodGroup || ""} onChange={(v) => setForm({ ...form, bloodGroup: v })} placeholder="O+" />
+                    <div>
+                      <Label>Blood Group</Label>
+                      <Select value={form.bloodGroup || ""} onValueChange={(v) => setForm({ ...form, bloodGroup: v })}>
+                        <SelectTrigger><SelectValue placeholder="Select Blood Group" /></SelectTrigger>
+                        <SelectContent>
+                          {BLOOD_GROUPS.map((bg) => (
+                            <SelectItem key={bg} value={bg}>{bg}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <Field label="Emergency Contact" value={form.emergencyContact || ""} onChange={(v) => setForm({ ...form, emergencyContact: v })} />
                     <div className="col-span-2">
                       <Label>Address</Label>
@@ -783,7 +827,17 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                     <Field label="Address Line 1" value={form.addressLine1 || ""} onChange={(v) => setForm({ ...form, addressLine1: v })} />
                     <Field label="Address Line 2" value={form.addressLine2 || ""} onChange={(v) => setForm({ ...form, addressLine2: v })} />
                     <Field label="City" value={form.city || ""} onChange={(v) => setForm({ ...form, city: v })} />
-                    <Field label="State" value={form.state || ""} onChange={(v) => setForm({ ...form, state: v })} />
+                    <div>
+                      <Label>State</Label>
+                      <Select value={form.state || ""} onValueChange={(v) => setForm({ ...form, state: v })}>
+                        <SelectTrigger><SelectValue placeholder="Select State" /></SelectTrigger>
+                        <SelectContent className="max-h-56">
+                          {INDIAN_STATES.map((st) => (
+                            <SelectItem key={st} value={st}>{st}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <Field label="Country" value={form.country || "India"} onChange={(v) => setForm({ ...form, country: v })} />
                     <Field label="Pincode" value={form.pincode || ""} onChange={(v) => setForm({ ...form, pincode: v })} />
                     <Field label="UAN" value={form.uan || ""} onChange={(v) => setForm({ ...form, uan: v })} />
@@ -801,7 +855,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                     <div>
                       <Label>Marital Status</Label>
                       <Select value={form.maritalStatus || ""} onValueChange={(v) => setForm({ ...form, maritalStatus: v as Employee["maritalStatus"] })}>
-                        <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select Marital Status" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="single">Single</SelectItem>
                           <SelectItem value="married">Married</SelectItem>
@@ -815,7 +869,17 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                     <Field label="Mother's Name" value={form.motherName || ""} onChange={(v) => setForm({ ...form, motherName: v })} />
                     <Field label="Spouse Name" value={form.spouseName || ""} onChange={(v) => setForm({ ...form, spouseName: v })} />
                     <Field label="Emergency Contact Name" value={form.emergencyName || ""} onChange={(v) => setForm({ ...form, emergencyName: v })} />
-                    <Field label="Emergency Relation" value={form.emergencyRelation || ""} onChange={(v) => setForm({ ...form, emergencyRelation: v })} />
+                    <div>
+                      <Label>Emergency Relation</Label>
+                      <Select value={form.emergencyRelation || ""} onValueChange={(v) => setForm({ ...form, emergencyRelation: v })}>
+                        <SelectTrigger><SelectValue placeholder="Select Relation" /></SelectTrigger>
+                        <SelectContent>
+                          {EMERGENCY_RELATIONS.map((rel) => (
+                            <SelectItem key={rel} value={rel}>{rel}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <Field label="Emergency Phone (Alt)" value={form.emergencyPhone2 || ""} onChange={(v) => setForm({ ...form, emergencyPhone2: v })} />
                   </div>
                   <RepeatingList<FamilyMember>
@@ -971,7 +1035,12 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                   <StepHead icon={Briefcase} title="Employment, Fixed Salary & Compliance" subtitle="Fixed salary, statutory deductions, eligibility dates, and role assignment." />
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Department *" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
-                    <Field label="Designation *" value={form.designation} onChange={(v) => setForm({ ...form, designation: v })} />
+                    <DesignationSelect
+                      label="Designation *"
+                      value={form.designation}
+                      onChange={(v) => setForm({ ...form, designation: v })}
+                      triggerClassName="h-9"
+                    />
                     <div>
                       <Label>Employment Type</Label>
                       <Select
@@ -2427,209 +2496,254 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-6 rounded-3xl border border-border shadow-2xl">
-        <DialogHeader className="pb-2 border-b border-border">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2 font-display text-lg font-bold">
-              <Pencil className="h-5 w-5 text-primary" />
-              <span>Edit Employee: {employee.name} ({employee.empCode})</span>
-              {employee.employmentType === "contract" && (
-                <Badge
-                  variant="outline"
-                  className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
-                >
-                  Contract
-                </Badge>
-              )}
-            </DialogTitle>
-            {renderEmployeeStatusBadge(form.status)}
-          </div>
-          <DialogDescription className="text-xs">
-            Modify any employee profile information, statutory numbers, compensation, geofencing, or background verification.
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Tab Strip */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 pt-1 border-b border-border/60">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                  active
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+      <DialogContent className="max-w-4xl w-[95vw] sm:w-full max-h-[90vh] flex flex-col p-0 overflow-hidden rounded-3xl border border-primary/25 shadow-2xl bg-card/95 backdrop-blur-xl transition-colors">
+        {/* Theme-Adaptive Gradient Header */}
+        <div className="px-6 pt-5 pb-4 border-b border-primary/15 shrink-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent relative overflow-hidden">
+          <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-primary/15 blur-3xl pointer-events-none" />
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-lg sm:text-xl font-display font-bold flex items-center gap-3 text-foreground">
+                <div className="h-10 w-10 rounded-2xl bg-gradient-brand text-white flex items-center justify-center shrink-0 shadow-glow ring-2 ring-primary/20">
+                  <Pencil className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span>Edit Employee: {employee.name}</span>
+                    <Badge variant="outline" className="text-xs font-mono font-semibold border-primary/30 text-primary bg-primary/10">
+                      {employee.empCode}
+                    </Badge>
+                    {employee.employmentType === "contract" && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
+                      >
+                        Contract
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </DialogTitle>
+              {renderEmployeeStatusBadge(form.status)}
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground mt-1">
+              Modify employee profile, statutory KYC, compensation, shift rules, geofencing, or background verification.
+            </DialogDescription>
+          </DialogHeader>
         </div>
 
-        <div className="space-y-4 py-2 min-h-[380px]">
-          {/* TAB 1: PROFILE & IDENTITY */}
-          {activeTab === "identity" && (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Photo & System Credentials</div>
-                  <span className="text-[11px] text-primary font-medium bg-primary/10 px-2.5 py-0.5 rounded-full">
-                    Face registration is optional here (completed on mobile app)
-                  </span>
-                </div>
-                <div className="flex flex-col sm:flex-row items-center gap-6">
-                  <PhotoCapture
-                    value={form.photoDataUrl}
-                    onChange={(u) => setForm({ ...form, photoDataUrl: u, faceRegistered: !!u })}
-                    name={form.name}
-                    size="lg"
-                  />
-                  <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">Full Name *</Label>
-                      <Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        {/* Tab Strip with animated sliding pill */}
+        <div className="px-6 pt-3 shrink-0 border-b border-border/60 bg-muted/20">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2.5 relative">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`relative z-10 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors duration-200 cursor-pointer ${
+                    active
+                      ? "text-primary-foreground font-bold shadow-glow"
+                      : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  {active && (
+                    <motion.div
+                      layoutId="editEmpTabPill"
+                      className="absolute inset-0 bg-gradient-brand rounded-xl"
+                      transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                    />
+                  )}
+                  <Icon className="h-3.5 w-3.5 relative z-10" />
+                  <span className="relative z-10">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15 }}
+              className="space-y-4"
+            >
+              {/* TAB 1: PROFILE & IDENTITY */}
+              {activeTab === "identity" && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Photo & System Credentials</div>
+                      <span className="text-[11px] text-primary font-medium bg-primary/10 px-2.5 py-0.5 rounded-full">
+                        Face registration is optional here (completed on mobile app)
+                      </span>
                     </div>
-                    <div>
-                      <Label className="text-xs">Employee Code *</Label>
-                      <Input value={form.empCode || ""} onChange={(e) => setForm({ ...form, empCode: e.target.value })} />
-                    </div>
-                    <div className="sm:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <KeyRound className="h-3.5 w-3.5 text-primary" />
-                          <span className="text-xs font-semibold">Auto-Generated Password</span>
+                    <div className="flex flex-col sm:flex-row items-center gap-6">
+                      <PhotoCapture
+                        value={form.photoDataUrl}
+                        onChange={(u) => setForm({ ...form, photoDataUrl: u, faceRegistered: !!u })}
+                        name={form.name}
+                        size="lg"
+                      />
+                      <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs">Full Name *</Label>
+                          <Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px] bg-card border-border"
-                            onClick={() => {
-                              const newP = generateEmployeePassword();
-                              setForm({ ...form, password: newP });
-                              toast.info(`Generated: ${newP}`);
-                            }}
-                          >
-                            <RefreshCw className="h-2.5 w-2.5 mr-1 text-primary" /> Regenerate
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px] bg-card border-border"
-                            onClick={() => {
-                              if (form.password) {
-                                navigator.clipboard.writeText(form.password);
-                                toast.success("Password copied!");
-                              }
-                            }}
-                          >
-                            <Copy className="h-2.5 w-2.5 mr-1 text-primary" /> Copy
-                          </Button>
+                        <div>
+                          <Label className="text-xs">Employee Code *</Label>
+                          <Input value={form.empCode || ""} onChange={(e) => setForm({ ...form, empCode: e.target.value })} />
+                        </div>
+                        <div className="sm:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <KeyRound className="h-3.5 w-3.5 text-primary" />
+                              <span className="text-xs font-semibold">Auto-Generated Password</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-6 px-2 text-[10px] bg-card border-border"
+                                onClick={() => {
+                                  const newP = generateEmployeePassword();
+                                  setForm({ ...form, password: newP });
+                                  toast.info(`Generated: ${newP}`);
+                                }}
+                              >
+                                <RefreshCw className="h-2.5 w-2.5 mr-1 text-primary" /> Regenerate
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-6 px-2 text-[10px] bg-card border-border"
+                                onClick={() => {
+                                  if (form.password) {
+                                    navigator.clipboard.writeText(form.password);
+                                    toast.success("Password copied!");
+                                  }
+                                }}
+                              >
+                                <Copy className="h-2.5 w-2.5 mr-1 text-primary" /> Copy
+                              </Button>
+                            </div>
+                          </div>
+                          <Input
+                            type="text"
+                            value={form.password || ""}
+                            onChange={(e) => setForm({ ...form, password: e.target.value })}
+                            placeholder="Auto-generated password"
+                            className="font-mono text-xs font-semibold bg-card border-border h-8"
+                          />
+                          <p className="text-[10.5px] text-muted-foreground">Credentials and mobile login steps will be automatically sent to the employee's email.</p>
+                        </div>
+                        <div>
+                          <Label className="text-xs">Employee Status</Label>
+                          <Select value={form.status || "active"} onValueChange={(v) => setForm({ ...form, status: v as any })}>
+                            <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="suspended">Suspended</SelectItem>
+                              <SelectItem value="relieved">Releived</SelectItem>
+                              <SelectItem value="terminated">Terminated</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
-                      <Input
-                        type="text"
-                        value={form.password || ""}
-                        onChange={(e) => setForm({ ...form, password: e.target.value })}
-                        placeholder="Auto-generated password"
-                        className="font-mono text-xs font-semibold bg-card border-border h-8"
-                      />
-                      <p className="text-[10.5px] text-muted-foreground">Credentials and mobile login steps will be automatically sent to the employee's email.</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Employee Status</Label>
-                      <Select value={form.status || "active"} onValueChange={(v) => setForm({ ...form, status: v as any })}>
-                        <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="suspended">Suspended</SelectItem>
-                          <SelectItem value="relieved">Releived</SelectItem>
-                          <SelectItem value="terminated">Terminated</SelectItem>
-                        </SelectContent>
-                      </Select>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Personal Demographics</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-xs">Gender</Label>
-                    <Select value={form.gender || "male"} onValueChange={(v) => setForm({ ...form, gender: v as any })}>
-                      <SelectTrigger className="text-xs"><SelectValue placeholder="Select gender" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="male">Male</SelectItem>
-                        <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Date of Birth</Label>
-                    <Input type="date" value={form.dob || ""} onChange={(e) => setForm({ ...form, dob: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Blood Group</Label>
-                    <Input placeholder="e.g. O+, A+, B+" value={form.bloodGroup || ""} onChange={(e) => setForm({ ...form, bloodGroup: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Marital Status</Label>
-                    <Select value={form.maritalStatus || "single"} onValueChange={(v) => setForm({ ...form, maritalStatus: v as any })}>
-                      <SelectTrigger className="text-xs"><SelectValue placeholder="Select status" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="single">Single</SelectItem>
-                        <SelectItem value="married">Married</SelectItem>
-                        <SelectItem value="divorced">Divorced</SelectItem>
-                        <SelectItem value="widowed">Widowed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Nationality</Label>
-                    <Input value={form.nationality || "Indian"} onChange={(e) => setForm({ ...form, nationality: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Spouse Name (if married)</Label>
-                    <Input value={form.spouseName || ""} onChange={(e) => setForm({ ...form, spouseName: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Father's Name</Label>
-                    <Input value={form.fatherName || ""} onChange={(e) => setForm({ ...form, fatherName: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Mother's Name</Label>
-                    <Input value={form.motherName || ""} onChange={(e) => setForm({ ...form, motherName: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Personal Email (Alt)</Label>
-                    <Input type="email" value={form.about || ""} onChange={(e) => setForm({ ...form, about: e.target.value })} placeholder="personal@gmail.com" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Emergency Contact Person</Label>
-                    <Input value={form.emergencyName || form.emergencyContact || ""} onChange={(e) => setForm({ ...form, emergencyName: e.target.value, emergencyContact: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Emergency Relation</Label>
-                    <Input placeholder="Father / Spouse / Sibling" value={form.emergencyRelation || ""} onChange={(e) => setForm({ ...form, emergencyRelation: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Emergency Contact Number</Label>
-                    <Input type="tel" value={form.emergencyPhone2 || ""} onChange={(e) => setForm({ ...form, emergencyPhone2: e.target.value })} />
+                  <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Personal Demographics</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <Label className="text-xs">Gender</Label>
+                        <Select value={form.gender || "male"} onValueChange={(v) => setForm({ ...form, gender: v as any })}>
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Date of Birth</Label>
+                        <Input type="date" value={form.dob || ""} onChange={(e) => setForm({ ...form, dob: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Blood Group</Label>
+                        <Select value={form.bloodGroup || ""} onValueChange={(v) => setForm({ ...form, bloodGroup: v })}>
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="Select Blood Group" /></SelectTrigger>
+                          <SelectContent>
+                            {BLOOD_GROUPS.map((bg) => (
+                              <SelectItem key={bg} value={bg}>{bg}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Marital Status</Label>
+                        <Select value={form.maritalStatus || "single"} onValueChange={(v) => setForm({ ...form, maritalStatus: v as any })}>
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="Select status" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="single">Single</SelectItem>
+                            <SelectItem value="married">Married</SelectItem>
+                            <SelectItem value="divorced">Divorced</SelectItem>
+                            <SelectItem value="widowed">Widowed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Nationality</Label>
+                        <Input value={form.nationality || "Indian"} onChange={(e) => setForm({ ...form, nationality: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Spouse Name (if married)</Label>
+                        <Input value={form.spouseName || ""} onChange={(e) => setForm({ ...form, spouseName: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Father's Name</Label>
+                        <Input value={form.fatherName || ""} onChange={(e) => setForm({ ...form, fatherName: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Mother's Name</Label>
+                        <Input value={form.motherName || ""} onChange={(e) => setForm({ ...form, motherName: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Personal Email (Alt)</Label>
+                        <Input type="email" value={form.about || ""} onChange={(e) => setForm({ ...form, about: e.target.value })} placeholder="personal@gmail.com" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Emergency Contact Person</Label>
+                        <Input value={form.emergencyName || form.emergencyContact || ""} onChange={(e) => setForm({ ...form, emergencyName: e.target.value, emergencyContact: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Emergency Relation</Label>
+                        <Select value={form.emergencyRelation || ""} onValueChange={(v) => setForm({ ...form, emergencyRelation: v })}>
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="Select Relation" /></SelectTrigger>
+                          <SelectContent>
+                            {EMERGENCY_RELATIONS.map((rel) => (
+                              <SelectItem key={rel} value={rel}>{rel}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Emergency Contact Number</Label>
+                        <Input type="tel" value={form.emergencyPhone2 || ""} onChange={(e) => setForm({ ...form, emergencyPhone2: e.target.value })} />
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
           {/* TAB 2: EMPLOYMENT & SALARY */}
           {activeTab === "employment" && (
@@ -2671,7 +2785,11 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                   </div>
                   <div>
                     <Label className="text-xs">Designation</Label>
-                    <Input value={form.designation || ""} onChange={(e) => setForm({ ...form, designation: e.target.value })} />
+                    <DesignationSelect
+                      value={form.designation || ""}
+                      onChange={(v) => setForm({ ...form, designation: v })}
+                      triggerClassName="text-xs h-9"
+                    />
                   </div>
                   <div>
                     <Label className="text-xs">Assigned Predefined Role</Label>
@@ -2795,7 +2913,14 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                   </div>
                   <div>
                     <Label className="text-xs">State</Label>
-                    <Input value={form.state || ""} onChange={(e) => setForm({ ...form, state: e.target.value })} />
+                    <Select value={form.state || ""} onValueChange={(v) => setForm({ ...form, state: v })}>
+                      <SelectTrigger className="text-xs"><SelectValue placeholder="Select State" /></SelectTrigger>
+                      <SelectContent className="max-h-56">
+                        {INDIAN_STATES.map((st) => (
+                          <SelectItem key={st} value={st}>{st}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label className="text-xs">Country</Label>
@@ -3445,15 +3570,17 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
               </div>
             </div>
           )}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 pt-3 border-t border-border mt-2">
+        <div className="shrink-0 flex items-center justify-between border-t border-border bg-card/95 backdrop-blur px-6 py-3.5">
           <Button variant="outline" onClick={onClose} className="rounded-xl text-xs h-9">
             Cancel
           </Button>
           <div className="flex items-center gap-2">
-            <Button onClick={handleSave} className="rounded-xl text-xs h-9 bg-primary text-primary-foreground font-bold shadow-xs">
+            <Button onClick={handleSave} className="rounded-xl text-xs h-9 bg-gradient-brand text-white font-bold shadow-glow">
               <Save className="h-3.5 w-3.5 mr-1.5" /> Save Changes
             </Button>
           </div>
@@ -3464,7 +3591,7 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
 }
 
 function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { addEmployee, company, employees, roles } = useStore();
+  const { addEmployee, company, employees, roles, branches, shifts } = useStore();
   const [file, setFile] = useState<File | null>(null);
   const [parsed, setParsed] = useState<{
     employees: Omit<Employee, "id">[];
@@ -3484,7 +3611,7 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
     reader.onload = (event) => {
       const buffer = event.target?.result as ArrayBuffer;
       if (buffer) {
-        const result = parseEmployeeCsvText(buffer, employees, roles);
+        const result = parseEmployeeCsvText(buffer, employees, roles, branches, shifts);
         setParsed(result);
       }
     };
@@ -3522,7 +3649,7 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-6 overflow-hidden">
+      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-6 overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-display text-xl">
             <FileSpreadsheet className="h-5 w-5 text-primary" /> Bulk Upload Employee List (Excel / CSV)
@@ -3537,8 +3664,8 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 <FileDown className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-semibold">Prefilled Template with Column Headers</div>
-                <div className="text-[11px] text-muted-foreground">Download the formatted template, fill in your employee records, and upload below.</div>
+                <div className="text-xs font-semibold">Prefilled Template with Column Headers & Instructions</div>
+                <div className="text-[11px] text-muted-foreground">Download the formatted template with sample data & field guide, enter your records, and upload below.</div>
               </div>
             </div>
             <Button
@@ -3573,7 +3700,7 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
               {file ? file.name : "Click to select or drag & drop Excel / CSV file"}
             </div>
             <p className="text-xs text-muted-foreground">
-              Supports .csv, .xlsx, .xls, .tsv with standard headers (Employee Code, Full Name, Fixed Salary, Role, etc.)
+              Supports .xlsx, .xls, .csv, .tsv with standard headers (Employee Code, Full Name, Contact, Salary, KYC, Branch, Shift, etc.)
             </p>
           </div>
 
@@ -3606,48 +3733,54 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
               </div>
 
               {/* Preview table */}
-              <div className="rounded-xl border border-border overflow-hidden max-h-56 overflow-y-auto">
+              <div className="rounded-xl border border-border overflow-hidden max-h-64 overflow-y-auto">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-muted text-muted-foreground sticky top-0">
                     <tr>
                       <th className="p-2 pl-3">Code</th>
                       <th className="p-2">Name</th>
+                      <th className="p-2">Contact</th>
                       <th className="p-2">Department</th>
                       <th className="p-2">Designation</th>
                       <th className="p-2">Fixed Salary</th>
-                      <th className="p-2">Role</th>
-                      <th className="p-2">Leave Eligible</th>
-                      <th className="p-2">Geofence</th>
+                      <th className="p-2">DOJ</th>
+                      <th className="p-2">Branch / Shift</th>
+                      <th className="p-2">KYC</th>
+                      <th className="p-2">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {parsed.employees.slice(0, 50).map((emp, i) => {
                       const isDup = parsed.duplicates.includes(emp.empCode);
+                      const branchObj = branches.find((b) => b.id === emp.branchId);
+                      const shiftObj = shifts.find((s) => s.id === emp.shiftId);
                       return (
                         <tr key={i} className={`hover:bg-muted/40 ${isDup ? "bg-amber-500/5" : ""}`}>
                           <td className="p-2 pl-3 font-mono font-medium">{emp.empCode}</td>
-                          <td className="p-2 font-medium">{emp.name}</td>
+                          <td className="p-2 font-medium">
+                            <div>{emp.name}</div>
+                            {emp.gender && <span className="text-[10px] text-muted-foreground uppercase">{emp.gender} {emp.bloodGroup ? `· ${emp.bloodGroup}` : ""}</span>}
+                          </td>
+                          <td className="p-2 text-muted-foreground">
+                            <div className="font-mono text-[11px]">{emp.phone}</div>
+                            <div className="text-[10px] truncate max-w-[120px]">{emp.email}</div>
+                          </td>
                           <td className="p-2 text-muted-foreground">{emp.department}</td>
                           <td className="p-2 text-muted-foreground">{emp.designation}</td>
                           <td className="p-2 font-mono">₹{(emp.fixedSalary ?? 0).toLocaleString()}</td>
+                          <td className="p-2 font-mono text-[11px]">{emp.doj}</td>
                           <td className="p-2">
-                            <Badge variant="secondary" className="text-[10px]">
-                              {emp.roleName || "Standard"}
+                            <div className="text-[11px] font-medium">{branchObj ? branchObj.name : emp.branchId || "All Branches"}</div>
+                            <div className="text-[10px] text-muted-foreground">{shiftObj ? shiftObj.name : emp.shiftId || "General"}</div>
+                          </td>
+                          <td className="p-2">
+                            <div className="font-mono text-[10px]">{emp.pan ? `PAN: ${emp.pan}` : "—"}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground">{emp.aadhaar ? `UID: ${emp.aadhaar.slice(-4).padStart(emp.aadhaar.length, "•")}` : ""}</div>
+                          </td>
+                          <td className="p-2">
+                            <Badge variant={emp.status === "active" ? "default" : "secondary"} className="text-[10px] capitalize">
+                              {emp.status || "active"}
                             </Badge>
-                          </td>
-                          <td className="p-2">
-                            {emp.leaveApplyEligible !== false ? (
-                              <span className="text-emerald-600 font-semibold">Yes</span>
-                            ) : (
-                              <span className="text-muted-foreground">Locked</span>
-                            )}
-                          </td>
-                          <td className="p-2">
-                            {emp.geofencingEnabled !== false ? (
-                              <span className="text-emerald-600 font-medium">Required</span>
-                            ) : (
-                              <span className="text-amber-600 font-medium">Bypassed</span>
-                            )}
                           </td>
                         </tr>
                       );

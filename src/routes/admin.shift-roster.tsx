@@ -29,7 +29,7 @@ import { downloadRosterTemplate, parseRosterCsvText, type RosterParseResult } fr
 import { aiNotify } from "@/lib/ai-guide-bus";
 
 export const Route = createFileRoute("/admin/shift-roster")({
-  head: () => ({ meta: [{ title: "Swift Roster & Shifts · SWIFT HRMS" }] }),
+  head: () => ({ meta: [{ title: "Shift Roster & Shifts · CreatonsHR" }] }),
   component: ShiftRosterPage,
 });
 
@@ -1283,7 +1283,7 @@ function ShiftRosterPage() {
       <BulkRosterUploadDialog
         open={bulkUploadOpen}
         onClose={() => setBulkUploadOpen(false)}
-        companyName={company.name || "SWIFT"}
+        companyName={company.name || "CreatonsHR"}
         shifts={shifts}
         employees={employees}
         onBulkAssign={bulkAssignRoster}

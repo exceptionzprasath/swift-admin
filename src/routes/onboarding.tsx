@@ -13,7 +13,7 @@ import { Loader2, Building2, LogOut } from "lucide-react";
 
 
 export const Route = createFileRoute("/onboarding")({
-  head: () => ({ meta: [{ title: "Set up your company · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Set up your company · CreatonsHR" }] }),
   component: OnboardingPage,
 });
 

@@ -26,7 +26,7 @@ export const PLACEHOLDER_VARIABLES: PlaceholderVariable[] = [
   { key: "{{relieving_date}}", label: "Relieving Date", category: "dates", sample: "31-Aug-2026" },
   { key: "{{last_working_day}}", label: "Last Working Day", category: "dates", sample: "31-Aug-2026" },
 
-  { key: "{{company_name}}", label: "Company Name", category: "company", sample: "Swift Technologies Pvt Ltd" },
+  { key: "{{company_name}}", label: "Company Name", category: "company", sample: "CreatonsHR Technologies Pvt Ltd" },
   { key: "{{company_address}}", label: "Company Address", category: "company", sample: "Tech Hub Park, Erode, Tamil Nadu 638001" },
 
   { key: "{{authorized_signatory_name}}", label: "Signatory Name", category: "signatory", sample: "Dr. K. Anand" },
@@ -496,7 +496,7 @@ export function substitutePlaceholders(
   const monthlyCtcNum = employee?.basic || employee?.fixedSalary || 45000;
   const annualCtcStr = "₹" + annualCtcNum.toLocaleString("en-IN");
   const monthlyCtcStr = "₹" + monthlyCtcNum.toLocaleString("en-IN");
-  const compName = company?.legalName || company?.name || "SWIFT Technologies Pvt Ltd";
+  const compName = company?.legalName || company?.name || "CreatonsHR Technologies Pvt Ltd";
   const compAddress = company?.address || "Tech Hub, Tamil Nadu, India";
   const todayStr = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 

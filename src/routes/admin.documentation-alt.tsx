@@ -102,7 +102,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 export const Route = createFileRoute("/admin/documentation-alt")({
-  head: () => ({ meta: [{ title: "Digital Document Composer · SWIFT HRMS" }] }),
+  head: () => ({ meta: [{ title: "Digital Document Composer · CreatonsHR" }] }),
   component: DigitalDocumentationPage,
 });
 
@@ -165,12 +165,12 @@ export default function DigitalDocumentationPage() {
     enabled: true,
     style: docAssets?.letterheadDataUrl ? "uploaded" : "modern",
     showLogo: true,
-    companyName: company?.name || "SWIFT Technologies Pvt. Ltd.",
+    companyName: company?.name || "CreatonsHR Technologies Pvt. Ltd.",
     tagline: "Enterprise Workforce & People Operations",
     address: company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096",
-    email: company?.email || "hr@swift.io",
+    email: company?.email || "hr@creatonshr.com",
     phone: company?.phone || "+91 44 2876 5400",
-    website: "www.swift-technologies.com",
+    website: "www.creatonshr.com",
     cin: "U72200TN2026PTC109823",
   });
 
@@ -180,7 +180,7 @@ export default function DigitalDocumentationPage() {
     showPageNumbers: true,
     showConfidentialNotice: true,
     confidentialText: "STRICTLY CONFIDENTIAL • FOR AUTHORIZED RECIPIENT ONLY",
-    registeredOfficeText: `${company?.name || "SWIFT Technologies"} | Reg. Office: ${company?.address || "Tower B, Silicon Heights, OMR, Chennai"}`,
+    registeredOfficeText: `${company?.name || "CreatonsHR"} | Reg. Office: ${company?.address || "Tower B, Silicon Heights, OMR, Chennai"}`,
   });
 
   // Delivery
@@ -492,7 +492,7 @@ export default function DigitalDocumentationPage() {
     return getOrderedSignatories(
       approvers,
       selectedEmployee?.name || "Employee Signature",
-      docLetterhead.companyName || company?.name || "SWIFT Technologies",
+      docLetterhead.companyName || company?.name || "CreatonsHR",
       docAssets
     );
   }, [approvers, selectedEmployee?.name, docLetterhead.companyName, company?.name, docAssets]);
@@ -676,12 +676,12 @@ export default function DigitalDocumentationPage() {
         enabled: true,
         style: docAssets?.letterheadDataUrl ? "uploaded" : "modern",
         showLogo: true,
-        companyName: company?.name || "SWIFT Technologies Pvt. Ltd.",
+        companyName: company?.name || "CreatonsHR Technologies Pvt. Ltd.",
         tagline: "Enterprise Workforce & People Operations",
         address: company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096",
-        email: company?.email || "hr@swift.io",
+        email: company?.email || "hr@creatonshr.com",
         phone: company?.phone || "+91 44 2876 5400",
-        website: "www.swift-technologies.com",
+        website: "www.creatonshr.com",
         cin: "U72200TN2026PTC109823",
       }
     );
@@ -693,7 +693,7 @@ export default function DigitalDocumentationPage() {
         showPageNumbers: true,
         showConfidentialNotice: true,
         confidentialText: "STRICTLY CONFIDENTIAL • FOR AUTHORIZED RECIPIENT ONLY",
-        registeredOfficeText: `${company?.name || "SWIFT Technologies"} | Reg. Office: ${company?.address || "Tower B, Silicon Heights, OMR, Chennai"}`,
+        registeredOfficeText: `${company?.name || "CreatonsHR"} | Reg. Office: ${company?.address || "Tower B, Silicon Heights, OMR, Chennai"}`,
       }
     );
 
@@ -819,7 +819,7 @@ export default function DigitalDocumentationPage() {
 
     const middleRole = sigMiddleSignerRole === "custom" ? (sigMiddleSignerCustom.trim() || "Witness / Counterpart") : sigMiddleSignerRole;
     const dateLine = sigIncludeDate ? '<p style="color: #64748b; font-size: 11px; margin-top: 6px;">Date: ____________ &nbsp;&nbsp; Place: ____________</p>' : '';
-    const digitalStamp = sigIncludeDigitalStamp ? '<div style="margin-top: 8px; display: inline-block; padding: 4px 8px; border: 1px dashed #6366f1; background: #eef2ff; color: #4338ca; border-radius: 4px; font-size: 10px; font-family: monospace;">✓ Digitally Signed via SWIFT HRMS</div>' : '';
+    const digitalStamp = sigIncludeDigitalStamp ? '<div style="margin-top: 8px; display: inline-block; padding: 4px 8px; border: 1px dashed #6366f1; background: #eef2ff; color: #4338ca; border-radius: 4px; font-size: 10px; font-family: monospace;">✓ Digitally Signed via CreatonsHR</div>' : '';
 
     const sigImageBlock = activeSigImgUrl
       ? `<div style="margin-bottom: 6px;"><img src="${activeSigImgUrl}" alt="${firstRole}" style="max-height: 48px; max-width: 160px; object-fit: contain; display: block;" /></div>`
@@ -1027,7 +1027,7 @@ export default function DigitalDocumentationPage() {
             pdf.setFont("helvetica", "bold");
             pdf.setFontSize(15);
             pdf.setTextColor(15, 23, 42);
-            const compName = lh?.companyName || company?.name || "SWIFT Technologies Pvt. Ltd.";
+            const compName = lh?.companyName || company?.name || "CreatonsHR Technologies Pvt. Ltd.";
             pdf.text(compName, 40, 50);
 
             pdf.setFont("helvetica", "normal");
@@ -1035,7 +1035,7 @@ export default function DigitalDocumentationPage() {
             pdf.setTextColor(100, 116, 139);
             const addr = lh?.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096";
             pdf.text(addr, 40, 64);
-            const contact = `Email: ${lh?.email || company?.email || "hr@swift.io"} | Phone: ${lh?.phone || company?.phone || "+91 44 2876 5400"}${lh?.cin ? ` | CIN: ${lh.cin}` : ""}`;
+            const contact = `Email: ${lh?.email || company?.email || "hr@creatonshr.com"} | Phone: ${lh?.phone || company?.phone || "+91 44 2876 5400"}${lh?.cin ? ` | CIN: ${lh.cin}` : ""}`;
             pdf.text(contact, 40, 76);
 
             pdf.setDrawColor(226, 232, 240);
@@ -1048,7 +1048,7 @@ export default function DigitalDocumentationPage() {
           pdf.setFont("helvetica", "bold");
           pdf.setFontSize(15);
           pdf.setTextColor(15, 23, 42);
-          const compName = lh?.companyName || company?.name || "SWIFT Technologies Pvt. Ltd.";
+          const compName = lh?.companyName || company?.name || "CreatonsHR Technologies Pvt. Ltd.";
           pdf.text(compName, 40, 50);
 
           pdf.setFont("helvetica", "normal");
@@ -1056,7 +1056,7 @@ export default function DigitalDocumentationPage() {
           pdf.setTextColor(100, 116, 139);
           const addr = lh?.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096";
           pdf.text(addr, 40, 64);
-          const contact = `Email: ${lh?.email || company?.email || "hr@swift.io"} | Phone: ${lh?.phone || company?.phone || "+91 44 2876 5400"}${lh?.cin ? ` | CIN: ${lh.cin}` : ""}`;
+          const contact = `Email: ${lh?.email || company?.email || "hr@creatonshr.com"} | Phone: ${lh?.phone || company?.phone || "+91 44 2876 5400"}${lh?.cin ? ` | CIN: ${lh.cin}` : ""}`;
           pdf.text(contact, 40, 76);
 
           pdf.setDrawColor(226, 232, 240);
@@ -1104,7 +1104,7 @@ export default function DigitalDocumentationPage() {
       const pdfSignatories = getOrderedSignatories(
         doc.approvers,
         doc.employeeName,
-        company?.name || "SWIFT Technologies Pvt. Ltd.",
+        company?.name || "CreatonsHR Technologies Pvt. Ltd.",
         docAssets
       );
 
@@ -1401,7 +1401,7 @@ export default function DigitalDocumentationPage() {
                             )}
                             {doc.delivery.channel === "app" && (
                               <Badge variant="outline" className="text-[10px] gap-1 font-normal bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20">
-                                <Smartphone className="h-3 w-3" /> SWIFT App
+                                <Smartphone className="h-3 w-3" /> CreatonsHR App
                               </Badge>
                             )}
                             {doc.delivery.channel === "both" && (
@@ -2827,7 +2827,7 @@ export default function DigitalDocumentationPage() {
                       <p className="text-xs text-muted-foreground">
                         {activeDetailDoc.employeeAcknowledgedAt
                           ? `Digitally acknowledged & accepted by ${activeDetailDoc.employeeName} on ${new Date(activeDetailDoc.employeeAcknowledgedAt).toLocaleString()}`
-                          : "Awaiting digital acknowledgement from employee via SWIFT portal."}
+                          : "Awaiting digital acknowledgement from employee via CreatonsHR portal."}
                       </p>
                     </div>
                   </div>
@@ -3049,7 +3049,7 @@ export default function DigitalDocumentationPage() {
                         </div>
                       )}
                       <h2 className="text-base font-bold uppercase tracking-wider text-slate-900">
-                        {docLetterhead.companyName || company?.name || "SWIFT TECHNOLOGIES PVT. LTD."}
+                        {docLetterhead.companyName || company?.name || "CREATONSHR TECHNOLOGIES PVT. LTD."}
                       </h2>
                       <p className="text-[10px] text-slate-500">{docLetterhead.address || company?.address || "OMR, Chennai"}</p>
                     </div>
@@ -3057,10 +3057,10 @@ export default function DigitalDocumentationPage() {
                     <div className="flex items-start justify-between">
                       <div>
                         <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                          {docLetterhead.companyName || company?.name || "SWIFT Technologies Pvt. Ltd."}
+                          {docLetterhead.companyName || company?.name || "CreatonsHR Technologies Pvt. Ltd."}
                         </h2>
                         <p className="text-[11px] text-slate-500">{docLetterhead.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai"}</p>
-                        <p className="text-[11px] text-slate-500">Email: {docLetterhead.email || company?.email || "hr@swift.io"} | Web: {docLetterhead.website || "www.swift-technologies.com"}</p>
+                        <p className="text-[11px] text-slate-500">Email: {docLetterhead.email || company?.email || "hr@creatonshr.com"} | Web: {docLetterhead.website || "www.creatonshr.com"}</p>
                       </div>
                       {docAssets?.logoDataUrl || company?.logoDataUrl ? (
                         <img
@@ -3161,7 +3161,7 @@ export default function DigitalDocumentationPage() {
                           ) : (
                             <div className="h-14 w-14 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
                               <span className="text-[8px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
-                                {company?.name || "SWIFT"}
+                                {company?.name || "CreatonsHR"}
                               </span>
                               <span className="text-[6px] text-indigo-500 font-mono">SEAL</span>
                             </div>
@@ -3239,7 +3239,7 @@ export default function DigitalDocumentationPage() {
                             ) : (
                               <div className="h-14 w-14 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
                                 <span className="text-[8px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
-                                  {company?.name || "SWIFT"}
+                                  {company?.name || "CreatonsHR"}
                                 </span>
                                 <span className="text-[6px] text-indigo-500 font-mono">SEAL</span>
                               </div>
@@ -3671,7 +3671,7 @@ export default function DigitalDocumentationPage() {
                     onChange={(e) => setSigIncludeDigitalStamp(e.target.checked)}
                     className="rounded text-primary"
                   />
-                  <span>Digital e-Sign Stamp (SWIFT Verified)</span>
+                  <span>Digital e-Sign Stamp (CreatonsHR Verified)</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
@@ -3706,7 +3706,7 @@ export default function DigitalDocumentationPage() {
 
                       const middleRole = sigMiddleSignerRole === "custom" ? (sigMiddleSignerCustom || "Witness / Counterpart") : sigMiddleSignerRole;
                       const dateLine = sigIncludeDate ? '<p style="color: #64748b; font-size: 10px; margin-top: 4px;">Date: ____________ &nbsp;&nbsp; Place: ____________</p>' : '';
-                      const digitalStamp = sigIncludeDigitalStamp ? '<div style="margin-top: 6px; display: inline-block; padding: 3px 6px; border: 1px dashed #6366f1; background: #eef2ff; color: #4338ca; border-radius: 4px; font-size: 9px; font-family: monospace;">✓ Digitally Signed via SWIFT HRMS</div>' : '';
+                      const digitalStamp = sigIncludeDigitalStamp ? '<div style="margin-top: 6px; display: inline-block; padding: 3px 6px; border: 1px dashed #6366f1; background: #eef2ff; color: #4338ca; border-radius: 4px; font-size: 9px; font-family: monospace;">✓ Digitally Signed via CreatonsHR</div>' : '';
 
                       const previewSigImg = activeSigImgUrl
                         ? `<div style="margin-bottom: 4px;"><img src="${activeSigImgUrl}" alt="${firstRole}" style="max-height: 40px; max-width: 140px; object-fit: contain; display: block;" /></div>`
@@ -3721,11 +3721,11 @@ export default function DigitalDocumentationPage() {
                       if (sigLayout === "both") {
                         return `<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 20px;">
                           <div>
-                            <p style="font-weight: bold; margin-bottom: 12px;">${sigCompanyOrgLabel.replace("{{company_name}}", company?.name || "SWIFT Technologies")}</p>
+                            <p style="font-weight: bold; margin-bottom: 12px;">${sigCompanyOrgLabel.replace("{{company_name}}", company?.name || "CreatonsHR Technologies")}</p>
                             ${previewSigImg}
                             <div style="border-top: 1px solid #94a3b8; width: 140px; margin-bottom: 3px;"></div>
                             <p style="font-weight: 600; margin: 0; font-size: 11px;">${firstRole}</p>
-                            <p style="color: #64748b; font-size: 10px; margin: 0;">${company?.name || "SWIFT Technologies"}</p>
+                            <p style="color: #64748b; font-size: 10px; margin: 0;">${company?.name || "CreatonsHR Technologies"}</p>
                             ${sealBox}
                             ${digitalStamp}
                             ${dateLine}
@@ -3740,11 +3740,11 @@ export default function DigitalDocumentationPage() {
                         </div>`;
                       } else if (sigLayout === "company_only") {
                         return `<div>
-                          <p style="font-weight: bold; margin-bottom: 12px;">${sigCompanyOrgLabel.replace("{{company_name}}", company?.name || "SWIFT Technologies")}</p>
+                          <p style="font-weight: bold; margin-bottom: 12px;">${sigCompanyOrgLabel.replace("{{company_name}}", company?.name || "CreatonsHR Technologies")}</p>
                           ${previewSigImg}
                           <div style="border-top: 1px solid #94a3b8; width: 150px; margin-bottom: 3px;"></div>
                           <p style="font-weight: 600; margin: 0; font-size: 11px;">${firstRole}</p>
-                          <p style="color: #64748b; font-size: 10px; margin: 0;">${company?.name || "SWIFT Technologies"}</p>
+                          <p style="color: #64748b; font-size: 10px; margin: 0;">${company?.name || "CreatonsHR Technologies"}</p>
                           ${sealBox}
                           ${digitalStamp}
                           ${dateLine}
@@ -3760,7 +3760,7 @@ export default function DigitalDocumentationPage() {
                       } else {
                         return `<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
                           <div>
-                            <p style="font-weight: bold; margin-bottom: 12px;">${sigCompanyOrgLabel.replace("{{company_name}}", company?.name || "SWIFT Technologies")}</p>
+                            <p style="font-weight: bold; margin-bottom: 12px;">${sigCompanyOrgLabel.replace("{{company_name}}", company?.name || "CreatonsHR Technologies")}</p>
                             ${previewSigImg}
                             <div style="border-top: 1px solid #94a3b8; width: 110px; margin-bottom: 3px;"></div>
                             <p style="font-weight: 600; margin: 0; font-size: 11px;">${firstRole}</p>
@@ -4073,13 +4073,13 @@ function RealisticDocumentPaper({
                 </div>
               )}
               <h2 className="text-base font-bold uppercase tracking-wider text-slate-900">
-                {lh?.companyName || company?.name || "SWIFT TECHNOLOGIES PVT. LTD."}
+                {lh?.companyName || company?.name || "CREATONSHR TECHNOLOGIES PVT. LTD."}
               </h2>
               <p className="text-[10px] text-slate-500">
                 {lh?.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096"}
               </p>
               <p className="text-[10px] text-slate-400">
-                Email: {lh?.email || company?.email || "hr@swift.io"} | Web: {lh?.website || "www.swift-technologies.com"}
+                Email: {lh?.email || company?.email || "hr@creatonshr.com"} | Web: {lh?.website || "www.creatonshr.com"}
               </p>
             </div>
           ) : lh?.style === "executive" ? (
@@ -4093,16 +4093,16 @@ function RealisticDocumentPaper({
                   />
                 ) : (
                   <div className="h-8 w-8 rounded-lg bg-white text-indigo-900 font-black flex items-center justify-center text-xs">
-                    {lh?.companyName ? lh.companyName.charAt(0) : "S"}
+                    {lh?.companyName ? lh.companyName.charAt(0) : "C"}
                   </div>
                 )}
                 <div>
-                  <h2 className="text-sm font-bold tracking-tight">{lh?.companyName || company?.name || "SWIFT Technologies"}</h2>
+                  <h2 className="text-sm font-bold tracking-tight">{lh?.companyName || company?.name || "CreatonsHR"}</h2>
                   <p className="text-[10px] text-slate-300">{lh?.tagline || "Enterprise Workforce Operations"}</p>
                 </div>
               </div>
               <div className="text-right text-[9px] text-slate-400 font-mono">
-                <p>{lh?.email || company?.email || "hr@swift.io"}</p>
+                <p>{lh?.email || company?.email || "hr@creatonshr.com"}</p>
                 <p>Ref: {doc.docNumber}</p>
               </div>
             </div>
@@ -4110,11 +4110,11 @@ function RealisticDocumentPaper({
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                  {lh?.companyName || company?.name || "SWIFT Technologies Pvt. Ltd."}
+                  {lh?.companyName || company?.name || "CreatonsHR Technologies Pvt. Ltd."}
                 </h2>
                 <p className="text-[11px] text-slate-500">{lh?.address || company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096"}</p>
                 <p className="text-[10px] text-slate-500">
-                  Email: {lh?.email || company?.email || "hr@swift.io"} | Phone: {lh?.phone || company?.phone || "+91 44 2876 5400"}
+                  Email: {lh?.email || company?.email || "hr@creatonshr.com"} | Phone: {lh?.phone || company?.phone || "+91 44 2876 5400"}
                   {lh?.cin ? ` | CIN: ${lh.cin}` : ""}
                 </p>
               </div>
@@ -4126,7 +4126,7 @@ function RealisticDocumentPaper({
                 />
               ) : (
                 <div className="h-10 w-10 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-xs shrink-0">
-                  {lh?.companyName ? lh.companyName.charAt(0) : "S"}
+                  {lh?.companyName ? lh.companyName.charAt(0) : "C"}
                 </div>
               )}
             </div>
@@ -4181,7 +4181,7 @@ function RealisticDocumentPaper({
         const docSignatories = getOrderedSignatories(
           doc.approvers,
           doc.employeeName || "Employee Signature",
-          lh?.companyName || company?.name || "SWIFT Technologies",
+          lh?.companyName || company?.name || "CreatonsHR",
           docAssets
         );
 
@@ -4225,7 +4225,7 @@ function RealisticDocumentPaper({
                     ) : (
                       <div className="h-16 w-16 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
                         <span className="text-[9px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
-                          {company?.name || "SWIFT"}
+                          {company?.name || "CreatonsHR"}
                         </span>
                         <span className="text-[7px] text-indigo-500 font-mono mt-0.5">OFFICIAL SEAL</span>
                       </div>
@@ -4303,7 +4303,7 @@ function RealisticDocumentPaper({
                       ) : (
                         <div className="h-16 w-16 rounded-full border-2 border-dashed border-indigo-400/60 bg-indigo-50/50 flex flex-col items-center justify-center text-center p-1">
                           <span className="text-[9px] font-bold text-indigo-700 tracking-tighter uppercase leading-tight">
-                            {company?.name || "SWIFT"}
+                            {company?.name || "CreatonsHR"}
                           </span>
                           <span className="text-[7px] text-indigo-500 font-mono mt-0.5">OFFICIAL SEAL</span>
                         </div>

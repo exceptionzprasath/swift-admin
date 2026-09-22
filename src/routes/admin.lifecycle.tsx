@@ -3,7 +3,7 @@ import { Sparkles, GitBranch } from "lucide-react";
 import { ComingSoonPage } from "@/components/coming-soon";
 
 export const Route = createFileRoute("/admin/lifecycle")({
-  head: () => ({ meta: [{ title: "AI Lifecycle · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "AI Lifecycle · CreatonsHR" }] }),
   component: LifecyclePage,
 });
 

@@ -3,7 +3,7 @@ import { FileDown, BarChart3 } from "lucide-react";
 import { ComingSoonPage } from "@/components/coming-soon";
 
 export const Route = createFileRoute("/admin/reports")({
-  head: () => ({ meta: [{ title: "Reports & Analytics · SWIFT" }] }),
+  head: () => ({ meta: [{ title: "Reports & Analytics · CreatonsHR" }] }),
   component: ReportsPage,
 });
 

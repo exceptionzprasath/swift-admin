@@ -31,7 +31,7 @@ import {
 } from "@/lib/bulk-holiday";
 
 export const Route = createFileRoute("/admin/leave-calendar")({
-  head: () => ({ meta: [{ title: "Leave & Holiday Management · SWIFT HRMS" }] }),
+  head: () => ({ meta: [{ title: "Leave & Holiday Management · CreatonsHR" }] }),
   component: LeaveCalendarPage,
 });
 

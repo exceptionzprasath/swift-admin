@@ -50,7 +50,7 @@ export function HardwareBridgeModal({
   isOpen,
   onClose,
   devices = [],
-  companyName = "SWIFT Organization",
+  companyName = "CreatonsHR Organization",
 }: HardwareBridgeModalProps) {
   const [activeMode, setActiveMode] = useState<"agent" | "cloud">("agent");
   const [selectedDeviceSn, setSelectedDeviceSn] = useState(
@@ -103,7 +103,7 @@ export function HardwareBridgeModal({
       setIsZipping(true);
       const zip = new JSZip();
 
-      const folderName = `swift-biometric-agent-${selectedDeviceSn || "terminal"}`;
+      const folderName = `creatonshr-biometric-agent-${selectedDeviceSn || "terminal"}`;
       const root = zip.folder(folderName);
 
       if (root) {
@@ -114,7 +114,7 @@ export function HardwareBridgeModal({
         root.file(
           "README.txt",
           `================================================================
-SWIFT UNIVERSAL BIOMETRIC CLOUD SYNC AGENT
+CREATONSHR UNIVERSAL BIOMETRIC CLOUD SYNC AGENT
 ================================================================
 
 Company: ${companyName}
@@ -126,7 +126,7 @@ HOW TO RUN:
 1. Ensure this PC is connected to the same LAN / WiFi as the biometric machine.
 2. Double-click "start-agent.bat".
 3. On first run, it will automatically install lightweight drivers (node-zklib).
-4. Punches will stream directly to SWIFT Admin in real time!
+4. Punches will stream directly to CreatonsHR Admin in real time!
 `
         );
       }
@@ -298,7 +298,7 @@ HOW TO RUN:
                   <li>Extract the downloaded <strong className="text-foreground">.zip</strong> folder onto any Windows PC on the same local office network.</li>
                   <li>Double click <strong className="text-foreground">start-agent.bat</strong>. The agent automatically checks Port 4370 and installs drivers.</li>
                   <li>The console will display <strong className="text-emerald-600 dark:text-emerald-400">"Connected to {selectedDeviceSn || 'Terminal'}! Ready for live punches"</strong>.</li>
-                  <li>Employee fingerprint/face punches will instantly stream to SWIFT Admin and DynamoDB.</li>
+                  <li>Employee fingerprint/face punches will instantly stream to CreatonsHR Admin and DynamoDB.</li>
                 </ol>
               </div>
             </div>
