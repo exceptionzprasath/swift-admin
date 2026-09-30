@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect } from "react";
-import { useStore, safeFetch, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
+import { useStore, safeFetch, isMockEmployee, isMockAttendance, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { computePayroll, inr, type PayrollComputation } from "@/lib/payroll";
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
@@ -14,6 +14,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +71,7 @@ import {
   FileSpreadsheet,
   XCircle,
   CheckCheck,
+  MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { type RevisionTarget, type RevisionReason } from "@/lib/salary-revision";
@@ -131,6 +140,22 @@ function getRosterWeekOffDays(
   }
   return sundays;
 }
+
+/** Formats a YYYY-MM-DD string into "MMM D, YYYY" (e.g. "Mar 5, 2026") */
+function formatOtDate(dateStr?: string): string {
+  if (!dateStr) return "—";
+  try {
+    const parts = dateStr.split("-").map(Number);
+    if (parts.length < 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) {
+      return dateStr;
+    }
+    const date = new Date(parts[0], parts[1] - 1, parts[2]);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return dateStr;
+  }
+}
+
 
 interface CustomAllowanceItem {
   id: string;
@@ -267,13 +292,98 @@ interface EditingPayrollRecord extends MonthlyOverrideData {
   notes: string;
 }
 
+function buildEffectiveCompany(company: Company, ov: MonthlyOverrideData = {}): Company {
+  const pfEmployeeEnabled = ov.pfEmployeeEnabled !== undefined ? ov.pfEmployeeEnabled : (ov.pfEnabled !== undefined ? ov.pfEnabled : (company.employeePfEnabled ?? true));
+  const pfEmployerEnabled = ov.pfEmployerEnabled !== undefined ? ov.pfEmployerEnabled : (ov.pfEnabled !== undefined ? ov.pfEnabled : (company.employerPfEnabled ?? true));
+  const pfEnabled = ov.pfEnabled !== undefined 
+    ? ov.pfEnabled 
+    : ((ov.pfEmployeeEnabled === false && ov.pfEmployerEnabled === false) ? false : (company.pfRules?.enabled !== false));
+
+  const esiEmployeeEnabled = ov.esiEmployeeEnabled !== undefined ? ov.esiEmployeeEnabled : (ov.esiEnabled !== undefined ? ov.esiEnabled : (company.employeeEsiEnabled ?? true));
+  const esiEmployerEnabled = ov.esiEmployerEnabled !== undefined ? ov.esiEmployerEnabled : (ov.esiEnabled !== undefined ? ov.esiEnabled : (company.employerEsiEnabled ?? true));
+  const esiEnabled = ov.esiEnabled !== undefined 
+    ? ov.esiEnabled 
+    : ((ov.esiEmployeeEnabled === false && ov.esiEmployerEnabled === false) ? false : (company.esiRules?.enabled !== false));
+
+  const lwfEnabled = ov.lwfEnabled !== undefined ? ov.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false);
+
+  return {
+    ...company,
+    basicPct: ov.basicPct !== undefined ? ov.basicPct : company.basicPct,
+    daEnabled: ov.daEnabled !== undefined ? ov.daEnabled : company.daEnabled,
+    daPct: ov.daPct !== undefined ? ov.daPct : company.daPct,
+    hraEnabled: ov.hraEnabled !== undefined ? ov.hraEnabled : company.hraEnabled,
+    hraPct: ov.hraPct !== undefined ? ov.hraPct : company.hraPct,
+    oaEnabled: ov.oaEnabled !== undefined ? ov.oaEnabled : company.oaEnabled,
+    oaPct: ov.oaPct !== undefined ? ov.oaPct : company.oaPct,
+    caEnabled: ov.caEnabled !== undefined ? ov.caEnabled : company.caEnabled,
+    caPct: ov.caPct !== undefined ? ov.caPct : company.caPct,
+    ltaEnabled: ov.ltaEnabled !== undefined ? ov.ltaEnabled : company.ltaEnabled,
+    ltaPct: ov.ltaPct !== undefined ? ov.ltaPct : company.ltaPct,
+    ptEnabled: ov.ptEnabled !== undefined ? ov.ptEnabled : (company.ptEnabled !== false),
+    ptAmount: ov.ptAmountOverride !== undefined ? ov.ptAmountOverride : company.ptAmount,
+    employeePfEnabled: pfEmployeeEnabled,
+    employerPfEnabled: pfEmployerEnabled,
+    employeePfPct: ov.employeePfPct !== undefined ? ov.employeePfPct : (company.employeePfPct ?? company.pfRules?.employeePct ?? 12),
+    employerPfPct: ov.employerPfPct !== undefined ? ov.employerPfPct : (company.employerPfPct ?? company.pfRules?.employerPct ?? 13),
+    pfRules: {
+      ...company.pfRules,
+      enabled: pfEnabled,
+      employeePct: ov.employeePfPct !== undefined ? ov.employeePfPct : (company.employeePfPct ?? company.pfRules?.employeePct ?? 12),
+      employerPct: ov.employerPfPct !== undefined ? ov.employerPfPct : (company.employerPfPct ?? company.pfRules?.employerPct ?? 13),
+    },
+    employeeEsiEnabled: esiEmployeeEnabled,
+    employerEsiEnabled: esiEmployerEnabled,
+    employeeEsiPct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75),
+    employerEsiPct: ov.employerEsiPct !== undefined ? ov.employerEsiPct : (company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25),
+    esiRules: {
+      ...company.esiRules,
+      enabled: esiEnabled,
+      employeePct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75),
+      employerPct: ov.employerEsiPct !== undefined ? ov.employerEsiPct : (company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25),
+    },
+    lwfEnabled,
+    lwfRules: {
+      ...company.lwfRules,
+      enabled: lwfEnabled,
+      employeeAmount: ov.lwfAmountOverride !== undefined ? ov.lwfAmountOverride : (company.lwfRules?.employeeAmount ?? 10),
+    },
+    earnings: ov.customAllowances !== undefined ? (ov.customAllowances as any) : company.earnings,
+  };
+}
+
+function buildDeductionInputs(ov: MonthlyOverrideData = {}, company: Company) {
+  return {
+    tds: {
+      enabled: ov.tdsEnabled !== undefined ? ov.tdsEnabled : (company.tdsEnabled === true || (ov.tds || 0) > 0),
+      mode: ov.tdsMode || company.tdsMode || "flat",
+      value: ov.tdsValue !== undefined ? ov.tdsValue : (ov.tds !== undefined ? ov.tds : (company.tdsValue ?? 0)),
+    },
+    fineAndDamages: {
+      enabled: ov.fineAndDamagesEnabled !== undefined ? ov.fineAndDamagesEnabled : (company.fineAndDamagesEnabled === true),
+      mode: ov.fineAndDamagesMode || company.fineAndDamagesMode || "flat",
+      value: ov.fineAndDamagesValue !== undefined ? ov.fineAndDamagesValue : (company.fineAndDamagesValue ?? 0),
+    },
+    lwf: {
+      enabled: ov.lwfEnabled !== undefined ? ov.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false),
+      mode: ov.lwfMode || company.lwfMode || "flat",
+      value: ov.lwfValue !== undefined ? ov.lwfValue : (ov.lwfAmountOverride !== undefined ? ov.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? (company as any).lwfAmount ?? 20)),
+    },
+    otherDeductions: {
+      enabled: ov.otherDeductionsEnabled !== undefined ? ov.otherDeductionsEnabled : (company.otherDeductionsEnabled === true || (ov.otherDeductions || 0) > 0),
+      mode: ov.otherDeductionsMode || company.otherDeductionsMode || "flat",
+      value: ov.otherDeductionsValue !== undefined ? ov.otherDeductionsValue : (ov.otherDeductions !== undefined ? ov.otherDeductions : (company.otherDeductionsValue ?? 0)),
+    },
+  };
+}
+
 export function PayrollPage() {
   const {
-    employees,
+    employees: rawEmployees,
     updateEmployee,
     company,
     setCompany,
-    attendance,
+    attendance: rawAttendance,
     roster,
     requests,
     payrolls,
@@ -284,7 +394,11 @@ export function PayrollPage() {
     lockPayrollMonth,
     verifyPayrollLockPassword,
     docAssets,
+    holidays,
   } = useStore();
+
+  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e)), [rawEmployees]);
+  const attendance = useMemo(() => (rawAttendance || []).filter((a) => !isMockAttendance(a)), [rawAttendance]);
 
   // Active Main Tab
   const [mainTab, setMainTab] = useState<"structure" | "run" | "revision" | "ot-requests">("structure");
@@ -444,10 +558,20 @@ export function PayrollPage() {
         let changed = false;
         const next = { ...prev };
         payrolls.forEach((p) => {
-          const key = `${p.month}_${p.employeeId}`;
-          if (p.overrideData && !next[key]) {
-            next[key] = p.overrideData;
-            changed = true;
+          if (p.overrideData) {
+            const key1 = `${p.month}_${p.employeeId}`;
+            if (!next[key1]) {
+              next[key1] = p.overrideData;
+              changed = true;
+            }
+            const match = p.id?.match(/^pay-[^-]+-(.+)$/);
+            if (match && match[1]) {
+              const key2 = `${match[1]}_${p.employeeId}`;
+              if (!next[key2]) {
+                next[key2] = p.overrideData;
+                changed = true;
+              }
+            }
           }
         });
         return changed ? next : prev;
@@ -476,6 +600,8 @@ export function PayrollPage() {
   const [otSearch, setOtSearch] = useState("");
   const [otFilterDept, setOtFilterDept] = useState("all");
   const [otFilterStatus, setOtFilterStatus] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [otFilterDate, setOtFilterDate] = useState<string>("");
+  const [selectedOtEmpIds, setSelectedOtEmpIds] = useState<string[]>([]);
   const [otCalendarTarget, setOtCalendarTarget] = useState<{
     emp: Employee;
     selectedMonth: string;
@@ -571,12 +697,21 @@ export function PayrollPage() {
 
     // Statutory Deductions (Accurate Base & Separate Employee / Employer Rates)
     const pfEnabled = company.pfRules?.enabled !== false;
-    const pfCeiling = company.pfRules?.ceiling && company.pfRules.ceiling > 0 ? company.pfRules.ceiling : 15000;
-    const pfBase = Math.min(basic, pfCeiling);
     const employeePfPct = company.employeePfPct ?? company.pfRules?.employeePct ?? 12;
     const employerPfPct = company.employerPfPct ?? company.pfRules?.employerPct ?? 13;
-    const pfEmployer = pfEnabled ? Math.round(pfBase * (employerPfPct / 100)) : 0;
-    const pfEmployee = pfEnabled ? Math.round(pfBase * (employeePfPct / 100)) : 0;
+    const basicPlusDA = basic;
+    let pfEmployer = 0;
+    let pfEmployee = 0;
+    const pfBase = Math.min(basicPlusDA, 15000);
+
+    if (pfEnabled && basicPlusDA > 0) {
+      if (basicPlusDA >= 15000) {
+        pfEmployee = 1800;
+      } else {
+        pfEmployee = Math.round(basicPlusDA * (employeePfPct / 100));
+      }
+      pfEmployer = Math.round(pfBase * (employerPfPct / 100));
+    }
 
     const esiEnabled = company.esiRules?.enabled !== false;
     const esiThreshold = company.esiRules?.threshold ?? company.esiThreshold ?? 21000;
@@ -847,48 +982,7 @@ export function PayrollPage() {
       const basePresentDays = rawPresentDays + daysLeave;
       const effectiveDaysWorked = ov.daysWorked !== undefined ? ov.daysWorked : basePresentDays;
 
-      const effectiveCompany: Company = {
-        ...company,
-        basicPct: ov.basicPct !== undefined ? ov.basicPct : company.basicPct,
-        daEnabled: ov.daEnabled !== undefined ? ov.daEnabled : company.daEnabled,
-        daPct: ov.daPct !== undefined ? ov.daPct : company.daPct,
-        hraEnabled: ov.hraEnabled !== undefined ? ov.hraEnabled : company.hraEnabled,
-        hraPct: ov.hraPct !== undefined ? ov.hraPct : company.hraPct,
-        oaEnabled: ov.oaEnabled !== undefined ? ov.oaEnabled : company.oaEnabled,
-        oaPct: ov.oaPct !== undefined ? ov.oaPct : company.oaPct,
-        caEnabled: ov.caEnabled !== undefined ? ov.caEnabled : company.caEnabled,
-        caPct: ov.caPct !== undefined ? ov.caPct : company.caPct,
-        ltaEnabled: ov.ltaEnabled !== undefined ? ov.ltaEnabled : company.ltaEnabled,
-        ltaPct: ov.ltaPct !== undefined ? ov.ltaPct : company.ltaPct,
-        ptEnabled: ov.ptEnabled !== undefined ? ov.ptEnabled : company.ptEnabled,
-        ptAmount: ov.ptAmountOverride !== undefined ? ov.ptAmountOverride : company.ptAmount,
-        employeePfEnabled: ov.pfEmployeeEnabled !== undefined ? ov.pfEmployeeEnabled : true,
-        employerPfEnabled: ov.pfEmployerEnabled !== undefined ? ov.pfEmployerEnabled : true,
-        employeePfPct: ov.employeePfPct !== undefined ? ov.employeePfPct : (company.employeePfPct ?? 12),
-        employerPfPct: ov.employerPfPct !== undefined ? ov.employerPfPct : (company.employerPfPct ?? 13),
-        pfRules: {
-          ...company.pfRules,
-          enabled: ov.pfEnabled !== undefined ? ov.pfEnabled : (company.pfRules?.enabled !== false),
-          employeePct: ov.employeePfPct !== undefined ? ov.employeePfPct : (company.employeePfPct ?? company.pfRules?.employeePct ?? 12),
-          employerPct: ov.employerPfPct !== undefined ? ov.employerPfPct : (company.employerPfPct ?? company.pfRules?.employerPct ?? 13),
-        },
-        employeeEsiEnabled: ov.esiEmployeeEnabled !== undefined ? ov.esiEmployeeEnabled : true,
-        employerEsiEnabled: ov.esiEmployerEnabled !== undefined ? ov.esiEmployerEnabled : true,
-        employeeEsiPct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? 0.75),
-        employerEsiPct: ov.employerEsiPct !== undefined ? ov.employerEsiPct : (company.employerEsiPct ?? 3.25),
-        esiRules: {
-          ...company.esiRules,
-          enabled: ov.esiEnabled !== undefined ? ov.esiEnabled : (company.esiRules?.enabled !== false),
-          employeePct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75),
-          employerPct: ov.employerEsiPct !== undefined ? ov.employerEsiPct : (company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25),
-        },
-        lwfRules: {
-          ...company.lwfRules,
-          enabled: ov.lwfEnabled !== undefined ? ov.lwfEnabled : (company.lwfRules?.enabled === true),
-          employeeAmount: ov.lwfAmountOverride !== undefined ? ov.lwfAmountOverride : (company.lwfRules?.employeeAmount ?? 10),
-        },
-        earnings: ov.customAllowances !== undefined ? (ov.customAllowances as any) : company.earnings,
-      };
+      const effectiveCompany = buildEffectiveCompany(company, ov);
 
       const attBonusEnabled = ov.attBonusEnabled !== undefined ? ov.attBonusEnabled : (company.attendanceBonusRules?.enabled === true);
       const attBonusEligible = attBonusEnabled && monthAtt.filter((a) => a.status === "absent").length === 0;
@@ -942,30 +1036,7 @@ export function PayrollPage() {
       const effectiveVariablePay = ov.variablePay !== undefined ? ov.variablePay : 0;
       const effectiveOtherEarnings = ov.otherEarnings !== undefined ? ov.otherEarnings : 0;
 
-      const effectiveTds = {
-        enabled: ov.tdsEnabled !== undefined ? ov.tdsEnabled : (company.tdsEnabled === true || (ov.tds || 0) > 0),
-        mode: ov.tdsMode || company.tdsMode || "flat",
-        value: ov.tdsValue !== undefined ? ov.tdsValue : (ov.tds !== undefined ? ov.tds : (company.tdsValue ?? 0)),
-      };
-
-      const effectiveFineAndDamages = {
-        enabled: ov.fineAndDamagesEnabled !== undefined ? ov.fineAndDamagesEnabled : (company.fineAndDamagesEnabled === true),
-        mode: ov.fineAndDamagesMode || company.fineAndDamagesMode || "flat",
-        value: ov.fineAndDamagesValue !== undefined ? ov.fineAndDamagesValue : (company.fineAndDamagesValue ?? 0),
-      };
-
-      const effectiveLwf = {
-        enabled: ov.lwfEnabled !== undefined ? ov.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false),
-        mode: ov.lwfMode || company.lwfMode || "flat",
-        value: ov.lwfValue !== undefined ? ov.lwfValue : (ov.lwfAmountOverride !== undefined ? ov.lwfAmountOverride : (company.lwfValue ?? company.lwfRules?.employeeAmount ?? (company as any).lwfAmount ?? 20)),
-      };
-
-      const effectiveOtherDeductions = {
-        enabled: ov.otherDeductionsEnabled !== undefined ? ov.otherDeductionsEnabled : (company.otherDeductionsEnabled === true || (ov.otherDeductions || 0) > 0),
-        mode: ov.otherDeductionsMode || company.otherDeductionsMode || "flat",
-        value: ov.otherDeductionsValue !== undefined ? ov.otherDeductionsValue : (ov.otherDeductions !== undefined ? ov.otherDeductions : (company.otherDeductionsValue ?? 0)),
-      };
-
+      const deductionInputs = buildDeductionInputs(ov, company);
       const effectiveEmp = ov.customBasic ? { ...emp, basic: ov.customBasic } : emp;
 
       const comp = computePayroll({
@@ -978,10 +1049,10 @@ export function PayrollPage() {
         loan: effectiveLoan,
         advance: effectiveAdvance,
         bonus: effectiveBonus,
-        tds: effectiveTds,
-        fineAndDamages: effectiveFineAndDamages,
-        lwf: effectiveLwf,
-        otherDeductions: effectiveOtherDeductions,
+        tds: deductionInputs.tds,
+        fineAndDamages: deductionInputs.fineAndDamages,
+        lwf: deductionInputs.lwf,
+        otherDeductions: deductionInputs.otherDeductions,
         variablePay: effectiveVariablePay,
         otherEarnings: effectiveOtherEarnings,
       });
@@ -1023,48 +1094,8 @@ export function PayrollPage() {
   const editingComp = useMemo(() => {
     if (!editingRecord) return null;
 
-    const effectiveCompany: Company = {
-      ...company,
-      basicPct: editingRecord.basicPct,
-      daEnabled: editingRecord.daEnabled,
-      daPct: editingRecord.daPct,
-      hraEnabled: editingRecord.hraEnabled,
-      hraPct: editingRecord.hraPct,
-      oaEnabled: editingRecord.oaEnabled,
-      oaPct: editingRecord.oaPct,
-      caEnabled: editingRecord.caEnabled,
-      caPct: editingRecord.caPct,
-      ltaEnabled: editingRecord.ltaEnabled,
-      ltaPct: editingRecord.ltaPct,
-      ptEnabled: editingRecord.ptEnabled,
-      ptAmount: editingRecord.ptAmountOverride,
-      employeePfEnabled: editingRecord.pfEmployeeEnabled,
-      employerPfEnabled: editingRecord.pfEmployerEnabled,
-      employeePfPct: editingRecord.employeePfPct,
-      employerPfPct: editingRecord.employerPfPct,
-      pfRules: {
-        ...company.pfRules,
-        enabled: editingRecord.pfEnabled,
-        employeePct: editingRecord.employeePfPct,
-        employerPct: editingRecord.employerPfPct,
-      },
-      employeeEsiEnabled: editingRecord.esiEmployeeEnabled,
-      employerEsiEnabled: editingRecord.esiEmployerEnabled,
-      employeeEsiPct: editingRecord.employeeEsiPct,
-      employerEsiPct: editingRecord.employerEsiPct,
-      esiRules: {
-        ...company.esiRules,
-        enabled: editingRecord.esiEnabled,
-        employeePct: editingRecord.employeeEsiPct,
-        employerPct: editingRecord.employerEsiPct,
-      },
-      lwfRules: {
-        ...company.lwfRules,
-        enabled: editingRecord.lwfEnabled,
-        employeeAmount: editingRecord.lwfValue ?? editingRecord.lwfAmountOverride,
-      },
-      earnings: editingRecord.customAllowances as any,
-    };
+    const effectiveCompany = buildEffectiveCompany(company, editingRecord);
+    const deductionInputs = buildDeductionInputs(editingRecord, company);
 
     const totalBonus =
       (editingRecord.attBonusEnabled ? editingRecord.attBonusAmount : 0) +
@@ -1081,26 +1112,10 @@ export function PayrollPage() {
       loan: editingRecord.loan,
       advance: editingRecord.advance,
       bonus: totalBonus,
-      tds: {
-        enabled: editingRecord.tdsEnabled,
-        mode: editingRecord.tdsMode,
-        value: editingRecord.tdsValue,
-      },
-      fineAndDamages: {
-        enabled: editingRecord.fineAndDamagesEnabled,
-        mode: editingRecord.fineAndDamagesMode,
-        value: editingRecord.fineAndDamagesValue,
-      },
-      lwf: {
-        enabled: editingRecord.lwfEnabled,
-        mode: editingRecord.lwfMode,
-        value: editingRecord.lwfValue ?? editingRecord.lwfAmountOverride,
-      },
-      otherDeductions: {
-        enabled: editingRecord.otherDeductionsEnabled,
-        mode: editingRecord.otherDeductionsMode,
-        value: editingRecord.otherDeductionsValue ?? editingRecord.otherDeductions,
-      },
+      tds: deductionInputs.tds,
+      fineAndDamages: deductionInputs.fineAndDamages,
+      lwf: deductionInputs.lwf,
+      otherDeductions: deductionInputs.otherDeductions,
       variablePay: editingRecord.variablePay,
       otherEarnings: editingRecord.otherEarnings,
     });
@@ -1167,9 +1182,15 @@ export function PayrollPage() {
       }
       if (otFilterDept !== "all" && reg.emp.department !== otFilterDept) return false;
       if (otFilterStatus !== "all" && reg.otStatus !== otFilterStatus) return false;
+      if (otFilterDate) {
+        const matchDay = (reg.dailyOtRecords || []).some(
+          (d) => d.date === otFilterDate && d.otHours > 0
+        );
+        if (!matchDay) return false;
+      }
       return true;
     });
-  }, [otEligibleRecords, otSearch, otFilterDept, otFilterStatus]);
+  }, [otEligibleRecords, otSearch, otFilterDept, otFilterStatus, otFilterDate]);
 
   // Handle Approve Single OT
   const handleApproveOt = (empId: string, hours?: number, remarks?: string) => {
@@ -1475,6 +1496,135 @@ export function PayrollPage() {
 
     setMonthlyOverrides(nextOverrides);
     toast.info(`Rejected overtime for ${pendingRecords.length} employees.`);
+  };
+
+  // Handle Bulk Approve Selected OT (from Checkboxes)
+  const handleApproveSelectedOt = () => {
+    if (selectedOtEmpIds.length === 0) {
+      toast.info("Please select at least one employee.");
+      return;
+    }
+    const selectedRecords = monthlyRegister.filter((r) => selectedOtEmpIds.includes(r.emp.id));
+    if (selectedRecords.length === 0) return;
+
+    let nextOverrides = { ...monthlyOverrides };
+    selectedRecords.forEach((reg) => {
+      const overrideKey = `${effectivePeriodKey}_${reg.emp.id}`;
+      const ov = nextOverrides[overrideKey] || nextOverrides[`${selectedMonth}_${reg.emp.id}`] || {};
+      const approvedHours = ov.otApprovedHours !== undefined ? ov.otApprovedHours : reg.rawOtHours;
+
+      const updatedOv: MonthlyOverrideData = {
+        ...ov,
+        otStatus: "approved",
+        otApprovedHours: approvedHours,
+        otHours: approvedHours,
+        otApprovedAt: new Date().toISOString(),
+        otApprovedBy: currentUser?.name || "Admin",
+      };
+      nextOverrides[overrideKey] = updatedOv;
+
+      const effectiveEmp = updatedOv.customBasic ? { ...reg.emp, basic: updatedOv.customBasic } : reg.emp;
+      const newComp = computePayroll({
+        company,
+        employee: effectiveEmp,
+        daysWorked: reg.paidDays,
+        otHours: approvedHours,
+        incentive: updatedOv.incentive || 0,
+        shiftDays: reg.paidDays,
+        loan: updatedOv.loan || 0,
+        advance: updatedOv.advance || 0,
+        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        otherDeductions: updatedOv.otherDeductions || 0,
+        variablePay: updatedOv.variablePay || 0,
+        otherEarnings: updatedOv.otherEarnings || 0,
+      });
+
+      addPayroll({
+        id: `pay-${reg.emp.id}-${effectivePeriodKey}`,
+        employeeId: reg.emp.id,
+        empCode: reg.emp.empCode,
+        employeeName: reg.emp.name,
+        month: effectivePeriodLabel,
+        daysWorked: reg.paidDays,
+        otHours: approvedHours,
+        incentive: updatedOv.incentive || 0,
+        shiftDays: reg.paidDays,
+        loan: updatedOv.loan || 0,
+        advance: updatedOv.advance || 0,
+        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        computed: newComp,
+        overrideData: updatedOv,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    setMonthlyOverrides(nextOverrides);
+    toast.success(`Approved overtime for ${selectedRecords.length} selected employee(s)!`);
+    setSelectedOtEmpIds([]);
+  };
+
+  // Handle Bulk Decline Selected OT (from Checkboxes)
+  const handleDeclineSelectedOt = () => {
+    if (selectedOtEmpIds.length === 0) {
+      toast.info("Please select at least one employee.");
+      return;
+    }
+    const selectedRecords = monthlyRegister.filter((r) => selectedOtEmpIds.includes(r.emp.id));
+    if (selectedRecords.length === 0) return;
+
+    let nextOverrides = { ...monthlyOverrides };
+    selectedRecords.forEach((reg) => {
+      const overrideKey = `${effectivePeriodKey}_${reg.emp.id}`;
+      const ov = nextOverrides[overrideKey] || nextOverrides[`${selectedMonth}_${reg.emp.id}`] || {};
+
+      const updatedOv: MonthlyOverrideData = {
+        ...ov,
+        otStatus: "rejected",
+        otApprovedHours: 0,
+        otHours: 0,
+        otApprovedAt: new Date().toISOString(),
+        otApprovedBy: currentUser?.name || "Admin",
+      };
+      nextOverrides[overrideKey] = updatedOv;
+
+      const effectiveEmp = updatedOv.customBasic ? { ...reg.emp, basic: updatedOv.customBasic } : reg.emp;
+      const newComp = computePayroll({
+        company,
+        employee: effectiveEmp,
+        daysWorked: reg.paidDays,
+        otHours: 0,
+        incentive: updatedOv.incentive || 0,
+        shiftDays: reg.paidDays,
+        loan: updatedOv.loan || 0,
+        advance: updatedOv.advance || 0,
+        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        otherDeductions: updatedOv.otherDeductions || 0,
+        variablePay: updatedOv.variablePay || 0,
+        otherEarnings: updatedOv.otherEarnings || 0,
+      });
+
+      addPayroll({
+        id: `pay-${reg.emp.id}-${effectivePeriodKey}`,
+        employeeId: reg.emp.id,
+        empCode: reg.emp.empCode,
+        employeeName: reg.emp.name,
+        month: effectivePeriodLabel,
+        daysWorked: reg.paidDays,
+        otHours: 0,
+        incentive: updatedOv.incentive || 0,
+        shiftDays: reg.paidDays,
+        loan: updatedOv.loan || 0,
+        advance: updatedOv.advance || 0,
+        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        computed: newComp,
+        overrideData: updatedOv,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    setMonthlyOverrides(nextOverrides);
+    toast.info(`Declined overtime for ${selectedRecords.length} selected employee(s).`);
+    setSelectedOtEmpIds([]);
   };
 
   return (
@@ -2274,7 +2424,7 @@ export function PayrollPage() {
                           }}
                           className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
                         />
-                        <span className="text-xs text-muted-foreground">% of PF Wage Base</span>
+                        <span className="text-xs text-muted-foreground">% (&lt; ₹15k wage) / ₹1,800 flat (≥ ₹15k)</span>
                       </div>
                     </td>
                     <td className="px-5 py-2.5 text-right font-semibold text-rose-600 text-xs">
@@ -3081,15 +3231,15 @@ export function PayrollPage() {
                                 otherEarnings: overrideData.otherEarnings !== undefined ? overrideData.otherEarnings : 0,
                                 // Deductions:
                                 pfEnabled: overrideData.pfEnabled !== undefined ? overrideData.pfEnabled : (company.pfRules?.enabled !== false),
-                                pfEmployeeEnabled: overrideData.pfEmployeeEnabled !== undefined ? overrideData.pfEmployeeEnabled : true,
-                                pfEmployerEnabled: overrideData.pfEmployerEnabled !== undefined ? overrideData.pfEmployerEnabled : true,
-                                employeePfPct: overrideData.employeePfPct !== undefined ? overrideData.employeePfPct : (company.employeePfPct ?? 12),
-                                employerPfPct: overrideData.employerPfPct !== undefined ? overrideData.employerPfPct : (company.employerPfPct ?? 13),
+                                pfEmployeeEnabled: overrideData.pfEmployeeEnabled !== undefined ? overrideData.pfEmployeeEnabled : (overrideData.pfEnabled !== undefined ? overrideData.pfEnabled : (company.employeePfEnabled ?? true)),
+                                pfEmployerEnabled: overrideData.pfEmployerEnabled !== undefined ? overrideData.pfEmployerEnabled : (overrideData.pfEnabled !== undefined ? overrideData.pfEnabled : (company.employerPfEnabled ?? true)),
+                                employeePfPct: overrideData.employeePfPct !== undefined ? overrideData.employeePfPct : (company.employeePfPct ?? company.pfRules?.employeePct ?? 12),
+                                employerPfPct: overrideData.employerPfPct !== undefined ? overrideData.employerPfPct : (company.employerPfPct ?? company.pfRules?.employerPct ?? 13),
                                 esiEnabled: overrideData.esiEnabled !== undefined ? overrideData.esiEnabled : (company.esiRules?.enabled !== false),
-                                esiEmployeeEnabled: overrideData.esiEmployeeEnabled !== undefined ? overrideData.esiEmployeeEnabled : true,
-                                esiEmployerEnabled: overrideData.esiEmployerEnabled !== undefined ? overrideData.esiEmployerEnabled : true,
-                                employeeEsiPct: overrideData.employeeEsiPct !== undefined ? overrideData.employeeEsiPct : (company.employeeEsiPct ?? 0.75),
-                                employerEsiPct: overrideData.employerEsiPct !== undefined ? overrideData.employerEsiPct : (company.employerEsiPct ?? 3.25),
+                                esiEmployeeEnabled: overrideData.esiEmployeeEnabled !== undefined ? overrideData.esiEmployeeEnabled : (overrideData.esiEnabled !== undefined ? overrideData.esiEnabled : (company.employeeEsiEnabled ?? true)),
+                                esiEmployerEnabled: overrideData.esiEmployerEnabled !== undefined ? overrideData.esiEmployerEnabled : (overrideData.esiEnabled !== undefined ? overrideData.esiEnabled : (company.employerEsiEnabled ?? true)),
+                                employeeEsiPct: overrideData.employeeEsiPct !== undefined ? overrideData.employeeEsiPct : (company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75),
+                                employerEsiPct: overrideData.employerEsiPct !== undefined ? overrideData.employerEsiPct : (company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25),
                                 ptEnabled: overrideData.ptEnabled !== undefined ? overrideData.ptEnabled : (company.ptEnabled !== false),
                                 ptAmountOverride: overrideData.ptAmountOverride !== undefined ? overrideData.ptAmountOverride : (comp.deductions.professionalTax || company.ptAmount || 208),
                                 lwfEnabled: overrideData.lwfEnabled !== undefined ? overrideData.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false),
@@ -3386,7 +3536,7 @@ export function PayrollPage() {
 
           {/* Filter Bar */}
           <div className="p-3 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto flex-1">
               <div className="relative w-full sm:max-w-xs">
                 <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
@@ -3396,6 +3546,7 @@ export function PayrollPage() {
                   className="pl-8 h-8 text-xs rounded-xl bg-muted/20"
                 />
               </div>
+
               <Select value={otFilterDept} onValueChange={setOtFilterDept}>
                 <SelectTrigger className="h-8 text-xs rounded-xl w-36">
                   <SelectValue placeholder="Department" />
@@ -3407,6 +3558,30 @@ export function PayrollPage() {
                   ))}
                 </SelectContent>
               </Select>
+
+              {/* Date Selection Option */}
+              <div className="flex items-center gap-1.5 bg-background border border-border/80 rounded-xl px-2.5 h-8 shadow-xs">
+                <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap">Date:</span>
+                <input
+                  type="date"
+                  value={otFilterDate}
+                  onChange={(e) => setOtFilterDate(e.target.value)}
+                  className="bg-transparent text-xs text-foreground focus:outline-none cursor-pointer"
+                  title="Filter OT requests by specific date"
+                />
+                {otFilterDate && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setOtFilterDate("")}
+                    className="h-5 w-5 p-0 hover:bg-muted text-muted-foreground hover:text-foreground rounded-full"
+                    title="Clear date filter"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
@@ -3421,37 +3596,119 @@ export function PayrollPage() {
                     otFilterStatus === st ? "font-bold shadow-xs" : ""
                   }`}
                 >
-                  {st === "all" ? "All" : st}
+                  {st === "all" ? "All" : st === "rejected" ? "Declined" : st}
                 </Button>
               ))}
             </div>
           </div>
 
+          {/* Multi-Select Floating / Inline Action Bar */}
+          {selectedOtEmpIds.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-card border-2 border-primary/40 rounded-2xl shadow-md animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="flex items-center gap-2.5">
+                <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shadow-xs">
+                  {selectedOtEmpIds.length}
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-foreground">
+                    {selectedOtEmpIds.length} employee{selectedOtEmpIds.length > 1 ? "s" : ""} selected
+                  </span>
+                  <span className="text-[11px] text-muted-foreground ml-2 hidden sm:inline">
+                    Choose an action to apply across all selected requests
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleApproveSelectedOt}
+                  className="h-8 px-3 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-xs"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  <span>Approve Selected ({selectedOtEmpIds.length})</span>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleDeclineSelectedOt}
+                  variant="outline"
+                  className="h-8 px-3 text-xs rounded-xl border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-semibold gap-1.5"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  <span>Decline Selected ({selectedOtEmpIds.length})</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedOtEmpIds([])}
+                  className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground rounded-xl"
+                >
+                  Clear Selection
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Table of OT Requests */}
           <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-border/80 bg-muted/40 text-muted-foreground font-semibold text-[11px] uppercase tracking-wider">
-                    <th className="px-4 py-3">Employee</th>
-                    <th className="px-4 py-3">Base &amp; Hourly Rate</th>
-                    <th className="px-4 py-3">Logged OT (Punches)</th>
-                    <th className="px-4 py-3">Approved OT</th>
-                    <th className="px-4 py-3">Estimated OT Pay</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Admin Action</th>
+                <thead className="bg-[#f8fafc] dark:bg-muted/40 text-[#64748b] dark:text-muted-foreground font-semibold text-xs border-b border-border/80">
+                  <tr>
+                    <th className="w-12 px-4 py-3.5 text-center">
+                      <Checkbox
+                        checked={
+                          filteredOtRecords.length > 0 &&
+                          filteredOtRecords.every((r) => selectedOtEmpIds.includes(r.emp.id))
+                            ? true
+                            : filteredOtRecords.some((r) => selectedOtEmpIds.includes(r.emp.id))
+                            ? "indeterminate"
+                            : false
+                        }
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedOtEmpIds(
+                              Array.from(new Set([...selectedOtEmpIds, ...filteredOtRecords.map((r) => r.emp.id)]))
+                            );
+                          } else {
+                            const visibleIds = new Set(filteredOtRecords.map((r) => r.emp.id));
+                            setSelectedOtEmpIds(selectedOtEmpIds.filter((id) => !visibleIds.has(id)));
+                          }
+                        }}
+                        aria-label="Select all"
+                        className="rounded-md"
+                      />
+                    </th>
+                    <th className="px-4 py-3.5">Employee</th>
+                    <th className="px-4 py-3.5">Base &amp; Hourly Rate</th>
+                    <th className="px-4 py-3.5">Logged OT (Punches)</th>
+                    <th className="px-4 py-3.5">Approved OT</th>
+                    <th className="px-4 py-3.5">Estimated OT Pay</th>
+                    <th className="px-4 py-3.5">Status</th>
+                    <th className="w-20 px-4 py-3.5 text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/60">
+                <tbody className="divide-y divide-border/50">
                   {filteredOtRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-12 text-muted-foreground">
+                      <td colSpan={8} className="text-center py-16 text-muted-foreground">
                         <div className="flex flex-col items-center justify-center gap-2">
-                          <Clock className="h-8 w-8 text-muted-foreground/40 stroke-1" />
+                          <Clock className="h-9 w-9 text-muted-foreground/40 stroke-1" />
                           <p className="font-semibold text-sm">No overtime records found</p>
                           <p className="text-xs text-muted-foreground max-w-sm">
-                            No employees have accumulated overtime hours from attendance punches for {effectivePeriodLabel}.
+                            {otFilterDate
+                              ? `No overtime logged on ${formatOtDate(otFilterDate)}. Try clearing the date filter.`
+                              : `No employees have accumulated overtime hours for ${effectivePeriodLabel}.`}
                           </p>
+                          {otFilterDate && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setOtFilterDate("")}
+                              className="mt-2 text-xs rounded-xl"
+                            >
+                              Clear Date Filter
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -3467,16 +3724,53 @@ export function PayrollPage() {
                         : (reg.overrideData?.otHours !== undefined ? reg.overrideData.otHours : reg.rawOtHours);
                       const potentialPay = Math.round(hourlyRate * approvedHrs * otMult);
 
+                      // Date specific OT lookup if date filter is active
+                      const dateSpecificRecord = otFilterDate ? reg.dailyOtRecords?.find((d) => d.date === otFilterDate) : null;
+                      const displayLoggedHours = otFilterDate
+                        ? (dateSpecificRecord?.otHours || 0)
+                        : reg.rawOtHours;
+
+                      const isSelected = selectedOtEmpIds.includes(reg.emp.id);
+
                       return (
-                        <tr key={reg.emp.id} className="hover:bg-muted/30 transition-colors">
-                          {/* Employee Details */}
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                                {reg.emp.name?.slice(0, 2).toUpperCase()}
-                              </div>
-                              <div>
-                                <div className="font-bold text-foreground flex items-center gap-1.5">
+                        <tr
+                          key={reg.emp.id}
+                          className={`hover:bg-muted/30 transition-colors ${
+                            isSelected ? "bg-primary/5" : ""
+                          }`}
+                        >
+                          {/* Checkbox */}
+                          <td className="w-12 px-4 py-3.5 text-center">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedOtEmpIds((prev) => [...prev, reg.emp.id]);
+                                } else {
+                                  setSelectedOtEmpIds((prev) => prev.filter((id) => id !== reg.emp.id));
+                                }
+                              }}
+                              aria-label={`Select ${reg.emp.name}`}
+                              className="rounded-md"
+                            />
+                          </td>
+
+                          {/* Employee */}
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-3">
+                              {reg.emp.photoDataUrl ? (
+                                <img
+                                  src={reg.emp.photoDataUrl}
+                                  alt={reg.emp.name}
+                                  className="h-10 w-10 rounded-full object-cover shrink-0 ring-1 ring-border/50"
+                                />
+                              ) : (
+                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/15 to-primary/30 text-primary flex items-center justify-center font-bold text-xs shrink-0 ring-1 ring-border/50">
+                                  {reg.emp.name?.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="font-semibold text-sm text-foreground flex items-center gap-1.5">
                                   <span>{reg.emp.name}</span>
                                   {reg.emp.employmentType === "contract" && (
                                     <Badge
@@ -3487,26 +3781,26 @@ export function PayrollPage() {
                                     </Badge>
                                   )}
                                 </div>
-                                <div className="text-[11px] text-muted-foreground">
+                                <div className="text-xs text-muted-foreground truncate">
                                   {reg.emp.empCode} · {reg.emp.department || "General"}
                                 </div>
                               </div>
                             </div>
                           </td>
 
-                          {/* Base & Hourly */}
-                          <td className="px-4 py-3">
-                            <div className="font-semibold text-foreground">{inr(fixedGross)}/mo</div>
+                          {/* Base & Hourly Rate */}
+                          <td className="px-4 py-3.5">
+                            <div className="font-semibold text-foreground text-xs">{inr(fixedGross)}/mo</div>
                             <div className="text-[11px] text-muted-foreground">
                               ₹{hourlyRate.toFixed(1)}/hr ({otMult}× mult)
                             </div>
                           </td>
 
-                          {/* Logged OT with View Details button */}
-                          <td className="px-4 py-3">
+                          {/* Logged OT (Punches) */}
+                          <td className="px-4 py-3.5">
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-sky-600 dark:text-sky-400 text-sm">
-                                {reg.rawOtHours} hrs
+                                {displayLoggedHours} hrs
                               </span>
                               {reg.dailyOtRecords && reg.dailyOtRecords.length > 0 && (
                                 <Button
@@ -3517,7 +3811,7 @@ export function PayrollPage() {
                                     selectedMonth,
                                   })}
                                   className="h-6 text-[10px] px-2 rounded-lg gap-1 border-border/80 hover:border-primary/50 text-foreground"
-                                  title="View Overtime Calendar"
+                                  title="View Overtime Calendar Breakdown"
                                 >
                                   <Calendar className="h-2.5 w-2.5 text-primary" />
                                   <span>{reg.dailyOtRecords.length} {reg.dailyOtRecords.length === 1 ? "day" : "days"}</span>
@@ -3526,9 +3820,9 @@ export function PayrollPage() {
                             </div>
                           </td>
 
-                          {/* Approved OT Hours Editable Input */}
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5 max-w-[110px]">
+                          {/* Approved OT Hours (Editable Input) */}
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-1.5 max-w-[120px]">
                               <Input
                                 type="number"
                                 step="0.5"
@@ -3546,18 +3840,18 @@ export function PayrollPage() {
                                     },
                                   });
                                 }}
-                                className="h-7 text-xs font-bold text-foreground"
+                                className="h-7 text-xs font-bold text-foreground w-16 px-1.5"
                               />
-                              <span className="text-[10px] text-muted-foreground">hrs</span>
+                              <span className="text-[10px] text-muted-foreground font-medium">hrs</span>
                             </div>
                           </td>
 
                           {/* Estimated OT Pay */}
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3.5">
                             <div className="font-bold text-foreground text-xs">
                               {reg.otStatus === "approved" ? inr(reg.comp.earnings.overtime || potentialPay) : inr(potentialPay)}
                             </div>
-                            <div className="text-[10px] text-muted-foreground">
+                            <div className="text-[10px]">
                               {reg.otStatus === "approved" ? (
                                 <span className="text-emerald-600 font-medium">Added to payslip</span>
                               ) : (
@@ -3567,43 +3861,25 @@ export function PayrollPage() {
                           </td>
 
                           {/* Status Badge */}
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3.5 whitespace-nowrap">
                             {reg.otStatus === "approved" ? (
-                              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 text-[11px] font-semibold py-0.5">
-                                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                                <span>Approved</span>
-                              </Badge>
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-[#ecfdf5] text-[#059669] dark:bg-emerald-950/40 dark:text-emerald-300">
+                                Approved
+                              </span>
                             ) : reg.otStatus === "rejected" ? (
-                              <Badge variant="outline" className="bg-rose-500/10 text-rose-600 border-rose-500/30 gap-1 text-[11px] font-semibold py-0.5">
-                                <XCircle className="h-3 w-3 text-rose-600" />
-                                <span>Rejected</span>
-                              </Badge>
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-[#fef2f2] text-[#dc2626] dark:bg-rose-950/40 dark:text-rose-300">
+                                Declined
+                              </span>
                             ) : (
-                              <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 gap-1 text-[11px] font-semibold py-0.5">
-                                <Clock className="h-3 w-3 text-amber-500" />
-                                <span>Pending Approval</span>
-                              </Badge>
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-[#fffbeb] text-[#d97706] dark:bg-amber-950/40 dark:text-amber-300">
+                                Pending Approval
+                              </span>
                             )}
                           </td>
 
                           {/* Actions */}
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {/* Extra Option: Calendar View */}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setOtCalendarTarget({
-                                  emp: reg.emp,
-                                  selectedMonth,
-                                })}
-                                className="h-7 text-xs px-2.5 rounded-lg border-border hover:bg-muted font-medium gap-1 text-foreground shadow-xs"
-                                title="Open Overtime Calendar View"
-                              >
-                                <Calendar className="h-3.5 w-3.5 text-primary" />
-                                <span>Calendar View</span>
-                              </Button>
-
+                          <td className="w-20 px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1">
                               {reg.otStatus !== "approved" ? (
                                 <Button
                                   size="sm"
@@ -3613,7 +3889,8 @@ export function PayrollPage() {
                                     const hrs = ov.otApprovedHours !== undefined ? ov.otApprovedHours : (ov.otHours !== undefined ? ov.otHours : reg.rawOtHours);
                                     handleApproveOt(reg.emp.id, hrs);
                                   }}
-                                  className="h-7 text-xs px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1 shadow-xs"
+                                  className="h-7 text-xs px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1 shadow-xs"
+                                  title="Approve Overtime"
                                 >
                                   <Check className="h-3 w-3" />
                                   <span>Approve</span>
@@ -3623,36 +3900,73 @@ export function PayrollPage() {
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleRejectOt(reg.emp.id)}
-                                  className="h-7 text-xs px-2.5 rounded-lg text-rose-600 hover:bg-rose-500/10 gap-1"
+                                  className="h-7 text-xs px-2 rounded-lg text-rose-600 hover:bg-rose-500/10 gap-1 font-semibold"
+                                  title="Revoke / Decline"
                                 >
                                   <X className="h-3 w-3" />
                                   <span>Revoke</span>
                                 </Button>
                               )}
 
-                              {reg.otStatus !== "rejected" && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleRejectOt(reg.emp.id)}
-                                  className="h-7 text-xs px-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                  title="Reject overtime"
-                                >
-                                  <XCircle className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-
-                              {reg.otStatus !== "pending" && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleResetOt(reg.emp.id)}
-                                  className="h-7 text-xs px-2 rounded-lg text-muted-foreground hover:bg-muted"
-                                  title="Reset to Pending"
-                                >
-                                  <RotateCcw className="h-3 w-3" />
-                                </Button>
-                              )}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-full"
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    <span className="sr-only">Open menu</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48 text-xs">
+                                  {reg.otStatus !== "approved" && (
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        const overrideKey = `${effectivePeriodKey}_${reg.emp.id}`;
+                                        const ov = monthlyOverrides[overrideKey] || monthlyOverrides[`${selectedMonth}_${reg.emp.id}`] || {};
+                                        const hrs = ov.otApprovedHours !== undefined ? ov.otApprovedHours : (ov.otHours !== undefined ? ov.otHours : reg.rawOtHours);
+                                        handleApproveOt(reg.emp.id, hrs);
+                                      }}
+                                      className="text-emerald-600 focus:text-emerald-700 cursor-pointer font-medium"
+                                    >
+                                      <Check className="mr-2 h-3.5 w-3.5" />
+                                      <span>Approve Overtime</span>
+                                    </DropdownMenuItem>
+                                  )}
+                                  {reg.otStatus !== "rejected" && (
+                                    <DropdownMenuItem
+                                      onClick={() => handleRejectOt(reg.emp.id)}
+                                      className="text-rose-600 focus:text-rose-700 cursor-pointer font-medium"
+                                    >
+                                      <X className="mr-2 h-3.5 w-3.5" />
+                                      <span>Decline Overtime</span>
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setOtCalendarTarget({
+                                        emp: reg.emp,
+                                        selectedMonth,
+                                      })
+                                    }
+                                    className="cursor-pointer"
+                                  >
+                                    <Calendar className="mr-2 h-3.5 w-3.5 text-primary" />
+                                    <span>View Breakdown Calendar</span>
+                                  </DropdownMenuItem>
+                                  {reg.otStatus !== "pending" && (
+                                    <DropdownMenuItem
+                                      onClick={() => handleResetOt(reg.emp.id)}
+                                      className="text-muted-foreground cursor-pointer"
+                                    >
+                                      <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                                      <span>Reset to Pending</span>
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           </td>
                         </tr>
@@ -4797,6 +5111,7 @@ export function PayrollPage() {
                     const overrideKey = `${effectivePeriodKey}_${editingRecord.emp.id}`;
                     const copy = { ...monthlyOverrides };
                     delete copy[overrideKey];
+                    delete copy[`${selectedMonth}_${editingRecord.emp.id}`];
                     setMonthlyOverrides(copy);
                     setEditingRecord(null);
                     toast.success(`Reset overrides to standard attendance for ${editingRecord.emp.name}`);
@@ -4846,8 +5161,16 @@ export function PayrollPage() {
                         bonus: editingRecord.bonus,
                         variablePay: editingRecord.variablePay,
                         otherEarnings: editingRecord.otherEarnings,
-                        pfEnabled: editingRecord.pfEnabled,
-                        esiEnabled: editingRecord.esiEnabled,
+                        pfEnabled: (editingRecord.pfEmployeeEnabled || editingRecord.pfEmployerEnabled) ? (editingRecord.pfEnabled !== false) : false,
+                        pfEmployeeEnabled: editingRecord.pfEmployeeEnabled,
+                        pfEmployerEnabled: editingRecord.pfEmployerEnabled,
+                        employeePfPct: editingRecord.employeePfPct,
+                        employerPfPct: editingRecord.employerPfPct,
+                        esiEnabled: (editingRecord.esiEmployeeEnabled || editingRecord.esiEmployerEnabled) ? (editingRecord.esiEnabled !== false) : false,
+                        esiEmployeeEnabled: editingRecord.esiEmployeeEnabled,
+                        esiEmployerEnabled: editingRecord.esiEmployerEnabled,
+                        employeeEsiPct: editingRecord.employeeEsiPct,
+                        employerEsiPct: editingRecord.employerEsiPct,
                         ptEnabled: editingRecord.ptEnabled,
                         ptAmountOverride: editingRecord.ptAmountOverride,
                         lwfEnabled: editingRecord.lwfEnabled,
@@ -4874,6 +5197,7 @@ export function PayrollPage() {
                       setMonthlyOverrides({
                         ...monthlyOverrides,
                         [overrideKey]: overridePayload,
+                        [`${selectedMonth}_${editingRecord.emp.id}`]: overridePayload,
                       });
 
                       // 2. Persist updated base salary to DynamoDB (swift_company_employees)

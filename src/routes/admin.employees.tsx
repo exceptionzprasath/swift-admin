@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, isMockEmployee, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
+import { aiNotify } from "@/lib/ai-guide-bus";
 import { generateAppointmentPDF, generateAppointmentPDFBlob } from "@/lib/pdf";
 import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, prepareDocAssets, generateLetterPDF, type LetterKey } from "@/lib/documents";
 import JSZip from "jszip";
@@ -39,6 +40,7 @@ import {
 import { downloadEmployeeTemplate, parseEmployeeCsvText, generateEmployeePassword, downloadBulkEmployeesExcel } from "@/lib/bulk-employee";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
 import { DesignationSelect } from "@/components/designation-select";
+import { DepartmentSelect } from "@/components/department-select";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { INDIAN_STATES } from "@/lib/india-locations";
@@ -1034,7 +1036,12 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 <div className="space-y-4">
                   <StepHead icon={Briefcase} title="Employment, Fixed Salary & Compliance" subtitle="Fixed salary, statutory deductions, eligibility dates, and role assignment." />
                   <div className="grid grid-cols-2 gap-4">
-                    <Field label="Department *" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
+                    <DepartmentSelect
+                      label="Department *"
+                      value={form.department}
+                      onChange={(v) => setForm({ ...form, department: v })}
+                      triggerClassName="h-9"
+                    />
                     <DesignationSelect
                       label="Designation *"
                       value={form.designation}
@@ -2773,15 +2780,12 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-xs">Department</Label>
-                    <Select value={form.department || "Engineering"} onValueChange={(v) => setForm({ ...form, department: v })}>
-                      <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {["Engineering", "HR", "Sales", "Operations", "Finance", "Marketing", "Legal", "Executive", "Design"].map((d) => (
-                          <SelectItem key={d} value={d}>{d}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <DepartmentSelect
+                      label="Department"
+                      value={form.department || ""}
+                      onChange={(v) => setForm({ ...form, department: v })}
+                      triggerClassName="text-xs h-9"
+                    />
                   </div>
                   <div>
                     <Label className="text-xs">Designation</Label>
@@ -3591,7 +3595,9 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
 }
 
 function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { addEmployee, company, employees, roles, branches, shifts } = useStore();
+  const { addEmployee, company, employees, roles } = useStore();
+  const branches = company.branches || [];
+  const shifts = company.shifts || [];
   const [file, setFile] = useState<File | null>(null);
   const [parsed, setParsed] = useState<{
     employees: Omit<Employee, "id">[];

@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DesignationSelect } from "@/components/designation-select";
+import { DepartmentSelect } from "@/components/department-select";
 import {
   DoorOpen, ArrowRightLeft, FileSignature, FileDown, PackageCheck,
   MessageSquareQuote, CheckCircle2, Wallet, Building2, Sparkles,
@@ -435,7 +436,15 @@ We wish you the very best in this new assignment.`;
                   triggerClassName="h-9 text-xs"
                 />
               </div>
-              <Field label="New Department (optional)"><Input value={newDepartment} onChange={(e) => setNewDepartment(e.target.value)} placeholder={employee.department} /></Field>
+              <div>
+                <Label className="text-xs">New Department (optional)</Label>
+                <DepartmentSelect
+                  value={newDepartment}
+                  onChange={setNewDepartment}
+                  placeholder={employee.department || "Select or enter new department…"}
+                  triggerClassName="h-9 text-xs"
+                />
+              </div>
             </div>
             <Field label="Reason"><Textarea rows={2} value={transferReason} onChange={(e) => setTransferReason(e.target.value)} /></Field>
 

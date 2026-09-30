@@ -143,7 +143,9 @@ function AdminLayout() {
 
   useEffect(() => {
     purgeMockEmployees();
-    if (!demoMode && activeTenantId) {
+    if (activeTenantId && !activeTenantId.startsWith("demo-tenant-")) {
+      loadCompanyState(activeTenantId);
+    } else if (!demoMode && activeTenantId) {
       loadCompanyState(activeTenantId);
     }
   }, [activeTenantId, demoMode, loadCompanyState, purgeMockEmployees]);

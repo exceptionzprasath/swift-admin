@@ -388,7 +388,8 @@ function wageRegister(doc: jsPDF, ctx: FormContext) {
   drawHeader(doc, "FORM X · WAGE REGISTER", `Wage period ${period ?? new Date().toISOString().slice(0, 7)}`, company);
   const rows = employees.map((e, i) => {
     const gross = (e.basic || 0) * 2;
-    const pf = Math.round(Math.min(e.basic || 0, 15000) * 0.12);
+    const basicWage = e.basic || 0;
+    const pf = basicWage >= 15000 ? 1800 : Math.round(basicWage * ((company.employeePfPct || 12) / 100));
     const pt = company.ptAmount || 200;
     const esi = gross <= 21000 ? Math.round(gross * 0.0075) : 0;
     return [i + 1, e.empCode, e.name, inrRaw(e.basic || 0), inrRaw(gross), inrRaw(pf), inrRaw(esi), inrRaw(pt), inrRaw(gross - pf - esi - pt)];

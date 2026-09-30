@@ -32,16 +32,41 @@ import { type ThemePaletteId, applyThemePalette } from "./palettes";
 
 export function isMockEmployee(emp: Partial<Employee> | null | undefined): boolean {
   if (!emp) return false;
-  const name = String(emp.name || "").trim();
-  const id = String(emp.id || "").trim();
-  const empCode = String(emp.empCode || "").trim();
+  const name = String(emp.name || "").trim().toLowerCase();
+  const id = String(emp.id || "").trim().toLowerCase();
+  const empCode = String(emp.empCode || "").trim().toLowerCase();
   const email = String(emp.email || "").trim().toLowerCase();
 
   return (
-    name.startsWith("Staff #") ||
-    id.startsWith("EMP-") ||
-    empCode.startsWith("EMP-") ||
-    email.endsWith("@swifthr.shop")
+    name.startsWith("staff #") ||
+    name === "aarav sharma" ||
+    name === "priya iyer" ||
+    name === "rahul verma" ||
+    name === "meera nair" ||
+    id.startsWith("emp-") ||
+    id.startsWith("demo-emp") ||
+    id.startsWith("emp-sample") ||
+    empCode.startsWith("emp-") ||
+    empCode.startsWith("swf00") ||
+    email.endsWith("@swifthr.shop") ||
+    email.endsWith("@demo.swift") ||
+    email.includes("demo@")
+  );
+}
+
+export function isMockAttendance(att: Partial<AttendanceRecord> | null | undefined): boolean {
+  if (!att) return false;
+  const empId = String(att.employeeId || "").trim().toLowerCase();
+  const empName = String(att.employeeName || "").trim().toLowerCase();
+  return (
+    empId.startsWith("demo-emp") ||
+    empId.startsWith("emp-sample") ||
+    empId.startsWith("emp-") ||
+    empName === "aarav sharma" ||
+    empName === "priya iyer" ||
+    empName === "rahul verma" ||
+    empName === "meera nair" ||
+    empName.startsWith("staff #")
   );
 }
 
@@ -462,6 +487,8 @@ export type Company = {
   includeWeekOff?: boolean;
   /** Custom company designations configured for this tenant */
   designations?: string[];
+  /** Custom company departments configured for this tenant */
+  departments?: string[];
   grievanceTypes?: GrievanceTypeItem[];
   attendanceRequestCategories?: AttendanceRequestCategory[];
   documentTypes?: DocumentTypeItem[];
@@ -1181,6 +1208,8 @@ type State = {
   setCompany: (c: Partial<Company>) => void;
   addDesignation: (name: string) => void;
   deleteDesignation: (name: string) => void;
+  addDepartment: (name: string) => void;
+  deleteDepartment: (name: string) => void;
   addEmployee: (e: Omit<Employee, "id">) => Employee;
   updateEmployee: (id: string, patch: Partial<Employee>) => void;
   deleteEmployee: (id: string) => void;
@@ -1378,6 +1407,7 @@ const defaultCompany: Company = {
     { id: "br-hq", name: "Head Office", code: "HQ", address: "123 Business Ave", city: "Erode", state: "Tamil Nadu", isHead: true, lat: 11.30564, lng: 77.70347, radiusMeters: 50, shiftStart: "09:00", shiftEnd: "18:00", weeklyOff: ["Sun"] },
   ],
   designations: [],
+  departments: [],
 
   appointmentTemplate: `Dear {{name}},
 
@@ -2419,14 +2449,16 @@ export const useStore = create<State>()(
             // Authoritative employee list from database (purging any legacy mock employees)
             const rawEmployees: Employee[] = Array.isArray(data.employees) ? data.employees : [];
             const cleanEmployees = rawEmployees.filter((e) => !isMockEmployee(e));
+            const rawAttendance: AttendanceRecord[] = Array.isArray(loadedAttendance) ? loadedAttendance : [];
+            const cleanAttendance = rawAttendance.filter((a) => !isMockAttendance(a));
 
             set({
               company: nextCompany,
               docAssets: data.docAssets || DEFAULT_DOC_ASSETS,
               employees: cleanEmployees,
-              attendance: Array.isArray(loadedAttendance) ? loadedAttendance : get().attendance,
-              leaves: data.leaves || [],
-              payrolls: data.payrolls || [],
+              attendance: cleanAttendance,
+              leaves: (data.leaves || []).filter((l: any) => !l.employeeId?.toLowerCase().startsWith("demo-emp") && !l.employeeId?.toLowerCase().startsWith("emp-")),
+              payrolls: (data.payrolls || []).filter((p: any) => !p.employeeId?.toLowerCase().startsWith("demo-emp") && !p.employeeId?.toLowerCase().startsWith("emp-")),
               assets: data.assets || [],
               assetAssignments: data.assignments || [],
               docLibrary: data.docLibrary || [],
@@ -2465,7 +2497,7 @@ export const useStore = create<State>()(
           if (Array.isArray(rawLogs) && rawLogs.length > 0) {
             // Strictly preserve only real employees - NEVER push synthetic mock employees!
             const currentEmployees = get().employees.filter((e) => !isMockEmployee(e));
-            const currentAttendance = get().attendance;
+            const currentAttendance = get().attendance.filter((a) => !isMockAttendance(a));
             const recordsMap = new Map<string, AttendanceRecord>();
 
             for (const rec of currentAttendance) {
@@ -2519,13 +2551,29 @@ export const useStore = create<State>()(
                   source: 'BIOMETRIC_TERMINAL',
                   deviceSerial: log.deviceSerial || 'BIO-TERM-001',
                   punchType: log.punchType || 'FINGERPRINT',
-                  hoursWorked: 8,
+                  hoursWorked: 0,
                   otHours: 0
                 });
               } else {
                 if (state === 'CHECK_OUT' || (existing.checkIn && existing.checkIn !== timeStr)) {
                   existing.checkOut = timeStr;
                   existing.clockOut = timeStr;
+
+                  // Compute real hours worked & OT between checkIn and checkOut
+                  const inT = existing.checkIn || existing.clockIn || "";
+                  const outT = timeStr;
+                  if (inT && outT) {
+                    const [inH, inM] = inT.split(':').map(Number);
+                    const [outH, outM] = outT.split(':').map(Number);
+                    if (!isNaN(inH) && !isNaN(inM) && !isNaN(outH) && !isNaN(outM)) {
+                      let diffM = (outH * 60 + outM) - (inH * 60 + inM);
+                      if (diffM < 0) diffM += 24 * 60;
+                      const calculatedHours = Math.round((diffM / 60) * 10) / 10;
+                      const stdHours = 9;
+                      existing.hoursWorked = calculatedHours;
+                      existing.otHours = calculatedHours > stdHours ? Math.round((calculatedHours - stdHours) * 10) / 10 : 0;
+                    }
+                  }
                 }
                 if (log.deviceSerial) existing.deviceSerial = log.deviceSerial;
                 if (log.punchType) existing.punchType = log.punchType;
@@ -2570,6 +2618,9 @@ export const useStore = create<State>()(
       purgeMockEmployees: () => {
         set((s) => ({
           employees: (s.employees || []).filter((e) => !isMockEmployee(e)),
+          attendance: (s.attendance || []).filter((a) => !isMockAttendance(a)),
+          leaves: (s.leaves || []).filter((l) => !l.employeeId?.toLowerCase().startsWith("demo-emp") && !l.employeeId?.toLowerCase().startsWith("emp-")),
+          payrolls: (s.payrolls || []).filter((p) => !p.employeeId?.toLowerCase().startsWith("demo-emp") && !p.employeeId?.toLowerCase().startsWith("emp-")),
         }));
       },
       resetTenantState: () => {
@@ -2640,6 +2691,34 @@ export const useStore = create<State>()(
             (d) => d.toLowerCase() !== name.trim().toLowerCase()
           );
           const nextCompany = { ...s.company, designations: nextDesignations };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+      },
+      addDepartment: (name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        set((s) => {
+          const currentList = s.company.departments || [];
+          if (currentList.some((d) => d.toLowerCase() === trimmed.toLowerCase())) return s;
+          const nextDepartments = [...currentList, trimmed];
+          const nextCompany = { ...s.company, departments: nextDepartments };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+      },
+      deleteDepartment: (name: string) => {
+        set((s) => {
+          const nextDepartments = (s.company.departments || []).filter(
+            (d) => d.toLowerCase() !== name.trim().toLowerCase()
+          );
+          const nextCompany = { ...s.company, departments: nextDepartments };
           const tenantId = useAuth.getState().activeTenantId;
           if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });

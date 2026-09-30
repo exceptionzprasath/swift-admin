@@ -376,7 +376,7 @@ export function computePayroll(opts: {
   // 1. Provident Fund (EPF Act 1952)
   // PF Wage = Earned Basic + DA
   const pfRules = c.pfRules;
-  const pfEnabled = pfRules?.enabled !== false;
+  const pfEnabled = pfRules?.enabled !== false && e.pfEligible !== false;
   let employeePF = 0;
   let employerPF = 0;
   let eps = 0;
@@ -384,25 +384,41 @@ export function computePayroll(opts: {
   let edli = 0;
   let pfAdmin = 0;
 
-  const pfBaseRaw = earnedBasic;
-  const PF_CEILING = pfRules?.ceiling && pfRules.ceiling > 0 ? pfRules.ceiling : 15000;
-  const proratedCeiling = Math.round(PF_CEILING * prorateFactor);
-  const pfBase = Math.min(pfBaseRaw, proratedCeiling > 0 ? proratedCeiling : PF_CEILING);
+  // Basic + DA wage base for PF (including any earning heads flagged includeInPf)
+  const pfQualifyingWage = earningsList
+    .filter((item) => item.c?.includeInPf)
+    .reduce((sum, item) => sum + item.amount, 0) || earnedBasic;
+  const basicPlusDA = pfQualifyingWage;
+  const pfBaseRaw = basicPlusDA;
+  const PF_CEILING = 15000;
+  const pfBase = Math.min(basicPlusDA, PF_CEILING);
 
-  if (pfEnabled && pfBase > 0) {
+  if (pfEnabled && basicPlusDA > 0) {
     const empEnabled = (c.pfRules as any)?.employeeEnabled !== false && c.employeePfEnabled !== false;
     const emplyrEnabled = (c.pfRules as any)?.employerEnabled !== false && c.employerPfEnabled !== false;
     const empPct = pfRules?.employeePct ?? c.employeePfPct ?? 12;
     const emplyrPct = pfRules?.employerPct ?? c.employerPfPct ?? 13;
 
-    employeePF = empEnabled ? Math.round(pfBase * (empPct / 100)) : 0;
-    employerPF = emplyrEnabled ? Math.round(pfBase * (emplyrPct / 100)) : 0;
+    // Rule: If Basic Pay + DA is less than 15000, deduction is as per percentage entered in PF.
+    // When Basic Pay + DA is 15000 or more, deduction amount is standard ₹1800.
+    if (empEnabled) {
+      if (basicPlusDA >= 15000) {
+        employeePF = 1800;
+      } else {
+        employeePF = Math.round(basicPlusDA * (empPct / 100));
+      }
+    } else {
+      employeePF = 0;
+    }
 
-    // EPS diversion: 8.33%
-    eps = employerPF > 0 ? Math.round(pfBase * 0.0833) : 0;
-    epfEmployer = Math.max(0, employerPF - eps);
-    edli = employerPF > 0 ? Math.round(pfBase * 0.005) : 0;
-    pfAdmin = employerPF > 0 ? Math.round(pfBase * 0.005) : 0;
+    if (emplyrEnabled) {
+      employerPF = Math.round(pfBase * (emplyrPct / 100));
+      // EPS diversion: 8.33% up to ceiling (max 1250)
+      eps = Math.round(pfBase * 0.0833);
+      epfEmployer = Math.max(0, employerPF - eps);
+      edli = Math.round(pfBase * 0.005);
+      pfAdmin = Math.round(pfBase * 0.005);
+    }
   }
 
   // 2. Employee State Insurance (ESI Act 1948)
@@ -646,7 +662,10 @@ export function explainPayroll(company: Company, employee: Employee, p: PayrollC
   if (c.pfRules?.enabled) {
     out.push({
       id: "employeePF",
-      text: `Employee PF = ${c.pfRules.employeePct}% of PF base ₹${Math.round(p.pfBase).toLocaleString("en-IN")}${p.pfBaseRaw > p.pfBase ? ` (capped at wage ceiling ₹${c.pfRules.ceiling.toLocaleString("en-IN")} from raw ₹${Math.round(p.pfBaseRaw).toLocaleString("en-IN")})` : ""}. Statutory: EPF Act 1952.`,
+      text:
+        p.pfBaseRaw >= 15000
+          ? `Employee PF = standard ₹1,800 (Basic+DA ₹${Math.round(p.pfBaseRaw).toLocaleString("en-IN")} ≥ ₹15,000 ceiling). Statutory: EPF Act 1952.`
+          : `Employee PF = ${c.pfRules.employeePct}% of Basic+DA ₹${Math.round(p.pfBaseRaw).toLocaleString("en-IN")} (< ₹15,000). Statutory: EPF Act 1952.`,
     });
     out.push({ id: "employerPF", text: `Employer PF = ${c.pfRules.employerPct}% of PF base — includes 8.33% pension diversion (EPS) up to ceiling.` });
   }

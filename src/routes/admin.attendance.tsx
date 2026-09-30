@@ -14,6 +14,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuCheckboxItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
   CheckCircle2,
   XCircle,
   Clock,
@@ -70,12 +86,72 @@ import {
   Code2,
   ChevronDown,
   ChevronUp,
+  Info,
+  CheckCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { HardwareBridgeModal } from "@/components/biometric/HardwareBridgeModal";
 import { LiveBiometricFeed } from "@/components/biometric/LiveBiometricFeed";
 import { DeviceManagerHub } from "@/components/biometric/DeviceManagerHub";
 import { StaffBiometricDirectory } from "@/components/biometric/StaffBiometricDirectory";
+
+// Utility: Parse time string in 12h, 24h, or with seconds into total minutes of the day
+function parseTimeMinutes(s?: string): number {
+  if (!s) return -1;
+  let cleaned = String(s).trim().toLowerCase();
+  if (cleaned.includes("t")) {
+    const timePart = cleaned.split("t")[1];
+    if (timePart) cleaned = timePart.split(".")[0].replace("z", "").trim();
+  } else if (cleaned.includes(" ") && cleaned.includes("-")) {
+    const parts = cleaned.split(" ");
+    cleaned = parts.slice(1).join(" ").trim();
+  }
+  const match = cleaned.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!match) return -1;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const meridiem = match[4]?.toLowerCase();
+  if (meridiem === "pm" && h < 12) h += 12;
+  if (meridiem === "am" && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+// Utility: Format raw punch time string (e.g. "09:30", "18:45:00", "9:30 am") to clean "hh:mm AM/PM"
+function formatTimeWithAmPm(timeStr?: string): string {
+  if (!timeStr) return "—";
+  let t = String(timeStr).trim();
+  if (t.includes("T")) {
+    const timePart = t.split("T")[1];
+    if (timePart) t = timePart.split(".")[0].replace("Z", "").trim();
+  } else if (t.includes(" ") && t.includes("-")) {
+    const parts = t.split(" ");
+    t = parts.slice(1).join(" ").trim();
+  }
+
+  // Already has AM/PM
+  const matchWithAmPm = t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)$/i);
+  if (matchWithAmPm) {
+    const h = parseInt(matchWithAmPm[1], 10);
+    const m = matchWithAmPm[2];
+    const ampm = matchWithAmPm[4].toUpperCase();
+    const formattedH = String(h).padStart(2, "0");
+    return `${formattedH}:${m} ${ampm}`;
+  }
+
+  // 24-hour format like "09:30", "18:45", "09:30:15"
+  const match24 = t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (match24) {
+    let h = parseInt(match24[1], 10);
+    const m = match24[2];
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12;
+    if (h === 0) h = 12;
+    const formattedH = String(h).padStart(2, "0");
+    return `${formattedH}:${m} ${ampm}`;
+  }
+
+  return t;
+}
 
 // Utility: Compute hours worked & OT from check-in/check-out time strings
 function computeWorkedHours(
@@ -85,28 +161,16 @@ function computeWorkedHours(
 ): { hoursWorked: number; otHours: number } {
   if (!checkIn || !checkOut) return { hoursWorked: 0, otHours: 0 };
   try {
-    const parseTime = (s: string): number => {
-      const cleaned = s.trim().toLowerCase();
-      // Match formats like "8:52 am", "12:03 AM", "18:00", "09:30"
-      const match = cleaned.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
-      if (!match) return -1;
-      let h = parseInt(match[1], 10);
-      const m = parseInt(match[2], 10);
-      const meridiem = match[3]?.toLowerCase();
-      if (meridiem === 'pm' && h < 12) h += 12;
-      if (meridiem === 'am' && h === 12) h = 0;
-      return h * 60 + m;
-    };
-    const inMins = parseTime(checkIn);
-    const outMins = parseTime(checkOut);
+    const inMins = parseTimeMinutes(checkIn);
+    const outMins = parseTimeMinutes(checkOut);
     if (inMins < 0 || outMins < 0) return { hoursWorked: 0, otHours: 0 };
-    
+
     let diffMins = outMins - inMins;
     if (diffMins <= 0) {
-      // Crossed midnight (e.g. check-in 8:52 AM and check-out 12:03 AM next day)
+      // Crossed midnight
       diffMins += 24 * 60;
     }
-    
+
     const hoursWorked = Math.round((diffMins / 60) * 10) / 10;
     const otHours = hoursWorked > standardHours ? Math.round((hoursWorked - standardHours) * 10) / 10 : 0;
     return { hoursWorked, otHours };
@@ -115,9 +179,16 @@ function computeWorkedHours(
   }
 }
 
-// Helper: get effective hours and OT for a record (uses stored value or computes from timestamps)
+export interface EffectiveRecordHours {
+  hoursWorked: number;
+  otHours: number;
+  isActive?: boolean;
+}
+
+// Helper: get effective hours and OT for a record (calculates dynamically from real punch timestamps)
 function getRecordHours(
   rec?: {
+    date?: string;
     hoursWorked?: number;
     otHours?: number;
     checkIn?: string;
@@ -127,24 +198,105 @@ function getRecordHours(
     isMissedCheckout?: boolean;
     isAutoClosed?: boolean;
     status?: string;
+    regularized?: boolean;
   },
   standardHours: number = 9
-) {
-  if (rec?.status === "absent") {
+): EffectiveRecordHours {
+  if (!rec || rec.status === "absent" || rec.status === "leave") {
     return { hoursWorked: 0, otHours: 0 };
   }
-  const isSynthetic22 = (rec?.clockOut === "22:00" || rec?.checkOut === "22:00") && Boolean(rec?.isAutoClosed || rec?.isMissedCheckout);
-  const inTime = rec?.checkIn || rec?.clockIn;
-  const outTime = isSynthetic22 ? undefined : (rec?.checkOut || rec?.clockOut);
-  const computed = computeWorkedHours(inTime, outTime, standardHours);
 
-  if (rec?.status === "halfday" || rec?.status === "half-day") {
-    return { hoursWorked: Math.min(standardHours / 2, computed.hoursWorked > 0 ? computed.hoursWorked : standardHours / 2), otHours: 0 };
+  const isSynthetic22 =
+    (rec.clockOut === "22:00" || rec.checkOut === "22:00") &&
+    Boolean(rec.isAutoClosed || rec.isMissedCheckout);
+  const inTime = rec.checkIn || rec.clockIn;
+  const outTime = isSynthetic22 ? undefined : (rec.checkOut || rec.clockOut);
+
+  // 1. If both inTime and outTime are present, ALWAYS calculate real hours from actual punches
+  if (inTime && outTime) {
+    const computed = computeWorkedHours(inTime, outTime, standardHours);
+    if (computed.hoursWorked > 0) {
+      // If admin regularized with an explicit OT override, honor the regularized OT
+      const effectiveOt = (rec.regularized && rec.otHours !== undefined) ? rec.otHours : computed.otHours;
+      return { hoursWorked: computed.hoursWorked, otHours: effectiveOt };
+    }
   }
-  if (rec?.hoursWorked != null && rec.hoursWorked > 0) {
+
+  // 2. If status is half-day
+  if (rec.status === "halfday" || rec.status === "half-day") {
+    return { hoursWorked: Math.round((standardHours / 2) * 10) / 10, otHours: 0 };
+  }
+
+  // 3. If employee is currently active on duty (clocked in today without checkout yet)
+  if (inTime && !outTime && rec.status === "present") {
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (rec.date === todayStr) {
+        const now = new Date();
+        const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        const liveComputed = computeWorkedHours(inTime, nowTime, standardHours);
+        if (liveComputed.hoursWorked > 0) {
+          return { hoursWorked: liveComputed.hoursWorked, otHours: liveComputed.otHours, isActive: true };
+        }
+      }
+    } catch {}
+  }
+
+  // 4. If record is regularized with an explicit hoursWorked
+  if (rec.regularized && rec.hoursWorked != null && rec.hoursWorked > 0) {
     return { hoursWorked: rec.hoursWorked, otHours: rec.otHours || 0 };
   }
-  return computed;
+
+  // 5. If record has stored hoursWorked and neither standard 8 default nor conflicting with punches
+  if (rec.hoursWorked != null && rec.hoursWorked > 0 && !inTime && !outTime) {
+    return { hoursWorked: rec.hoursWorked, otHours: rec.otHours || 0 };
+  }
+
+  return { hoursWorked: 0, otHours: 0 };
+}
+
+// Helper: Map granular punctuality into clean basic details (Present, Absent, Halfday)
+function getBasicPunctuality(punctuality: { status: string; label: string; color: string }) {
+  if (punctuality.status === "present" || punctuality.status === "late") {
+    return {
+      label: "Present",
+      color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+    };
+  }
+  if (punctuality.status === "half-day") {
+    return {
+      label: "Halfday",
+      color: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+    };
+  }
+  if (punctuality.status === "absent") {
+    return {
+      label: "Absent",
+      color: "bg-rose-500/10 text-rose-600 border-rose-500/20",
+    };
+  }
+  if (punctuality.status === "leave") {
+    return {
+      label: "Leave",
+      color: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+    };
+  }
+  if (punctuality.status === "holiday") {
+    return {
+      label: "Holiday",
+      color: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+    };
+  }
+  if (punctuality.status === "weekly-off") {
+    return {
+      label: "Weekly Off",
+      color: "bg-slate-500/10 text-slate-600 border-slate-500/20",
+    };
+  }
+  return {
+    label: "Not Punched",
+    color: "bg-muted text-muted-foreground border-border",
+  };
 }
 
 export const Route = createFileRoute("/admin/attendance")({
@@ -174,6 +326,34 @@ function AttendancePage() {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
+
+  // Punctuality details mode (Basic: Present, Absent, Halfday vs Advanced: On Time, Grace, Late, etc.)
+  const [showAdvancedPunctuality, setShowAdvancedPunctuality] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("swift_attendance_advanced_punctuality") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  // Multi-employee batch selection state
+  const [showBatchSelection, setShowBatchSelection] = useState(false);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+
+  // Clear batch selection when switching date
+  useEffect(() => {
+    setSelectedEmployeeIds([]);
+  }, [selectedDate]);
+
+  const toggleAdvancedPunctuality = (enabled?: boolean) => {
+    setShowAdvancedPunctuality((prev) => {
+      const next = enabled !== undefined ? enabled : !prev;
+      try {
+        localStorage.setItem("swift_attendance_advanced_punctuality", String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Biometric Hardware Devices State & Dialogs
   const [hardwareSubTab, setHardwareSubTab] = useState<"terminals" | "employees" | "punch-feed">("terminals");
@@ -451,7 +631,29 @@ function AttendancePage() {
       const todayStr = new Date().toISOString().slice(0, 10);
       const isPast = dateStr < todayStr;
 
-      if (!rec || (!rec.checkIn && !rec.clockIn)) {
+      if (!rec) {
+        return isPast
+          ? { status: "absent", label: "Absent / No Punch", color: "bg-destructive/10 text-destructive border-destructive/20" }
+          : { status: "pending", label: "Not Punched Yet", color: "bg-muted text-muted-foreground border-border" };
+      }
+
+      // If record has no punch timestamps but has an explicitly set status (e.g. Quick Mark or manual override)
+      if (!rec.checkIn && !rec.clockIn) {
+        if (rec.status === "present") {
+          return { status: "present", label: "Present", color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
+        }
+        if (rec.status === "half-day" || rec.status === "halfday") {
+          return { status: "half-day", label: "Half-Day", color: "bg-amber-500/10 text-amber-600 border-amber-500/20" };
+        }
+        if (rec.status === "late") {
+          return { status: "late", label: "Late", color: "bg-orange-500/10 text-orange-600 border-orange-500/20" };
+        }
+        if (rec.status === "leave") {
+          return { status: "leave", label: "Approved Leave", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" };
+        }
+        if (rec.status === "absent") {
+          return { status: "absent", label: "Absent", color: "bg-destructive/10 text-destructive border-destructive/20" };
+        }
         return isPast
           ? { status: "absent", label: "Absent / No Punch", color: "bg-destructive/10 text-destructive border-destructive/20" }
           : { status: "pending", label: "Not Punched Yet", color: "bg-muted text-muted-foreground border-border" };
@@ -766,15 +968,24 @@ function AttendancePage() {
     const defaultIn = scheduled.shift.start || "09:00";
     const defaultOut = scheduled.shift.end || "18:00";
 
+    // Do NOT enter regular shift times when using Quick Mark options
     const checkInTime =
-      existing?.checkIn ||
-      existing?.clockIn ||
-      (status === "present" || status === "late" ? defaultIn : status === "half-day" ? "12:00" : undefined);
+      status === "absent" || status === "leave"
+        ? undefined
+        : existing?.checkIn && existing.checkIn !== defaultIn
+        ? existing.checkIn
+        : existing?.clockIn && existing.clockIn !== defaultIn
+        ? existing.clockIn
+        : undefined;
 
     const checkOutTime =
-      existing?.checkOut ||
-      existing?.clockOut ||
-      (status === "present" || status === "late" || status === "half-day" ? defaultOut : undefined);
+      status === "absent" || status === "leave"
+        ? undefined
+        : existing?.checkOut && existing.checkOut !== defaultOut
+        ? existing.checkOut
+        : existing?.clockOut && existing.clockOut !== defaultOut
+        ? existing.clockOut
+        : undefined;
 
     const stdHours = company.workingHoursPerDay || 9;
     const hours =
@@ -797,7 +1008,7 @@ function AttendancePage() {
       clockIn: checkInTime,
       clockOut: checkOutTime,
       hoursWorked: hours,
-      otHours: existing?.otHours || 0,
+      otHours: status === "absent" || status === "leave" ? 0 : existing?.otHours || 0,
       regularized: true,
       regularizedBy: "Admin",
       regularizedReason: "Quick Status Update via Attendance Hub",
@@ -805,6 +1016,80 @@ function AttendancePage() {
     });
 
     toast.success(`Updated attendance to "${status.toUpperCase()}" for ${emp.name}`);
+  };
+
+  // Bulk Quick Action: Mark status for all selected employees
+  const handleBulkQuickMark = (
+    status: "present" | "absent" | "leave" | "half-day" | "late"
+  ) => {
+    if (selectedEmployeeIds.length === 0) {
+      toast.error("Please select at least one employee");
+      return;
+    }
+
+    const stdHours = company.workingHoursPerDay || 9;
+    const hours =
+      status === "present" || status === "late"
+        ? stdHours
+        : status === "half-day"
+        ? stdHours / 2
+        : 0;
+
+    let count = 0;
+    selectedEmployeeIds.forEach((empId) => {
+      const emp = employees.find((e) => e.id === empId);
+      if (!emp) return;
+
+      const existing = attendance.find(
+        (a) => (a.employeeId === empId || a.employeeName === emp.name) && a.date === selectedDate
+      );
+      const scheduled = getScheduledShiftForDate(emp, selectedDate);
+      const defaultIn = scheduled.shift.start || "09:00";
+      const defaultOut = scheduled.shift.end || "18:00";
+
+      // Do NOT enter regular shift times when using Quick Mark options
+      const checkInTime =
+        status === "absent" || status === "leave"
+          ? undefined
+          : existing?.checkIn && existing.checkIn !== defaultIn
+          ? existing.checkIn
+          : existing?.clockIn && existing.clockIn !== defaultIn
+          ? existing.clockIn
+          : undefined;
+
+      const checkOutTime =
+        status === "absent" || status === "leave"
+          ? undefined
+          : existing?.checkOut && existing.checkOut !== defaultOut
+          ? existing.checkOut
+          : existing?.clockOut && existing.clockOut !== defaultOut
+          ? existing.clockOut
+          : undefined;
+
+      upsertAttendance({
+        id: existing?.id || `att-${empId}-${selectedDate}`,
+        employeeId: empId,
+        employeeName: emp.name,
+        empCode: emp.empCode,
+        department: emp.department,
+        date: selectedDate,
+        status: status === "late" ? "present" : status,
+        checkIn: checkInTime,
+        checkOut: checkOutTime,
+        clockIn: checkInTime,
+        clockOut: checkOutTime,
+        hoursWorked: hours,
+        otHours: status === "absent" || status === "leave" ? 0 : existing?.otHours || 0,
+        regularized: true,
+        regularizedBy: "Admin",
+        regularizedReason: "Bulk Quick Status Update via Attendance Hub",
+        updatedAt: new Date().toISOString(),
+      });
+      count++;
+    });
+
+    toast.success(`Marked "${status.toUpperCase()}" for ${count} employees`);
+    setSelectedEmployeeIds([]);
   };
 
   // Submit Manual Regularization / Punch & OT Override
@@ -1269,25 +1554,169 @@ function AttendancePage() {
             </Select>
           </div>
 
+          {/* Multi-Select Bulk Actions Toolbar */}
+          {showBatchSelection && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 px-4 bg-primary/5 border border-primary/20 rounded-2xl animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="select-all-bulk-toolbar"
+                    checked={
+                      filteredDailyRows.length > 0 &&
+                      selectedEmployeeIds.length === filteredDailyRows.length
+                    }
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedEmployeeIds(filteredDailyRows.map((r) => r.emp.id));
+                      } else {
+                        setSelectedEmployeeIds([]);
+                      }
+                    }}
+                  />
+                  <Label
+                    htmlFor="select-all-bulk-toolbar"
+                    className="text-xs font-semibold cursor-pointer select-none"
+                  >
+                    Select All ({filteredDailyRows.length})
+                  </Label>
+                </div>
+
+                <div className="h-4 w-px bg-border/70" />
+
+                <Badge variant="secondary" className="text-xs font-medium bg-background border border-border">
+                  {selectedEmployeeIds.length} of {filteredDailyRows.length} selected
+                </Badge>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      disabled={selectedEmployeeIds.length === 0}
+                      className="h-8 gap-1.5 font-semibold bg-primary text-primary-foreground shadow-xs cursor-pointer"
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                      <span>Quick Mark ({selectedEmployeeIds.length})</span>
+                      <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
+                    <DropdownMenuItem onClick={() => handleBulkQuickMark("present")} className="cursor-pointer">
+                      Mark Present
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkQuickMark("late")} className="cursor-pointer">
+                      Mark Late
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkQuickMark("half-day")} className="cursor-pointer">
+                      Mark Half-Day
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkQuickMark("leave")} className="cursor-pointer">
+                      Mark Leave
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkQuickMark("absent")} className="cursor-pointer text-destructive focus:text-destructive">
+                      Mark Absent
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowBatchSelection(false);
+                    setSelectedEmployeeIds([]);
+                  }}
+                  className="h-8 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  Done
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Daily Table */}
           <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
                   <tr className="text-left">
+                    {showBatchSelection && (
+                      <th className="w-12 p-3.5 text-center">
+                        <div className="flex items-center justify-center">
+                          <Checkbox
+                            checked={
+                              filteredDailyRows.length > 0 &&
+                              selectedEmployeeIds.length === filteredDailyRows.length
+                            }
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedEmployeeIds(filteredDailyRows.map((r) => r.emp.id));
+                              } else {
+                                setSelectedEmployeeIds([]);
+                              }
+                            }}
+                            aria-label="Select all employees"
+                          />
+                        </div>
+                      </th>
+                    )}
                     <th className="p-3.5 font-semibold">Employee</th>
                     <th className="p-3.5 font-semibold">Scheduled Shift</th>
                     <th className="p-3.5 font-semibold">Check-In Punch</th>
                     <th className="p-3.5 font-semibold">Check-Out Punch</th>
                     <th className="p-3.5 font-semibold">Work / OT</th>
-                    <th className="p-3.5 font-semibold">Punctuality Status</th>
-                    <th className="p-3.5 font-semibold text-right">Actions</th>
+                    <ContextMenu>
+                      <ContextMenuTrigger asChild>
+                        <th
+                          className="p-3.5 font-semibold cursor-context-menu select-none hover:bg-muted/70 transition-colors"
+                          title="Right-click to toggle Advanced Details"
+                        >
+                          <span>Punctuality Status</span>
+                        </th>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-56 shadow-lg rounded-xl">
+                        <ContextMenuLabel className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1.5">
+                          Display Options
+                        </ContextMenuLabel>
+                        <ContextMenuSeparator />
+                        <ContextMenuCheckboxItem
+                          checked={showAdvancedPunctuality}
+                          onCheckedChange={(checked) => toggleAdvancedPunctuality(Boolean(checked))}
+                          className="text-xs cursor-pointer py-1.5 font-medium"
+                        >
+                          Advanced Details
+                        </ContextMenuCheckboxItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                    <th
+                      className="p-3.5 font-semibold text-right cursor-pointer select-none hover:bg-muted/70 transition-colors group"
+                      onClick={() => {
+                        setShowBatchSelection((prev) => {
+                          const next = !prev;
+                          if (!next) setSelectedEmployeeIds([]);
+                          return next;
+                        });
+                      }}
+                      title={showBatchSelection ? "Click to exit multi-select mode" : "Click to select multiple employees and quick mark"}
+                    >
+                      <div className="inline-flex items-center gap-1.5 justify-end">
+                        <span>Actions</span>
+                        {showBatchSelection ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/30 font-semibold">
+                            Multi-Select
+                          </Badge>
+                        ) : (
+                          <CheckCheck className="h-3.5 w-3.5 text-muted-foreground/60 group-hover:text-primary transition-colors" />
+                        )}
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filteredDailyRows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-12 text-center text-muted-foreground">
+                      <td colSpan={showBatchSelection ? 8 : 7} className="p-12 text-center text-muted-foreground">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <AlertTriangle className="h-8 w-8 text-muted-foreground/60" />
                           <p className="text-sm font-medium">No matching attendance records found</p>
@@ -1299,9 +1728,41 @@ function AttendancePage() {
                     filteredDailyRows.map(({ emp, rec, scheduled, punctuality, branch }) => (
                       <tr
                         key={emp.id}
-                        className="hover:bg-muted/30 transition-colors group cursor-pointer"
-                        onClick={() => setDossierEmployee(emp)}
+                        className={`transition-colors group cursor-pointer ${
+                          selectedEmployeeIds.includes(emp.id)
+                            ? "bg-primary/5 hover:bg-primary/10"
+                            : "hover:bg-muted/30"
+                        }`}
+                        onClick={() => {
+                          if (showBatchSelection) {
+                            setSelectedEmployeeIds((prev) =>
+                              prev.includes(emp.id)
+                                ? prev.filter((id) => id !== emp.id)
+                                : [...prev, emp.id]
+                            );
+                          } else {
+                            setDossierEmployee(emp);
+                          }
+                        }}
                       >
+                        {/* Checkbox Column in Batch Mode */}
+                        {showBatchSelection && (
+                          <td className="w-12 p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center">
+                              <Checkbox
+                                checked={selectedEmployeeIds.includes(emp.id)}
+                                onCheckedChange={(checked) => {
+                                  setSelectedEmployeeIds((prev) =>
+                                    checked
+                                      ? [...prev, emp.id]
+                                      : prev.filter((id) => id !== emp.id)
+                                  );
+                                }}
+                                aria-label={`Select ${emp.name}`}
+                              />
+                            </div>
+                          </td>
+                        )}
                         {/* Employee Details Column */}
                         <td className="p-3.5">
                           <div className="flex items-center gap-3">
@@ -1377,9 +1838,8 @@ function AttendancePage() {
                         <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
                           {rec?.checkIn || rec?.clockIn ? (
                             <div className="space-y-1">
-                              <div className="font-semibold text-sm text-foreground flex items-center gap-1.5">
-                                <Clock className="h-3.5 w-3.5 text-emerald-500" />
-                                <span>{rec.checkIn || rec.clockIn}</span>
+                              <div className="font-semibold text-sm text-foreground">
+                                <span>{formatTimeWithAmPm(rec.checkIn || rec.clockIn)}</span>
                               </div>
 
                               {/* Biometric & GPS Pill */}
@@ -1428,9 +1888,8 @@ function AttendancePage() {
                             if (hasValidOut) {
                               return (
                                 <div className="space-y-1">
-                                  <div className="font-semibold text-sm text-foreground flex items-center gap-1.5">
-                                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                                    <span>{rec?.checkOut || rec?.clockOut}</span>
+                                  <div className="font-semibold text-sm text-foreground">
+                                    <span>{formatTimeWithAmPm(rec?.checkOut || rec?.clockOut)}</span>
                                   </div>
 
                                   {/* Biometric Check-Out Pill */}
@@ -1468,10 +1927,10 @@ function AttendancePage() {
 
                             if (rec?.checkIn || rec?.clockIn) {
                               return (
-                                <Badge variant="outline" className="text-[11px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse" />
-                                  Active On Duty
-                                </Badge>
+                                <div className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 select-none">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                                  <span>Working</span>
+                                </div>
                               );
                             }
 
@@ -1502,9 +1961,20 @@ function AttendancePage() {
 
                         {/* Punctuality Status Badge */}
                         <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
-                          <Badge variant="outline" className={`px-2.5 py-1 text-xs font-semibold rounded-lg ${punctuality.color}`}>
-                            {punctuality.label}
-                          </Badge>
+                          {showAdvancedPunctuality ? (
+                            <Badge variant="outline" className={`px-2.5 py-1 text-xs font-semibold rounded-lg ${punctuality.color}`}>
+                              {punctuality.label}
+                            </Badge>
+                          ) : (
+                            (() => {
+                              const basic = getBasicPunctuality(punctuality);
+                              return (
+                                <Badge variant="outline" className={`px-2.5 py-1 text-xs font-semibold rounded-lg ${basic.color}`}>
+                                  {basic.label}
+                                </Badge>
+                              );
+                            })()
+                          )}
                         </td>
 
                         {/* Action Buttons */}
@@ -1562,24 +2032,57 @@ function AttendancePage() {
                             </TooltipProvider>
 
                             {/* Quick Mark Dropdown */}
-                            <Select
-                              onValueChange={(val) => handleQuickMark(emp.id, val as any)}
-                              defaultValue=""
-                            >
-                              <SelectTrigger className="h-8 w-24 text-xs rounded-lg">
-                                <SelectValue placeholder="Quick Mark" />
-                              </SelectTrigger>
-                              <SelectContent align="end">
-                                <SelectItem value="edit_manual" className="font-semibold text-amber-600">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 w-24 px-2 text-xs rounded-lg flex items-center justify-between font-normal text-muted-foreground hover:text-foreground cursor-pointer"
+                                >
+                                  <span className="truncate">Quick Mark</span>
+                                  <ChevronDown className="h-3 w-3 opacity-50 shrink-0 ml-1" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44 rounded-xl shadow-lg">
+                                <DropdownMenuItem
+                                  onClick={() => handleOpenRegularize(emp, selectedDate, rec)}
+                                  className="font-semibold text-amber-600 cursor-pointer"
+                                >
                                   ✏️ Edit Punch & OT...
-                                </SelectItem>
-                                <SelectItem value="present">Mark Present</SelectItem>
-                                <SelectItem value="late">Mark Late</SelectItem>
-                                <SelectItem value="half-day">Mark Half-Day</SelectItem>
-                                <SelectItem value="leave">Mark Leave</SelectItem>
-                                <SelectItem value="absent">Mark Absent</SelectItem>
-                              </SelectContent>
-                            </Select>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleQuickMark(emp.id, "present")}
+                                  className="cursor-pointer"
+                                >
+                                  Mark Present
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleQuickMark(emp.id, "late")}
+                                  className="cursor-pointer"
+                                >
+                                  Mark Late
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleQuickMark(emp.id, "half-day")}
+                                  className="cursor-pointer"
+                                >
+                                  Mark Half-Day
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleQuickMark(emp.id, "leave")}
+                                  className="cursor-pointer"
+                                >
+                                  Mark Leave
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleQuickMark(emp.id, "absent")}
+                                  className="cursor-pointer text-destructive focus:text-destructive"
+                                >
+                                  Mark Absent
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </td>
                       </tr>
@@ -1734,8 +2237,8 @@ function AttendancePage() {
                                     <div className="text-xs space-y-0.5">
                                       <div className="font-semibold">{d.dateStr}</div>
                                       <div>Status: {punct.label}</div>
-                                      {rec?.checkIn && <div>In: {rec.checkIn}</div>}
-                                      {rec?.checkOut && <div>Out: {rec.checkOut}</div>}
+                                      {rec?.checkIn && <div>In: {formatTimeWithAmPm(rec.checkIn)}</div>}
+                                      {rec?.checkOut && <div>Out: {formatTimeWithAmPm(rec.checkOut)}</div>}
                                       {(() => { const h = getRecordHours(rec); return h.hoursWorked > 0 ? <div>Hours: {h.hoursWorked}h{h.otHours > 0 ? ` (+${h.otHours}h OT)` : ''}</div> : null; })()}
                                     </div>
                                   </TooltipContent>
@@ -2134,8 +2637,8 @@ function AttendancePage() {
         open={regularizeDialog.open}
         onOpenChange={(open) => setRegularizeDialog((prev) => ({ ...prev, open }))}
       >
-        <DialogContent className="max-w-xl rounded-2xl p-6">
-          <DialogHeader>
+        <DialogContent className="max-w-xl max-h-[75vh] flex flex-col p-0 gap-0 rounded-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 shrink-0 border-b border-border/60">
             <div className="flex items-center justify-between">
               <DialogTitle className="flex items-center gap-2 text-lg">
                 <Edit3 className="h-5 w-5 text-amber-500" />
@@ -2157,7 +2660,7 @@ function AttendancePage() {
             const computed = computeWorkedHours(regularizeDialog.checkIn, regularizeDialog.checkOut, stdHours);
 
             return (
-              <div className="space-y-4 py-2 text-sm">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 text-sm">
                 {/* Employee & Date Selectors */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -2430,37 +2933,64 @@ function AttendancePage() {
                     className="text-xs"
                   />
                 </div>
-
-                {/* Live Impact Preview */}
-                <div className="p-3 rounded-xl bg-muted/40 border border-border text-xs space-y-1 text-muted-foreground">
-                  <div className="flex items-center justify-between font-semibold text-foreground">
-                    <span>Summary Preview:</span>
-                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-[10px]">
-                      {regularizeDialog.status.toUpperCase()}
-                    </Badge>
-                  </div>
-                  <div>
-                    Punches: <strong>{regularizeDialog.checkIn || "—"}</strong> to <strong>{regularizeDialog.checkOut || "—"}</strong> • OT: <strong>+{regularizeDialog.otHours} hrs</strong>
-                  </div>
-                  <div className="text-[11px] text-primary">
-                    ✓ Reflects immediately across Attendance live tables, Dossiers, Mobile App logs, and Payroll Overtime calculations.
-                  </div>
-                </div>
               </div>
             );
           })()}
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setRegularizeDialog((p) => ({ ...p, open: false }))}>
+          <DialogFooter className="p-4 px-6 shrink-0 border-t border-border/60 bg-muted/20 flex flex-row items-center justify-between sm:justify-between w-full">
+            <Button variant="outline" size="sm" onClick={() => setRegularizeDialog((p) => ({ ...p, open: false }))}>
               Cancel
             </Button>
-            <Button
-              onClick={handleSaveRegularization}
-              className="bg-primary text-primary-foreground font-semibold gap-1.5"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              <span>Save Punch & OT</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="h-9 w-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted border border-border/70 transition-colors cursor-pointer"
+                      aria-label="Summary preview"
+                    >
+                      <Info className="h-4 w-4 text-primary" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    align="end"
+                    className="z-[70] max-w-xs p-3 space-y-2 text-xs bg-popover text-popover-foreground border border-border shadow-2xl rounded-xl"
+                  >
+                    <div className="flex items-center justify-between font-semibold border-b border-border/60 pb-1.5 gap-2">
+                      <span className="text-foreground">Summary Preview</span>
+                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-[10px] uppercase font-bold">
+                        {regularizeDialog.status}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-foreground/90 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Punches:</span>
+                        <span className="font-semibold">
+                          {formatTimeWithAmPm(regularizeDialog.checkIn) || regularizeDialog.checkIn || "—"} to {formatTimeWithAmPm(regularizeDialog.checkOut) || regularizeDialog.checkOut || "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Overtime:</span>
+                        <span className="font-semibold text-emerald-600">+{regularizeDialog.otHours || 0} hrs</span>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground pt-1.5 border-t border-border/40 leading-relaxed">
+                      ✓ Reflects immediately across Attendance live tables, Dossiers, Mobile App logs, and Payroll Overtime calculations.
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <Button
+                onClick={handleSaveRegularization}
+                className="bg-primary text-primary-foreground font-semibold gap-1.5"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Save Punch & OT</span>
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -3104,9 +3634,8 @@ function EmployeeAttendanceDossierModal({
                       <td className="p-3">
                         {rec?.checkIn || rec?.clockIn ? (
                           <div className="space-y-0.5">
-                            <div className="font-semibold text-sm text-foreground flex items-center gap-1">
-                              <Clock className="h-3.5 w-3.5 text-emerald-500" />
-                              <span>{rec.checkIn || rec.clockIn}</span>
+                            <div className="font-semibold text-sm text-foreground">
+                              <span>{formatTimeWithAmPm(rec.checkIn || rec.clockIn)}</span>
                             </div>
                             <div className="flex items-center gap-1">
                               {rec.faceVerified && (
@@ -3138,7 +3667,7 @@ function EmployeeAttendanceDossierModal({
                             return (
                               <div className="space-y-0.5">
                                 <div className="font-semibold text-sm text-foreground">
-                                  {rec?.checkOut || rec?.clockOut}
+                                  {formatTimeWithAmPm(rec?.checkOut || rec?.clockOut)}
                                 </div>
                                 <div className="flex items-center gap-1">
                                   {(rec?.faceVerified || rec?.checkOutPhoto) && (
@@ -3162,9 +3691,10 @@ function EmployeeAttendanceDossierModal({
 
                           if (rec?.checkIn || rec?.clockIn) {
                             return (
-                              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600">
-                                Active
-                              </Badge>
+                              <div className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 select-none">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                                <span>Working</span>
+                              </div>
                             );
                           }
 
@@ -3177,7 +3707,9 @@ function EmployeeAttendanceDossierModal({
                           const hrs = getRecordHours(rec, company.workingHoursPerDay || 9);
                           return (
                             <>
-                              <div className="font-medium">{hrs.hoursWorked > 0 ? `${hrs.hoursWorked}h` : "0h"}</div>
+                              <div className="font-medium">
+                                {hrs.hoursWorked > 0 ? `${hrs.hoursWorked}h` : "0h"}
+                              </div>
                               {hrs.otHours > 0 ? (
                                 <div className="text-[11px] text-emerald-600 font-semibold">+{hrs.otHours}h OT</div>
                               ) : null}
@@ -3187,14 +3719,30 @@ function EmployeeAttendanceDossierModal({
                       </td>
 
                       <td className="p-3">
-                        <Badge variant="outline" className={`px-2 py-0.5 text-xs font-semibold ${punctuality.color}`}>
-                          {punctuality.label}
-                        </Badge>
-                        {rec?.regularizedReason && (
-                          <div className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[150px]">
-                            {rec.regularizedReason}
-                          </div>
-                        )}
+                        {(() => {
+                          const isAdvanced = typeof window !== "undefined" && localStorage.getItem("swift_attendance_advanced_punctuality") === "true";
+                          return isAdvanced ? (
+                            <>
+                              <Badge variant="outline" className={`px-2 py-0.5 text-xs font-semibold ${punctuality.color}`}>
+                                {punctuality.label}
+                              </Badge>
+                              {rec?.regularizedReason && (
+                                <div className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[150px]">
+                                  {rec.regularizedReason}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            (() => {
+                              const basic = getBasicPunctuality(punctuality);
+                              return (
+                                <Badge variant="outline" className={`px-2 py-0.5 text-xs font-semibold ${basic.color}`}>
+                                  {basic.label}
+                                </Badge>
+                              );
+                            })()
+                          );
+                        })()}
                       </td>
 
                       <td className="p-3 text-right">
