@@ -315,9 +315,22 @@ export function downloadWageRegisterExcel({
     const effectiveOtHours = isOtApproved ? otApprovedHours : 0;
 
     // Bonuses & Incentives
-    const attBonusEnabled = ov.attBonusEnabled !== undefined ? ov.attBonusEnabled : (company.attendanceBonusRules?.enabled === true);
-    const attBonusEligible = attBonusEnabled && empAtt.filter((a) => a.status === "absent").length === 0;
-    const attBonus = attBonusEligible ? (ov.attBonusAmount !== undefined ? ov.attBonusAmount : (company.attendanceBonusRules?.value ?? 500)) : 0;
+    const masterAttBonusValue = company.attendanceBonusRules?.value ?? 500;
+    const masterAttBonusEnabled = company.attendanceBonusRules?.enabled !== false;
+    const attBonusEnabled = ov.attBonusEnabled !== undefined ? ov.attBonusEnabled : masterAttBonusEnabled;
+    const effectiveAttBonusAmount = (ov.attBonusCustom && ov.attBonusAmount !== undefined)
+      ? ov.attBonusAmount
+      : masterAttBonusValue;
+
+    // Strict 100% Attendance Rule: Worked all working days, zero absences, zero half-days
+    const is100PctAttendance =
+      workingDaysBase > 0 &&
+      calculatedPaidDays >= workingDaysBase &&
+      empAtt.filter((a) => a.status === "absent").length === 0 &&
+      empAtt.filter((a) => a.status === "half-day").length === 0;
+
+    const attBonusEligible = attBonusEnabled && is100PctAttendance;
+    const attBonus = attBonusEligible ? effectiveAttBonusAmount : 0;
 
     const yrBonusEnabled = ov.yrBonusEnabled !== undefined ? ov.yrBonusEnabled : (company.yearlyBonusRules?.enabled === true);
     const yrBonus = yrBonusEnabled ? (ov.yrBonusAmount !== undefined ? ov.yrBonusAmount : (company.yearlyBonusRules?.value ?? 500)) : 0;

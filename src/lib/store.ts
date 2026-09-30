@@ -1443,6 +1443,8 @@ HR Department
     { upTo: 25000, amount: 150 },
     { upTo: 999999999, amount: 200 },
   ],
+  attendanceBonusRules: { enabled: true, type: "flat", value: 500, requireFullAttendance: true },
+  yearlyBonusRules: { enabled: false, type: "flat", value: 500 },
   tdsRules: { enabled: false },
   tdsEnabled: false,
   tdsMode: "pctOfGross",
@@ -2180,8 +2182,11 @@ export const useStore = create<State>()(
         }),
       saveAllCompanySettings: async () => {
         const st = get();
-        const tenantId = useAuth.getState().activeTenantId;
-        if (!tenantId || tenantId.startsWith("demo-tenant-")) return;
+        const tenantId =
+          useAuth.getState().activeTenantId ||
+          (typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null) ||
+          "demo-tenant-1";
+        if (!tenantId) return;
 
         const docAssets = st.docAssets;
         const uploadedDocAssets: Partial<CompanyDocumentAssets> = {};

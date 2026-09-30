@@ -194,6 +194,7 @@ interface MonthlyOverrideData {
   // Bonuses & Variable
   attBonusEnabled?: boolean;
   attBonusAmount?: number;
+  attBonusCustom?: boolean;
   yrBonusEnabled?: boolean;
   yrBonusAmount?: number;
   incentive?: number;
@@ -254,6 +255,7 @@ interface EditingPayrollRecord extends MonthlyOverrideData {
   customAllowances: CustomAllowanceItem[];
   attBonusEnabled: boolean;
   attBonusAmount: number;
+  attBonusCustom: boolean;
   yrBonusEnabled: boolean;
   yrBonusAmount: number;
   incentive: number;
@@ -907,6 +909,7 @@ export function PayrollPage() {
       const daysPresent = monthAtt.filter((a) => a.status === "present").length;
       const daysHalf = monthAtt.filter((a) => a.status === "half-day").length;
       const daysLeave = monthAtt.filter((a) => a.status === "leave").length;
+      const daysAbsent = monthAtt.filter((a) => a.status === "absent").length;
       const rawPresentDays = daysPresent + daysHalf * 0.5;
 
       // Compute daily OT breakdown and total OT hours from actual check-in/check-out timestamps or explicit otHours for each day
@@ -984,9 +987,28 @@ export function PayrollPage() {
 
       const effectiveCompany = buildEffectiveCompany(company, ov);
 
-      const attBonusEnabled = ov.attBonusEnabled !== undefined ? ov.attBonusEnabled : (company.attendanceBonusRules?.enabled === true);
-      const attBonusEligible = attBonusEnabled && monthAtt.filter((a) => a.status === "absent").length === 0;
-      const attBonus = attBonusEligible ? (ov.attBonusAmount !== undefined ? ov.attBonusAmount : (company.attendanceBonusRules?.value ?? 500)) : 0;
+      // Total expected working days for this period (full calendar month or custom date range)
+      const expectedWorkingDays = isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26);
+
+      // Strict 100% Attendance Rule:
+      // Employee must have completed 100% of expected working days with zero unexcused absences and zero half-days
+      const is100PctAttendance =
+        expectedWorkingDays > 0 &&
+        effectiveDaysWorked >= expectedWorkingDays &&
+        daysAbsent === 0 &&
+        daysHalf === 0;
+
+      const masterAttBonusValue = company.attendanceBonusRules?.value ?? 500;
+      const masterAttBonusEnabled = company.attendanceBonusRules?.enabled !== false;
+      const attBonusEnabled = ov.attBonusEnabled !== undefined ? ov.attBonusEnabled : masterAttBonusEnabled;
+      // If individual employee has an explicit custom bonus override, use it; otherwise use the company master setting
+      const effectiveAttBonusAmount = (ov.attBonusCustom && ov.attBonusAmount !== undefined)
+        ? ov.attBonusAmount
+        : masterAttBonusValue;
+
+      // If and only if attendance is strictly 100%, calculate the attendance bonus; otherwise strictly 0
+      const attBonusEligible = attBonusEnabled && is100PctAttendance;
+      const attBonus = attBonusEligible ? effectiveAttBonusAmount : 0;
 
       const yrBonusEnabled = ov.yrBonusEnabled !== undefined ? ov.yrBonusEnabled : (company.yearlyBonusRules?.enabled === true);
       const yrBonus = yrBonusEnabled ? (ov.yrBonusAmount !== undefined ? ov.yrBonusAmount : (company.yearlyBonusRules?.value ?? 500)) : 0;
@@ -1062,6 +1084,14 @@ export function PayrollPage() {
         rawEmp: emp,
         paidDays: effectiveDaysWorked,
         rawPresentDays,
+        daysAbsent,
+        daysHalf,
+        daysLeave,
+        expectedWorkingDays,
+        is100PctAttendance,
+        attBonusEligible,
+        attBonus,
+        effectiveAttBonusAmount,
         weekOffDays,
         weekOffEnabled,
         rosterWeekOffDays,
@@ -1097,8 +1127,14 @@ export function PayrollPage() {
     const effectiveCompany = buildEffectiveCompany(company, editingRecord);
     const deductionInputs = buildDeductionInputs(editingRecord, company);
 
+    const editingExpectedWorkingDays = isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26);
+    const isEditing100Pct =
+      editingExpectedWorkingDays > 0 &&
+      editingRecord.daysWorked >= editingExpectedWorkingDays;
+    const editingAttBonus = (editingRecord.attBonusEnabled && isEditing100Pct) ? editingRecord.attBonusAmount : 0;
+
     const totalBonus =
-      (editingRecord.attBonusEnabled ? editingRecord.attBonusAmount : 0) +
+      editingAttBonus +
       (editingRecord.yrBonusEnabled ? editingRecord.yrBonusAmount : 0) +
       (editingRecord.bonus || 0);
 
@@ -1119,7 +1155,7 @@ export function PayrollPage() {
       variablePay: editingRecord.variablePay,
       otherEarnings: editingRecord.otherEarnings,
     });
-  }, [editingRecord, company]);
+  }, [editingRecord, company, isCustomDateRange, rangeWorkingDays]);
   // Computed summaries for Tab 2 (Monthly Payroll Run)
   const runTotals = useMemo(() => {
     return monthlyRegister.reduce(
@@ -1227,7 +1263,7 @@ export function PayrollPage() {
       shiftDays: reg.paidDays,
       loan: updatedOv.loan || 0,
       advance: updatedOv.advance || 0,
-      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
       otherDeductions: updatedOv.otherDeductions || 0,
       variablePay: updatedOv.variablePay || 0,
       otherEarnings: updatedOv.otherEarnings || 0,
@@ -1245,7 +1281,7 @@ export function PayrollPage() {
       shiftDays: reg.paidDays,
       loan: updatedOv.loan || 0,
       advance: updatedOv.advance || 0,
-      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
       computed: newComp,
       overrideData: updatedOv,
       createdAt: new Date().toISOString(),
@@ -1288,7 +1324,7 @@ export function PayrollPage() {
       shiftDays: reg.paidDays,
       loan: updatedOv.loan || 0,
       advance: updatedOv.advance || 0,
-      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
       otherDeductions: updatedOv.otherDeductions || 0,
       variablePay: updatedOv.variablePay || 0,
       otherEarnings: updatedOv.otherEarnings || 0,
@@ -1306,7 +1342,7 @@ export function PayrollPage() {
       shiftDays: reg.paidDays,
       loan: updatedOv.loan || 0,
       advance: updatedOv.advance || 0,
-      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
       computed: newComp,
       overrideData: updatedOv,
       createdAt: new Date().toISOString(),
@@ -1346,7 +1382,7 @@ export function PayrollPage() {
       shiftDays: reg.paidDays,
       loan: updatedOv.loan || 0,
       advance: updatedOv.advance || 0,
-      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
       otherDeductions: updatedOv.otherDeductions || 0,
       variablePay: updatedOv.variablePay || 0,
       otherEarnings: updatedOv.otherEarnings || 0,
@@ -1364,7 +1400,7 @@ export function PayrollPage() {
       shiftDays: reg.paidDays,
       loan: updatedOv.loan || 0,
       advance: updatedOv.advance || 0,
-      bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+      bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
       computed: newComp,
       overrideData: updatedOv,
       createdAt: new Date().toISOString(),
@@ -1407,7 +1443,7 @@ export function PayrollPage() {
         shiftDays: reg.paidDays,
         loan: updatedOv.loan || 0,
         advance: updatedOv.advance || 0,
-        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
         otherDeductions: updatedOv.otherDeductions || 0,
         variablePay: updatedOv.variablePay || 0,
         otherEarnings: updatedOv.otherEarnings || 0,
@@ -1425,7 +1461,7 @@ export function PayrollPage() {
         shiftDays: reg.paidDays,
         loan: updatedOv.loan || 0,
         advance: updatedOv.advance || 0,
-        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
         computed: newComp,
         overrideData: updatedOv,
         createdAt: new Date().toISOString(),
@@ -1469,7 +1505,7 @@ export function PayrollPage() {
         shiftDays: reg.paidDays,
         loan: updatedOv.loan || 0,
         advance: updatedOv.advance || 0,
-        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
         otherDeductions: updatedOv.otherDeductions || 0,
         variablePay: updatedOv.variablePay || 0,
         otherEarnings: updatedOv.otherEarnings || 0,
@@ -1487,7 +1523,7 @@ export function PayrollPage() {
         shiftDays: reg.paidDays,
         loan: updatedOv.loan || 0,
         advance: updatedOv.advance || 0,
-        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
         computed: newComp,
         overrideData: updatedOv,
         createdAt: new Date().toISOString(),
@@ -1533,7 +1569,7 @@ export function PayrollPage() {
         shiftDays: reg.paidDays,
         loan: updatedOv.loan || 0,
         advance: updatedOv.advance || 0,
-        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
         otherDeductions: updatedOv.otherDeductions || 0,
         variablePay: updatedOv.variablePay || 0,
         otherEarnings: updatedOv.otherEarnings || 0,
@@ -1551,7 +1587,7 @@ export function PayrollPage() {
         shiftDays: reg.paidDays,
         loan: updatedOv.loan || 0,
         advance: updatedOv.advance || 0,
-        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
         computed: newComp,
         overrideData: updatedOv,
         createdAt: new Date().toISOString(),
@@ -1597,7 +1633,7 @@ export function PayrollPage() {
         shiftDays: reg.paidDays,
         loan: updatedOv.loan || 0,
         advance: updatedOv.advance || 0,
-        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
         otherDeductions: updatedOv.otherDeductions || 0,
         variablePay: updatedOv.variablePay || 0,
         otherEarnings: updatedOv.otherEarnings || 0,
@@ -1615,7 +1651,7 @@ export function PayrollPage() {
         shiftDays: reg.paidDays,
         loan: updatedOv.loan || 0,
         advance: updatedOv.advance || 0,
-        bonus: (updatedOv.bonus || 0) + (updatedOv.attBonusAmount || 0) + (updatedOv.yrBonusAmount || 0),
+        bonus: (updatedOv.bonus || 0) + (reg.attBonus || 0) + (updatedOv.yrBonusAmount || 0),
         computed: newComp,
         overrideData: updatedOv,
         createdAt: new Date().toISOString(),
@@ -2211,6 +2247,7 @@ export function PayrollPage() {
                           onCheckedChange={(checked) =>
                             setCompany({
                               attendanceBonusRules: {
+                                ...(company.attendanceBonusRules || { type: "flat", value: 500 }),
                                 enabled: checked,
                                 type: "flat",
                                 value: company.attendanceBonusRules?.value ?? 500,
@@ -2221,7 +2258,7 @@ export function PayrollPage() {
                         />
                         <div>
                           <span className="text-xs font-semibold">Attendance Bonus</span>
-                          <div className="text-[10px] text-muted-foreground">Credited for 100% attendance in the calendar month</div>
+                          <div className="text-[10px] text-muted-foreground">Credited strictly for 100% attendance in the calendar month</div>
                         </div>
                       </div>
                     </td>
@@ -2231,16 +2268,18 @@ export function PayrollPage() {
                           type="number"
                           disabled={!benchmarkCalc.attBonusEnabled}
                           value={company.attendanceBonusRules?.value ?? 500}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
                             setCompany({
                               attendanceBonusRules: {
-                                enabled: company.attendanceBonusRules?.enabled === true,
+                                ...(company.attendanceBonusRules || { type: "flat" }),
+                                enabled: company.attendanceBonusRules?.enabled !== false,
                                 type: "flat",
-                                value: Number(e.target.value) || 0,
+                                value: val,
                                 requireFullAttendance: true,
                               },
-                            })
-                          }
+                            });
+                          }}
                           className="h-8 w-24 text-xs font-semibold rounded-lg bg-background"
                         />
                         <span className="text-xs text-muted-foreground">₹ Flat Monthly</span>
@@ -3221,8 +3260,9 @@ export function PayrollPage() {
                                 ltaPct: overrideData.ltaPct !== undefined ? overrideData.ltaPct : (company.ltaPct ?? 16.67),
                                 customAllowances: overrideData.customAllowances !== undefined ? overrideData.customAllowances : defaultCustomAllowances,
                                 // Bonuses:
-                                attBonusEnabled: overrideData.attBonusEnabled !== undefined ? overrideData.attBonusEnabled : (company.attendanceBonusRules?.enabled === true),
-                                attBonusAmount: overrideData.attBonusAmount !== undefined ? overrideData.attBonusAmount : (company.attendanceBonusRules?.value ?? 500),
+                                attBonusEnabled: overrideData.attBonusEnabled !== undefined ? overrideData.attBonusEnabled : (company.attendanceBonusRules?.enabled !== false),
+                                attBonusAmount: (overrideData.attBonusCustom && overrideData.attBonusAmount !== undefined) ? overrideData.attBonusAmount : (company.attendanceBonusRules?.value ?? 500),
+                                attBonusCustom: overrideData.attBonusCustom === true,
                                 yrBonusEnabled: overrideData.yrBonusEnabled !== undefined ? overrideData.yrBonusEnabled : (company.yearlyBonusRules?.enabled === true),
                                 yrBonusAmount: overrideData.yrBonusAmount !== undefined ? overrideData.yrBonusAmount : (company.yearlyBonusRules?.value ?? 500),
                                 incentive: overrideData.incentive !== undefined ? overrideData.incentive : 0,
@@ -4488,21 +4528,48 @@ export function PayrollPage() {
                       {/* Attendance Bonus */}
                       <div className="p-3 rounded-xl bg-card border border-border/60 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold">Attendance Bonus</span>
+                          <div>
+                            <span className="text-xs font-semibold">Attendance Bonus</span>
+                            <div className="text-[10px] text-muted-foreground">
+                              Requires 100% attendance ({editingRecord.daysWorked}/{isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)} Days)
+                            </div>
+                          </div>
                           <Switch
                             checked={editingRecord.attBonusEnabled}
                             onCheckedChange={(val) => setEditingRecord({ ...editingRecord, attBonusEnabled: val })}
                           />
                         </div>
                         {editingRecord.attBonusEnabled && (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-muted-foreground">₹</span>
-                            <Input
-                              type="number"
-                              value={editingRecord.attBonusAmount}
-                              onChange={(e) => setEditingRecord({ ...editingRecord, attBonusAmount: Number(e.target.value) || 0 })}
-                              className="h-7 text-xs font-semibold"
-                            />
+                          <div className="space-y-2 pt-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground font-bold">₹</span>
+                              <Input
+                                type="number"
+                                value={editingRecord.attBonusAmount}
+                                onChange={(e) =>
+                                  setEditingRecord({
+                                    ...editingRecord,
+                                    attBonusAmount: Number(e.target.value) || 0,
+                                    attBonusCustom: true,
+                                  })
+                                }
+                                className="h-8 w-28 text-xs font-semibold"
+                              />
+                              <span className="text-[10px] text-muted-foreground">
+                                {editingRecord.attBonusCustom ? "(Custom Employee Override)" : "(Company Master Structure)"}
+                              </span>
+                            </div>
+                            {editingRecord.daysWorked >= (isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)) ? (
+                              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] gap-1 font-semibold">
+                                <CheckCircle2 className="h-3 w-3" />
+                                100% Attendance Achieved (+{inr(editingRecord.attBonusAmount)} Applied)
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] gap-1 font-normal">
+                                <AlertTriangle className="h-3 w-3" />
+                                Attendance &lt; 100% ({editingRecord.daysWorked}/{isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)} Days) — Bonus ₹0 (Not Applied)
+                              </Badge>
+                            )}
                           </div>
                         )}
                       </div>
@@ -5155,6 +5222,7 @@ export function PayrollPage() {
                         customAllowances: editingRecord.customAllowances,
                         attBonusEnabled: editingRecord.attBonusEnabled,
                         attBonusAmount: editingRecord.attBonusAmount,
+                        attBonusCustom: editingRecord.attBonusCustom,
                         yrBonusEnabled: editingRecord.yrBonusEnabled,
                         yrBonusAmount: editingRecord.yrBonusAmount,
                         incentive: editingRecord.incentive,
@@ -5212,6 +5280,10 @@ export function PayrollPage() {
 
                       // 3. Persist monthly payroll computation & overrides to DynamoDB (swift_company_payrolls)
                       if (editingComp) {
+                        const modalWorkingDays = isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26);
+                        const isModal100Pct = modalWorkingDays > 0 && editingRecord.daysWorked >= modalWorkingDays;
+                        const modalAttBonus = (editingRecord.attBonusEnabled && isModal100Pct) ? (editingRecord.attBonusAmount || 0) : 0;
+
                         addPayroll({
                           id: `pay-${editingRecord.emp.id}-${effectivePeriodKey}`,
                           employeeId: editingRecord.emp.id,
@@ -5224,7 +5296,7 @@ export function PayrollPage() {
                           shiftDays: editingRecord.daysWorked,
                           loan: editingRecord.loan,
                           advance: editingRecord.advance,
-                          bonus: (editingRecord.bonus || 0) + (editingRecord.attBonusAmount || 0) + (editingRecord.yrBonusAmount || 0),
+                          bonus: (editingRecord.bonus || 0) + modalAttBonus + (editingRecord.yrBonusAmount || 0),
                           computed: editingComp,
                           overrideData: overridePayload,
                           createdAt: new Date().toISOString(),
