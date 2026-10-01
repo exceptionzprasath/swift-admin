@@ -26,6 +26,7 @@ import { Route as AdminRequestsRouteImport } from './routes/admin.requests'
 import { Route as AdminReportsRouteImport } from './routes/admin.reports'
 import { Route as AdminRenewalsRouteImport } from './routes/admin.renewals'
 import { Route as AdminPayrollRouteImport } from './routes/admin.payroll'
+import { Route as AdminPastEmployeesRouteImport } from './routes/admin.past-employees'
 import { Route as AdminOrgRouteImport } from './routes/admin.org'
 import { Route as AdminNoticesRouteImport } from './routes/admin.notices'
 import { Route as AdminLifecycleRouteImport } from './routes/admin.lifecycle'
@@ -126,6 +127,11 @@ const AdminRenewalsRoute = AdminRenewalsRouteImport.update({
 const AdminPayrollRoute = AdminPayrollRouteImport.update({
   id: '/payroll',
   path: '/payroll',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPastEmployeesRoute = AdminPastEmployeesRouteImport.update({
+  id: '/past-employees',
+  path: '/past-employees',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminOrgRoute = AdminOrgRouteImport.update({
@@ -231,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/admin/lifecycle': typeof AdminLifecycleRoute
   '/admin/notices': typeof AdminNoticesRoute
   '/admin/org': typeof AdminOrgRoute
+  '/admin/past-employees': typeof AdminPastEmployeesRoute
   '/admin/payroll': typeof AdminPayrollRoute
   '/admin/renewals': typeof AdminRenewalsRoute
   '/admin/reports': typeof AdminReportsRoute
@@ -265,6 +272,7 @@ export interface FileRoutesByTo {
   '/admin/lifecycle': typeof AdminLifecycleRoute
   '/admin/notices': typeof AdminNoticesRoute
   '/admin/org': typeof AdminOrgRoute
+  '/admin/past-employees': typeof AdminPastEmployeesRoute
   '/admin/payroll': typeof AdminPayrollRoute
   '/admin/renewals': typeof AdminRenewalsRoute
   '/admin/reports': typeof AdminReportsRoute
@@ -301,6 +309,7 @@ export interface FileRoutesById {
   '/admin/lifecycle': typeof AdminLifecycleRoute
   '/admin/notices': typeof AdminNoticesRoute
   '/admin/org': typeof AdminOrgRoute
+  '/admin/past-employees': typeof AdminPastEmployeesRoute
   '/admin/payroll': typeof AdminPayrollRoute
   '/admin/renewals': typeof AdminRenewalsRoute
   '/admin/reports': typeof AdminReportsRoute
@@ -338,6 +347,7 @@ export interface FileRouteTypes {
     | '/admin/lifecycle'
     | '/admin/notices'
     | '/admin/org'
+    | '/admin/past-employees'
     | '/admin/payroll'
     | '/admin/renewals'
     | '/admin/reports'
@@ -372,6 +382,7 @@ export interface FileRouteTypes {
     | '/admin/lifecycle'
     | '/admin/notices'
     | '/admin/org'
+    | '/admin/past-employees'
     | '/admin/payroll'
     | '/admin/renewals'
     | '/admin/reports'
@@ -407,6 +418,7 @@ export interface FileRouteTypes {
     | '/admin/lifecycle'
     | '/admin/notices'
     | '/admin/org'
+    | '/admin/past-employees'
     | '/admin/payroll'
     | '/admin/renewals'
     | '/admin/reports'
@@ -550,6 +562,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPayrollRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/past-employees': {
+      id: '/admin/past-employees'
+      path: '/past-employees'
+      fullPath: '/admin/past-employees'
+      preLoaderRoute: typeof AdminPastEmployeesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/org': {
       id: '/admin/org'
       path: '/org'
@@ -682,6 +701,7 @@ interface AdminRouteChildren {
   AdminLifecycleRoute: typeof AdminLifecycleRoute
   AdminNoticesRoute: typeof AdminNoticesRoute
   AdminOrgRoute: typeof AdminOrgRoute
+  AdminPastEmployeesRoute: typeof AdminPastEmployeesRoute
   AdminPayrollRoute: typeof AdminPayrollRoute
   AdminRenewalsRoute: typeof AdminRenewalsRoute
   AdminReportsRoute: typeof AdminReportsRoute
@@ -713,6 +733,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminLifecycleRoute: AdminLifecycleRoute,
   AdminNoticesRoute: AdminNoticesRoute,
   AdminOrgRoute: AdminOrgRoute,
+  AdminPastEmployeesRoute: AdminPastEmployeesRoute,
   AdminPayrollRoute: AdminPayrollRoute,
   AdminRenewalsRoute: AdminRenewalsRoute,
   AdminReportsRoute: AdminReportsRoute,

@@ -489,6 +489,8 @@ export type Company = {
   designations?: string[];
   /** Custom company departments configured for this tenant */
   departments?: string[];
+  /** Custom company employment types configured for this tenant */
+  employmentTypes?: string[];
   grievanceTypes?: GrievanceTypeItem[];
   attendanceRequestCategories?: AttendanceRequestCategory[];
   documentTypes?: DocumentTypeItem[];
@@ -580,6 +582,8 @@ export type Employee = {
   shiftId?: string;
   faceRegistered?: boolean;
   status: "active" | "suspended" | "relieved" | "releived" | "terminated" | "inactive";
+  statusDate?: string;
+  statusNote?: string;
   managerId?: string;
   about?: string;
   branchId?: string;
@@ -592,7 +596,7 @@ export type Employee = {
   emergencyContact?: string;
   attendanceProfile?: ResolvedAttendanceProfile;
   category?: string;
-  employmentType?: "regular" | "contract";
+  employmentType?: "regular" | "contract" | "part-time" | (string & {});
   // Extended registration fields
   addressLine1?: string;
   addressLine2?: string;
@@ -1210,6 +1214,8 @@ type State = {
   deleteDesignation: (name: string) => void;
   addDepartment: (name: string) => void;
   deleteDepartment: (name: string) => void;
+  addEmploymentType: (name: string) => void;
+  deleteEmploymentType: (name: string) => void;
   addEmployee: (e: Omit<Employee, "id">) => Employee;
   updateEmployee: (id: string, patch: Partial<Employee>) => void;
   deleteEmployee: (id: string) => void;
@@ -1408,6 +1414,7 @@ const defaultCompany: Company = {
   ],
   designations: [],
   departments: [],
+  employmentTypes: [],
 
   appointmentTemplate: `Dear {{name}},
 
@@ -2724,6 +2731,34 @@ export const useStore = create<State>()(
             (d) => d.toLowerCase() !== name.trim().toLowerCase()
           );
           const nextCompany = { ...s.company, departments: nextDepartments };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+      },
+      addEmploymentType: (name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        set((s) => {
+          const currentList = s.company.employmentTypes || [];
+          if (currentList.some((d) => d.toLowerCase() === trimmed.toLowerCase())) return s;
+          const nextEmploymentTypes = [...currentList, trimmed];
+          const nextCompany = { ...s.company, employmentTypes: nextEmploymentTypes };
+          const tenantId = useAuth.getState().activeTenantId;
+          if (tenantId && !tenantId.startsWith("demo-tenant-")) {
+            syncItem("config", { id: "config", tenantId, ...nextCompany });
+          }
+          return { company: nextCompany };
+        });
+      },
+      deleteEmploymentType: (name: string) => {
+        set((s) => {
+          const nextEmploymentTypes = (s.company.employmentTypes || []).filter(
+            (d) => d.toLowerCase() !== name.trim().toLowerCase()
+          );
+          const nextCompany = { ...s.company, employmentTypes: nextEmploymentTypes };
           const tenantId = useAuth.getState().activeTenantId;
           if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });

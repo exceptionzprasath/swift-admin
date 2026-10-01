@@ -1159,8 +1159,15 @@ export function parseEmployeeCsvText(
     const department = getVal(["department", "dept", "division", "team"]) || "Engineering";
     const designation = getVal(["designation", "jobtitle", "title", "position"]) || "Software Engineer";
 
-    const empTypeRaw = getVal(["employmenttype", "employment", "type", "contract", "emptype"]).toLowerCase();
-    const employmentType: Employee["employmentType"] = empTypeRaw.includes("contract") ? "contract" : "regular";
+    const empTypeRaw = getVal(["employmenttype", "employment", "type", "contract", "emptype"]).trim();
+    let employmentType: Employee["employmentType"] = "regular";
+    if (empTypeRaw) {
+      const lower = empTypeRaw.toLowerCase();
+      if (lower.includes("contract")) employmentType = "contract";
+      else if (lower.includes("part")) employmentType = "part-time";
+      else if (lower.includes("regular")) employmentType = "regular";
+      else employmentType = empTypeRaw;
+    }
 
     const genderRaw = getVal(["gender", "sex"]).toLowerCase();
     const gender: Employee["gender"] = genderRaw === "female" ? "female" : genderRaw === "other" ? "other" : "male";

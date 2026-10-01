@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { EmploymentTypeBadge, formatEmploymentType } from "@/components/employment-type-badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -449,6 +450,7 @@ function AttendancePage() {
   const [selectedShift, setSelectedShift] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedVerification, setSelectedVerification] = useState("all");
+  const [selectedEmploymentType, setSelectedEmploymentType] = useState("all");
 
   // Selected Employee for Dedicated Attendance Dossier (Clicking any employee opens this!)
   const [dossierEmployee, setDossierEmployee] = useState<Employee | null>(null);
@@ -518,14 +520,22 @@ function AttendancePage() {
     handleLiveSync(true);
   }, [handleLiveSync]);
 
+  // Only active employees are tracked in the Attendance Area (Past employees: suspended, relieved, terminated are excluded)
+  const activeEmployees = useMemo(() => {
+    return employees.filter((e) => {
+      const s = (e.status || "active").toLowerCase().trim();
+      return s === "active";
+    });
+  }, [employees]);
+
   // Departments & Branches list
   const departments = useMemo(() => {
     const set = new Set<string>();
-    employees.forEach((e) => {
+    activeEmployees.forEach((e) => {
       if (e.department) set.add(e.department);
     });
     return Array.from(set);
-  }, [employees]);
+  }, [activeEmployees]);
 
   const branches = useMemo(() => {
     return company.branches || [];
@@ -534,6 +544,27 @@ function AttendancePage() {
   const shifts = useMemo(() => {
     return company.shifts || [];
   }, [company.shifts]);
+
+  const customEmploymentTypes = useMemo(() => {
+    const defaultTypes = ["regular", "contract", "part-time"];
+    const customSet = new Set<string>();
+
+    (company.employmentTypes || []).forEach((t) => {
+      const trimmed = t.trim();
+      if (trimmed && !defaultTypes.includes(trimmed.toLowerCase())) {
+        customSet.add(formatEmploymentType(trimmed));
+      }
+    });
+
+    employees.forEach((e) => {
+      const trimmed = e.employmentType?.trim();
+      if (trimmed && !defaultTypes.includes(trimmed.toLowerCase())) {
+        customSet.add(formatEmploymentType(trimmed));
+      }
+    });
+
+    return Array.from(customSet).sort((a, b) => a.localeCompare(b));
+  }, [company.employmentTypes, employees]);
 
   // Helper to resolve an employee's scheduled shift on any given date (Roster > Default Shift)
   const getScheduledShiftForDate = useCallback(
@@ -789,7 +820,7 @@ function AttendancePage() {
 
   // Daily Rows with Real-time Resolution
   const dailyRows = useMemo(() => {
-    return employees.map((emp) => {
+    return activeEmployees.map((emp) => {
       const rec = attendance.find(
         (a) => (a.employeeId === emp.id || a.employeeName === emp.name) && a.date === selectedDate
       );
@@ -806,7 +837,7 @@ function AttendancePage() {
         branch,
       };
     });
-  }, [employees, attendance, selectedDate, getScheduledShiftForDate, evaluatePunctuality, branches]);
+  }, [activeEmployees, attendance, selectedDate, getScheduledShiftForDate, evaluatePunctuality, branches]);
 
   // Filtered Daily Rows
   const filteredDailyRows = useMemo(() => {
@@ -846,9 +877,19 @@ function AttendancePage() {
         if (selectedVerification === "regularized" && !rec?.regularized) return false;
       }
 
+      // Employment Type
+      if (selectedEmploymentType !== "all") {
+        const empType = (emp.employmentType || "regular").trim().toLowerCase();
+        if (selectedEmploymentType === "non-regular") {
+          if (empType === "regular") return false;
+        } else if (empType !== selectedEmploymentType.toLowerCase()) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [dailyRows, searchQuery, selectedDept, selectedBranch, selectedShift, selectedStatus, selectedVerification]);
+  }, [dailyRows, searchQuery, selectedDept, selectedBranch, selectedShift, selectedStatus, selectedVerification, selectedEmploymentType]);
 
   // Summary Metrics for the Selected Date
   const dailyKPIs = useMemo(() => {
@@ -899,7 +940,7 @@ function AttendancePage() {
       totalOTHours: Math.round(totalOTHours * 10) / 10,
       attendancePercentage,
     };
-  }, [dailyRows, employees.length]);
+  }, [dailyRows, activeEmployees.length]);
 
   // Open Manual Edit Punch / Regularization Dialog for specific employee & date
   const handleOpenRegularize = useCallback(
@@ -1474,16 +1515,16 @@ function AttendancePage() {
           </TabsList>
 
           <span className="text-xs text-muted-foreground">
-            Showing <strong className="text-foreground">{filteredDailyRows.length}</strong> of {employees.length} employees
+            Showing <strong className="text-foreground">{filteredDailyRows.length}</strong> of {activeEmployees.length} employees
           </span>
         </div>
 
         {/* TAB 1: DAILY LIVE ROSTER */}
         <TabsContent value="daily" className="space-y-4 m-0">
           {/* Filters Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 bg-card p-3 rounded-xl border border-border">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 xl:grid-cols-7 gap-2.5 bg-card p-3 rounded-xl border border-border">
             {/* Search Input */}
-            <div className="relative lg:col-span-2">
+            <div className="relative sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-2">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search name, code, dept..."
@@ -1492,6 +1533,25 @@ function AttendancePage() {
                 className="pl-8 h-9 text-xs rounded-lg"
               />
             </div>
+
+            {/* Employment Type Filter */}
+            <Select value={selectedEmploymentType} onValueChange={setSelectedEmploymentType}>
+              <SelectTrigger className="h-9 text-xs rounded-lg">
+                <SelectValue placeholder="Employment Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Employment Types</SelectItem>
+                <SelectItem value="non-regular">Non-Regular Only</SelectItem>
+                <SelectItem value="regular">Regular</SelectItem>
+                <SelectItem value="contract">Contract</SelectItem>
+                <SelectItem value="part-time">Part-time</SelectItem>
+                {customEmploymentTypes.map((t) => (
+                  <SelectItem key={t} value={t.toLowerCase()}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             {/* Department Filter */}
             <Select value={selectedDept} onValueChange={setSelectedDept}>
@@ -1795,14 +1855,7 @@ function AttendancePage() {
                             <div>
                               <div className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-1.5">
                                 <span>{emp.name}</span>
-                                {emp.employmentType === "contract" && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
-                                  >
-                                    Contract
-                                  </Badge>
-                                )}
+                                <EmploymentTypeBadge type={emp.employmentType} />
                                 <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary" />
                               </div>
                               <div className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -2149,7 +2202,7 @@ function AttendancePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {employees.map((emp) => {
+                  {activeEmployees.map((emp) => {
                     let empPresent = 0;
                     let empLate = 0;
                     let empAbsent = 0;
@@ -2163,14 +2216,7 @@ function AttendancePage() {
                         >
                           <div className="font-semibold flex items-center gap-1.5">
                             <span>{emp.name}</span>
-                            {emp.employmentType === "contract" && (
-                              <Badge
-                                variant="outline"
-                                className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
-                              >
-                                Contract
-                              </Badge>
-                            )}
+                            <EmploymentTypeBadge type={emp.employmentType} />
                           </div>
                           <div className="text-[10px] text-muted-foreground">{emp.empCode}</div>
                         </td>
@@ -2299,14 +2345,7 @@ function AttendancePage() {
                       <div>
                         <div className="font-semibold text-sm flex items-center gap-1.5">
                           <span>{emp.name}</span>
-                          {emp.employmentType === "contract" && (
-                            <Badge
-                              variant="outline"
-                              className="text-[9px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
-                            >
-                              Contract
-                            </Badge>
-                          )}
+                          <EmploymentTypeBadge type={emp.employmentType} />
                         </div>
                         <div className="text-[11px] text-muted-foreground">{emp.department}</div>
                       </div>
@@ -2668,7 +2707,7 @@ function AttendancePage() {
                     <Select
                       value={regularizeDialog.employeeId}
                       onValueChange={(val) => {
-                        const newEmp = employees.find((e) => e.id === val);
+                        const newEmp = activeEmployees.find((e) => e.id === val);
                         if (newEmp) {
                           handleOpenRegularize(newEmp, regularizeDialog.date);
                         }
@@ -2678,7 +2717,7 @@ function AttendancePage() {
                         <SelectValue placeholder="Select employee" />
                       </SelectTrigger>
                       <SelectContent>
-                        {employees.map((e) => (
+                        {activeEmployees.map((e) => (
                           <SelectItem key={e.id} value={e.id}>
                             {e.name} ({e.empCode})
                           </SelectItem>
@@ -3389,14 +3428,7 @@ function EmployeeAttendanceDossierModal({
             <div>
               <div className="flex items-center gap-2.5">
                 <h2 className="font-display text-2xl font-bold">{employee.name}</h2>
-                {employee.employmentType === "contract" && (
-                  <Badge
-                    variant="outline"
-                    className="text-xs px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
-                  >
-                    Contract
-                  </Badge>
-                )}
+                <EmploymentTypeBadge type={employee.employmentType} size="sm" />
                 <Badge variant="outline" className="font-mono text-xs px-2 py-0.5">
                   {employee.empCode}
                 </Badge>

@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DesignationSelect } from "@/components/designation-select";
 import { DepartmentSelect } from "@/components/department-select";
+import { EmploymentTypeBadge } from "@/components/employment-type-badge";
 import {
   DoorOpen, ArrowRightLeft, FileSignature, FileDown, PackageCheck,
   MessageSquareQuote, CheckCircle2, Wallet, Building2, Sparkles,
@@ -305,14 +306,7 @@ We wish you the very best in this new assignment.`;
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
             <span>Employee Lifecycle Actions — {employee.name}</span>
-            {employee.employmentType === "contract" && (
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
-              >
-                Contract
-              </Badge>
-            )}
+            <EmploymentTypeBadge type={employee.employmentType} size="sm" />
           </DialogTitle>
           <DialogDescription>
             {employee.empCode} · {employee.designation} · {employee.department}

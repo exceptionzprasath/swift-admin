@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
@@ -28,6 +29,7 @@ import {
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
   KeyRound, RefreshCw, Copy, Check, Fingerprint, Database, ChevronDown, ShieldAlert,
+  UserX,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -41,6 +43,7 @@ import { downloadEmployeeTemplate, parseEmployeeCsvText, generateEmployeePasswor
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
 import { DesignationSelect } from "@/components/designation-select";
 import { DepartmentSelect } from "@/components/department-select";
+import { EmploymentTypeSelect, EmploymentTypeBadge } from "@/components/employment-type-select";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { INDIAN_STATES } from "@/lib/india-locations";
@@ -228,14 +231,49 @@ function EmployeesPage() {
     });
   }, [employees, statusFilter]);
 
+  // Status Change Dialog State
+  const [statusChangeTarget, setStatusChangeTarget] = useState<{
+    employee: Employee;
+    newStatus: "suspended" | "relieved" | "terminated";
+  } | null>(null);
+  const [statusEffectiveDate, setStatusEffectiveDate] = useState<string>(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [statusReasonNote, setStatusReasonNote] = useState<string>("");
+  const [statusConfirmStep, setStatusConfirmStep] = useState<boolean>(false);
+
   const handleStatusChange = (emp: Employee, newStatus: "active" | "suspended" | "relieved" | "terminated") => {
-    updateEmployee(emp.id, { status: newStatus });
-    const label = newStatus === "relieved" ? "Releived" : newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
     if (newStatus === "active") {
-      toast.success(`${emp.name}'s status set to Active.`);
-    } else {
-      toast.warning(`${emp.name}'s status changed to ${label}. Mobile app login restricted.`);
+      updateEmployee(emp.id, {
+        status: "active",
+        statusNote: undefined,
+      });
+      toast.success(`${emp.name}'s status restored to Active.`);
+      return;
     }
+
+    // For Suspended, Relieved, or Terminated: open Date & Note popup
+    setStatusChangeTarget({ employee: emp, newStatus });
+    setStatusEffectiveDate(new Date().toISOString().slice(0, 10));
+    setStatusReasonNote("");
+    setStatusConfirmStep(false);
+  };
+
+  const handleFinalizeStatusChange = () => {
+    if (!statusChangeTarget) return;
+    const { employee, newStatus } = statusChangeTarget;
+    const label = newStatus === "relieved" ? "Relieved" : newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+
+    updateEmployee(employee.id, {
+      status: newStatus,
+      statusDate: statusEffectiveDate,
+      statusNote: statusReasonNote.trim() || undefined,
+    });
+
+    toast.warning(`${employee.name}'s status changed to ${label}. Moved to Past Employees.`);
+    setStatusChangeTarget(null);
+    setStatusConfirmStep(false);
+    setStatusReasonNote("");
   };
 
   const openWizard = (draftId?: string) => {
@@ -382,14 +420,7 @@ function EmployeesPage() {
                         <div>
                           <div className="font-medium flex items-center gap-1.5">
                             <span>{e.name}</span>
-                            {e.employmentType === "contract" && (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
-                              >
-                                Contract
-                              </Badge>
-                            )}
+                            <EmploymentTypeBadge type={e.employmentType} />
                             {(e.faceRegistered || (e.photoDataUrl && e.photoDataUrl.startsWith("http"))) && (
                               <Badge
                                 variant="outline"
@@ -534,6 +565,182 @@ function EmployeesPage() {
         roles={roles ?? []}
         devices={devices ?? []}
       />
+
+      {/* 1. Status Change Dialog: Select Date and Note */}
+      <Dialog
+        open={statusChangeTarget !== null && !statusConfirmStep}
+        onOpenChange={(o) => {
+          if (!o) setStatusChangeTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div
+                className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 border ${
+                  statusChangeTarget?.newStatus === "suspended"
+                    ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                    : statusChangeTarget?.newStatus === "terminated"
+                    ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                    : "bg-purple-500/10 text-purple-600 border-purple-500/20"
+                }`}
+              >
+                {statusChangeTarget?.newStatus === "suspended" ? (
+                  <AlertTriangle className="h-5 w-5" />
+                ) : statusChangeTarget?.newStatus === "terminated" ? (
+                  <ShieldAlert className="h-5 w-5" />
+                ) : (
+                  <UserX className="h-5 w-5" />
+                )}
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold">
+                  {statusChangeTarget?.newStatus === "suspended"
+                    ? "Suspend Employee"
+                    : statusChangeTarget?.newStatus === "terminated"
+                    ? "Terminate Employee"
+                    : "Relieve Employee"}
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  {statusChangeTarget?.employee.name} · {statusChangeTarget?.employee.empCode}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="p-3 rounded-xl bg-muted/50 border border-border text-xs text-muted-foreground">
+              This employee will be moved to <strong className="text-foreground">Past Employees</strong> and will no longer show in the active <strong className="text-foreground">Attendance</strong> area.
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">
+                Effective Date <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                type="date"
+                value={statusEffectiveDate}
+                onChange={(e) => setStatusEffectiveDate(e.target.value)}
+                className="text-xs h-9"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Note / Reason (Optional)</Label>
+              <Textarea
+                rows={3}
+                placeholder="e.g. Resignation accepted, contract completed, disciplinary action, mutual release..."
+                value={statusReasonNote}
+                onChange={(e) => setStatusReasonNote(e.target.value)}
+                className="text-xs resize-none"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                This note will be saved with the employee record and visible under Past Employees.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setStatusChangeTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                if (!statusEffectiveDate) {
+                  toast.error("Please select an effective date");
+                  return;
+                }
+                setStatusConfirmStep(true);
+              }}
+              className="gap-1.5 font-semibold"
+            >
+              <span>Confirm</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 2. "Are you sure?" Second Confirmation Popup */}
+      <Dialog
+        open={statusChangeTarget !== null && statusConfirmStep}
+        onOpenChange={(o) => {
+          if (!o) setStatusConfirmStep(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="h-10 w-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/20">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold">
+                  Are you sure?
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Please confirm status change for {statusChangeTarget?.employee.name}.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="py-2 text-xs space-y-3">
+            <p className="text-muted-foreground">
+              Are you sure you want to mark{" "}
+              <strong className="text-foreground">{statusChangeTarget?.employee.name}</strong> as{" "}
+              <span className="font-semibold uppercase text-foreground">
+                {statusChangeTarget?.newStatus === "relieved" ? "Relieved" : statusChangeTarget?.newStatus}
+              </span>
+              ?
+            </p>
+
+            <div className="rounded-xl border border-border bg-muted/40 p-3 space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Effective Date:</span>
+                <span className="font-semibold text-foreground">{statusEffectiveDate}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Reason / Note:</span>
+                <span className="font-medium text-foreground text-right max-w-[200px] truncate">
+                  {statusReasonNote || "None (Optional)"}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[11.5px] text-amber-600 dark:text-amber-400 font-medium">
+              ⚠ Once confirmed, this employee will be moved to Past Employees and will no longer show in Attendance.
+            </p>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setStatusConfirmStep(false)}
+            >
+              Cancel / Back
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              onClick={handleFinalizeStatusChange}
+              className="gap-1.5 font-semibold"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Yes, Confirm Status Change
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1048,19 +1255,12 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       onChange={(v) => setForm({ ...form, designation: v })}
                       triggerClassName="h-9"
                     />
-                    <div>
-                      <Label>Employment Type</Label>
-                      <Select
-                        value={form.employmentType || "regular"}
-                        onValueChange={(v: "regular" | "contract") => setForm({ ...form, employmentType: v })}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Employment Type" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="regular">Regular Employee</SelectItem>
-                          <SelectItem value="contract">Contract Employee</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <EmploymentTypeSelect
+                      label="Employment Type"
+                      value={form.employmentType || "Regular"}
+                      onChange={(v) => setForm({ ...form, employmentType: v })}
+                      triggerClassName="h-9"
+                    />
                     <Field label="Date of Joining *" type="date" value={form.doj} onChange={(v) => setForm({ ...form, doj: v })} />
                     <Field
                       label="Fixed Salary (Monthly ₹) *"
@@ -2002,14 +2202,7 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
               <div>
                 <DialogTitle className="text-lg font-bold flex items-center gap-2">
                   <span>{employee.name}</span>
-                  {employee.employmentType === "contract" && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
-                    >
-                      Contract
-                    </Badge>
-                  )}
+                  <EmploymentTypeBadge type={employee.employmentType} />
                   <Badge variant="outline" className="font-mono text-xs">
                     {employee.empCode}
                   </Badge>
@@ -2519,14 +2712,7 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     <Badge variant="outline" className="text-xs font-mono font-semibold border-primary/30 text-primary bg-primary/10">
                       {employee.empCode}
                     </Badge>
-                    {employee.employmentType === "contract" && (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold"
-                      >
-                        Contract
-                      </Badge>
-                    )}
+                    <EmploymentTypeBadge type={employee.employmentType} size="sm" />
                   </div>
                 </div>
               </DialogTitle>
@@ -2662,6 +2848,29 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                               <SelectItem value="terminated">Terminated</SelectItem>
                             </SelectContent>
                           </Select>
+                          {form.status && form.status !== "active" && (
+                            <div className="space-y-2 mt-2 p-2.5 rounded-xl bg-muted/40 border border-border">
+                              <div>
+                                <Label className="text-xs">Status Effective Date</Label>
+                                <Input
+                                  type="date"
+                                  value={form.statusDate || new Date().toISOString().slice(0, 10)}
+                                  onChange={(e) => setForm({ ...form, statusDate: e.target.value })}
+                                  className="text-xs h-8 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Status Reason / Note (Optional)</Label>
+                                <Textarea
+                                  rows={2}
+                                  value={form.statusNote || ""}
+                                  onChange={(e) => setForm({ ...form, statusNote: e.target.value })}
+                                  placeholder="Departure reason / HR remarks..."
+                                  className="text-xs mt-1 resize-none"
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2767,17 +2976,12 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     <Input type="tel" value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                   </div>
                   <div>
-                    <Label className="text-xs">Employment Type</Label>
-                    <Select
-                      value={form.employmentType || "regular"}
-                      onValueChange={(v: "regular" | "contract") => setForm({ ...form, employmentType: v })}
-                    >
-                      <SelectTrigger className="text-xs"><SelectValue placeholder="Employment Type" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="regular">Regular Employee</SelectItem>
-                        <SelectItem value="contract">Contract Employee</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <EmploymentTypeSelect
+                      label="Employment Type"
+                      value={form.employmentType || "Regular"}
+                      onChange={(v) => setForm({ ...form, employmentType: v })}
+                      triggerClassName="text-xs h-9"
+                    />
                   </div>
                   <div>
                     <DepartmentSelect

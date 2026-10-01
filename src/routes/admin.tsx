@@ -38,6 +38,7 @@ import {
   PanelLeftOpen,
   ChevronRight,
   MessagesSquare,
+  UserX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -97,6 +98,7 @@ const nav: NavItem[] = [
   { to: "/admin/team-chat", label: "Team Chat", icon: MessagesSquare },
   { to: "/admin/notices", label: "Notice Board", icon: Megaphone },
   { to: "/admin/employees", label: "Employees", icon: Users },
+  { to: "/admin/past-employees", label: "Past Employees", icon: UserX },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays },
   { to: "/admin/shift-roster", label: "Shift Roster", icon: Clock },
