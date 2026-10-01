@@ -233,27 +233,17 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
   if (computation.deductions.employeeESI > 0) {
     deductionItems.push({ name: "ESIC (ESI)", amount: computation.deductions.employeeESI });
   }
-  if (computation.deductions.professionalTax > 0) {
-    deductionItems.push({ name: "PROFESSIONAL TAX (PT)", amount: computation.deductions.professionalTax });
+  if (computation.deductions.professionalTax !== undefined) {
+    deductionItems.push({ name: "PROFESSIONAL TAX (PT)", amount: computation.deductions.professionalTax || 0 });
+  } else {
+    deductionItems.push({ name: "PROFESSIONAL TAX (PT)", amount: 0 });
   }
-  if (computation.deductions.tds > 0) {
-    deductionItems.push({ name: "TDS (INCOME TAX)", amount: computation.deductions.tds });
-  }
-  if (computation.deductions.fineAndDamages > 0) {
-    deductionItems.push({ name: "FINE & DAMAGES", amount: computation.deductions.fineAndDamages });
-  }
-  if (computation.deductions.lwf > 0) {
-    deductionItems.push({ name: "LABOUR WELFARE (LWF)", amount: computation.deductions.lwf });
-  }
-  if (computation.deductions.otherDeductions > 0 && !deductionItems.some((d) => d.name.includes("OTHER"))) {
-    deductionItems.push({ name: "OTHER DEDUCTIONS", amount: computation.deductions.otherDeductions });
-  }
-  if (computation.deductions.advance > 0) {
-    deductionItems.push({ name: "SALARY ADVANCE", amount: computation.deductions.advance });
-  }
-  if (computation.deductions.loan > 0) {
-    deductionItems.push({ name: "LOAN EMI DEDUCTION", amount: computation.deductions.loan });
-  }
+
+  deductionItems.push({ name: "TDS (INCOME TAX)", amount: computation.deductions.tds || 0 });
+  deductionItems.push({ name: "ADVANCE/LOAN", amount: (computation.deductions.advance || 0) + (computation.deductions.loan || 0) });
+  deductionItems.push({ name: "FINE & DAMAGES", amount: computation.deductions.fineAndDamages || 0 });
+  deductionItems.push({ name: "LABOUR WELFARE (LWF)", amount: computation.deductions.lwf || 0 });
+  deductionItems.push({ name: "OTHER DEDUCTIONS", amount: computation.deductions.otherDeductions || 0 });
   (computation.extraDeductions || []).forEach((ed) => {
     if (ed.amount > 0 && !deductionItems.some((d) => d.name.toLowerCase() === ed.name.toLowerCase())) {
       deductionItems.push({ name: ed.name.toUpperCase(), amount: ed.amount });

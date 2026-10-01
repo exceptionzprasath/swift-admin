@@ -5079,7 +5079,9 @@ export function PayrollPage() {
                             {(editingComp.deductionsList || []).map((dl) => (
                               <div key={dl.id} className="flex justify-between text-[11px]">
                                 <span className="text-muted-foreground truncate max-w-[170px]">{dl.name}</span>
-                                <span className="font-semibold text-rose-600">-{inr(dl.amount)}</span>
+                                <span className={dl.amount > 0 ? "font-semibold text-rose-600" : "font-medium text-muted-foreground"}>
+                                  {dl.amount > 0 ? `-${inr(dl.amount)}` : inr(0)}
+                                </span>
                               </div>
                             ))}
                           </div>

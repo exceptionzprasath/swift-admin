@@ -385,15 +385,13 @@ export async function generateSalarySlipPDF(
   const deductionItems: { name: string; amount: number }[] = [];
   if ((deductions.employeePF || 0) > 0) deductionItems.push({ name: "EPF (EMPLOYEE PF)", amount: deductions.employeePF });
   if ((deductions.employeeESI || 0) > 0) deductionItems.push({ name: "ESIC (ESI)", amount: deductions.employeeESI });
-  if ((deductions.professionalTax || 0) > 0) deductionItems.push({ name: "PROFESSIONAL TAX", amount: deductions.professionalTax });
-  if ((deductions.tds || 0) > 0) deductionItems.push({ name: "TDS (INCOME TAX)", amount: deductions.tds });
-  if ((deductions.fineAndDamages || 0) > 0) deductionItems.push({ name: "FINE & DAMAGES", amount: deductions.fineAndDamages });
-  if ((deductions.lwf || 0) > 0) deductionItems.push({ name: "LABOUR WELFARE", amount: deductions.lwf });
-  if ((deductions.otherDeductions || 0) > 0 && !deductionItems.some((d) => d.name.includes("OTHER"))) {
-    deductionItems.push({ name: "OTHER DEDUCTIONS", amount: deductions.otherDeductions });
-  }
-  if ((deductions.advance || 0) > 0) deductionItems.push({ name: "SALARY ADVANCE", amount: deductions.advance });
-  if ((deductions.loan || 0) > 0) deductionItems.push({ name: "LOAN EMI DEDUCTION", amount: deductions.loan });
+  // Always include standard deduction heads even if 0
+  deductionItems.push({ name: "PROFESSIONAL TAX", amount: deductions.professionalTax || 0 });
+  deductionItems.push({ name: "TDS (INCOME TAX)", amount: deductions.tds || 0 });
+  deductionItems.push({ name: "ADVANCE/LOAN", amount: (deductions.advance || 0) + (deductions.loan || 0) });
+  deductionItems.push({ name: "FINE & DAMAGES", amount: deductions.fineAndDamages || 0 });
+  deductionItems.push({ name: "LABOUR WELFARE (LWF)", amount: deductions.lwf || 0 });
+  deductionItems.push({ name: "OTHER DEDUCTIONS", amount: deductions.otherDeductions || 0 });
 
   (comp.extraDeductions || []).forEach((ed) => {
     if (ed.amount > 0 && !deductionItems.some((d) => d.name.toLowerCase() === (ed.name || "").toLowerCase())) {

@@ -586,13 +586,12 @@ export function computePayroll(opts: {
   const deductionsList: { id: string; name: string; amount: number }[] = [];
   if (employeePF > 0) deductionsList.push({ id: "pf", name: "Provident Fund (PF)", amount: employeePF });
   if (employeeESI > 0) deductionsList.push({ id: "esi", name: "ESI (Employee)", amount: employeeESI });
-  if (professionalTax > 0) deductionsList.push({ id: "pt", name: "Professional Tax (PT)", amount: professionalTax });
-  if (tds > 0) deductionsList.push({ id: "tds", name: "TDS / Income Tax", amount: tds });
-  if (lwf > 0) deductionsList.push({ id: "lwf", name: "Labour Welfare Fund (LWF)", amount: lwf });
-  if (fineAndDamages > 0) deductionsList.push({ id: "fineAndDamages", name: "Fine & Damages", amount: fineAndDamages });
-  if (loan > 0) deductionsList.push({ id: "loan", name: "Loan EMI", amount: loan });
-  if (advance > 0) deductionsList.push({ id: "advance", name: "Salary Advance", amount: advance });
-  if (otherDeductions > 0) deductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: otherDeductions });
+  deductionsList.push({ id: "pt", name: "Professional Tax (PT)", amount: professionalTax || 0 });
+  deductionsList.push({ id: "tds", name: "TDS / Income Tax", amount: tds || 0 });
+  deductionsList.push({ id: "advance", name: "Advance / Loan", amount: (advance || 0) + (loan || 0) });
+  deductionsList.push({ id: "fineAndDamages", name: "Fine & Damages", amount: fineAndDamages || 0 });
+  deductionsList.push({ id: "lwf", name: "Labour Welfare Fund (LWF)", amount: lwf || 0 });
+  deductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: otherDeductions || 0 });
   for (const ed of extraDeductionsList) {
     if (!deductionsList.some((d) => d.id === ed.id)) {
       deductionsList.push(ed);
