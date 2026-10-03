@@ -2535,7 +2535,8 @@ export const useStore = create<State>()(
                   e.empCode === rawPin ||
                   String((e as any).biometricPin || (e as any).pin || '') === rawPin ||
                   (log.employeeDbId && e.id === log.employeeDbId) ||
-                  (log.employeeName && e.name.toLowerCase() === log.employeeName.toLowerCase())
+                  (log.employeeName && e.name.toLowerCase() === log.employeeName.toLowerCase()) ||
+                  (e.biometricMappings && e.biometricMappings.some((m) => String(m.biometricEmpCode).trim().toLowerCase() === rawPin.toLowerCase()))
               );
 
               // Do NOT create mock employees. Attribute punch to matchedEmp or record with raw log details.

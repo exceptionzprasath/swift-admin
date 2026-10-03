@@ -210,8 +210,8 @@ function getRecordHours(
   const isSynthetic22 =
     (rec.clockOut === "22:00" || rec.checkOut === "22:00") &&
     Boolean(rec.isAutoClosed || rec.isMissedCheckout);
-  const inTime = rec.checkIn || rec.clockIn;
-  const outTime = isSynthetic22 ? undefined : (rec.checkOut || rec.clockOut);
+  const inTime = rec.checkIn || rec.clockIn || (rec as any).inTime;
+  const outTime = isSynthetic22 ? undefined : (rec.checkOut || rec.clockOut || (rec as any).outTime);
 
   // 1. If both inTime and outTime are present, ALWAYS calculate real hours from actual punches
   if (inTime && outTime) {
@@ -668,21 +668,25 @@ function AttendancePage() {
           : { status: "pending", label: "Not Punched Yet", color: "bg-muted text-muted-foreground border-border" };
       }
 
+      const effectiveCheckIn = rec.checkIn || rec.clockIn || (rec as any).inTime || "";
+      const effectiveCheckOut = rec.checkOut || rec.clockOut || (rec as any).outTime || "";
+      const normStatus = (rec.status || "").toLowerCase().trim();
+
       // If record has no punch timestamps but has an explicitly set status (e.g. Quick Mark or manual override)
-      if (!rec.checkIn && !rec.clockIn) {
-        if (rec.status === "present") {
+      if (!effectiveCheckIn) {
+        if (normStatus === "present") {
           return { status: "present", label: "Present", color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
         }
-        if (rec.status === "half-day" || rec.status === "halfday") {
+        if (normStatus === "half-day" || normStatus === "halfday") {
           return { status: "half-day", label: "Half-Day", color: "bg-amber-500/10 text-amber-600 border-amber-500/20" };
         }
-        if (rec.status === "late") {
+        if (normStatus === "late") {
           return { status: "late", label: "Late", color: "bg-orange-500/10 text-orange-600 border-orange-500/20" };
         }
-        if (rec.status === "leave") {
+        if (normStatus === "leave") {
           return { status: "leave", label: "Approved Leave", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" };
         }
-        if (rec.status === "absent") {
+        if (normStatus === "absent") {
           return { status: "absent", label: "Absent", color: "bg-destructive/10 text-destructive border-destructive/20" };
         }
         return isPast
@@ -690,7 +694,7 @@ function AttendancePage() {
           : { status: "pending", label: "Not Punched Yet", color: "bg-muted text-muted-foreground border-border" };
       }
 
-      const punchTime = rec.checkIn || rec.clockIn || "";
+      const punchTime = effectiveCheckIn;
       const shiftStart = scheduled.shift.start || "09:00";
       const graceMinutes = parseInt(emp.graceTime || scheduled.shift.graceTime || "15", 10) || 0;
       const halfDayCutoff = emp.halfDayLoginTime || scheduled.shift.halfDayLoginTime || "12:00";
@@ -715,8 +719,8 @@ function AttendancePage() {
       const isLateCheckIn = punchMinutesTotal > graceLimitTotal;
       const isMissedOut = Boolean(
         rec.isMissedCheckout ||
-        (rec.clockOut === "22:00" && (rec.isAutoClosed || (rec as any).autoCloseReason)) ||
-        ((!rec.checkOut && !rec.clockOut) && isPast)
+        (effectiveCheckOut === "22:00" && (rec.isAutoClosed || (rec as any).autoCloseReason)) ||
+        ((!effectiveCheckOut) && isPast)
       );
 
       const [endH, endM] = (scheduled.shift.end || "18:00").split(":").map((v) => parseInt(v, 10) || 0);
@@ -822,7 +826,14 @@ function AttendancePage() {
   const dailyRows = useMemo(() => {
     return activeEmployees.map((emp) => {
       const rec = attendance.find(
-        (a) => (a.employeeId === emp.id || a.employeeName === emp.name) && a.date === selectedDate
+        (a) =>
+          ((a.employeeId === emp.id ||
+            (a as any).employeeDbId === emp.id ||
+            (emp.empCode && a.empCode === emp.empCode) ||
+            (emp.empCode && a.employeeId === emp.empCode) ||
+            (emp.biometricMappings && emp.biometricMappings.some((m) => String(m.biometricEmpCode).trim().toLowerCase() === String(a.employeeId).trim().toLowerCase())) ||
+            (a.employeeName && emp.name && a.employeeName.trim().toLowerCase() === emp.name.trim().toLowerCase()))) &&
+          a.date === selectedDate
       );
       const scheduled = getScheduledShiftForDate(emp, selectedDate);
       const punctuality = evaluatePunctuality(rec, scheduled, emp, selectedDate);
@@ -1889,60 +1900,66 @@ function AttendancePage() {
 
                         {/* Check-In Column */}
                         <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
-                          {rec?.checkIn || rec?.clockIn ? (
-                            <div className="space-y-1">
-                              <div className="font-semibold text-sm text-foreground">
-                                <span>{formatTimeWithAmPm(rec.checkIn || rec.clockIn)}</span>
+                          {(() => {
+                            const inTimeVal = rec?.checkIn || rec?.clockIn || (rec as any)?.inTime;
+                            if (!rec || !inTimeVal) {
+                              return <span className="text-xs text-muted-foreground">—</span>;
+                            }
+                            return (
+                              <div className="space-y-1">
+                                <div className="font-semibold text-sm text-foreground">
+                                  <span>{formatTimeWithAmPm(inTimeVal)}</span>
+                                </div>
+
+                                {/* Biometric & GPS Pill */}
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {rec.faceVerified && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setInspectRecord({ emp, rec, date: selectedDate })}
+                                      className="inline-flex items-center gap-1 text-[11px] bg-primary/10 text-primary hover:bg-primary/20 px-1.5 py-0.5 rounded border border-primary/20 transition-colors"
+                                    >
+                                      <Camera className="h-3 w-3" />
+                                      <span>Face Verified</span>
+                                    </button>
+                                  )}
+
+                                  {(rec.geofenceVerified || rec.withinGeofence) && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                      <MapPin className="h-3 w-3" />
+                                      <span>GPS HQ</span>
+                                    </span>
+                                  )}
+
+                                  {rec.regularized && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded border border-amber-500/20">
+                                      <Edit3 className="h-3 w-3" />
+                                      <span>Regularized</span>
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-
-                              {/* Biometric & GPS Pill */}
-                              <div className="flex flex-wrap items-center gap-1">
-                                {rec.faceVerified && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setInspectRecord({ emp, rec, date: selectedDate })}
-                                    className="inline-flex items-center gap-1 text-[11px] bg-primary/10 text-primary hover:bg-primary/20 px-1.5 py-0.5 rounded border border-primary/20 transition-colors"
-                                  >
-                                    <Camera className="h-3 w-3" />
-                                    <span>Face Verified</span>
-                                  </button>
-                                )}
-
-                                {(rec.geofenceVerified || rec.withinGeofence) && (
-                                  <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                                    <MapPin className="h-3 w-3" />
-                                    <span>GPS HQ</span>
-                                  </span>
-                                )}
-
-                                {rec.regularized && (
-                                  <span className="inline-flex items-center gap-1 text-[11px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded border border-amber-500/20">
-                                    <Edit3 className="h-3 w-3" />
-                                    <span>Regularized</span>
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
+                            );
+                          })()}
                         </td>
 
                         {/* Check-Out Column */}
                         <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
                           {(() => {
+                            const effectiveIn = rec?.checkIn || rec?.clockIn || (rec as any)?.inTime;
+                            const effectiveOut = rec?.checkOut || rec?.clockOut || (rec as any)?.outTime;
                             const isMissedOut = Boolean(
                               rec?.isMissedCheckout ||
-                              (rec?.clockOut === "22:00" && (rec?.isAutoClosed || (rec as any)?.autoCloseReason)) ||
-                              ((!rec?.checkOut && !rec?.clockOut) && (rec?.checkIn || rec?.clockIn) && selectedDate < new Date().toISOString().slice(0, 10))
+                              (effectiveOut === "22:00" && (rec?.isAutoClosed || (rec as any)?.autoCloseReason)) ||
+                              ((!effectiveOut) && effectiveIn && selectedDate < new Date().toISOString().slice(0, 10))
                             );
-                            const hasValidOut = (rec?.checkOut || rec?.clockOut) && !isMissedOut;
+                            const hasValidOut = Boolean(effectiveOut) && !isMissedOut;
 
                             if (hasValidOut) {
                               return (
                                 <div className="space-y-1">
                                   <div className="font-semibold text-sm text-foreground">
-                                    <span>{formatTimeWithAmPm(rec?.checkOut || rec?.clockOut)}</span>
+                                    <span>{formatTimeWithAmPm(effectiveOut)}</span>
                                   </div>
 
                                   {/* Biometric Check-Out Pill */}
