@@ -77,6 +77,7 @@ import {
 import { toast } from "sonner";
 import { type RevisionTarget, type RevisionReason } from "@/lib/salary-revision";
 import { downloadWageRegisterExcel } from "@/lib/wage-register-excel";
+import { EpfoEcrModal } from "@/components/payroll/EpfoEcrModal";
 
 export const Route = createFileRoute("/admin/payroll")({
   head: () => ({ meta: [{ title: "Payroll & Salary Structures · CreatonsHR" }] }),
@@ -542,6 +543,7 @@ export function PayrollPage() {
 
   // Wage Register Excel Export Dialog
   const [wageRegisterOpen, setWageRegisterOpen] = useState(false);
+  const [epfoEcrOpen, setEpfoEcrOpen] = useState(false);
 
   // Live Blueprint Benchmark Salary (from user template: 30000)
   const [benchmarkSalary, setBenchmarkSalary] = useState<number>(30000);
@@ -1694,6 +1696,16 @@ export function PayrollPage() {
           >
             <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
             <span>Download Wage Register</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => setEpfoEcrOpen(true)}
+            className="h-9 px-3.5 rounded-xl border-border hover:bg-muted font-semibold text-xs gap-1.5 text-foreground shadow-xs"
+            title="Export EPFO ECR Return (.txt & .xlsx)"
+          >
+            <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
+            <span>EPFO ECR</span>
           </Button>
 
           <Button
@@ -5535,6 +5547,21 @@ export function PayrollPage() {
       <WageRegisterDownloadDialog
         open={wageRegisterOpen}
         onClose={() => setWageRegisterOpen(false)}
+        company={company}
+        employees={employees}
+        attendance={attendance}
+        roster={roster}
+        requests={requests}
+        monthlyOverrides={monthlyOverrides}
+        defaultMonth={selectedMonth}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL 6: EPFO ECR RETURN EXPORT POPUP DIALOG (.txt #~# & .xlsx)            */}
+      {/* ========================================================================= */}
+      <EpfoEcrModal
+        open={epfoEcrOpen}
+        onClose={() => setEpfoEcrOpen(false)}
         company={company}
         employees={employees}
         attendance={attendance}
