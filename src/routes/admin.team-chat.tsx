@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth";
-import { useStore } from "@/lib/store";
+import { useStore, getBackendUrl } from "@/lib/store";
 import {
   type TeamGroup,
   type TeamGroupMessage,
@@ -208,7 +208,7 @@ function VoiceMessagePlayer({
 function AdminTeamChatPage() {
   const { user, activeTenantId } = useAuth();
   const { company, employees } = useStore();
-  const effectiveTenantId = activeTenantId || company?.id || "10300b23-e442-41f0-a3fa-383e5e5a18c3";
+  const effectiveTenantId = activeTenantId || (company as any)?.id || "10300b23-e442-41f0-a3fa-383e5e5a18c3";
 
   // Current admin details (matching company employee if available)
   const matchingEmployee = useMemo(() => {
@@ -413,7 +413,6 @@ function AdminTeamChatPage() {
         groupId,
         userId: adminId,
         userName: adminName,
-        role: adminRole,
       });
       // Clear unread count locally for active group
       setGroups((prev) =>
@@ -1064,9 +1063,9 @@ function AdminTeamChatPage() {
         return {
           id: empId,
           name: emp?.name || "Team Member",
-          role: emp?.role || "Member",
+          role: (emp as any)?.role || emp?.designation || "Member",
           department: emp?.department || "General",
-          avatar: emp?.avatar || "",
+          avatar: (emp as any)?.avatar || "",
           isAdmin: false,
           empCode: emp?.empCode,
         };
@@ -1130,9 +1129,9 @@ function AdminTeamChatPage() {
         return {
           id: empId,
           name: emp?.name || "Team Member",
-          role: emp?.role || "Member",
+          role: (emp as any)?.role || emp?.designation || "Member",
           department: emp?.department || "General",
-          avatar: emp?.avatar || "",
+          avatar: (emp as any)?.avatar || "",
           isAdmin: false,
           empCode: emp?.empCode,
         };
@@ -1847,7 +1846,7 @@ function AdminTeamChatPage() {
                         {(msg.mediaType === "audio" || (typeof msg.text === "string" && (msg.text.startsWith("🎤 Voice message") || msg.text.startsWith("🎤 Voice note") || msg.text.startsWith("🎤 ")))) && (
                           <VoiceMessagePlayer
                             mediaUrl={msg.mediaUrl}
-                            durationText={msg.fileSize || (typeof msg.text === "string" ? msg.text : "0:06")}
+                            durationText={String(msg.fileSize || (typeof msg.text === "string" ? msg.text : "0:06"))}
                             isMe={isMe}
                           />
                         )}
@@ -1909,9 +1908,13 @@ function AdminTeamChatPage() {
                               {msg.status === "sending" ? (
                                 <Clock className="h-3 w-3 text-muted-foreground animate-spin" />
                               ) : msg.readBy && msg.readBy.length > 0 ? (
-                                <CheckCheck className="h-3.5 w-3.5 text-blue-500 font-bold" title={`Read by ${msg.readBy.length} members`} />
+                                <span title={`Read by ${msg.readBy.length} members`}>
+                                  <CheckCheck className="h-3.5 w-3.5 text-blue-500 font-bold" />
+                                </span>
                               ) : (
-                                <Check className="h-3.5 w-3.5 text-muted-foreground" title="Delivered" />
+                                <span title="Delivered">
+                                  <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                                </span>
                               )}
                             </span>
                           )}

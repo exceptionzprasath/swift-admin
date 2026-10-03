@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import JSZip from "jszip";
-import pkg from "file-saver";
 import { toast } from "sonner";
 import { useStore, type Employee } from "@/lib/store";
 import {
@@ -12,6 +11,7 @@ import {
   downloadLetter,
   type LetterKey,
   type LetterTemplate,
+  saveAs,
 } from "@/lib/documents";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -29,8 +29,6 @@ import {
   DoorOpen, ArrowRightLeft, FileSignature, FileDown, PackageCheck,
   MessageSquareQuote, CheckCircle2, Wallet, Building2, Sparkles,
 } from "lucide-react";
-
-const { saveAs } = pkg;
 
 type Kind = "exit" | "transfer" | "manual";
 

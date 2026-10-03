@@ -4,10 +4,9 @@ import { useStore, isMockEmployee, resolveAttendanceProfile, getEmployeeBranchId
 import { computePayroll, inr } from "@/lib/payroll";
 import { aiNotify } from "@/lib/ai-guide-bus";
 import { generateAppointmentPDF, generateAppointmentPDFBlob } from "@/lib/pdf";
-import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, prepareDocAssets, generateLetterPDF, type LetterKey } from "@/lib/documents";
+import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, prepareDocAssets, generateLetterPDF, type LetterKey, saveAs } from "@/lib/documents";
 import JSZip from "jszip";
-import pkgFileSaver from "file-saver";
-const { saveAs } = pkgFileSaver;
+
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";

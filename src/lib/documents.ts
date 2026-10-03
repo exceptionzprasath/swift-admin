@@ -5,9 +5,22 @@ import {
   Table, TableRow, TableCell, WidthType, BorderStyle, ShadingType,
   Header, Footer, PageNumber, ImageRun,
 } from "docx";
-import pkg from "file-saver";
-const { saveAs } = pkg;
 import JSZip from "jszip";
+
+export function saveAs(blob: Blob, fileName: string) {
+  if (typeof window === "undefined") return;
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.style.display = "none";
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }, 200);
+}
 import type { Company, Employee } from "./store";
 import type { CompanyDocumentAssets } from "./lifecycle";
 import { computePayroll, inr } from "./payroll";
