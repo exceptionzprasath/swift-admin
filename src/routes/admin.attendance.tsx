@@ -95,6 +95,7 @@ import { HardwareBridgeModal } from "@/components/biometric/HardwareBridgeModal"
 import { LiveBiometricFeed } from "@/components/biometric/LiveBiometricFeed";
 import { DeviceManagerHub } from "@/components/biometric/DeviceManagerHub";
 import { StaffBiometricDirectory } from "@/components/biometric/StaffBiometricDirectory";
+import { MonthlyStaffMatrixHub } from "@/components/attendance/MonthlyStaffMatrixHub";
 
 // Utility: Parse time string in 12h, 24h, or with seconds into total minutes of the day
 function parseTimeMinutes(s?: string): number {
@@ -2147,172 +2148,23 @@ function AttendancePage() {
           </div>
         </TabsContent>
 
-        {/* TAB 2: MONTHLY STAFF MATRIX */}
+        {/* TAB 2: MONTHLY STAFF MATRIX & COMPREHENSIVE REPORTS */}
         <TabsContent value="matrix" className="space-y-4 m-0">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-card p-4 rounded-xl border border-border">
-            <div className="flex items-center gap-2">
-              <Label className="text-xs">Month Selection:</Label>
-              <Input
-                type="month"
-                value={matrixMonth}
-                onChange={(e) => setMatrixMonth(e.target.value)}
-                className="w-auto h-8 text-xs font-semibold"
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Present (P)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-orange-500" /> Late (L)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> Half-Day (HD)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-blue-500" /> Leave (LV)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-destructive" /> Absent (A)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-slate-400" /> Off (WO)
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-muted/50 border-b border-border">
-                  <tr>
-                    <th className="p-3 text-left font-semibold sticky left-0 bg-card z-10 min-w-[180px]">
-                      Employee
-                    </th>
-                    {matrixDaysInMonth.map((d) => (
-                      <th key={d.dateStr} className="p-1.5 text-center min-w-[32px] font-medium text-[11px]">
-                        <div>{d.dayNum}</div>
-                        <div className="text-[10px] text-muted-foreground">{d.dayOfWeek}</div>
-                      </th>
-                    ))}
-                    <th className="p-3 text-center font-semibold min-w-[60px]">Present</th>
-                    <th className="p-3 text-center font-semibold min-w-[60px]">Late</th>
-                    <th className="p-3 text-center font-semibold min-w-[60px]">Absent</th>
-                    <th className="p-3 text-center font-semibold min-w-[60px]">Total Hrs</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {activeEmployees.map((emp) => {
-                    let empPresent = 0;
-                    let empLate = 0;
-                    let empAbsent = 0;
-                    let empTotalHours = 0;
-
-                    return (
-                      <tr key={emp.id} className="hover:bg-muted/20">
-                        <td
-                          className="p-3 sticky left-0 bg-card z-10 font-medium text-foreground hover:text-primary cursor-pointer"
-                          onClick={() => setDossierEmployee(emp)}
-                        >
-                          <div className="font-semibold flex items-center gap-1.5">
-                            <span>{emp.name}</span>
-                            <EmploymentTypeBadge type={emp.employmentType} />
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">{emp.empCode}</div>
-                        </td>
-
-                        {matrixDaysInMonth.map((d) => {
-                          const rec = attendance.find(
-                            (a) => (a.employeeId === emp.id || a.employeeName === emp.name) && a.date === d.dateStr
-                          );
-                          const scheduled = getScheduledShiftForDate(emp, d.dateStr);
-                          const punct = evaluatePunctuality(rec, scheduled, emp, d.dateStr);
-
-                          if (punct.status === "present") empPresent++;
-                          if (punct.status === "late") {
-                            empPresent++;
-                            empLate++;
-                          }
-                          if (punct.status === "absent") empAbsent++;
-                          const recHrs = getRecordHours(rec, company.workingHoursPerDay || 9);
-                          empTotalHours += recHrs.hoursWorked;
-
-                          return (
-                            <td key={d.dateStr} className="p-1 text-center">
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSelectedDate(d.dateStr);
-                                        setInspectRecord({ emp, rec, date: d.dateStr });
-                                      }}
-                                      className={`h-6 w-6 rounded font-semibold text-[10px] inline-flex items-center justify-center transition-transform hover:scale-110 ${
-                                        punct.status === "present"
-                                          ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
-                                          : punct.status === "late"
-                                          ? "bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30"
-                                          : punct.status === "half-day"
-                                          ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
-                                          : punct.status === "leave"
-                                          ? "bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30"
-                                          : punct.status === "weekly-off"
-                                          ? "bg-slate-200 dark:bg-slate-800 text-slate-500"
-                                          : punct.status === "holiday"
-                                          ? "bg-purple-500/20 text-purple-700 dark:text-purple-300"
-                                          : "bg-destructive/10 text-destructive border border-destructive/20"
-                                      }`}
-                                    >
-                                      {punct.status === "present"
-                                        ? "P"
-                                        : punct.status === "late"
-                                        ? "L"
-                                        : punct.status === "half-day"
-                                        ? "HD"
-                                        : punct.status === "leave"
-                                        ? "LV"
-                                        : punct.status === "weekly-off"
-                                        ? "WO"
-                                        : punct.status === "holiday"
-                                        ? "H"
-                                        : "A"}
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <div className="text-xs space-y-0.5">
-                                      <div className="font-semibold">{d.dateStr}</div>
-                                      <div>Status: {punct.label}</div>
-                                      {rec?.checkIn && <div>In: {formatTimeWithAmPm(rec.checkIn)}</div>}
-                                      {rec?.checkOut && <div>Out: {formatTimeWithAmPm(rec.checkOut)}</div>}
-                                      {(() => { const h = getRecordHours(rec); return h.hoursWorked > 0 ? <div>Hours: {h.hoursWorked}h{h.otHours > 0 ? ` (+${h.otHours}h OT)` : ''}</div> : null; })()}
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </td>
-                          );
-                        })}
-
-                        <td className="p-3 text-center font-semibold text-emerald-600">
-                          {empPresent}
-                        </td>
-                        <td className="p-3 text-center font-semibold text-orange-600">
-                          {empLate}
-                        </td>
-                        <td className="p-3 text-center font-semibold text-destructive">
-                          {empAbsent}
-                        </td>
-                        <td className="p-3 text-center font-semibold text-foreground">
-                          {Math.round(empTotalHours * 10) / 10}h
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <MonthlyStaffMatrixHub
+            onInspectRecord={(data) => {
+              setSelectedDate(data.date);
+              setInspectRecord(data);
+            }}
+            onRegularizePunch={(emp, date, rec) => {
+              handleOpenRegularize(emp, date, rec);
+            }}
+            onOpenDossier={(emp) => {
+              setDossierEmployee(emp);
+            }}
+            getScheduledShiftForDate={getScheduledShiftForDate}
+            evaluatePunctuality={evaluatePunctuality}
+            getRecordHours={getRecordHours}
+          />
         </TabsContent>
 
         {/* TAB 3: PUNCTUALITY INSIGHTS & LEADERBOARD */}
