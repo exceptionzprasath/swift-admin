@@ -27,6 +27,8 @@ import {
   type AssetStatus,
 } from "./assets";
 import { type ThemePaletteId, applyThemePalette } from "./palettes";
+import type { ModuleKey, ModulePermission, DashboardViewType } from "./roles-permissions";
+export type { ModuleKey, ModulePermission, DashboardViewType };
 
 
 
@@ -727,6 +729,9 @@ export type PredefinedRole = {
   name: string;
   description: string;
   permissions: RolePermissions;
+  modules?: Partial<Record<ModuleKey, ModulePermission>>;
+  dashboardView?: DashboardViewType;
+  responsibilities?: string[];
   isSystemDefault?: boolean;
   createdAt: string;
 };
@@ -1579,6 +1584,13 @@ export const DEFAULT_PREDEFINED_ROLES: PredefinedRole[] = [
     name: "HR Manager",
     description: "Full access to employee management, leaves, attendance, documents, and onboarding.",
     isSystemDefault: true,
+    dashboardView: "hr",
+    responsibilities: [
+      "Manage employee directories, onboarding, and official profiles",
+      "Approve leave applications and attendance regularizations",
+      "Generate and release employment documentation (Offer, Appointment, Appraisal)",
+      "Publish official notices, circulars, and organize company shifts",
+    ],
     createdAt: new Date().toISOString(),
     permissions: {
       leaveApproval: true,
@@ -1605,12 +1617,39 @@ export const DEFAULT_PREDEFINED_ROLES: PredefinedRole[] = [
       performanceReviews: true,
       auditLogView: true,
     },
+    modules: {
+      dashboard: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      requests: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: true },
+      ai: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      teamChat: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: true },
+      notices: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: true },
+      employees: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      pastEmployees: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      attendance: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      leaveCalendar: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: true },
+      shiftRoster: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      payroll: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      documentation: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      approvalSettings: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      branches: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      org: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      vault: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      roles: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      settings: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+    },
   },
   {
     id: "role-team-lead",
     name: "Team Lead / Reporting Manager",
     description: "Leave approval, attendance verification, performance reviews, and document approvals.",
     isSystemDefault: true,
+    dashboardView: "manager",
+    responsibilities: [
+      "Review and approve direct reports' leave and regularizations",
+      "Monitor team daily biometric attendance and check-in times",
+      "Plan and adjust weekly shift schedules and rotations",
+      "Participate in quarterly performance appraisals and team chat",
+    ],
     createdAt: new Date().toISOString(),
     permissions: {
       leaveApproval: true,
@@ -1637,12 +1676,39 @@ export const DEFAULT_PREDEFINED_ROLES: PredefinedRole[] = [
       performanceReviews: true,
       auditLogView: false,
     },
+    modules: {
+      dashboard: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      requests: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      ai: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      teamChat: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      notices: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      employees: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      pastEmployees: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      attendance: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      leaveCalendar: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      shiftRoster: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      payroll: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      documentation: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      approvalSettings: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      branches: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      org: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      vault: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      roles: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      settings: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+    },
   },
   {
     id: "role-finance-manager",
     name: "Finance / Payroll Manager",
     description: "Payroll dashboard access, expense & handloan approvals, and invoice approvals.",
     isSystemDefault: true,
+    dashboardView: "finance",
+    responsibilities: [
+      "Process monthly payroll registers, deductions, and salary disbursement",
+      "Review and authorize employee reimbursement and handloan requests",
+      "Issue salary certificates and compliance documentation",
+      "Manage company bank accounts, GSTIN, and statutory records in Vault",
+    ],
     createdAt: new Date().toISOString(),
     permissions: {
       leaveApproval: false,
@@ -1669,12 +1735,39 @@ export const DEFAULT_PREDEFINED_ROLES: PredefinedRole[] = [
       performanceReviews: false,
       auditLogView: true,
     },
+    modules: {
+      dashboard: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      requests: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      ai: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      teamChat: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      notices: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      employees: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      pastEmployees: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      attendance: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      leaveCalendar: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      shiftRoster: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      payroll: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: true },
+      documentation: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      approvalSettings: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      branches: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      org: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      vault: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      roles: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      settings: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+    },
   },
   {
     id: "role-general-employee",
     name: "General Employee",
     description: "Standard self-service employee access.",
     isSystemDefault: true,
+    dashboardView: "manager",
+    responsibilities: [
+      "Submit personal leave and attendance punch correction requests",
+      "View company holiday calendar and assigned shift rosters",
+      "Interact with colleagues via team chat channels",
+      "Access company notice board and published organizational policies",
+    ],
     createdAt: new Date().toISOString(),
     permissions: {
       leaveApproval: false,
@@ -1700,6 +1793,26 @@ export const DEFAULT_PREDEFINED_ROLES: PredefinedRole[] = [
       noticesAnnouncements: false,
       performanceReviews: false,
       auditLogView: false,
+    },
+    modules: {
+      dashboard: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      requests: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      ai: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      teamChat: { enabledInSidebar: true, canRead: true, canWrite: true, canDelete: false },
+      notices: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      employees: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      pastEmployees: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      attendance: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      leaveCalendar: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      shiftRoster: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      payroll: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      documentation: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      approvalSettings: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      branches: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      org: { enabledInSidebar: true, canRead: true, canWrite: false, canDelete: false },
+      vault: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      roles: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
+      settings: { enabledInSidebar: false, canRead: false, canWrite: false, canDelete: false },
     },
   },
 ];

@@ -1,11 +1,17 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 import creatonsLogoBanner from "@/assets/CreatonsHR-Banner.png";
 import creatonsLogoIcon from "@/assets/CreatonHR.png";
 import { ThemeToggle } from "@/components/theme";
+import {
+  useRolePreview,
+  resolveModulePermissions,
+  MODULE_REGISTRY,
+  type ModuleKey,
+} from "@/lib/roles-permissions";
 import {
   LayoutDashboard,
   Users,
@@ -39,6 +45,10 @@ import {
   ChevronRight,
   MessagesSquare,
   UserX,
+  Lock,
+  ShieldAlert,
+  Sparkles,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -69,13 +79,35 @@ export const Route = createFileRoute("/admin")({
   component: AdminLayout,
 });
 
+export function getPathModuleKey(currentPath: string): ModuleKey | null {
+  if (currentPath === "/admin" || currentPath === "/admin/") return "dashboard";
+  if (currentPath.startsWith("/admin/requests")) return "requests";
+  if (currentPath.startsWith("/admin/ai")) return "ai";
+  if (currentPath.startsWith("/admin/team-chat")) return "teamChat";
+  if (currentPath.startsWith("/admin/notices")) return "notices";
+  if (currentPath.startsWith("/admin/employees")) return "employees";
+  if (currentPath.startsWith("/admin/past-employees")) return "pastEmployees";
+  if (currentPath.startsWith("/admin/attendance")) return "attendance";
+  if (currentPath.startsWith("/admin/leave-calendar")) return "leaveCalendar";
+  if (currentPath.startsWith("/admin/shift-roster")) return "shiftRoster";
+  if (currentPath.startsWith("/admin/payroll")) return "payroll";
+  if (currentPath.startsWith("/admin/documentation")) return "documentation";
+  if (currentPath.startsWith("/admin/approval-settings")) return "approvalSettings";
+  if (currentPath.startsWith("/admin/branches")) return "branches";
+  if (currentPath.startsWith("/admin/org")) return "org";
+  if (currentPath.startsWith("/admin/vault")) return "vault";
+  if (currentPath.startsWith("/admin/roles")) return "roles";
+  if (currentPath.startsWith("/admin/settings")) return "settings";
+  return null;
+}
+
 function getSelectedMenuName(currentPath: string): string {
   if (currentPath === "/admin" || currentPath === "/admin/") return "Dashboard";
   const matched = nav
     .filter((n) => !n.exact && currentPath.startsWith(n.to))
     .sort((a, b) => b.to.length - a.to.length)[0];
   if (matched) return matched.label;
-  if (currentPath.startsWith("/admin/roles")) return "Roles & Permissions";
+  if (currentPath.startsWith("/admin/roles")) return "Roles & Responsibilities";
   if (currentPath.startsWith("/admin/grievances")) return "Grievance Redressal";
   if (currentPath.startsWith("/admin/documents")) return "Documents Repository";
   if (currentPath.startsWith("/admin/salary-revision")) return "Salary Revision";
@@ -86,28 +118,30 @@ type NavItem = {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
+  moduleKey?: ModuleKey;
   exact?: boolean;
   comingSoon?: boolean;
   badge?: string | number;
 };
 
 const nav: NavItem[] = [
-  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox, badge: 2 },
-  { to: "/admin/ai", label: "SWIFT AI", icon: Brain, badge: "AI" },
-  { to: "/admin/team-chat", label: "Team Chat", icon: MessagesSquare },
-  { to: "/admin/notices", label: "Notice Board", icon: Megaphone },
-  { to: "/admin/employees", label: "Employees", icon: Users },
-  { to: "/admin/past-employees", label: "Past Employees", icon: UserX },
-  { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck },
-  { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays },
-  { to: "/admin/shift-roster", label: "Shift Roster", icon: Clock },
-  { to: "/admin/payroll", label: "Payroll", icon: Calculator },
-  { to: "/admin/documentation-alt", label: "Documentations", icon: FileText },
-  { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal },
-  { to: "/admin/branches", label: "Branches", icon: Building2 },
-  { to: "/admin/org", label: "Organization", icon: Network },
-  { to: "/admin/vault", label: "Vault", icon: FolderLock },
+  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, moduleKey: "dashboard", exact: true },
+  { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox, moduleKey: "requests", badge: 2 },
+  { to: "/admin/ai", label: "SWIFT AI", icon: Brain, moduleKey: "ai", badge: "AI" },
+  { to: "/admin/team-chat", label: "Team Chat", icon: MessagesSquare, moduleKey: "teamChat" },
+  { to: "/admin/notices", label: "Notice Board", icon: Megaphone, moduleKey: "notices" },
+  { to: "/admin/employees", label: "Employees", icon: Users, moduleKey: "employees" },
+  { to: "/admin/past-employees", label: "Past Employees", icon: UserX, moduleKey: "pastEmployees" },
+  { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck, moduleKey: "attendance" },
+  { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays, moduleKey: "leaveCalendar" },
+  { to: "/admin/shift-roster", label: "Shift Roster", icon: Clock, moduleKey: "shiftRoster" },
+  { to: "/admin/payroll", label: "Payroll", icon: Calculator, moduleKey: "payroll" },
+  { to: "/admin/documentation-alt", label: "Documentations", icon: FileText, moduleKey: "documentation" },
+  { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal, moduleKey: "approvalSettings" },
+  { to: "/admin/roles", label: "Roles & Responsibilities", icon: ShieldCheck, moduleKey: "roles" },
+  { to: "/admin/branches", label: "Branches", icon: Building2, moduleKey: "branches" },
+  { to: "/admin/org", label: "Organization", icon: Network, moduleKey: "org" },
+  { to: "/admin/vault", label: "Vault", icon: FolderLock, moduleKey: "vault" },
   { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket, comingSoon: true },
   { to: "/admin/reports", label: "Reports", icon: BarChart3, comingSoon: true },
   { to: "/admin/assets", label: "Assets", icon: Package, comingSoon: true },
@@ -116,7 +150,7 @@ const nav: NavItem[] = [
   { to: "/admin/audit", label: "Audit Log", icon: ShieldCheck, comingSoon: true },
   { to: "/admin/subscription", label: "Subscription", icon: CreditCard, comingSoon: true },
   { to: "/admin/renewals", label: "Renewal Scheduler", icon: BellRing, comingSoon: true },
-  { to: "/admin/settings", label: "Settings", icon: Settings },
+  { to: "/admin/settings", label: "Settings", icon: Settings, moduleKey: "settings" },
 ];
 
 function AdminLayout() {
@@ -186,10 +220,53 @@ function AdminLayout() {
     (activeTenant as any)?.logo_url ||
     (activeTenant as any)?.logoDataUrl;
 
-  // Filter navigation items by search query without category groupings
-  const filteredNav = searchQuery.trim()
-    ? nav.filter((item) => item.label.toLowerCase().includes(searchQuery.toLowerCase()))
-    : nav;
+  const { previewRoleId, setPreviewRoleId } = useRolePreview();
+  const roles = useStore((s) => s.roles || []);
+
+  const isSuperAdminOrOwner = (isSuperAdmin || memberships[0]?.role === "owner") && !user?.isEmployeeLogin;
+  const previewRole = previewRoleId ? roles.find((r) => r.id === previewRoleId) : null;
+  const currentEmp = employees.find(
+    (e) =>
+      (e.email && user?.email && e.email.toLowerCase() === user.email.toLowerCase()) ||
+      (user?.id && e.id === user.id) ||
+      (user?.empCode && e.empCode && e.empCode.toLowerCase() === user.empCode.toLowerCase())
+  );
+  const employeeRole =
+    (user?.roleId ? roles.find((r) => r.id === user.roleId) : null) ||
+    (currentEmp?.roleId ? roles.find((r) => r.id === currentEmp.roleId) : null) ||
+    (user?.roleName ? roles.find((r) => r.name.toLowerCase() === user.roleName?.toLowerCase()) : null) ||
+    (currentEmp?.roleName ? roles.find((r) => r.name.toLowerCase() === currentEmp.roleName?.toLowerCase()) : null);
+  const activeRole = previewRole || employeeRole || (isSuperAdminOrOwner ? null : roles[0] || null);
+
+  const activePermissions = useMemo(() => {
+    if (isSuperAdminOrOwner && !previewRole) {
+      return null; // full unrestricted access for workspace owners
+    }
+    return resolveModulePermissions(activeRole);
+  }, [isSuperAdminOrOwner, previewRole, activeRole]);
+
+  // Filter navigation items by role sidebar visibility and search query
+  const filteredNav = useMemo(() => {
+    let list = nav;
+    if (activePermissions) {
+      list = list.filter((item) => {
+        if (!item.moduleKey) return true;
+        const perm = activePermissions[item.moduleKey];
+        return perm ? perm.enabledInSidebar : true;
+      });
+    }
+    if (searchQuery.trim()) {
+      list = list.filter((item) => item.label.toLowerCase().includes(searchQuery.toLowerCase()));
+    }
+    return list;
+  }, [activePermissions, searchQuery]);
+
+  const currentModuleKey = getPathModuleKey(path);
+  const isRouteBlocked =
+    currentModuleKey &&
+    activePermissions &&
+    activePermissions[currentModuleKey] &&
+    !activePermissions[currentModuleKey].canRead;
 
   const renderSidebar = (collapsed: boolean) => (
     <TooltipProvider delayDuration={50}>
@@ -395,8 +472,12 @@ function AdminLayout() {
                     {(displayName || "A")[0].toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold text-sidebar-foreground truncate">{displayName}</div>
-                    <div className="text-[10px] text-sidebar-foreground/75 truncate">{userEmail}</div>
+                    <div className="text-xs font-semibold text-sidebar-foreground truncate">
+                      {user?.name || displayName}
+                    </div>
+                    <div className="text-[10px] text-sidebar-foreground/75 truncate">
+                      {user?.empCode ? `${user.empCode} · ` : ""}{activeRole?.name || userEmail}
+                    </div>
                   </div>
                 </div>
                 <button
@@ -491,10 +572,31 @@ function AdminLayout() {
               </SheetContent>
             </Sheet>
 
-            <div className="flex flex-col justify-center min-w-0">
+            <div className="flex items-center gap-3 min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold font-display text-foreground tracking-tight leading-tight truncate drop-shadow-2xs">
                 {selectedMenuName}
               </h1>
+
+              {activeRole && (
+                <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs shadow-2xs">
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="font-semibold text-primary truncate max-w-[140px]">{activeRole.name}</span>
+                  {previewRoleId ? (
+                    <span className="text-[9px] bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 font-bold uppercase px-1.5 py-0.5 rounded-full">
+                      Preview
+                    </span>
+                  ) : null}
+                  {previewRoleId ? (
+                    <button
+                      onClick={() => setPreviewRoleId(null)}
+                      className="ml-1 text-[11px] font-bold text-muted-foreground hover:text-foreground underline cursor-pointer"
+                      title="Exit role preview"
+                    >
+                      Exit
+                    </button>
+                  ) : null}
+                </div>
+              )}
             </div>
           </div>
 
@@ -701,7 +803,42 @@ function AdminLayout() {
               : "overflow-auto p-4 sm:p-6 pb-24 md:pb-6 safe-bottom"
           }`}
         >
-          <Outlet />
+          {isRouteBlocked ? (
+            <div className="max-w-2xl mx-auto my-12 p-8 rounded-3xl bg-card border border-destructive/20 shadow-lg text-center space-y-4">
+              <div className="h-16 w-16 mx-auto rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center">
+                <Lock className="h-8 w-8" />
+              </div>
+              <h2 className="text-2xl font-bold tracking-tight">Access Restricted</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Your currently active position (<strong>{activeRole?.name || "Assigned Role"}</strong>) does not have read permissions for the{" "}
+                <span className="font-semibold text-foreground">{MODULE_REGISTRY[currentModuleKey]?.label || selectedMenuName}</span> feature.
+              </p>
+              {activeRole?.responsibilities && activeRole.responsibilities.length > 0 && (
+                <div className="bg-muted/40 p-4 rounded-2xl text-left border border-border text-xs space-y-2 mt-4">
+                  <div className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
+                    Key Responsibilities for {activeRole.name}:
+                  </div>
+                  <ul className="list-disc pl-4 space-y-1 text-muted-foreground">
+                    {activeRole.responsibilities.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="pt-4 flex items-center justify-center gap-3">
+                <Button onClick={() => navigate({ to: "/admin" })} className="bg-gradient-brand text-white">
+                  Back to My Dashboard
+                </Button>
+                {previewRoleId && (
+                  <Button variant="outline" onClick={() => setPreviewRoleId(null)}>
+                    Exit Role Preview
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
 

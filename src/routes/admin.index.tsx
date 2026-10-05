@@ -37,11 +37,13 @@ import {
   Activity,
   ArrowRight,
   ShieldAlert,
+  ShieldCheck,
   SlidersHorizontal,
   Bot,
   Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useRolePreview, type DashboardViewType } from "@/lib/roles-permissions";
 import { LiveNotificationTicker } from "@/components/live-notification-ticker";
 import { DashboardHeroCarousel } from "@/components/dashboard-hero-carousel";
 import {
@@ -99,6 +101,9 @@ function Dashboard() {
   const [graphMetric, setGraphMetric] = useState<"attendance" | "payroll" | "headcount">("attendance");
   const [pieMetric, setPieMetric] = useState<"department" | "attendance" | "target">("department");
 
+  const { previewRoleId } = useRolePreview();
+  const roles = useStore((s) => s.roles || []);
+
   // Live Sync on Mount / Tenant Switch
   useEffect(() => {
     if (activeTenantId) {
@@ -110,6 +115,27 @@ function Dashboard() {
     () => (rawEmployees || []).filter((e) => !isMockEmployee(e)),
     [rawEmployees]
   );
+
+  const currentEmp = useMemo(
+    () => employees.find((e) => (e.email && user?.email && e.email.toLowerCase() === user.email.toLowerCase()) || (user?.id && e.id === user.id)),
+    [employees, user]
+  );
+  const previewRole = previewRoleId ? roles.find((r) => r.id === previewRoleId) : null;
+  const activeRole = previewRole || (currentEmp?.roleId ? roles.find((r) => r.id === currentEmp.roleId) : null) || roles[0];
+  const activeDashboardType: DashboardViewType = activeRole?.dashboardView || "hr";
+
+  useEffect(() => {
+    if (activeDashboardType === "finance") {
+      setGraphMetric("payroll");
+      setPieMetric("department");
+    } else if (activeDashboardType === "hr") {
+      setGraphMetric("headcount");
+      setPieMetric("department");
+    } else {
+      setGraphMetric("attendance");
+      setPieMetric("attendance");
+    }
+  }, [activeDashboardType]);
 
   // Unified live normalized requests identical to Side Panel (/admin/requests)
   const normalizedRequests: NormalizedRequest[] = useMemo(() => {
@@ -481,6 +507,76 @@ function Dashboard() {
       >
         <LiveNotificationTicker />
       </motion.div>
+
+      {/* ========================================================================= */}
+      {/* 2.2 ROLE-BASED DASHBOARD PERSPECTIVE SELECTOR                              */}
+      {/* ========================================================================= */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-card border border-border shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+            <ShieldCheck className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <span>Position Perspective:</span>
+              <span className="text-primary font-extrabold">{activeRole?.name || "Company Administrator"}</span>
+              {previewRoleId && (
+                <span className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full uppercase font-bold">
+                  Preview Active
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              Showing role-tailored metrics, approval queues, and charts for this position
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 bg-muted/60 p-1 rounded-xl shrink-0 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setGraphMetric("headcount");
+              setPieMetric("department");
+            }}
+            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition cursor-pointer ${
+              graphMetric === "headcount"
+                ? "bg-card text-foreground shadow-2xs font-bold border border-border"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            HR Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setGraphMetric("attendance");
+              setPieMetric("attendance");
+            }}
+            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition cursor-pointer ${
+              graphMetric === "attendance"
+                ? "bg-card text-foreground shadow-2xs font-bold border border-border"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Team Lead
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setGraphMetric("payroll");
+              setPieMetric("department");
+            }}
+            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition cursor-pointer ${
+              graphMetric === "payroll"
+                ? "bg-card text-foreground shadow-2xs font-bold border border-border"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Finance & Payroll
+          </button>
+        </div>
+      </div>
 
       {/* ========================================================================= */}
       {/* 2.5 AI MORNING EXECUTIVE BRIEFING                                         */}

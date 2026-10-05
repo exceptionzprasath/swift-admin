@@ -142,26 +142,26 @@ function LoginPage() {
           className="w-full max-w-md"
         >
           <div className="lg:hidden mb-8"><SwiftLogo /></div>
-          <h1 className="font-display text-3xl font-semibold">Company Admin Portal</h1>
+          <h1 className="font-display text-3xl font-semibold">Workspace Portal Login</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Sign in with your admin/HR work email.
+            Sign in with your Employee Code or Company Email.
           </p>
 
-          <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
             <div className="h-px flex-1 bg-border" />
-            <span>or with email</span>
+            <span>credentials</span>
             <div className="h-px flex-1 bg-border" />
           </div>
 
-          <div className="space-y-4 pt-2">
+          <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
-              <Label>Work email</Label>
+              <Label>Employee Code or Work Email</Label>
               <Input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@company.com"
-                autoComplete="email"
+                placeholder="e.g. SWF001, HR001, or admin@company.com"
+                autoComplete="username"
               />
             </div>
             <div className="space-y-1.5">
@@ -180,29 +180,79 @@ function LoginPage() {
               disabled={busy}
             >
               {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Sign in
+              Sign in to Workspace
             </Button>
           </div>
 
-          <div className="mt-8 rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 p-5">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="mt-6 rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 p-4 sm:p-5">
+            <div className="flex items-center gap-2 mb-1.5">
               <Sparkles className="h-4 w-4 text-primary" />
-              <div className="font-semibold text-sm">Try Instant Demo — no signup</div>
+              <div className="font-semibold text-sm">Quick Role Sign-in Tester</div>
             </div>
             <p className="text-xs text-muted-foreground mb-3">
-              Pre-loaded company admin console with employee records, shifts, salary formulas, asset assignments, and doc templates.
+              Test dynamic side-panel features and tailored dashboards for each position:
             </p>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <Button
                 variant="outline"
-                className="h-11 border-primary/40 w-full"
-                onClick={() => { seedDemo("admin"); toast.success("Demo Admin signed in"); nav({ to: "/admin" }); }}
+                size="sm"
+                className="h-10 text-xs border-primary/30 justify-start"
+                onClick={() => {
+                  setEmail("HR001");
+                  setPassword("demo123");
+                  authSignIn("HR001", "employee", "demo123").then(() => {
+                    toast.success("Signed in as HR Manager (HR001)");
+                    nav({ to: "/admin" });
+                  });
+                }}
               >
-                <ShieldCheck className="h-4 w-4 mr-2 text-primary" /> Admin Demo
+                <Crown className="h-3.5 w-3.5 mr-1.5 text-primary" /> HR Manager (HR001)
               </Button>
-            </div>
-            <div className="mt-3 text-[11px] text-muted-foreground">
-              <div><span className="font-medium text-foreground">Admin Credentials:</span> admin@demo / demo123</div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 text-xs border-primary/30 justify-start"
+                onClick={() => {
+                  setEmail("TL001");
+                  setPassword("demo123");
+                  authSignIn("TL001", "employee", "demo123").then(() => {
+                    toast.success("Signed in as Team Lead (TL001)");
+                    nav({ to: "/admin" });
+                  });
+                }}
+              >
+                <UserIcon className="h-3.5 w-3.5 mr-1.5 text-blue-500" /> Team Lead (TL001)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 text-xs border-primary/30 justify-start"
+                onClick={() => {
+                  setEmail("SWF001");
+                  setPassword("demo123");
+                  authSignIn("SWF001", "employee", "demo123").then(() => {
+                    toast.success("Signed in as Employee (SWF001)");
+                    nav({ to: "/admin" });
+                  });
+                }}
+              >
+                <ShieldCheck className="h-3.5 w-3.5 mr-1.5 text-emerald-500" /> Staff (SWF001)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 text-xs border-primary/30 justify-start"
+                onClick={() => {
+                  setEmail("admin@demo");
+                  setPassword("demo123");
+                  authSignIn("admin@demo", "admin", "demo123").then(() => {
+                    toast.success("Signed in as Company Owner");
+                    nav({ to: "/admin" });
+                  });
+                }}
+              >
+                <ShieldCheck className="h-3.5 w-3.5 mr-1.5 text-purple-500" /> Full Admin Demo
+              </Button>
             </div>
           </div>
         </motion.div>
