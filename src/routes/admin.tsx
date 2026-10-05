@@ -200,14 +200,6 @@ function AdminLayout() {
     setMobileOpen(false);
   }, [path]);
 
-  if (!demoMode && (loading || !user)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </div>
-    );
-  }
-
   const activeTenant = memberships.find((m) => m.tenant_id === activeTenantId)?.tenant;
   const displayName = demoMode ? `${company.name} · DEMO` : (activeTenant?.name ?? company.name);
   const userEmail = demoMode ? "admin@demo.creatonshr.com" : user?.email;
@@ -267,6 +259,14 @@ function AdminLayout() {
     activePermissions &&
     activePermissions[currentModuleKey] &&
     !activePermissions[currentModuleKey].canRead;
+
+  if (!demoMode && (loading || !user)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
 
   const renderSidebar = (collapsed: boolean) => (
     <TooltipProvider delayDuration={50}>

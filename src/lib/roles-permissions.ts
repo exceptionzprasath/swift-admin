@@ -288,7 +288,7 @@ export function resolveModulePermissions(
         };
         break;
       default:
-        result[key] = { ...DEFAULT_READONLY_MODULE_PERMISSION };
+        (result as Record<string, ModulePermission>)[key] = { ...DEFAULT_READONLY_MODULE_PERMISSION };
     }
   }
 
