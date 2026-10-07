@@ -376,8 +376,7 @@ export type Branch = {
   lng?: number;
   radiusMeters?: number;
   geofenceDisabled?: boolean;
-  wifiSSIDs?: string[];
-  ipAllowlist?: string[];
+  allowedBSSIDs?: string[];
   shiftStart?: string;
   shiftEnd?: string;
   weeklyOff?: string[];
@@ -1415,7 +1414,7 @@ const defaultCompany: Company = {
     { id: "night", name: "Night", start: "22:00", end: "06:00", allowancePerDay: 250 },
   ],
   branches: [
-    { id: "br-hq", name: "Head Office", code: "HQ", address: "123 Business Ave", city: "Erode", state: "Tamil Nadu", isHead: true, lat: 11.30564, lng: 77.70347, radiusMeters: 50, shiftStart: "09:00", shiftEnd: "18:00", weeklyOff: ["Sun"] },
+    { id: "br-hq", name: "Head Office", code: "HQ", address: "123 Business Ave", city: "Erode", state: "Tamil Nadu", isHead: true, lat: 11.30564, lng: 77.70347, radiusMeters: 50, shiftStart: "09:00", shiftEnd: "18:00", weeklyOff: ["Sun"], allowedBSSIDs: [] },
   ],
   designations: [],
   departments: [],
@@ -2483,6 +2482,11 @@ export const useStore = create<State>()(
           const tenantId = useAuth.getState().activeTenantId;
           if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });
+            safeFetch("/api/branches", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tenantId, branch }),
+            }).catch(() => {});
           }
           return { company: nextCompany };
         });
@@ -2507,6 +2511,11 @@ export const useStore = create<State>()(
           const tenantId = useAuth.getState().activeTenantId;
           if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });
+            safeFetch(`/api/branches/${id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tenantId, ...patch, id }),
+            }).catch(() => {});
           }
           return { company: nextCompany };
         }),
@@ -2519,6 +2528,9 @@ export const useStore = create<State>()(
           const tenantId = useAuth.getState().activeTenantId;
           if (tenantId && !tenantId.startsWith("demo-tenant-")) {
             syncItem("config", { id: "config", tenantId, ...nextCompany });
+            safeFetch(`/api/branches/${id}?tenantId=${tenantId}`, {
+              method: "DELETE",
+            }).catch(() => {});
             s.employees.forEach((e) => {
               if (e.branchId === id || e.branchIds?.includes(id)) {
                 const nextBranchIds = e.branchIds ? e.branchIds.filter((bid) => bid !== id) : undefined;

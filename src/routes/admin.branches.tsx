@@ -28,6 +28,8 @@ import {
   Check,
   X,
   Loader2,
+  Info,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -51,12 +53,13 @@ const empty: Omit<Branch, "id"> = {
   lng: undefined,
   radiusMeters: 150,
   geofenceDisabled: false,
-  wifiSSIDs: [],
-  ipAllowlist: [],
+  allowedBSSIDs: [],
   shiftStart: "09:00",
   shiftEnd: "18:00",
   weeklyOff: ["Sun"],
 };
+
+const MAC_REGEX = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
 
 function BranchesPage() {
   const { company, employees, addBranch, updateBranch, deleteBranch, updateEmployee } = useStore();
@@ -66,10 +69,23 @@ function BranchesPage() {
   const [form, setForm] = useState<Omit<Branch, "id">>(empty);
   const [tab, setTab] = useState("basic");
   const [pincodeLoading, setPincodeLoading] = useState(false);
+  const [bssidInput, setBssidInput] = useState("");
+  const [bssidError, setBssidError] = useState("");
+  const [showBssidHelp, setShowBssidHelp] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCommand(id);
+    toast.success("Command copied to clipboard");
+    setTimeout(() => setCopiedCommand(null), 2000);
+  };
 
   const openNew = () => {
     setEditing(null);
     setForm(empty);
+    setBssidInput("");
+    setBssidError("");
     setTab("basic");
     setOpen(true);
   };
@@ -82,10 +98,11 @@ function BranchesPage() {
       ...empty,
       ...rest,
       pincode: rest.pincode ?? "",
-      wifiSSIDs: rest.wifiSSIDs ?? [],
-      ipAllowlist: rest.ipAllowlist ?? [],
+      allowedBSSIDs: rest.allowedBSSIDs ?? [],
       weeklyOff: rest.weeklyOff ?? [],
     });
+    setBssidInput("");
+    setBssidError("");
     setTab("basic");
     setOpen(true);
   };
@@ -212,11 +229,68 @@ function BranchesPage() {
     );
   };
 
-  const csvToArr = (s: string) =>
-    s
-      .split(/[,\n]/)
-      .map((x) => x.trim())
-      .filter(Boolean);
+  const handleAddBSSID = (val?: string) => {
+    const raw = (val !== undefined ? val : bssidInput).trim();
+    if (!raw) return;
+
+    if (!MAC_REGEX.test(raw)) {
+      setBssidError("Invalid MAC address format (e.g. 00:1A:2B:3C:4D:5E or 00-1A-2B-3C-4D-5E)");
+      return;
+    }
+
+    const normalized = raw.toUpperCase();
+    const current = form.allowedBSSIDs ?? [];
+    if (current.some((b) => b.toUpperCase() === normalized)) {
+      setBssidError("This BSSID is already in the allowed list");
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      allowedBSSIDs: [...(prev.allowedBSSIDs ?? []), normalized],
+    }));
+    setBssidInput("");
+    setBssidError("");
+  };
+
+  const handleRemoveBSSID = (indexToRemove: number) => {
+    setForm((prev) => ({
+      ...prev,
+      allowedBSSIDs: (prev.allowedBSSIDs ?? []).filter((_, idx) => idx !== indexToRemove),
+    }));
+  };
+
+  const handleBssidPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasteData = e.clipboardData.getData("text");
+    if (pasteData.includes(",") || pasteData.includes("\n") || pasteData.includes(" ")) {
+      const parts = pasteData.split(/[\s,\n]+/).map((s) => s.trim()).filter(Boolean);
+      if (parts.length > 1) {
+        e.preventDefault();
+        let addedCount = 0;
+        let invalidCount = 0;
+        const current = [...(form.allowedBSSIDs ?? [])];
+        for (const part of parts) {
+          if (MAC_REGEX.test(part)) {
+            const upper = part.toUpperCase();
+            if (!current.some((b) => b.toUpperCase() === upper)) {
+              current.push(upper);
+              addedCount++;
+            }
+          } else {
+            invalidCount++;
+          }
+        }
+        setForm((prev) => ({ ...prev, allowedBSSIDs: current }));
+        setBssidInput("");
+        setBssidError("");
+        if (invalidCount > 0) {
+          toast.warning(`Added ${addedCount} BSSID(s). ${invalidCount} invalid MAC address(es) ignored.`);
+        } else if (addedCount > 0) {
+          toast.success(`Added ${addedCount} BSSID(s)`);
+        }
+      }
+    }
+  };
 
   const availableCities = form.state ? STATE_CITIES[form.state] || [] : [];
 
@@ -225,7 +299,7 @@ function BranchesPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
-            Multi-branch setup for {company.name} — geo-fence, shifts, Wi-Fi & IP restrictions per branch.
+            Multi-branch setup for {company.name} — geo-fence, shifts, and router BSSID restrictions per branch.
           </p>
         </div>
         <Button onClick={openNew} className="bg-gradient-brand text-white shadow-glow">
@@ -285,10 +359,10 @@ function BranchesPage() {
                   {b.radiusMeters ?? 150}m geo
                 </Badge>
               )}
-              {(b.wifiSSIDs?.length ?? 0) > 0 && (
+              {(b.allowedBSSIDs?.length ?? 0) > 0 && (
                 <Badge variant="outline" className="text-[10px]">
                   <Wifi className="h-2.5 w-2.5 mr-0.5" />
-                  {b.wifiSSIDs!.length} SSID
+                  {b.allowedBSSIDs!.length} BSSID
                 </Badge>
               )}
               {b.shiftStart && b.shiftEnd && (
@@ -394,7 +468,19 @@ function BranchesPage() {
 
       {/* Optimized Scrollable Modal that fits within screen & adapts to theme */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] flex flex-col p-0 overflow-hidden rounded-3xl border border-primary/25 shadow-2xl bg-card/95 backdrop-blur-xl transition-colors">
+        <DialogContent
+          onPointerDownOutside={(e) => {
+            if (showBssidHelp) {
+              e.preventDefault();
+            }
+          }}
+          onInteractOutside={(e) => {
+            if (showBssidHelp) {
+              e.preventDefault();
+            }
+          }}
+          className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] flex flex-col p-0 overflow-hidden rounded-3xl border border-primary/25 shadow-2xl bg-card/95 backdrop-blur-xl transition-colors"
+        >
           {/* Theme-Adaptive Gradient Header */}
           <div className="px-6 pt-5 pb-4 border-b border-primary/15 shrink-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent relative overflow-hidden">
             <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-primary/15 blur-3xl pointer-events-none" />
@@ -703,24 +789,113 @@ function BranchesPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Allowed Office Wi-Fi SSIDs (comma-separated)</Label>
-                    <Input
-                      value={(form.wifiSSIDs ?? []).join(", ")}
-                      onChange={(e) => setForm({ ...form, wifiSSIDs: csvToArr(e.target.value) })}
-                      placeholder="CORP-OFFICE, CORP-GUEST, BRANCH-WIFI"
-                      className="h-9 text-xs focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:border-primary"
-                    />
-                  </div>
+                  {/* Allowed Office Router BSSIDs (MAC Addresses) */}
+                  <div className="space-y-2 rounded-2xl border border-primary/20 bg-card p-3.5 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="text-xs font-semibold flex items-center gap-1.5">
+                          <Wifi className="h-3.5 w-3.5 text-primary" />
+                          <span>Allowed Office Router BSSIDs (MAC Addresses)</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowBssidHelp(true)}
+                            className="inline-flex items-center justify-center text-muted-foreground hover:text-primary transition-colors p-0.5 rounded-full hover:bg-primary/10 cursor-pointer"
+                            title="How to find Router's BSSID (MAC Address)"
+                          >
+                            <Info className="h-3.5 w-3.5 text-primary" />
+                          </button>
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground">
+                          Authorized router MAC addresses for on-site Wi-Fi punch validation.
+                        </p>
+                      </div>
+                      {(form.allowedBSSIDs?.length ?? 0) > 0 && (
+                        <Badge variant="secondary" className="text-[10px] font-mono font-medium">
+                          {form.allowedBSSIDs!.length} {form.allowedBSSIDs!.length === 1 ? "BSSID" : "BSSIDs"}
+                        </Badge>
+                      )}
+                    </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Office Public IP Allowlist (comma-separated)</Label>
-                    <Input
-                      value={(form.ipAllowlist ?? []).join(", ")}
-                      onChange={(e) => setForm({ ...form, ipAllowlist: csvToArr(e.target.value) })}
-                      placeholder="103.25.14.0/24, 45.112.9.10"
-                      className="h-9 text-xs focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:border-primary"
-                    />
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          value={bssidInput}
+                          onChange={(e) => {
+                            setBssidInput(e.target.value);
+                            if (bssidError) setBssidError("");
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddBSSID();
+                            }
+                          }}
+                          onPaste={handleBssidPaste}
+                          placeholder="e.g. 00:1A:2B:3C:4D:5E or 00-1A-2B-3C-4D-5E"
+                          className={`h-9 font-mono text-xs focus-visible:ring-2 ${
+                            bssidError
+                              ? "border-destructive focus-visible:ring-destructive/30"
+                              : "focus-visible:ring-primary/40 focus-visible:border-primary"
+                          }`}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowBssidHelp(true)}
+                        className="h-9 px-2.5 text-xs gap-1.5 rounded-xl border-primary/30 text-primary hover:bg-primary/10 hover:text-primary shrink-0"
+                        title="How to find your router's BSSID"
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">How to Find</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleAddBSSID()}
+                        disabled={!bssidInput.trim()}
+                        className="h-9 px-3 text-xs gap-1 rounded-xl"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add
+                      </Button>
+                    </div>
+
+                    {bssidError && (
+                      <p className="text-[11px] text-destructive flex items-center gap-1">
+                        <span className="font-semibold">Error:</span> {bssidError}
+                      </p>
+                    )}
+
+                    {/* Chips Display */}
+                    <div className="pt-1">
+                      {(form.allowedBSSIDs?.length ?? 0) === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border/70 p-3 text-center text-muted-foreground text-xs bg-muted/20">
+                          No router BSSIDs configured. Enter a MAC address above and click Add.
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-1">
+                          {form.allowedBSSIDs!.map((bssid, idx) => (
+                            <span
+                              key={`${bssid}-${idx}`}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium bg-primary/10 text-primary border border-primary/25 shadow-2xs transition hover:bg-primary/15"
+                            >
+                              <Wifi className="h-3 w-3 opacity-70" />
+                              <span>{bssid}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveBSSID(idx)}
+                                className="ml-0.5 rounded-full p-0.5 hover:bg-primary/20 text-primary/70 hover:text-primary transition"
+                                title="Remove BSSID"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -765,8 +940,180 @@ function BranchesPage() {
               </Button>
             </div>
           </div>
+
+          {/* Router BSSID Instructions Overlay Card (Inside Dialog to prevent FocusScope/PointerEvent lock) */}
+          <AnimatePresence>
+            {showBssidHelp && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.16 }}
+                className="absolute inset-0 z-50 flex flex-col bg-card/98 dark:bg-card/98 backdrop-blur-2xl overflow-hidden rounded-3xl text-card-foreground shadow-2xl"
+              >
+                {/* Header */}
+                <div className="px-6 pt-5 pb-4 border-b border-primary/15 shrink-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent relative">
+                  <div className="space-y-1 pr-10">
+                    <div className="text-base sm:text-lg font-display font-bold flex items-center gap-2.5 text-foreground">
+                      <div className="h-8 w-8 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0 ring-1 ring-primary/25">
+                        <Info className="h-4 w-4" />
+                      </div>
+                      <span>How to Find Your Router's BSSID (MAC Address)</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Follow the instructions below based on your operating system to find your office Wi-Fi router's BSSID (MAC Address).
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowBssidHelp(false)}
+                    className="absolute right-4 top-4 h-8 w-8 rounded-full bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition cursor-pointer border border-border/50"
+                    title="Close and return to form"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Scrollable Content Body */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
+                  {/* 1. Windows OS */}
+                  <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 text-xs font-bold">1</span>
+                        <span>Windows OS</span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-medium border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/10">
+                        Windows 10 & 11 PCs
+                      </Badge>
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
+                      <li>
+                        Press <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Win + R</kbd> on your keyboard, type <code className="font-mono text-primary font-semibold">cmd</code>, and press <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Enter</kbd> to open the Command Prompt.
+                      </li>
+                      <li>Run the following command:</li>
+                    </ol>
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-background/90 border border-border/80 px-3 py-2 font-mono text-xs">
+                      <div className="flex items-center gap-2 overflow-x-auto">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase">DOS</span>
+                        <code className="text-primary font-medium select-all">netsh wlan show interfaces</code>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                        onClick={() => copyToClipboard("netsh wlan show interfaces", "win")}
+                        title="Copy command"
+                      >
+                        {copiedCommand === "win" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Look for the <strong className="text-foreground">BSSID</strong> line in the output (Format: <code className="font-mono text-primary font-semibold">AA:BB:CC:DD:EE:FF</code>).
+                    </p>
+                  </div>
+
+                  {/* 2. macOS */}
+                  <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 text-xs font-bold">2</span>
+                        <span>macOS</span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-medium border-purple-500/30 text-purple-600 dark:text-purple-400 bg-purple-500/10">
+                        Mac Laptops & Desktops
+                      </Badge>
+                    </div>
+                    <div className="space-y-2.5 text-[11px] text-muted-foreground leading-relaxed">
+                      <div className="p-3 rounded-xl bg-background/60 border border-border/60 space-y-1">
+                        <div className="font-semibold text-foreground">Option 1 (Quickest):</div>
+                        <p>
+                          Hold the <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Option (⌥)</kbd> key on your keyboard and click the Wi-Fi icon in the top menu bar. Look for the <strong className="text-foreground">BSSID</strong> field.
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-xl bg-background/60 border border-border/60 space-y-2">
+                        <div className="font-semibold text-foreground">Option 2 (Terminal):</div>
+                        <p>Open Terminal and execute:</p>
+                        <div className="flex items-center justify-between gap-2 rounded-lg bg-background border border-border/80 px-3 py-2 font-mono text-[11px]">
+                          <div className="flex items-center gap-2 overflow-x-auto">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase">Bash</span>
+                            <code className="text-primary font-medium break-all select-all">/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I | grep BSSID</code>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                            onClick={() => copyToClipboard("/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I | grep BSSID", "mac")}
+                            title="Copy command"
+                          >
+                            {copiedCommand === "mac" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Linux OS */}
+                  <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-xs font-bold">3</span>
+                        <span>Linux OS</span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-medium border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10">
+                        Ubuntu / Debian / RedHat
+                      </Badge>
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
+                      <li>Open the Terminal.</li>
+                      <li>Run the command:</li>
+                    </ol>
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-background/90 border border-border/80 px-3 py-2 font-mono text-xs">
+                      <div className="flex items-center gap-2 overflow-x-auto">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase">Bash</span>
+                        <code className="text-primary font-medium select-all">nmcli dev wifi</code>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                        onClick={() => copyToClipboard("nmcli dev wifi", "linux")}
+                        title="Copy command"
+                      >
+                        {copiedCommand === "linux" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Locate your connected network under the <strong className="text-foreground">BSSID</strong> column.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 border-t border-border/60 flex items-center justify-between shrink-0 bg-muted/20">
+                  <span className="text-[11px] text-muted-foreground">
+                    Tip: Format should be 6 hex byte pairs (e.g. <span className="font-mono text-foreground font-semibold">00:1A:2B:3C:4D:5E</span>)
+                  </span>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    onClick={() => setShowBssidHelp(false)}
+                    className="rounded-xl px-5"
+                  >
+                    Back to Branch Form
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

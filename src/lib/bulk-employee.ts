@@ -218,6 +218,7 @@ export function downloadBulkEmployeesExcel(
     // 2. Employment & Salary
     "Work Email",
     "Phone Number",
+    "Password",
     "Department",
     "Designation",
     "Assigned Role",
@@ -304,12 +305,13 @@ export function downloadBulkEmployeesExcel(
       e.fatherName || "—",
       e.motherName || "—",
       e.spouseName || "—",
-      e.about || "—",
+      (e as any).personalEmail || e.about || "—",
       e.emergencyName || e.emergencyContact || "—",
       e.emergencyRelation || "—",
       e.emergencyPhone2 || e.emergencyContact || "—",
       e.email || "—",
       e.phone || "—",
+      e.password || "demo123",
       e.department || "—",
       e.designation || "—",
       getRoleTitle(e),
@@ -385,6 +387,7 @@ export function downloadBulkEmployeesExcel(
     "Full Name",
     "Status",
     "Employment Type",
+    "Password",
     "Gender",
     "Date of Birth",
     "Blood Group",
@@ -405,6 +408,7 @@ export function downloadBulkEmployeesExcel(
     e.name || "—",
     e.status ? e.status.toUpperCase() : "ACTIVE",
     e.employmentType ? e.employmentType.toUpperCase() : "REGULAR",
+    e.password || "demo123",
     e.gender ? e.gender.toUpperCase() : "—",
     normalizeExcelDate(e.dob) || "—",
     e.bloodGroup || "—",
@@ -413,7 +417,7 @@ export function downloadBulkEmployeesExcel(
     e.fatherName || "—",
     e.motherName || "—",
     e.spouseName || "—",
-    e.about || "—",
+    (e as any).personalEmail || e.about || "—",
     e.emergencyName || e.emergencyContact || "—",
     e.emergencyRelation || "—",
     e.emergencyPhone2 || e.emergencyContact || "—",
@@ -432,6 +436,7 @@ export function downloadBulkEmployeesExcel(
     "Full Name",
     "Work Email",
     "Phone Number",
+    "Password",
     "Department",
     "Designation",
     "Assigned Role",
@@ -451,6 +456,7 @@ export function downloadBulkEmployeesExcel(
     e.name || "—",
     e.email || "—",
     e.phone || "—",
+    e.password || "demo123",
     e.department || "—",
     e.designation || "—",
     getRoleTitle(e),
@@ -705,6 +711,39 @@ export function downloadBulkEmployeesExcel(
   const wsCompliance = XLSX.utils.aoa_to_sheet([complianceHeaders, ...complianceRows]);
   wsCompliance["!cols"] = autoFitColumns([complianceHeaders, ...complianceRows]);
   XLSX.utils.book_append_sheet(wb, wsCompliance, "7. Compliance & BGV");
+
+  // ==========================================
+  // SHEET 9: 8. Mobile Login Credentials
+  // ==========================================
+  const credHeaders = [
+    "Employee Code",
+    "Full Name",
+    "Work Email",
+    "Phone Number",
+    "Password",
+    "Department",
+    "Designation",
+    "Assigned Role",
+    "Primary Branch",
+    "Status",
+    "Portal Activated",
+  ];
+  const credRows = employees.map((e) => [
+    e.empCode || "—",
+    e.name || "—",
+    e.email || "—",
+    e.phone || "—",
+    e.password || "demo123",
+    e.department || "—",
+    e.designation || "—",
+    getRoleTitle(e),
+    getBranchName(e.branchId),
+    e.status ? e.status.toUpperCase() : "ACTIVE",
+    formatBool(e.portalActivated, false),
+  ]);
+  const wsCred = XLSX.utils.aoa_to_sheet([credHeaders, ...credRows]);
+  wsCred["!cols"] = autoFitColumns([credHeaders, ...credRows]);
+  XLSX.utils.book_append_sheet(wb, wsCred, "8. Mobile Login Credentials");
 
   // ==========================================
   // Generate and trigger download of .xlsx file

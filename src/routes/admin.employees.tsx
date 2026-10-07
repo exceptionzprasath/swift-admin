@@ -4252,7 +4252,7 @@ function BulkDownloadConfirmDialog({
       name: "Employment & Salary",
       icon: Briefcase,
       color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20",
-      desc: "Work Email, Mobile, Department, Designation, Predefined Role, Reporting Manager, Date of Joining, Probation Dates, Monthly Fixed Salary, Basic & Statutory Numbers (PF UAN, ESIC, PT).",
+      desc: "Work Email, Mobile, Password, Department, Designation, Predefined Role, Reporting Manager, Date of Joining, Probation Dates, Monthly Fixed Salary, Basic & Statutory Numbers (PF UAN, ESIC, PT).",
     },
     {
       name: "Address & KYC",
@@ -4283,6 +4283,12 @@ function BulkDownloadConfirmDialog({
       icon: ShieldCheck,
       color: "text-rose-500 bg-rose-500/10 border-rose-500/20",
       desc: "Background Verification (BGV) Clearance Status, Police Verification, Medical Fitness Certificate, NDA & Confidentiality Agreements, AI Verification Findings, HR Compliance Notes & Final Approvals.",
+    },
+    {
+      name: "Mobile Login Credentials",
+      icon: KeyRound,
+      color: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+      desc: "Employee ID, Official Work Email, Phone Number, Mobile Login Password, Assigned Branch & Portal Activation Status.",
     },
   ];
 
@@ -4325,7 +4331,7 @@ function BulkDownloadConfirmDialog({
           <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                <Database className="h-3.5 w-3.5 text-primary" /> Included Data Modules (7 Sections + Master)
+                <Database className="h-3.5 w-3.5 text-primary" /> Included Data Modules (8 Sections + Master)
               </div>
               <Badge variant="secondary" className="text-[10px] font-mono">
                 Format: Microsoft Excel (.xlsx)
