@@ -6,6 +6,7 @@ import { aiNotify } from "@/lib/ai-guide-bus";
 import { generateAppointmentPDF, generateAppointmentPDFBlob } from "@/lib/pdf";
 import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, prepareDocAssets, generateLetterPDF, type LetterKey, saveAs } from "@/lib/documents";
 import JSZip from "jszip";
+import { calculateProfileCompletion, calculateOverallOnboarding, type ProfileCompletionResult } from "@/lib/profile-completion";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
@@ -47,6 +48,7 @@ import { EmploymentTypeSelect, EmploymentTypeBadge } from "@/components/employme
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { INDIAN_STATES } from "@/lib/india-locations";
+import { OnboardingChecklistDialog } from "@/components/OnboardingChecklistDialog";
 
 export const Route = createFileRoute("/admin/employees")({
   head: () => ({ meta: [{ title: "Employees · CreatonsHR" }] }),
@@ -209,6 +211,17 @@ function EmployeesPage() {
   const [docsEmp, setDocsEmp] = useState<Employee | null>(null);
   const [actionKind, setActionKind] = useState<"exit" | "transfer" | "manual">("exit");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "relieved" | "terminated">("all");
+  const [onboardingFilter, setOnboardingFilter] = useState<"all" | "completed" | "incomplete">("all");
+  const [inspectOnboardingEmp, setInspectOnboardingEmp] = useState<Employee | null>(null);
+
+  const overallOnboarding = useMemo(() => calculateOverallOnboarding(employees), [employees]);
+
+  const employeesWithCompletion = useMemo(() => {
+    return employees.map((e) => ({
+      employee: e,
+      completion: calculateProfileCompletion(e),
+    }));
+  }, [employees]);
 
   const statusCounts = useMemo(() => {
     const counts = { all: employees.length, active: 0, suspended: 0, relieved: 0, terminated: 0 };
@@ -223,13 +236,21 @@ function EmployeesPage() {
   }, [employees]);
 
   const displayedEmployees = useMemo(() => {
-    if (statusFilter === "all") return employees;
-    return employees.filter((e) => {
-      const s = (e.status || "active").toLowerCase().trim();
-      if (statusFilter === "relieved") return s === "relieved" || s === "releived";
-      return s === statusFilter;
-    });
-  }, [employees, statusFilter]);
+    let list = employeesWithCompletion;
+    if (statusFilter !== "all") {
+      list = list.filter(({ employee: e }) => {
+        const s = (e.status || "active").toLowerCase().trim();
+        if (statusFilter === "relieved") return s === "relieved" || s === "releived";
+        return s === statusFilter;
+      });
+    }
+    if (onboardingFilter === "completed") {
+      list = list.filter(({ completion }) => completion.isComplete);
+    } else if (onboardingFilter === "incomplete") {
+      list = list.filter(({ completion }) => !completion.isComplete);
+    }
+    return list;
+  }, [employeesWithCompletion, statusFilter, onboardingFilter]);
 
   // Status Change Dialog State
   const [statusChangeTarget, setStatusChangeTarget] = useState<{
@@ -353,6 +374,103 @@ function EmployeesPage() {
       )}
 
 
+      {/* ========================================================================= */}
+      {/* ONBOARDING JOURNEY & COMPLIANCE OVERVIEW BAR                              */}
+      {/* ========================================================================= */}
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-xs relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Left: Overall Progress & Summary */}
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-sm sm:text-base text-foreground flex items-center gap-2">
+                  <span>Workforce Onboarding Journey</span>
+                  <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/20">
+                    Live Tracker
+                  </Badge>
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Real-time compliance, KYC, personal details, and biometric registration across all employees.
+                </p>
+              </div>
+            </div>
+
+            {/* Progress Bar & Percentage */}
+            <div className="space-y-1.5 pt-1 max-w-xl">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-foreground">
+                  Overall Completion Rate: <strong className="text-primary font-bold">{overallOnboarding.overallPercentage}%</strong>
+                </span>
+                <span className="text-muted-foreground">
+                  {overallOnboarding.completedCount} of {overallOnboarding.totalCount} staff 100% onboarded
+                </span>
+              </div>
+              <div className="h-3 w-full bg-muted rounded-full overflow-hidden border border-border/50 p-0.5">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${
+                    overallOnboarding.overallPercentage >= 90
+                      ? "bg-gradient-to-r from-emerald-500 to-teal-400"
+                      : overallOnboarding.overallPercentage >= 65
+                      ? "bg-gradient-to-r from-primary to-amber-400"
+                      : "bg-gradient-to-r from-rose-500 to-amber-500"
+                  }`}
+                  style={{ width: `${Math.max(4, overallOnboarding.overallPercentage)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Quick Onboarding Filter Badges */}
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setOnboardingFilter("all")}
+              className={`px-3 py-2 rounded-xl border text-left transition-all cursor-pointer ${
+                onboardingFilter === "all"
+                  ? "bg-primary/10 border-primary/40 ring-1 ring-primary/20 shadow-2xs"
+                  : "bg-muted/40 border-border hover:bg-muted/80"
+              }`}
+            >
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">All Staff</div>
+              <div className="text-base font-bold text-foreground">{overallOnboarding.totalCount}</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOnboardingFilter("completed")}
+              className={`px-3 py-2 rounded-xl border text-left transition-all cursor-pointer ${
+                onboardingFilter === "completed"
+                  ? "bg-emerald-500/15 border-emerald-500/50 ring-1 ring-emerald-500/20 shadow-2xs"
+                  : "bg-muted/40 border-border hover:bg-muted/80"
+              }`}
+            >
+              <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" /> 100% Complete
+              </div>
+              <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">{overallOnboarding.completedCount}</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOnboardingFilter("incomplete")}
+              className={`px-3 py-2 rounded-xl border text-left transition-all cursor-pointer ${
+                onboardingFilter === "incomplete"
+                  ? "bg-amber-500/15 border-amber-500/50 ring-1 ring-amber-500/20 shadow-2xs"
+                  : "bg-muted/40 border-border hover:bg-muted/80"
+              }`}
+            >
+              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" /> Incomplete
+              </div>
+              <div className="text-base font-bold text-amber-600 dark:text-amber-400">{overallOnboarding.inProgressCount}</div>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Status Filter Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 p-1 bg-muted/50 rounded-xl border border-border">
@@ -381,6 +499,16 @@ function EmployeesPage() {
             </button>
           ))}
         </div>
+
+        {onboardingFilter !== "all" && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Onboarding Filter:</span>
+            <Badge variant="secondary" className="gap-1">
+              <span>{onboardingFilter === "completed" ? "100% Onboarded" : "Incomplete Onboarding"}</span>
+              <X className="h-3 w-3 cursor-pointer" onClick={() => setOnboardingFilter("all")} />
+            </Badge>
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -391,6 +519,7 @@ function EmployeesPage() {
               <th className="p-3">Status</th>
               <th className="p-3">Department</th>
               <th className="p-3">Branch</th>
+              <th className="p-3">Onboarding Progress</th>
               <th className="p-3 text-right">Basic</th>
               <th className="p-3 text-right">Monthly CTC</th>
               <th className="p-3 text-right">Actions</th>
@@ -399,14 +528,14 @@ function EmployeesPage() {
           <tbody>
             {displayedEmployees.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-10 text-center text-muted-foreground">
-                  {statusFilter === "all"
+                <td colSpan={8} className="p-10 text-center text-muted-foreground">
+                  {statusFilter === "all" && onboardingFilter === "all"
                     ? "No employees yet. Click Add Employee to start the guided registration."
-                    : `No ${statusFilter} employees found.`}
+                    : `No employees matching current filters found.`}
                 </td>
               </tr>
             ) : (
-              displayedEmployees.map((e) => {
+              displayedEmployees.map(({ employee: e, completion }) => {
                 const p = computePayroll({ company, employee: e, daysWorked: company.workingDaysPerMonth, otHours: 0, incentive: 0, shiftDays: 0, loan: 0, advance: 0, bonus: 0 });
                 const assignedBranchIds = getEmployeeBranchIds(e);
                 const assignedBranches = (company.branches ?? []).filter((b) => assignedBranchIds.includes(b.id));
@@ -457,6 +586,65 @@ function EmployeesPage() {
                       ) : (
                         <span className="text-muted-foreground text-xs">—</span>
                       )}
+                    </td>
+                    <td className="p-3 min-w-[200px]">
+                      <div 
+                        onClick={() => setInspectOnboardingEmp(e)}
+                        className="group/pb cursor-pointer p-2 -m-1 rounded-xl hover:bg-muted/70 transition-all border border-transparent hover:border-border/60"
+                        title="Click to view detailed onboarding & verification checklist"
+                      >
+                        <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                              completion.isComplete
+                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                                : completion.percentage >= 70
+                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                                : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                            }`}>
+                              {completion.percentage}%
+                            </span>
+                            <span className="text-[11px] font-medium text-muted-foreground group-hover/pb:text-foreground transition-colors">
+                              {completion.isComplete ? "100% Verified" : `${completion.missingFields.length} pending`}
+                            </span>
+                          </div>
+                          <Eye className="h-3 w-3 text-muted-foreground opacity-60 group-hover/pb:opacity-100 transition-opacity" />
+                        </div>
+
+                        {/* Styled Progress Bar Track */}
+                        <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/40">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              completion.isComplete
+                                ? "bg-gradient-to-r from-emerald-500 to-teal-500"
+                                : completion.percentage >= 70
+                                ? "bg-gradient-to-r from-amber-500 to-yellow-500"
+                                : "bg-gradient-to-r from-rose-500 to-amber-500"
+                            }`}
+                            style={{ width: `${Math.max(6, completion.percentage)}%` }}
+                          />
+                        </div>
+
+                        {/* Missing fields mini tags if incomplete */}
+                        {!completion.isComplete && completion.missingFields.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {completion.missingFields.slice(0, 2).map((m) => (
+                              <span
+                                key={m.key}
+                                className="text-[9px] px-1.5 py-0.2 rounded bg-muted/90 text-muted-foreground border border-border/40 truncate max-w-[120px]"
+                                title={`Missing: ${m.label}`}
+                              >
+                                {m.label}
+                              </span>
+                            ))}
+                            {completion.missingFields.length > 2 && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-muted/60 text-muted-foreground font-mono">
+                                +{completion.missingFields.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="p-3 text-right">{inr(e.basic)}</td>
                     <td className="p-3 text-right text-primary font-medium">{inr(p.monthlyCTC)}</td>
@@ -554,6 +742,15 @@ function EmployeesPage() {
       <BulkUploadDialog
         open={bulkOpen}
         onClose={() => setBulkOpen(false)}
+      />
+      <OnboardingChecklistDialog
+        employee={inspectOnboardingEmp}
+        open={!!inspectOnboardingEmp}
+        onClose={() => setInspectOnboardingEmp(null)}
+        onEditProfile={(emp) => {
+          setInspectOnboardingEmp(null);
+          setEditingEmp(emp);
+        }}
       />
       <BulkDownloadConfirmDialog
         open={bulkDownloadOpen}
