@@ -940,199 +940,180 @@ function BranchesPage() {
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Router BSSID Instructions Popup (Custom Framer Motion Modal to prevent Radix Dialog conflict) */}
-      <AnimatePresence>
-        {showBssidHelp && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowBssidHelp(false);
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.94, opacity: 0, y: 12 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.94, opacity: 0, y: 12 }}
-              transition={{ type: "spring", stiffness: 450, damping: 32 }}
-              onClick={(e) => e.stopPropagation()}
-              className="max-w-xl w-full max-h-[85vh] flex flex-col overflow-hidden rounded-3xl border border-primary/25 shadow-2xl bg-card text-card-foreground backdrop-blur-xl relative"
-            >
-              {/* Close X Button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowBssidHelp(false);
-                }}
-                className="absolute right-4 top-4 z-10 h-8 w-8 rounded-full bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition cursor-pointer border border-border/50"
-                title="Close"
+          {/* Router BSSID Instructions Overlay Card (Inside Dialog to prevent FocusScope/PointerEvent lock) */}
+          <AnimatePresence>
+            {showBssidHelp && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.16 }}
+                className="absolute inset-0 z-50 flex flex-col bg-card/98 dark:bg-card/98 backdrop-blur-2xl overflow-hidden rounded-3xl text-card-foreground shadow-2xl"
               >
-                <X className="h-4 w-4" />
-              </button>
+                {/* Header */}
+                <div className="px-6 pt-5 pb-4 border-b border-primary/15 shrink-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent relative">
+                  <div className="space-y-1 pr-10">
+                    <div className="text-base sm:text-lg font-display font-bold flex items-center gap-2.5 text-foreground">
+                      <div className="h-8 w-8 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0 ring-1 ring-primary/25">
+                        <Info className="h-4 w-4" />
+                      </div>
+                      <span>How to Find Your Router's BSSID (MAC Address)</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Follow the instructions below based on your operating system to find your office Wi-Fi router's BSSID (MAC Address).
+                    </p>
+                  </div>
 
-              {/* Header */}
-              <div className="px-6 pt-5 pb-4 border-b border-primary/15 shrink-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent relative">
-                <div className="space-y-1 pr-10">
-                  <div className="text-base sm:text-lg font-display font-bold flex items-center gap-2.5 text-foreground">
-                    <div className="h-8 w-8 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0 ring-1 ring-primary/25">
-                      <Info className="h-4 w-4" />
-                    </div>
-                    <span>How to Find Your Router's BSSID (MAC Address)</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Follow the instructions below based on your operating system to find your office Wi-Fi router's BSSID (MAC Address).
-                  </p>
-                </div>
-              </div>
-
-              {/* Scrollable Content Body */}
-              <div className="p-6 overflow-y-auto space-y-4 text-xs">
-                {/* 1. Windows OS */}
-                <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold text-sm text-foreground flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 text-xs font-bold">1</span>
-                      <span>Windows OS</span>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] font-medium border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/10">
-                      Windows 10 & 11 PCs
-                    </Badge>
-                  </div>
-                  <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
-                    <li>
-                      Press <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Win + R</kbd> on your keyboard, type <code className="font-mono text-primary font-semibold">cmd</code>, and press <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Enter</kbd> to open the Command Prompt.
-                    </li>
-                    <li>Run the following command:</li>
-                  </ol>
-                  <div className="flex items-center justify-between gap-2 rounded-xl bg-background/90 border border-border/80 px-3 py-2 font-mono text-xs">
-                    <div className="flex items-center gap-2 overflow-x-auto">
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase">DOS</span>
-                      <code className="text-primary font-medium select-all">netsh wlan show interfaces</code>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
-                      onClick={() => copyToClipboard("netsh wlan show interfaces", "win")}
-                      title="Copy command"
-                    >
-                      {copiedCommand === "win" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                    </Button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Look for the <strong className="text-foreground">BSSID</strong> line in the output (Format: <code className="font-mono text-primary font-semibold">AA:BB:CC:DD:EE:FF</code>).
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowBssidHelp(false)}
+                    className="absolute right-4 top-4 h-8 w-8 rounded-full bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition cursor-pointer border border-border/50"
+                    title="Close and return to form"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
 
-                {/* 2. macOS */}
-                <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold text-sm text-foreground flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 text-xs font-bold">2</span>
-                      <span>macOS</span>
+                {/* Scrollable Content Body */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
+                  {/* 1. Windows OS */}
+                  <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 text-xs font-bold">1</span>
+                        <span>Windows OS</span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-medium border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/10">
+                        Windows 10 & 11 PCs
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="text-[10px] font-medium border-purple-500/30 text-purple-600 dark:text-purple-400 bg-purple-500/10">
-                      Mac Laptops & Desktops
-                    </Badge>
+                    <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
+                      <li>
+                        Press <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Win + R</kbd> on your keyboard, type <code className="font-mono text-primary font-semibold">cmd</code>, and press <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Enter</kbd> to open the Command Prompt.
+                      </li>
+                      <li>Run the following command:</li>
+                    </ol>
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-background/90 border border-border/80 px-3 py-2 font-mono text-xs">
+                      <div className="flex items-center gap-2 overflow-x-auto">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase">DOS</span>
+                        <code className="text-primary font-medium select-all">netsh wlan show interfaces</code>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                        onClick={() => copyToClipboard("netsh wlan show interfaces", "win")}
+                        title="Copy command"
+                      >
+                        {copiedCommand === "win" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Look for the <strong className="text-foreground">BSSID</strong> line in the output (Format: <code className="font-mono text-primary font-semibold">AA:BB:CC:DD:EE:FF</code>).
+                    </p>
                   </div>
-                  <div className="space-y-2.5 text-[11px] text-muted-foreground leading-relaxed">
-                    <div className="p-3 rounded-xl bg-background/60 border border-border/60 space-y-1">
-                      <div className="font-semibold text-foreground">Option 1 (Quickest):</div>
-                      <p>
-                        Hold the <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Option (⌥)</kbd> key on your keyboard and click the Wi-Fi icon in the top menu bar. Look for the <strong className="text-foreground">BSSID</strong> field.
-                      </p>
+
+                  {/* 2. macOS */}
+                  <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 text-xs font-bold">2</span>
+                        <span>macOS</span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-medium border-purple-500/30 text-purple-600 dark:text-purple-400 bg-purple-500/10">
+                        Mac Laptops & Desktops
+                      </Badge>
                     </div>
-                    <div className="p-3 rounded-xl bg-background/60 border border-border/60 space-y-2">
-                      <div className="font-semibold text-foreground">Option 2 (Terminal):</div>
-                      <p>Open Terminal and execute:</p>
-                      <div className="flex items-center justify-between gap-2 rounded-lg bg-background border border-border/80 px-3 py-2 font-mono text-[11px]">
-                        <div className="flex items-center gap-2 overflow-x-auto">
-                          <span className="text-[10px] font-bold text-muted-foreground uppercase">Bash</span>
-                          <code className="text-primary font-medium break-all select-all">/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I | grep BSSID</code>
+                    <div className="space-y-2.5 text-[11px] text-muted-foreground leading-relaxed">
+                      <div className="p-3 rounded-xl bg-background/60 border border-border/60 space-y-1">
+                        <div className="font-semibold text-foreground">Option 1 (Quickest):</div>
+                        <p>
+                          Hold the <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Option (⌥)</kbd> key on your keyboard and click the Wi-Fi icon in the top menu bar. Look for the <strong className="text-foreground">BSSID</strong> field.
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-xl bg-background/60 border border-border/60 space-y-2">
+                        <div className="font-semibold text-foreground">Option 2 (Terminal):</div>
+                        <p>Open Terminal and execute:</p>
+                        <div className="flex items-center justify-between gap-2 rounded-lg bg-background border border-border/80 px-3 py-2 font-mono text-[11px]">
+                          <div className="flex items-center gap-2 overflow-x-auto">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase">Bash</span>
+                            <code className="text-primary font-medium break-all select-all">/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I | grep BSSID</code>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                            onClick={() => copyToClipboard("/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I | grep BSSID", "mac")}
+                            title="Copy command"
+                          >
+                            {copiedCommand === "mac" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
-                          onClick={() => copyToClipboard("/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I | grep BSSID", "mac")}
-                          title="Copy command"
-                        >
-                          {copiedCommand === "mac" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                        </Button>
                       </div>
                     </div>
                   </div>
+
+                  {/* 3. Linux OS */}
+                  <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-xs font-bold">3</span>
+                        <span>Linux OS</span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-medium border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10">
+                        Ubuntu / Debian / RedHat
+                      </Badge>
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
+                      <li>Open the Terminal.</li>
+                      <li>Run the command:</li>
+                    </ol>
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-background/90 border border-border/80 px-3 py-2 font-mono text-xs">
+                      <div className="flex items-center gap-2 overflow-x-auto">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase">Bash</span>
+                        <code className="text-primary font-medium select-all">nmcli dev wifi</code>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                        onClick={() => copyToClipboard("nmcli dev wifi", "linux")}
+                        title="Copy command"
+                      >
+                        {copiedCommand === "linux" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Locate your connected network under the <strong className="text-foreground">BSSID</strong> column.
+                    </p>
+                  </div>
                 </div>
 
-                {/* 3. Linux OS */}
-                <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold text-sm text-foreground flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-xs font-bold">3</span>
-                      <span>Linux OS</span>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] font-medium border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10">
-                      Ubuntu / Debian / RedHat
-                    </Badge>
-                  </div>
-                  <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
-                    <li>Open the Terminal.</li>
-                    <li>Run the command:</li>
-                  </ol>
-                  <div className="flex items-center justify-between gap-2 rounded-xl bg-background/90 border border-border/80 px-3 py-2 font-mono text-xs">
-                    <div className="flex items-center gap-2 overflow-x-auto">
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase">Bash</span>
-                      <code className="text-primary font-medium select-all">nmcli dev wifi</code>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
-                      onClick={() => copyToClipboard("nmcli dev wifi", "linux")}
-                      title="Copy command"
-                    >
-                      {copiedCommand === "linux" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                    </Button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Locate your connected network under the <strong className="text-foreground">BSSID</strong> column.
-                  </p>
+                {/* Footer */}
+                <div className="p-4 border-t border-border/60 flex items-center justify-between shrink-0 bg-muted/20">
+                  <span className="text-[11px] text-muted-foreground">
+                    Tip: Format should be 6 hex byte pairs (e.g. <span className="font-mono text-foreground font-semibold">00:1A:2B:3C:4D:5E</span>)
+                  </span>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    onClick={() => setShowBssidHelp(false)}
+                    className="rounded-xl px-5"
+                  >
+                    Back to Branch Form
+                  </Button>
                 </div>
-              </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </DialogContent>
+      </Dialog>
 
-              {/* Footer */}
-              <div className="p-4 border-t border-border/60 flex items-center justify-between shrink-0 bg-muted/20">
-                <span className="text-[11px] text-muted-foreground">
-                  Tip: Format should be 6 hex byte pairs (e.g. <span className="font-mono text-foreground font-semibold">00:1A:2B:3C:4D:5E</span>)
-                </span>
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowBssidHelp(false);
-                  }}
-                  className="rounded-xl px-5"
-                >
-                  Close
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
