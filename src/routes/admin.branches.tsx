@@ -51,12 +51,13 @@ const empty: Omit<Branch, "id"> = {
   lng: undefined,
   radiusMeters: 150,
   geofenceDisabled: false,
-  wifiSSIDs: [],
-  ipAllowlist: [],
+  allowedBSSIDs: [],
   shiftStart: "09:00",
   shiftEnd: "18:00",
   weeklyOff: ["Sun"],
 };
+
+const MAC_REGEX = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
 
 function BranchesPage() {
   const { company, employees, addBranch, updateBranch, deleteBranch, updateEmployee } = useStore();
@@ -66,10 +67,14 @@ function BranchesPage() {
   const [form, setForm] = useState<Omit<Branch, "id">>(empty);
   const [tab, setTab] = useState("basic");
   const [pincodeLoading, setPincodeLoading] = useState(false);
+  const [bssidInput, setBssidInput] = useState("");
+  const [bssidError, setBssidError] = useState("");
 
   const openNew = () => {
     setEditing(null);
     setForm(empty);
+    setBssidInput("");
+    setBssidError("");
     setTab("basic");
     setOpen(true);
   };
@@ -82,10 +87,11 @@ function BranchesPage() {
       ...empty,
       ...rest,
       pincode: rest.pincode ?? "",
-      wifiSSIDs: rest.wifiSSIDs ?? [],
-      ipAllowlist: rest.ipAllowlist ?? [],
+      allowedBSSIDs: rest.allowedBSSIDs ?? [],
       weeklyOff: rest.weeklyOff ?? [],
     });
+    setBssidInput("");
+    setBssidError("");
     setTab("basic");
     setOpen(true);
   };
@@ -212,11 +218,68 @@ function BranchesPage() {
     );
   };
 
-  const csvToArr = (s: string) =>
-    s
-      .split(/[,\n]/)
-      .map((x) => x.trim())
-      .filter(Boolean);
+  const handleAddBSSID = (val?: string) => {
+    const raw = (val !== undefined ? val : bssidInput).trim();
+    if (!raw) return;
+
+    if (!MAC_REGEX.test(raw)) {
+      setBssidError("Invalid MAC address format (e.g. 00:1A:2B:3C:4D:5E or 00-1A-2B-3C-4D-5E)");
+      return;
+    }
+
+    const normalized = raw.toUpperCase();
+    const current = form.allowedBSSIDs ?? [];
+    if (current.some((b) => b.toUpperCase() === normalized)) {
+      setBssidError("This BSSID is already in the allowed list");
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      allowedBSSIDs: [...(prev.allowedBSSIDs ?? []), normalized],
+    }));
+    setBssidInput("");
+    setBssidError("");
+  };
+
+  const handleRemoveBSSID = (indexToRemove: number) => {
+    setForm((prev) => ({
+      ...prev,
+      allowedBSSIDs: (prev.allowedBSSIDs ?? []).filter((_, idx) => idx !== indexToRemove),
+    }));
+  };
+
+  const handleBssidPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasteData = e.clipboardData.getData("text");
+    if (pasteData.includes(",") || pasteData.includes("\n") || pasteData.includes(" ")) {
+      const parts = pasteData.split(/[\s,\n]+/).map((s) => s.trim()).filter(Boolean);
+      if (parts.length > 1) {
+        e.preventDefault();
+        let addedCount = 0;
+        let invalidCount = 0;
+        const current = [...(form.allowedBSSIDs ?? [])];
+        for (const part of parts) {
+          if (MAC_REGEX.test(part)) {
+            const upper = part.toUpperCase();
+            if (!current.some((b) => b.toUpperCase() === upper)) {
+              current.push(upper);
+              addedCount++;
+            }
+          } else {
+            invalidCount++;
+          }
+        }
+        setForm((prev) => ({ ...prev, allowedBSSIDs: current }));
+        setBssidInput("");
+        setBssidError("");
+        if (invalidCount > 0) {
+          toast.warning(`Added ${addedCount} BSSID(s). ${invalidCount} invalid MAC address(es) ignored.`);
+        } else if (addedCount > 0) {
+          toast.success(`Added ${addedCount} BSSID(s)`);
+        }
+      }
+    }
+  };
 
   const availableCities = form.state ? STATE_CITIES[form.state] || [] : [];
 
@@ -225,7 +288,7 @@ function BranchesPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
-            Multi-branch setup for {company.name} — geo-fence, shifts, Wi-Fi & IP restrictions per branch.
+            Multi-branch setup for {company.name} — geo-fence, shifts, and router BSSID restrictions per branch.
           </p>
         </div>
         <Button onClick={openNew} className="bg-gradient-brand text-white shadow-glow">
@@ -285,10 +348,10 @@ function BranchesPage() {
                   {b.radiusMeters ?? 150}m geo
                 </Badge>
               )}
-              {(b.wifiSSIDs?.length ?? 0) > 0 && (
+              {(b.allowedBSSIDs?.length ?? 0) > 0 && (
                 <Badge variant="outline" className="text-[10px]">
                   <Wifi className="h-2.5 w-2.5 mr-0.5" />
-                  {b.wifiSSIDs!.length} SSID
+                  {b.allowedBSSIDs!.length} BSSID
                 </Badge>
               )}
               {b.shiftStart && b.shiftEnd && (
@@ -703,24 +766,94 @@ function BranchesPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Allowed Office Wi-Fi SSIDs (comma-separated)</Label>
-                    <Input
-                      value={(form.wifiSSIDs ?? []).join(", ")}
-                      onChange={(e) => setForm({ ...form, wifiSSIDs: csvToArr(e.target.value) })}
-                      placeholder="CORP-OFFICE, CORP-GUEST, BRANCH-WIFI"
-                      className="h-9 text-xs focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:border-primary"
-                    />
-                  </div>
+                  {/* Allowed Office Router BSSIDs (MAC Addresses) */}
+                  <div className="space-y-2 rounded-2xl border border-primary/20 bg-card p-3.5 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="text-xs font-semibold flex items-center gap-1.5">
+                          <Wifi className="h-3.5 w-3.5 text-primary" />
+                          Allowed Office Router BSSIDs (MAC Addresses)
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground">
+                          Authorized router MAC addresses for on-site Wi-Fi punch validation.
+                        </p>
+                      </div>
+                      {(form.allowedBSSIDs?.length ?? 0) > 0 && (
+                        <Badge variant="secondary" className="text-[10px] font-mono font-medium">
+                          {form.allowedBSSIDs!.length} {form.allowedBSSIDs!.length === 1 ? "BSSID" : "BSSIDs"}
+                        </Badge>
+                      )}
+                    </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Office Public IP Allowlist (comma-separated)</Label>
-                    <Input
-                      value={(form.ipAllowlist ?? []).join(", ")}
-                      onChange={(e) => setForm({ ...form, ipAllowlist: csvToArr(e.target.value) })}
-                      placeholder="103.25.14.0/24, 45.112.9.10"
-                      className="h-9 text-xs focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:border-primary"
-                    />
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          value={bssidInput}
+                          onChange={(e) => {
+                            setBssidInput(e.target.value);
+                            if (bssidError) setBssidError("");
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddBSSID();
+                            }
+                          }}
+                          onPaste={handleBssidPaste}
+                          placeholder="e.g. 00:1A:2B:3C:4D:5E or 00-1A-2B-3C-4D-5E"
+                          className={`h-9 font-mono text-xs focus-visible:ring-2 ${
+                            bssidError
+                              ? "border-destructive focus-visible:ring-destructive/30"
+                              : "focus-visible:ring-primary/40 focus-visible:border-primary"
+                          }`}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleAddBSSID()}
+                        disabled={!bssidInput.trim()}
+                        className="h-9 px-3 text-xs gap-1 rounded-xl"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add
+                      </Button>
+                    </div>
+
+                    {bssidError && (
+                      <p className="text-[11px] text-destructive flex items-center gap-1">
+                        <span className="font-semibold">Error:</span> {bssidError}
+                      </p>
+                    )}
+
+                    {/* Chips Display */}
+                    <div className="pt-1">
+                      {(form.allowedBSSIDs?.length ?? 0) === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border/70 p-3 text-center text-muted-foreground text-xs bg-muted/20">
+                          No router BSSIDs configured. Enter a MAC address above and click Add.
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-1">
+                          {form.allowedBSSIDs!.map((bssid, idx) => (
+                            <span
+                              key={`${bssid}-${idx}`}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium bg-primary/10 text-primary border border-primary/25 shadow-2xs transition hover:bg-primary/15"
+                            >
+                              <Wifi className="h-3 w-3 opacity-70" />
+                              <span>{bssid}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveBSSID(idx)}
+                                className="ml-0.5 rounded-full p-0.5 hover:bg-primary/20 text-primary/70 hover:text-primary transition"
+                                title="Remove BSSID"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               )}
