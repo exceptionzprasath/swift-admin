@@ -89,6 +89,7 @@ import {
   ChevronUp,
   Info,
   CheckCheck,
+  UploadCloud,
 } from "lucide-react";
 import { toast } from "sonner";
 import { HardwareBridgeModal } from "@/components/biometric/HardwareBridgeModal";
@@ -96,6 +97,7 @@ import { LiveBiometricFeed } from "@/components/biometric/LiveBiometricFeed";
 import { DeviceManagerHub } from "@/components/biometric/DeviceManagerHub";
 import { StaffBiometricDirectory } from "@/components/biometric/StaffBiometricDirectory";
 import { MonthlyStaffMatrixHub } from "@/components/attendance/MonthlyStaffMatrixHub";
+import { UniversalUsbUploadModal } from "@/components/biometric/UniversalUsbUploadModal";
 
 // Utility: Parse time string in 12h, 24h, or with seconds into total minutes of the day
 function parseTimeMinutes(s?: string): number {
@@ -378,6 +380,7 @@ function AttendancePage() {
 
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isAgentGuideOpen, setIsAgentGuideOpen] = useState(false);
+  const [isUsbUploadModalOpen, setIsUsbUploadModalOpen] = useState(false);
 
   const handleOpenAddDevice = (device?: Device) => {
     if (device) {
@@ -1322,6 +1325,17 @@ function AttendancePage() {
           >
             <Edit3 className="h-3.5 w-3.5 text-primary" />
             <span>Regularize Punch</span>
+          </Button>
+
+          {/* Upload USB Biometric Logs */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsUsbUploadModalOpen(true)}
+            className="gap-1.5 h-9 rounded-xl shadow-xs border-primary/40 hover:bg-primary/5 text-primary font-medium"
+          >
+            <UploadCloud className="h-3.5 w-3.5 text-primary" />
+            <span>Upload USB Logs</span>
           </Button>
 
           {/* Export Report */}
@@ -3006,6 +3020,17 @@ function AttendancePage() {
         }}
         devices={devices}
         companyName={company.name || "Head Office"}
+      />
+
+      {/* ========================================================================= */}
+      {/* 9. UNIVERSAL CLOUD-NATIVE BIOMETRIC USB INGESTION & MATRIX ENGINE (AWS)    */}
+      {/* ========================================================================= */}
+      <UniversalUsbUploadModal
+        isOpen={isUsbUploadModalOpen}
+        onClose={() => setIsUsbUploadModalOpen(false)}
+        onSuccessSave={() => {
+          handleLiveSync(false);
+        }}
       />
 
     </div>
