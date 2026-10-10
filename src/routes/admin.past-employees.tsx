@@ -48,6 +48,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DeleteEmployeeDialog } from "@/components/delete-employee-dialog";
 import { EmploymentTypeBadge } from "@/components/employment-type-badge";
 import { renderEmployeeStatusBadge } from "@/routes/admin.employees";
 
@@ -64,8 +65,9 @@ export function PastEmployeesPage() {
   const [selectedStatus, setSelectedStatus] = useState<"all" | "suspended" | "relieved" | "terminated">("all");
   const [selectedDept, setSelectedDept] = useState("all");
 
-  // Reactivate modal state
+  // Reactivate & Delete modal states
   const [reactivateTarget, setReactivateTarget] = useState<Employee | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
 
   // Past employees are those with status suspended, relieved, or terminated
   const pastEmployees = useMemo(() => {
@@ -449,12 +451,7 @@ export function PastEmployeesPage() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => {
-                                if (window.confirm(`Permanently delete records for ${e.name}? This cannot be undone.`)) {
-                                  deleteEmployee(e.id);
-                                  toast.success(`Employee ${e.name} deleted.`);
-                                }
-                              }}
+                              onClick={() => setDeleteTarget(e)}
                               className="gap-2 text-rose-600 focus:text-rose-600 cursor-pointer"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -526,6 +523,17 @@ export function PastEmployeesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Employee Confirmation Dialog with Slide Button */}
+      <DeleteEmployeeDialog
+        employee={deleteTarget}
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirmDelete={(emp) => {
+          deleteEmployee(emp.id);
+          toast.success(`Employee ${emp.name} permanently deleted.`);
+        }}
+      />
     </div>
   );
 }

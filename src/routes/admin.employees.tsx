@@ -49,6 +49,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { INDIAN_STATES } from "@/lib/india-locations";
 import { OnboardingChecklistDialog } from "@/components/OnboardingChecklistDialog";
+import { DeleteEmployeeDialog } from "@/components/delete-employee-dialog";
 
 export const Route = createFileRoute("/admin/employees")({
   head: () => ({ meta: [{ title: "Employees · CreatonsHR" }] }),
@@ -209,6 +210,7 @@ function EmployeesPage() {
   const [actionEmp, setActionEmp] = useState<Employee | null>(null);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [docsEmp, setDocsEmp] = useState<Employee | null>(null);
+  const [deleteConfirmEmp, setDeleteConfirmEmp] = useState<Employee | null>(null);
   const [actionKind, setActionKind] = useState<"exit" | "transfer" | "manual">("exit");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "relieved" | "terminated">("all");
   const [onboardingFilter, setOnboardingFilter] = useState<"all" | "completed" | "incomplete">("all");
@@ -711,7 +713,13 @@ function EmployeesPage() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <Button size="sm" variant="ghost" title="Delete" onClick={() => { deleteEmployee(e.id); toast.success("Removed"); }}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title="Delete Employee"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 transition-colors"
+                          onClick={() => setDeleteConfirmEmp(e)}
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -738,6 +746,15 @@ function EmployeesPage() {
         employee={docsEmp}
         open={!!docsEmp}
         onClose={() => setDocsEmp(null)}
+      />
+      <DeleteEmployeeDialog
+        employee={deleteConfirmEmp}
+        open={!!deleteConfirmEmp}
+        onClose={() => setDeleteConfirmEmp(null)}
+        onConfirmDelete={(emp) => {
+          deleteEmployee(emp.id);
+          toast.success(`Employee ${emp.name} (${emp.empCode}) removed successfully.`);
+        }}
       />
       <BulkUploadDialog
         open={bulkOpen}
