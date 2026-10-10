@@ -46,6 +46,7 @@ import {
   Users,
   ShieldAlert,
   ArrowRight,
+  Snowflake,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DeleteEmployeeDialog } from "@/components/delete-employee-dialog";
@@ -62,18 +63,19 @@ export function PastEmployeesPage() {
   const { employees, company, updateEmployee, deleteEmployee } = useStore();
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState<"all" | "suspended" | "relieved" | "terminated">("all");
+  const [selectedStatus, setSelectedStatus] = useState<"all" | "freezed" | "suspended" | "relieved" | "terminated">("all");
   const [selectedDept, setSelectedDept] = useState("all");
 
-  // Reactivate & Delete modal states
+  // Reactivate, Unfreeze & Delete modal states
   const [reactivateTarget, setReactivateTarget] = useState<Employee | null>(null);
+  const [unfreezeTarget, setUnfreezeTarget] = useState<Employee | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
 
-  // Past employees are those with status suspended, relieved, or terminated
+  // Past employees are those with status suspended, relieved, terminated, or frozen
   const pastEmployees = useMemo(() => {
     return employees.filter((e) => {
       const s = (e.status || "active").toLowerCase().trim();
-      return s === "suspended" || s === "relieved" || s === "releived" || s === "terminated" || s === "inactive";
+      return s === "suspended" || s === "relieved" || s === "releived" || s === "terminated" || s === "inactive" || s === "frozen" || s === "freezed";
     });
   }, [employees]);
 
@@ -82,12 +84,14 @@ export function PastEmployeesPage() {
     let suspended = 0;
     let relieved = 0;
     let terminated = 0;
+    let freezed = 0;
 
     for (const e of pastEmployees) {
       const s = (e.status || "").toLowerCase().trim();
       if (s === "suspended") suspended++;
       else if (s === "relieved" || s === "releived") relieved++;
       else if (s === "terminated") terminated++;
+      else if (s === "frozen" || s === "freezed") freezed++;
     }
 
     return {
@@ -95,6 +99,7 @@ export function PastEmployeesPage() {
       suspended,
       relieved,
       terminated,
+      freezed,
     };
   }, [pastEmployees]);
 
@@ -126,6 +131,8 @@ export function PastEmployeesPage() {
         const s = (e.status || "").toLowerCase().trim();
         if (selectedStatus === "relieved") {
           if (s !== "relieved" && s !== "releived") return false;
+        } else if (selectedStatus === "freezed") {
+          if (s !== "frozen" && s !== "freezed") return false;
         } else if (s !== selectedStatus) {
           return false;
         }
@@ -147,6 +154,17 @@ export function PastEmployeesPage() {
     });
     toast.success(`${reactivateTarget.name} has been restored to Active status! They will now show in the Attendance area.`);
     setReactivateTarget(null);
+  };
+
+  // Handle 1-click unfreeze
+  const handleConfirmUnfreeze = () => {
+    if (!unfreezeTarget) return;
+    updateEmployee(unfreezeTarget.id, {
+      status: "active",
+      statusNote: `Unfrozen on ${new Date().toISOString().slice(0, 10)}${unfreezeTarget.statusNote ? ` (Prior note: ${unfreezeTarget.statusNote})` : ""}`,
+    });
+    toast.success(`${unfreezeTarget.name} has been unfrozen and restored to Active status! They will now show in the Employees directory, Attendance, and Payroll.`);
+    setUnfreezeTarget(null);
   };
 
   // Export past employees to CSV
@@ -228,12 +246,20 @@ export function PastEmployeesPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card className="rounded-2xl border-border bg-card/60 backdrop-blur-xs">
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground font-medium">Total Past Staff</div>
             <div className="text-2xl font-bold mt-1 text-foreground">{kpis.total}</div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Excluded from attendance</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Excluded from active ops</p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-sky-500/20 bg-sky-500/5">
+          <CardContent className="p-4">
+            <div className="text-xs text-sky-700 dark:text-sky-300 font-medium">Freezed</div>
+            <div className="text-2xl font-bold mt-1 text-sky-700 dark:text-sky-300">{kpis.freezed}</div>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Hidden &amp; Preserved</p>
           </CardContent>
         </Card>
 
@@ -268,6 +294,7 @@ export function PastEmployeesPage() {
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           {[
             { id: "all", label: "All Past", count: kpis.total },
+            { id: "freezed", label: "Freezed Employees", count: kpis.freezed },
             { id: "relieved", label: "Relieved", count: kpis.relieved },
             { id: "suspended", label: "Suspended", count: kpis.suspended },
             { id: "terminated", label: "Terminated", count: kpis.terminated },
@@ -325,17 +352,18 @@ export function PastEmployeesPage() {
 
       {/* Past Employees Table */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
-        <table className="w-full text-xs">
-          <thead className="bg-muted/50 border-b border-border">
-            <tr className="text-left font-semibold text-muted-foreground">
-              <th className="p-3 pl-4">Employee</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Status Date</th>
-              <th className="p-3">Reason / Note</th>
-              <th className="p-3">Department &amp; Branch</th>
-              <th className="p-3 text-right pr-4">Actions</th>
-            </tr>
-          </thead>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[850px]">
+            <thead className="bg-muted/50 border-b border-border">
+              <tr className="text-left font-semibold text-muted-foreground">
+                <th className="p-3 pl-4 whitespace-nowrap">Employee</th>
+                <th className="p-3 whitespace-nowrap">Status</th>
+                <th className="p-3 whitespace-nowrap">Status Date</th>
+                <th className="p-3 whitespace-nowrap">Reason / Note</th>
+                <th className="p-3 whitespace-nowrap">Department &amp; Branch</th>
+                <th className="p-3 text-right pr-4 whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
           <tbody className="divide-y divide-border">
             {filteredPastEmployees.length === 0 ? (
               <tr>
@@ -421,16 +449,29 @@ export function PastEmployeesPage() {
                     {/* Actions */}
                     <td className="p-3 text-right pr-4">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setReactivateTarget(e)}
-                          className="h-7 px-2 text-xs gap-1 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
-                          title="Restore employee back to Active status"
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                          <span>Reactivate</span>
-                        </Button>
+                        {e.status === "frozen" || e.status === "freezed" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setUnfreezeTarget(e)}
+                            className="h-7 px-2.5 text-xs gap-1.5 border-sky-500/30 text-sky-600 hover:bg-sky-500/10 hover:text-sky-700 dark:text-sky-400 font-medium"
+                            title="Unfreeze employee and restore back to active operations"
+                          >
+                            <Snowflake className="h-3 w-3" />
+                            <span>Unfreeze</span>
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setReactivateTarget(e)}
+                            className="h-7 px-2 text-xs gap-1 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
+                            title="Restore employee back to Active status"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            <span>Reactivate</span>
+                          </Button>
+                        )}
 
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -442,13 +483,23 @@ export function PastEmployeesPage() {
                           <DropdownMenuContent align="end" className="w-48 text-xs">
                             <DropdownMenuLabel>Past Employee Actions</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => setReactivateTarget(e)}
-                              className="gap-2 text-emerald-600 focus:text-emerald-600 cursor-pointer"
-                            >
-                              <UserCheck className="h-3.5 w-3.5" />
-                              <span>Reactivate Employee</span>
-                            </DropdownMenuItem>
+                            {e.status === "frozen" || e.status === "freezed" ? (
+                              <DropdownMenuItem
+                                onClick={() => setUnfreezeTarget(e)}
+                                className="gap-2 text-sky-600 focus:text-sky-600 cursor-pointer"
+                              >
+                                <Snowflake className="h-3.5 w-3.5" />
+                                <span>Unfreeze Employee</span>
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                onClick={() => setReactivateTarget(e)}
+                                className="gap-2 text-emerald-600 focus:text-emerald-600 cursor-pointer"
+                              >
+                                <UserCheck className="h-3.5 w-3.5" />
+                                <span>Reactivate Employee</span>
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => setDeleteTarget(e)}
@@ -467,6 +518,7 @@ export function PastEmployeesPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Confirmation Modal: Reactivate Employee */}
@@ -519,6 +571,61 @@ export function PastEmployeesPage() {
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
               Confirm Reactivation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Modal: Unfreeze Employee */}
+      <Dialog open={!!unfreezeTarget} onOpenChange={(o) => !o && setUnfreezeTarget(null)}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="h-9 w-9 rounded-xl bg-sky-500/10 text-sky-600 flex items-center justify-center shrink-0 border border-sky-500/20">
+                <Snowflake className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold">Unfreeze Employee?</DialogTitle>
+                <DialogDescription className="text-xs">
+                  Restore active operational status for {unfreezeTarget?.name}.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="py-2 text-xs space-y-2 text-muted-foreground">
+            <p>
+              Unfreezing will restore <strong className="text-foreground">{unfreezeTarget?.name}</strong> back to{" "}
+              <strong className="text-emerald-600">ACTIVE</strong> status.
+            </p>
+            <div className="p-2.5 rounded-xl bg-muted/50 border border-border space-y-1">
+              <div className="text-[11px] font-medium text-foreground">What happens next:</div>
+              <ul className="list-disc list-inside text-[11px] space-y-0.5 text-muted-foreground">
+                <li>Employee will return to the active Employees Directory.</li>
+                <li>Employee will resume eligibility in Attendance &amp; Shift Rosters.</li>
+                <li>Employee will become eligible in monthly Payroll runs.</li>
+                <li>All historical documents, salary setups, and KYC remain intact.</li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setUnfreezeTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleConfirmUnfreeze}
+              className="gap-1.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold"
+            >
+              <Snowflake className="h-3.5 w-3.5" />
+              Unfreeze Employee
             </Button>
           </DialogFooter>
         </DialogContent>

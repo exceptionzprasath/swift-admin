@@ -56,6 +56,12 @@ export function isMockEmployee(emp: Partial<Employee> | null | undefined): boole
   );
 }
 
+export function isFrozenEmployee(emp: Partial<Employee> | null | undefined): boolean {
+  if (!emp) return false;
+  const s = String(emp.status || "").trim().toLowerCase();
+  return s === "frozen" || s === "freezed";
+}
+
 export function isMockAttendance(att: Partial<AttendanceRecord> | null | undefined): boolean {
   if (!att) return false;
   // Authentic biometric terminal or USB log imports are never mock records
@@ -585,7 +591,7 @@ export type Employee = {
   bankIfsc?: string;
   shiftId?: string;
   faceRegistered?: boolean;
-  status: "active" | "suspended" | "relieved" | "releived" | "terminated" | "inactive";
+  status: "active" | "suspended" | "relieved" | "releived" | "terminated" | "inactive" | "frozen" | "freezed";
   statusDate?: string;
   statusNote?: string;
   managerId?: string;

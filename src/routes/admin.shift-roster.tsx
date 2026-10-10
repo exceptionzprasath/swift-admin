@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo, useRef } from "react";
-import { useStore, ShiftType, ShiftAssignment, Employee } from "@/lib/store";
+import { useStore, ShiftType, ShiftAssignment, Employee, isMockEmployee, isFrozenEmployee } from "@/lib/store";
 import {
   Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus,
   Search, Building2, CheckCircle2, Users, CalendarDays,
@@ -58,7 +58,7 @@ function getShiftIcon(startStr: string) {
 function ShiftRosterPage() {
   const {
     company,
-    employees,
+    employees: rawEmployees,
     roster,
     addShift,
     updateShift,
@@ -66,6 +66,8 @@ function ShiftRosterPage() {
     assignRoster,
     bulkAssignRoster,
   } = useStore();
+
+  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)), [rawEmployees]);
 
   const shifts = company.shifts || [];
 

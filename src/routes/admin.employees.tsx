@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStore, isMockEmployee, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
+import { useStore, isMockEmployee, isFrozenEmployee, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { aiNotify } from "@/lib/ai-guide-bus";
 import { generateAppointmentPDF, generateAppointmentPDFBlob } from "@/lib/pdf";
@@ -30,7 +30,7 @@ import {
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
   KeyRound, RefreshCw, Copy, Check, Fingerprint, Database, ChevronDown, ShieldAlert,
-  UserX,
+  UserX, Snowflake,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -168,6 +168,14 @@ export function renderEmployeeStatusBadge(status?: string) {
       </Badge>
     );
   }
+  if (s === "frozen" || s === "freezed") {
+    return (
+      <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/30 whitespace-nowrap gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full bg-sky-500 shrink-0" />
+        <span>Freezed</span>
+      </Badge>
+    );
+  }
   return (
     <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 whitespace-nowrap gap-1.5">
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
@@ -197,7 +205,7 @@ function EmployeesPage() {
     purgeMockEmployees,
   } = useStore();
 
-  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e)), [rawEmployees]);
+  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)), [rawEmployees]);
 
   useEffect(() => {
     purgeMockEmployees();
@@ -211,6 +219,8 @@ function EmployeesPage() {
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [docsEmp, setDocsEmp] = useState<Employee | null>(null);
   const [deleteConfirmEmp, setDeleteConfirmEmp] = useState<Employee | null>(null);
+  const [freezeConfirmEmp, setFreezeConfirmEmp] = useState<Employee | null>(null);
+  const [freezeReasonNote, setFreezeReasonNote] = useState<string>("");
   const [actionKind, setActionKind] = useState<"exit" | "transfer" | "manual">("exit");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "relieved" | "terminated">("all");
   const [onboardingFilter, setOnboardingFilter] = useState<"all" | "completed" | "incomplete">("all");
@@ -513,26 +523,27 @@ function EmployeesPage() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-border bg-card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr className="text-left">
-              <th className="p-3">Employee</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Department</th>
-              <th className="p-3">Branch</th>
-              <th className="p-3">Onboarding Progress</th>
-              <th className="p-3 text-right">Basic</th>
-              <th className="p-3 text-right">Monthly CTC</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayedEmployees.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="p-10 text-center text-muted-foreground">
-                  {statusFilter === "all" && onboardingFilter === "all"
-                    ? "No employees yet. Click Add Employee to start the guided registration."
+      <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[1050px]">
+            <thead className="bg-muted/50 border-b border-border">
+              <tr className="text-left font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                <th className="p-3 pl-4 whitespace-nowrap">Employee</th>
+                <th className="p-3 whitespace-nowrap">Status</th>
+                <th className="p-3 whitespace-nowrap">Department</th>
+                <th className="p-3 whitespace-nowrap">Branch</th>
+                <th className="p-3 whitespace-nowrap min-w-[220px]">Onboarding Progress</th>
+                <th className="p-3 text-right whitespace-nowrap">Basic</th>
+                <th className="p-3 text-right whitespace-nowrap">Monthly CTC</th>
+                <th className="p-3 text-right pr-4 whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayedEmployees.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-10 text-center text-muted-foreground">
+                    {statusFilter === "all" && onboardingFilter === "all"
+                      ? "No employees yet. Click Add Employee to start the guided registration."
                     : `No employees matching current filters found.`}
                 </td>
               </tr>
@@ -543,7 +554,7 @@ function EmployeesPage() {
                 const assignedBranches = (company.branches ?? []).filter((b) => assignedBranchIds.includes(b.id));
                 return (
                   <tr key={e.id} className="border-t border-border">
-                    <td className="p-3">
+                    <td className="p-3 pl-4 whitespace-nowrap">
                       <div className="flex items-center gap-2.5">
                         <div className="h-9 w-9 rounded-full ring-2 ring-primary/25 overflow-hidden bg-primary/10 text-primary grid place-items-center text-xs font-semibold shrink-0">
                           {e.photoDataUrl ? <img src={e.photoDataUrl} className="h-full w-full object-cover" alt={e.name} /> : e.name.split(" ").slice(0, 2).map((s) => s[0]).join("")}
@@ -566,11 +577,11 @@ function EmployeesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-3">
+                    <td className="p-3 whitespace-nowrap">
                       {renderEmployeeStatusBadge(e.status)}
                     </td>
-                    <td className="p-3">{e.department}</td>
-                    <td className="p-3">
+                    <td className="p-3 whitespace-nowrap">{e.department}</td>
+                    <td className="p-3 whitespace-nowrap">
                       {assignedBranches.length > 0 ? (
                         <div className="flex flex-wrap items-center gap-1">
                           {assignedBranches.map((b) => (
@@ -648,9 +659,9 @@ function EmployeesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="p-3 text-right">{inr(e.basic)}</td>
-                    <td className="p-3 text-right text-primary font-medium">{inr(p.monthlyCTC)}</td>
-                    <td className="p-3 text-right">
+                    <td className="p-3 text-right whitespace-nowrap font-mono">{inr(e.basic)}</td>
+                    <td className="p-3 text-right text-primary font-medium whitespace-nowrap font-mono">{inr(p.monthlyCTC)}</td>
+                    <td className="p-3 text-right pr-4 whitespace-nowrap">
                       <div className="inline-flex items-center justify-end gap-1">
                         <Button size="sm" variant="ghost" title="Documents & App Signatures" onClick={() => setDocsEmp(e)} className="text-sky-600 hover:bg-sky-500/10">
                           <FileText className="h-4 w-4" />
@@ -711,8 +722,31 @@ function EmployeesPage() {
                               <span className="font-medium">Terminated</span>
                               {e.status === "terminated" && <Check className="h-3.5 w-3.5 ml-auto text-rose-600" />}
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setFreezeReasonNote("");
+                                setFreezeConfirmEmp(e);
+                              }}
+                              className="gap-2 cursor-pointer text-sky-600 focus:text-sky-600 focus:bg-sky-500/10"
+                            >
+                              <Snowflake className="h-3.5 w-3.5 text-sky-500" />
+                              <span className="font-medium">Freeze Employee</span>
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title="Freeze Employee (Hide from operations without deleting data)"
+                          className="h-8 w-8 p-0 text-sky-600 hover:text-sky-700 hover:bg-sky-500/10 transition-colors"
+                          onClick={() => {
+                            setFreezeReasonNote("");
+                            setFreezeConfirmEmp(e);
+                          }}
+                        >
+                          <Snowflake className="h-4 w-4 text-sky-500" />
+                        </Button>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -730,6 +764,7 @@ function EmployeesPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
       <EmployeeActionsDialog
         employee={actionEmp}
@@ -756,6 +791,81 @@ function EmployeesPage() {
           toast.success(`Employee ${emp.name} (${emp.empCode}) removed successfully.`);
         }}
       />
+      {/* Freeze Employee Dialog */}
+      <Dialog open={!!freezeConfirmEmp} onOpenChange={(o) => !o && setFreezeConfirmEmp(null)}>
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 bg-sky-500/10 text-sky-600 border border-sky-500/20">
+                <Snowflake className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold">Freeze Employee Account?</DialogTitle>
+                <DialogDescription className="text-xs">
+                  Archive {freezeConfirmEmp?.name} safely without losing any data.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="py-2 space-y-3 text-xs text-muted-foreground">
+            <div className="p-3 rounded-xl bg-sky-500/5 border border-sky-500/20 text-foreground space-y-1.5">
+              <div className="font-semibold text-sky-700 dark:text-sky-300 flex items-center gap-1.5">
+                <Snowflake className="h-3.5 w-3.5" /> What freezing does:
+              </div>
+              <ul className="list-disc list-inside space-y-1 text-xs text-muted-foreground">
+                <li><strong>Hides from all operations:</strong> Excluded from Active Directory, Attendance, Payroll runs, and Shift Rosters.</li>
+                <li><strong>Zero data loss:</strong> All employee KYC, past records, contracts, and salary setups remain safely stored in the database.</li>
+                <li><strong>Easily retrievable:</strong> You can unfreeze this employee at any time from the <strong>Past Employees &gt; Freezed Employees</strong> tab.</li>
+              </ul>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Reason / Freeze Note (Optional)</Label>
+              <Textarea
+                placeholder="e.g. Sabbatical, extended leave, seasonal pause..."
+                value={freezeReasonNote}
+                onChange={(e) => setFreezeReasonNote(e.target.value)}
+                rows={2}
+                className="text-xs rounded-xl"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => setFreezeConfirmEmp(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (!freezeConfirmEmp) return;
+                const emp = freezeConfirmEmp;
+                updateEmployee(emp.id, {
+                  status: "frozen",
+                  statusDate: new Date().toISOString().slice(0, 10),
+                  statusNote: freezeReasonNote.trim() || "Account frozen by administrator",
+                });
+                addAudit({
+                  actorName: currentUser?.name || "System",
+                  entity: "employee",
+                  entityId: emp.id,
+                  action: "update",
+                  oldValue: { status: emp.status },
+                  newValue: { status: "frozen", note: freezeReasonNote.trim() },
+                });
+                toast.success(`Employee ${emp.name} frozen. You can find and unfreeze them in Past Employees > Freezed Employees.`);
+                setFreezeConfirmEmp(null);
+                setFreezeReasonNote("");
+              }}
+              className="gap-1.5 bg-sky-600 hover:bg-sky-700 text-white font-medium"
+            >
+              <Snowflake className="h-3.5 w-3.5" />
+              Freeze Employee
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <BulkUploadDialog
         open={bulkOpen}
         onClose={() => setBulkOpen(false)}

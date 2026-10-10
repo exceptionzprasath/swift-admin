@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect } from "react";
-import { useStore, safeFetch, isMockEmployee, isMockAttendance, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
+import { useStore, safeFetch, isMockEmployee, isFrozenEmployee, isMockAttendance, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { computePayroll, inr, type PayrollComputation } from "@/lib/payroll";
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
@@ -401,7 +401,7 @@ export function PayrollPage() {
     holidays,
   } = useStore();
 
-  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e)), [rawEmployees]);
+  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)), [rawEmployees]);
   const attendance = useMemo(() => (rawAttendance || []).filter((a) => !isMockAttendance(a)), [rawAttendance]);
 
   // Active Main Tab
