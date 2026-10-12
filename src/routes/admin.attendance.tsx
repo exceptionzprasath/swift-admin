@@ -96,7 +96,7 @@ import { HardwareBridgeModal } from "@/components/biometric/HardwareBridgeModal"
 import { LiveBiometricFeed } from "@/components/biometric/LiveBiometricFeed";
 import { DeviceManagerHub } from "@/components/biometric/DeviceManagerHub";
 import { StaffBiometricDirectory } from "@/components/biometric/StaffBiometricDirectory";
-import { MonthlyStaffMatrixHub } from "@/components/attendance/MonthlyStaffMatrixHub";
+import { MonthlyStaffMatrixHub, getExportAttendanceStatus } from "@/components/attendance/MonthlyStaffMatrixHub";
 import { UniversalUsbUploadModal } from "@/components/biometric/UniversalUsbUploadModal";
 
 // Utility: Parse time string in 12h, 24h, or with seconds into total minutes of the day
@@ -1219,11 +1219,11 @@ function AttendancePage() {
         `"${emp.department || ""}"`,
         `"${branch?.name || ""}"`,
         `"${scheduled.shift.name || "General"}"`,
-        `"${rec?.checkIn || rec?.clockIn || "—"}"`,
-        `"${rec?.checkOut || rec?.clockOut || "—"}"`,
+        `"${rec?.checkIn || rec?.clockIn || "-"}"`,
+        `"${rec?.checkOut || rec?.clockOut || "-"}"`,
         getRecordHours(rec, company.workingHoursPerDay || 9).hoursWorked,
         getRecordHours(rec, company.workingHoursPerDay || 9).otHours,
-        `"${punctuality.status}"`,
+        `"${getExportAttendanceStatus(punctuality)}"`,
         `"${punctuality.label}"`,
         rec?.faceVerified ? "Yes" : "No",
         rec?.geofenceVerified || rec?.withinGeofence ? "Yes" : "No",
@@ -1232,7 +1232,7 @@ function AttendancePage() {
       csvRows.push(row.join(","));
     });
 
-    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -3256,11 +3256,11 @@ function EmployeeAttendanceDossierModal({
         `"${dateStr}"`,
         `"${dayName}"`,
         `"${scheduled?.shift?.name || "General"}"`,
-        `"${rec?.checkIn || rec?.clockIn || "—"}"`,
-        `"${rec?.checkOut || rec?.clockOut || "—"}"`,
+        `"${rec?.checkIn || rec?.clockIn || "-"}"`,
+        `"${rec?.checkOut || rec?.clockOut || "-"}"`,
         (() => { const h = getRecordHours(rec); return h.hoursWorked; })(),
         (() => { const h = getRecordHours(rec); return h.otHours; })(),
-        `"${punctuality.status}"`,
+        `"${getExportAttendanceStatus(punctuality)}"`,
         `"${punctuality.label}"`,
         rec?.faceVerified ? "Yes" : "No",
         rec?.geofenceVerified || rec?.withinGeofence ? "Yes" : "No",
@@ -3269,7 +3269,7 @@ function EmployeeAttendanceDossierModal({
       csvRows.push(row.join(","));
     });
 
-    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
