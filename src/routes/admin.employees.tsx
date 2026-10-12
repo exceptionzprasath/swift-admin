@@ -30,7 +30,7 @@ import {
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
   KeyRound, RefreshCw, Copy, Check, Fingerprint, Database, ChevronDown, ShieldAlert,
-  UserX, Snowflake,
+  UserX, Snowflake, MoreHorizontal,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,6 +39,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { downloadEmployeeTemplate, parseEmployeeCsvText, generateEmployeePassword, downloadBulkEmployeesExcel } from "@/lib/bulk-employee";
 import { EmployeeActionsDialog } from "@/components/employee-actions-dialog";
@@ -528,14 +531,14 @@ function EmployeesPage() {
           <table className="w-full text-sm min-w-[1050px]">
             <thead className="bg-muted/50 border-b border-border">
               <tr className="text-left font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                <th className="p-3 pl-4 whitespace-nowrap">Employee</th>
+                <th className="p-3 pl-4 whitespace-nowrap sticky left-0 z-20 bg-muted border-r border-border/60 shadow-[3px_0_6px_-2px_rgba(0,0,0,0.06)] min-w-[240px]">Employee</th>
                 <th className="p-3 whitespace-nowrap">Status</th>
                 <th className="p-3 whitespace-nowrap">Department</th>
                 <th className="p-3 whitespace-nowrap">Branch</th>
                 <th className="p-3 whitespace-nowrap min-w-[220px]">Onboarding Progress</th>
                 <th className="p-3 text-right whitespace-nowrap">Basic</th>
                 <th className="p-3 text-right whitespace-nowrap">Monthly CTC</th>
-                <th className="p-3 text-right pr-4 whitespace-nowrap">Actions</th>
+                <th className="p-3 text-center pr-4 whitespace-nowrap w-16">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -553,8 +556,8 @@ function EmployeesPage() {
                 const assignedBranchIds = getEmployeeBranchIds(e);
                 const assignedBranches = (company.branches ?? []).filter((b) => assignedBranchIds.includes(b.id));
                 return (
-                  <tr key={e.id} className="border-t border-border">
-                    <td className="p-3 pl-4 whitespace-nowrap">
+                  <tr key={e.id} className="border-t border-border group hover:bg-muted/30 transition-colors">
+                    <td className="p-3 pl-4 whitespace-nowrap sticky left-0 z-10 bg-card group-hover:bg-muted/50 transition-colors border-r border-border/60 shadow-[3px_0_6px_-2px_rgba(0,0,0,0.06)] min-w-[240px]">
                       <div className="flex items-center gap-2.5">
                         <div className="h-9 w-9 rounded-full ring-2 ring-primary/25 overflow-hidden bg-primary/10 text-primary grid place-items-center text-xs font-semibold shrink-0">
                           {e.photoDataUrl ? <img src={e.photoDataUrl} className="h-full w-full object-cover" alt={e.name} /> : e.name.split(" ").slice(0, 2).map((s) => s[0]).join("")}
@@ -661,102 +664,114 @@ function EmployeesPage() {
                     </td>
                     <td className="p-3 text-right whitespace-nowrap font-mono">{inr(e.basic)}</td>
                     <td className="p-3 text-right text-primary font-medium whitespace-nowrap font-mono">{inr(p.monthlyCTC)}</td>
-                    <td className="p-3 text-right pr-4 whitespace-nowrap">
-                      <div className="inline-flex items-center justify-end gap-1">
-                        <Button size="sm" variant="ghost" title="Documents & App Signatures" onClick={() => setDocsEmp(e)} className="text-sky-600 hover:bg-sky-500/10">
-                          <FileText className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" title="Edit Employee" onClick={() => setEditingEmp(e)}>
-                          <Pencil className="h-4 w-4 text-primary" />
-                        </Button>
-                        <Button size="sm" variant="ghost" title="Appointment letter" onClick={() => void generateAppointmentPDF(company, e, p, docAssets)}>
-                          <FileDown className="h-4 w-4" />
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 px-2.5 text-xs font-medium gap-1 border-border hover:bg-muted"
-                              title="Account Status"
-                            >
-                              <ShieldAlert className="h-3.5 w-3.5 text-primary" />
-                              <span>Status</span>
-                              <ChevronDown className="h-3 w-3 opacity-60" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground">
-                              Employee Status
-                            </DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleStatusChange(e, "active")}
-                              className="gap-2 cursor-pointer"
-                            >
-                              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                              <span className="font-medium">Active</span>
-                              {(e.status === "active" || !e.status) && <Check className="h-3.5 w-3.5 ml-auto text-emerald-600" />}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleStatusChange(e, "suspended")}
-                              className="gap-2 cursor-pointer"
-                            >
-                              <span className="h-2 w-2 rounded-full bg-amber-500" />
-                              <span className="font-medium">Suspended</span>
-                              {e.status === "suspended" && <Check className="h-3.5 w-3.5 ml-auto text-amber-600" />}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleStatusChange(e, "relieved")}
-                              className="gap-2 cursor-pointer"
-                            >
-                              <span className="h-2 w-2 rounded-full bg-purple-500" />
-                              <span className="font-medium">Releived</span>
-                              {(e.status === "relieved" || e.status === "releived") && <Check className="h-3.5 w-3.5 ml-auto text-purple-600" />}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleStatusChange(e, "terminated")}
-                              className="gap-2 cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-500/10"
-                            >
-                              <span className="h-2 w-2 rounded-full bg-rose-500" />
-                              <span className="font-medium">Terminated</span>
-                              {e.status === "terminated" && <Check className="h-3.5 w-3.5 ml-auto text-rose-600" />}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setFreezeReasonNote("");
-                                setFreezeConfirmEmp(e);
-                              }}
-                              className="gap-2 cursor-pointer text-sky-600 focus:text-sky-600 focus:bg-sky-500/10"
-                            >
-                              <Snowflake className="h-3.5 w-3.5 text-sky-500" />
-                              <span className="font-medium">Freeze Employee</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          title="Freeze Employee (Hide from operations without deleting data)"
-                          className="h-8 w-8 p-0 text-sky-600 hover:text-sky-700 hover:bg-sky-500/10 transition-colors"
-                          onClick={() => {
-                            setFreezeReasonNote("");
-                            setFreezeConfirmEmp(e);
-                          }}
-                        >
-                          <Snowflake className="h-4 w-4 text-sky-500" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          title="Delete Employee"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 transition-colors"
-                          onClick={() => setDeleteConfirmEmp(e)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                    <td className="p-3 text-center pr-4 whitespace-nowrap w-16">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground inline-flex items-center justify-center transition-colors"
+                            title="Employee Actions"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Open menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52 shadow-lg">
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground">
+                            Actions · {e.empCode || e.name}
+                          </DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuItem
+                            onClick={() => setEditingEmp(e)}
+                            className="gap-2 cursor-pointer font-medium"
+                          >
+                            <Pencil className="h-4 w-4 text-primary" />
+                            <span>Edit Employee</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            onClick={() => setDocsEmp(e)}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <FileText className="h-4 w-4 text-sky-600" />
+                            <span>Documents & Signatures</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            onClick={() => void generateAppointmentPDF(company, e, p, docAssets)}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <FileDown className="h-4 w-4 text-emerald-600" />
+                            <span>Appointment Letter</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger className="gap-2 cursor-pointer">
+                              <ShieldAlert className="h-4 w-4 text-primary" />
+                              <span>Change Status</span>
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-44">
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(e, "active")}
+                                className="gap-2 cursor-pointer"
+                              >
+                                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                                <span className="font-medium">Active</span>
+                                {(e.status === "active" || !e.status) && <Check className="h-3.5 w-3.5 ml-auto text-emerald-600" />}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(e, "suspended")}
+                                className="gap-2 cursor-pointer"
+                              >
+                                <span className="h-2 w-2 rounded-full bg-amber-500" />
+                                <span className="font-medium">Suspended</span>
+                                {e.status === "suspended" && <Check className="h-3.5 w-3.5 ml-auto text-amber-600" />}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(e, "relieved")}
+                                className="gap-2 cursor-pointer"
+                              >
+                                <span className="h-2 w-2 rounded-full bg-purple-500" />
+                                <span className="font-medium">Relieved</span>
+                                {(e.status === "relieved" || e.status === "releived") && <Check className="h-3.5 w-3.5 ml-auto text-purple-600" />}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(e, "terminated")}
+                                className="gap-2 cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-500/10"
+                              >
+                                <span className="h-2 w-2 rounded-full bg-rose-500" />
+                                <span className="font-medium">Terminated</span>
+                                {e.status === "terminated" && <Check className="h-3.5 w-3.5 ml-auto text-rose-600" />}
+                              </DropdownMenuItem>
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setFreezeReasonNote("");
+                              setFreezeConfirmEmp(e);
+                            }}
+                            className="gap-2 cursor-pointer text-sky-600 focus:text-sky-600 focus:bg-sky-500/10"
+                          >
+                            <Snowflake className="h-4 w-4 text-sky-500" />
+                            <span>Freeze Employee</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuItem
+                            onClick={() => setDeleteConfirmEmp(e)}
+                            className="gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                            <span>Delete Employee</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 );
