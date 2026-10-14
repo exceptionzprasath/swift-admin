@@ -1062,7 +1062,7 @@ export function PayrollPage() {
       const effectiveOtherEarnings = ov.otherEarnings !== undefined ? ov.otherEarnings : 0;
 
       const deductionInputs = buildDeductionInputs(ov, company);
-      const effectiveEmp = ov.customBasic ? { ...emp, basic: ov.customBasic } : emp;
+      const effectiveEmp = ov.customBasic !== undefined ? { ...emp, basic: ov.customBasic, fixedSalary: ov.customBasic, salary: ov.customBasic } : emp;
 
       const comp = computePayroll({
         company: effectiveCompany,
@@ -3144,8 +3144,8 @@ export function PayrollPage() {
 
                       {/* Fixed Salary */}
                       <td className="px-4 py-3">
-                        <div className="font-medium text-foreground text-xs">{inr(emp.basic || 30000)}</div>
-                        <div className="text-[10px] text-muted-foreground">{(((emp.basic || 30000) * 12) / 100000).toFixed(2)} LPA</div>
+                        <div className="font-medium text-foreground text-xs">{inr(comp.fixedGross ?? emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0)}</div>
+                        <div className="text-[10px] text-muted-foreground">{((((comp.fixedGross ?? emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0) * 12) / 100000)).toFixed(2)} LPA</div>
                       </td>
 
                       {/* Present Days / WO / OT */}
@@ -3245,7 +3245,7 @@ export function PayrollPage() {
 
                               setEditingRecord({
                                 emp: rawEmp,
-                                customBasic: overrideData.customBasic !== undefined ? overrideData.customBasic : emp.basic,
+                                customBasic: overrideData.customBasic !== undefined ? overrideData.customBasic : (emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0),
                                 daysWorked: overrideData.daysWorked !== undefined ? overrideData.daysWorked : rawPresentDays,
                                 otHours: overrideData.otApprovedHours !== undefined ? overrideData.otApprovedHours : (overrideData.otHours !== undefined ? overrideData.otHours : (isOtApproved ? otHours : rawOtHours)),
                                 otApprovedHours: overrideData.otApprovedHours !== undefined ? overrideData.otApprovedHours : (overrideData.otHours !== undefined ? overrideData.otHours : (isOtApproved ? otHours : rawOtHours)),
@@ -3448,7 +3448,7 @@ export function PayrollPage() {
               <CardContent className="space-y-4">
                 {(() => {
                   const emp = employees.find((e) => e.id === selectedEmpId);
-                  const currentBasic = emp?.basic || 30000;
+                  const currentBasic = emp?.fixedSalary ?? emp?.basic ?? emp?.salary ?? 0;
                   const newBasic = currentBasic + revAmount;
                   const currentLpa = ((currentBasic * 12) / 100000).toFixed(2);
                   const newLpa = ((newBasic * 12) / 100000).toFixed(2);
@@ -3760,7 +3760,7 @@ export function PayrollPage() {
                     </tr>
                   ) : (
                     filteredOtRecords.map((reg) => {
-                      const fixedGross = reg.emp.basic || reg.emp.salary || 30000;
+                      const fixedGross = reg.emp.fixedSalary ?? reg.emp.basic ?? reg.emp.salary ?? 0;
                       const wd = company.workingDaysPerMonth || 26;
                       const stdH = company.workingHoursPerDay || 9;
                       const hourlyRate = fixedGross / (wd * stdH);
@@ -5263,7 +5263,7 @@ export function PayrollPage() {
                       });
 
                       // 2. Persist updated base salary to DynamoDB (swift_company_employees)
-                      const origSalary = editingRecord.emp.basic || editingRecord.emp.salary || 0;
+                      const origSalary = editingRecord.emp.fixedSalary ?? editingRecord.emp.basic ?? editingRecord.emp.salary ?? 0;
                       if (editingRecord.customBasic !== undefined && editingRecord.customBasic !== origSalary) {
                         updateEmployee(editingRecord.emp.id, {
                           basic: editingRecord.customBasic,

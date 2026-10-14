@@ -121,7 +121,7 @@ function evalEarning(
       return asNum(map[c.inputKey || c.id]);
     }
     case "pctOfCtc": {
-      const ctcMonthly = (employee.basic || 0) * (c.value / 100);
+      const ctcMonthly = (employee.fixedSalary ?? employee.basic ?? employee.salary ?? 0) * (c.value / 100);
       return ctcMonthly * prorateFactor;
     }
     default:
@@ -205,8 +205,9 @@ export function computePayroll(opts: {
   const prorateFactor = wd > 0 ? paidDays / wd : 1;
 
   // The employee's monthly fixed gross salary (e.g. ₹25,000 or ₹30,000)
-  const fixedGross = e.basic || 30000;
-  const hourly = fixedGross / (wd * (c.workingHoursPerDay || 8));
+  const rawGross = e.fixedSalary ?? e.basic ?? e.salary ?? 0;
+  const fixedGross = typeof rawGross === "number" && !isNaN(rawGross) ? rawGross : 0;
+  const hourly = wd > 0 && (c.workingHoursPerDay || 8) > 0 && fixedGross > 0 ? fixedGross / (wd * (c.workingHoursPerDay || 8)) : 0;
 
   // 1. Resolve Salary Structure Components according to Company Master & Toggles
   // Merged Basic + DA (Core Mandatory Wage Head)
@@ -640,7 +641,8 @@ export function explainPayroll(company: Company, employee: Employee, p: PayrollC
   const out: { id: string; text: string }[] = [];
   const wd = c.workingDaysPerMonth || 26;
 
-  out.push({ id: "basic", text: `Basic = ₹${Math.round(employee.basic).toLocaleString("en-IN")} × days worked ÷ ${wd} working days.` });
+  const baseSalary = employee.fixedSalary ?? employee.basic ?? 0;
+  out.push({ id: "basic", text: `Basic = ₹${Math.round(baseSalary).toLocaleString("en-IN")} × days worked ÷ ${wd} working days.` });
 
   for (const row of p.earningsList) {
     if (row.id === "basic") continue;

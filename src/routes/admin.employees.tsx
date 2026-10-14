@@ -1604,8 +1604,8 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                     <Field
                       label="Fixed Salary (Monthly ₹) *"
                       type="number"
-                      value={String(form.fixedSalary ?? form.basic)}
-                      onChange={(v) => setForm({ ...form, fixedSalary: +v || 0, basic: +v || 0 })}
+                      value={String(form.fixedSalary ?? form.basic ?? 0)}
+                      onChange={(v) => setForm({ ...form, fixedSalary: +v || 0, basic: +v || 0, salary: +v || 0 })}
                     />
                     <Field
                       label="PF UAN No"
@@ -3410,8 +3410,8 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     <Label className="text-xs font-semibold text-primary">Fixed Salary (Monthly ₹) *</Label>
                     <Input
                       type="number"
-                      value={form.fixedSalary ?? form.basic ?? 25000}
-                      onChange={(e) => setForm({ ...form, fixedSalary: +e.target.value, basic: +e.target.value })}
+                      value={form.fixedSalary ?? form.basic ?? 0}
+                      onChange={(e) => setForm({ ...form, fixedSalary: +e.target.value || 0, basic: +e.target.value || 0, salary: +e.target.value || 0 })}
                       className="font-bold"
                     />
                   </div>
@@ -4316,7 +4316,7 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
                           </td>
                           <td className="p-2 text-muted-foreground">{emp.department}</td>
                           <td className="p-2 text-muted-foreground">{emp.designation}</td>
-                          <td className="p-2 font-mono">₹{(emp.fixedSalary ?? 0).toLocaleString()}</td>
+                          <td className="p-2 font-mono">₹{(emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0).toLocaleString()}</td>
                           <td className="p-2 font-mono text-[11px]">{emp.doj}</td>
                           <td className="p-2">
                             <div className="text-[11px] font-medium">{branchObj ? branchObj.name : emp.branchId || "All Branches"}</div>
