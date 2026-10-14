@@ -3177,11 +3177,12 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
     }
   }, [employee]);
 
-  if (!employee) return null;
-
   const editDupCheck = useMemo(() => {
-    return findEmployeeDuplicates(form, employees, employee?.id);
-  }, [form, employees, employee?.id]);
+    if (!employee) return { hasDuplicate: false, conflicts: [], byField: {} };
+    return findEmployeeDuplicates(form, employees, employee.id);
+  }, [form, employees, employee]);
+
+  if (!employee) return null;
 
   const handleSave = async () => {
     if (!form.name?.trim() || !form.empCode?.trim()) {
