@@ -49,6 +49,8 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { INDIAN_STATES } from "@/lib/india-locations";
 import { OnboardingChecklistDialog } from "@/components/OnboardingChecklistDialog";
+import { findEmployeeDuplicates, checkEmployeeDuplicatesRemote } from "@/lib/employee-validation";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/admin/employees")({
   head: () => ({ meta: [{ title: "Employees · CreatonsHR" }] }),
@@ -968,16 +970,85 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
   const flow = FORM_STEPS;
   const current = flow[step];
 
+  // Real-time duplicate employee validation against in-memory loaded employee database
+  const duplicatesResult = useMemo(() => {
+    return findEmployeeDuplicates(form, employees);
+  }, [form, employees]);
+
+  const currentStepConflict = useMemo(() => {
+    if (!current) return null;
+    if (current.key === "photo") return duplicatesResult.byField.empCode || null;
+    if (current.key === "personal") {
+      return (
+        duplicatesResult.byField.email ||
+        duplicatesResult.byField.phone ||
+        duplicatesResult.byField.pan ||
+        duplicatesResult.byField.aadhaar ||
+        null
+      );
+    }
+    if (current.key === "address") return duplicatesResult.byField.uan || null;
+    if (current.key === "employment") return duplicatesResult.byField.uan || null;
+    return null;
+  }, [current, duplicatesResult]);
+
   const canNext = () => {
     if (!current) return false;
-    if (current.key === "photo") return !!form.name && !!form.empCode;
-    if (current.key === "personal") return !!form.name && !!form.email && !!form.phone;
-    if (current.key === "employment") return !!form.designation && !!form.department && !!form.doj;
+    if (currentStepConflict) return false;
+    if (current.key === "photo") return !!form.name && !!form.empCode && !duplicatesResult.byField.empCode;
+    if (current.key === "personal") {
+      return (
+        !!form.name &&
+        !!form.email &&
+        !!form.phone &&
+        !duplicatesResult.byField.email &&
+        !duplicatesResult.byField.phone &&
+        !duplicatesResult.byField.pan &&
+        !duplicatesResult.byField.aadhaar
+      );
+    }
+    if (current.key === "employment") return !!form.designation && !!form.department && !!form.doj && !duplicatesResult.byField.uan;
+    if (current.key === "address") return !duplicatesResult.byField.uan;
     return true;
   };
 
-  const finish = () => {
+  const finish = async () => {
     if (!form.empCode || !form.name) return toast.error("Employee code and name required");
+
+    // 1. Immediate in-memory database check
+    const localDup = findEmployeeDuplicates(form, employees);
+    if (localDup.hasDuplicate) {
+      const topConflict = localDup.conflicts[0];
+      toast.error(`Already in database: ${topConflict.message}`);
+      // Automatically jump to the step containing the conflict so HR can see and resolve it
+      if (topConflict.field === "empCode") {
+        setStep(flow.findIndex((s) => s.key === "photo"));
+      } else if (["email", "phone", "pan", "aadhaar"].includes(topConflict.field)) {
+        setStep(flow.findIndex((s) => s.key === "personal"));
+      } else if (topConflict.field === "uan") {
+        setStep(flow.findIndex((s) => s.key === "address"));
+      }
+      return;
+    }
+
+    // 2. Real-time remote check against backend DynamoDB database
+    const activeTenantId = useAuth.getState().activeTenantId || (company as any).id;
+    if (activeTenantId && !activeTenantId.startsWith("demo-tenant-")) {
+      const remoteDup = await checkEmployeeDuplicatesRemote(activeTenantId, form);
+      if (remoteDup.hasDuplicate) {
+        const topConflict = remoteDup.conflicts[0];
+        toast.error(`Already in database: ${topConflict.message}`);
+        if (topConflict.field === "empCode") {
+          setStep(flow.findIndex((s) => s.key === "photo"));
+        } else if (["email", "phone", "pan", "aadhaar"].includes(topConflict.field)) {
+          setStep(flow.findIndex((s) => s.key === "personal"));
+        } else if (topConflict.field === "uan") {
+          setStep(flow.findIndex((s) => s.key === "address"));
+        }
+        return;
+      }
+    }
+
     const emp = addEmployee({ ...form, faceRegistered: !!form.photoDataUrl || form.faceRegistered });
     ensureJourney(emp.id);
     const p = computePayroll({ company, employee: emp, daysWorked: company.workingDaysPerMonth, otHours: 0, incentive: 0, shiftDays: 0, loan: 0, advance: 0, bonus: 0 });
@@ -1129,7 +1200,13 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
 
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Full Name *" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-                    <Field label="Employee Code *" value={form.empCode} onChange={(v) => setForm({ ...form, empCode: v })} placeholder="SW0001" />
+                    <Field
+                      label="Employee Code *"
+                      value={form.empCode}
+                      onChange={(v) => setForm({ ...form, empCode: v })}
+                      placeholder="SW0001"
+                      error={duplicatesResult.byField.empCode?.message}
+                    />
 
                     {/* Auto Generated Password Card */}
                     <div className="col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2.5">
@@ -1190,8 +1267,18 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 <div className="space-y-4">
                   <StepHead icon={User} title="Personal Details" subtitle="Contact and KYC. Fields you skip can be filled by the employee later." />
                   <div className="grid grid-cols-2 gap-4">
-                    <Field label="Email *" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
-                    <Field label="Phone *" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
+                    <Field
+                      label="Email *"
+                      value={form.email}
+                      onChange={(v) => setForm({ ...form, email: v })}
+                      error={duplicatesResult.byField.email?.message}
+                    />
+                    <Field
+                      label="Phone *"
+                      value={form.phone}
+                      onChange={(v) => setForm({ ...form, phone: v })}
+                      error={duplicatesResult.byField.phone?.message}
+                    />
                     <Field label="Date of Birth" type="date" value={form.dob || ""} onChange={(v) => setForm({ ...form, dob: v })} />
                     <div>
                       <Label>Gender</Label>
@@ -1220,8 +1307,18 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       <Label>Address</Label>
                       <Input value={form.address || ""} onChange={(e) => setForm({ ...form, address: e.target.value })} />
                     </div>
-                    <Field label="PAN" value={form.pan || ""} onChange={(v) => setForm({ ...form, pan: v.toUpperCase() })} />
-                    <Field label="Aadhaar" value={form.aadhaar || ""} onChange={(v) => setForm({ ...form, aadhaar: v })} />
+                    <Field
+                      label="PAN"
+                      value={form.pan || ""}
+                      onChange={(v) => setForm({ ...form, pan: v.toUpperCase() })}
+                      error={duplicatesResult.byField.pan?.message}
+                    />
+                    <Field
+                      label="Aadhaar"
+                      value={form.aadhaar || ""}
+                      onChange={(v) => setForm({ ...form, aadhaar: v })}
+                      error={duplicatesResult.byField.aadhaar?.message}
+                    />
                   </div>
                 </div>
               )}
@@ -1246,7 +1343,12 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                     </div>
                     <Field label="Country" value={form.country || "India"} onChange={(v) => setForm({ ...form, country: v })} />
                     <Field label="Pincode" value={form.pincode || ""} onChange={(v) => setForm({ ...form, pincode: v })} />
-                    <Field label="UAN" value={form.uan || ""} onChange={(v) => setForm({ ...form, uan: v })} />
+                    <Field
+                      label="UAN"
+                      value={form.uan || ""}
+                      onChange={(v) => setForm({ ...form, uan: v })}
+                      error={duplicatesResult.byField.uan?.message}
+                    />
                     <Field label="ESIC" value={form.esic || ""} onChange={(v) => setForm({ ...form, esic: v })} />
                     <Field label="PF Number" value={form.pfNumber || ""} onChange={(v) => setForm({ ...form, pfNumber: v })} />
                     <Field label="Passport #" value={form.passportNumber || ""} onChange={(v) => setForm({ ...form, passportNumber: v })} />
@@ -1470,6 +1572,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       placeholder="12-digit UAN (e.g. 100987654321)"
                       value={form.uan || ""}
                       onChange={(v) => setForm({ ...form, uan: v.replace(/\D/g, "").slice(0, 12) })}
+                      error={duplicatesResult.byField.uan?.message}
                     />
                     <Field label="Bank Account" value={form.bankAcc || ""} onChange={(v) => setForm({ ...form, bankAcc: v })} />
                     <Field label="IFSC" value={form.bankIfsc || ""} onChange={(v) => setForm({ ...form, bankIfsc: v.toUpperCase() })} />
@@ -2134,13 +2237,25 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
           <Button variant="ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>
             <ChevronLeft className="h-4 w-4 mr-1" /> Back
           </Button>
-          <div className="text-xs text-muted-foreground">Step {step + 1} of {flow.length}</div>
+          <div className="flex flex-col items-center">
+            <div className="text-xs text-muted-foreground">Step {step + 1} of {flow.length}</div>
+            {currentStepConflict && (
+              <span className="text-[11px] font-semibold text-destructive animate-pulse mt-0.5 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3 shrink-0" />
+                <span>{currentStepConflict.label} already in database</span>
+              </span>
+            )}
+          </div>
           {step < flow.length - 1 ? (
             <Button className="bg-gradient-brand text-white" disabled={!canNext()} onClick={() => setStep(step + 1)}>
               Continue <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           ) : (
-            <Button className="bg-gradient-brand text-white shadow-glow" onClick={finish}>
+            <Button
+              className="bg-gradient-brand text-white shadow-glow"
+              disabled={duplicatesResult.hasDuplicate}
+              onClick={finish}
+            >
               <CheckCircle2 className="h-4 w-4 mr-1" /> Create Employee
             </Button>
           )}
@@ -2805,11 +2920,61 @@ function StepHead({ icon: Icon, title, subtitle }: { icon: typeof User; title: s
   );
 }
 
-function Field({ label, value, onChange, type = "text", placeholder }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  error,
+  warning,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  error?: string;
+  warning?: string;
+  className?: string;
+}) {
   return (
-    <div>
-      <Label>{label}</Label>
-      <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+    <div className={className}>
+      <div className="flex items-center justify-between mb-1">
+        <Label className={error ? "text-destructive font-medium" : ""}>{label}</Label>
+      </div>
+      <div className="relative">
+        <Input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={
+            error
+              ? "border-destructive focus-visible:ring-destructive/30 bg-destructive/5 text-destructive pr-8 font-medium"
+              : warning
+              ? "border-amber-500 focus-visible:ring-amber-500/30 bg-amber-500/5 pr-8"
+              : ""
+          }
+        />
+        {error && (
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-destructive pointer-events-none">
+            <AlertTriangle className="h-4 w-4" />
+          </div>
+        )}
+      </div>
+      {error && (
+        <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1.5 animate-in fade-in-50">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span>{error}</span>
+        </p>
+      )}
+      {!error && warning && (
+        <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1.5">
+          <span>⚠ {warning}</span>
+        </p>
+      )}
     </div>
   );
 }
@@ -2872,10 +3037,27 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
 
   if (!employee) return null;
 
-  const handleSave = () => {
+  const editDupCheck = useMemo(() => {
+    return findEmployeeDuplicates(form, employees, employee?.id);
+  }, [form, employees, employee?.id]);
+
+  const handleSave = async () => {
     if (!form.name?.trim() || !form.empCode?.trim()) {
       return toast.error("Full Name and Employee Code are required");
     }
+
+    if (editDupCheck.hasDuplicate) {
+      return toast.error(`Already in database: ${editDupCheck.conflicts[0].message}`);
+    }
+
+    const activeTenantId = useAuth.getState().activeTenantId || (company as any).id;
+    if (activeTenantId && !activeTenantId.startsWith("demo-tenant-")) {
+      const remoteDup = await checkEmployeeDuplicatesRemote(activeTenantId, form, employee.id);
+      if (remoteDup.hasDuplicate) {
+        return toast.error(`Already in database: ${remoteDup.conflicts[0].message}`);
+      }
+    }
+
     updateEmployee(employee.id, { ...form, faceRegistered: !!form.photoDataUrl || form.faceRegistered });
     toast.success(`${form.name} updated successfully`);
     onClose();
@@ -2986,8 +3168,18 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                           <Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                         </div>
                         <div>
-                          <Label className="text-xs">Employee Code *</Label>
-                          <Input value={form.empCode || ""} onChange={(e) => setForm({ ...form, empCode: e.target.value })} />
+                          <Label className={`text-xs ${editDupCheck.byField.empCode ? "text-destructive font-medium" : ""}`}>Employee Code *</Label>
+                          <Input
+                            value={form.empCode || ""}
+                            onChange={(e) => setForm({ ...form, empCode: e.target.value })}
+                            className={editDupCheck.byField.empCode ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                          />
+                          {editDupCheck.byField.empCode && (
+                            <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                              <span>{editDupCheck.byField.empCode.message}</span>
+                            </p>
+                          )}
                         </div>
                         <div className="sm:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
                           <div className="flex items-center justify-between">
@@ -3165,12 +3357,34 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Work Assignment & Role</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <Label className="text-xs">Work Email</Label>
-                    <Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                    <Label className={`text-xs ${editDupCheck.byField.email ? "text-destructive font-medium" : ""}`}>Work Email</Label>
+                    <Input
+                      type="email"
+                      value={form.email || ""}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      className={editDupCheck.byField.email ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                    />
+                    {editDupCheck.byField.email && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.email.message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <Label className="text-xs">Phone Number</Label>
-                    <Input type="tel" value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                    <Label className={`text-xs ${editDupCheck.byField.phone ? "text-destructive font-medium" : ""}`}>Phone Number</Label>
+                    <Input
+                      type="tel"
+                      value={form.phone || ""}
+                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                      className={editDupCheck.byField.phone ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                    />
+                    {editDupCheck.byField.phone && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.phone.message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <EmploymentTypeSelect
@@ -3274,12 +3488,19 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">PF UAN No</Label>
+                    <Label className={`text-xs ${editDupCheck.byField.uan ? "text-destructive font-medium" : ""}`}>PF UAN No</Label>
                     <Input
                       placeholder="12-digit UAN"
                       value={form.uan || ""}
                       onChange={(e) => setForm({ ...form, uan: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                      className={editDupCheck.byField.uan ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
                     />
+                    {editDupCheck.byField.uan && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.uan.message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">PF Number / Member ID</Label>
@@ -3342,20 +3563,34 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Statutory KYC & Government IDs</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Aadhaar Card Number</Label>
+                    <Label className={`text-xs ${editDupCheck.byField.aadhaar ? "text-destructive font-medium" : ""}`}>Aadhaar Card Number</Label>
                     <Input
                       placeholder="12-digit Aadhaar Number"
                       value={form.aadhaar || ""}
                       onChange={(e) => setForm({ ...form, aadhaar: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                      className={editDupCheck.byField.aadhaar ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
                     />
+                    {editDupCheck.byField.aadhaar && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.aadhaar.message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <Label className="text-xs">PAN Card Number</Label>
+                    <Label className={`text-xs ${editDupCheck.byField.pan ? "text-destructive font-medium" : ""}`}>PAN Card Number</Label>
                     <Input
                       placeholder="10-digit PAN (e.g. ABCDE1234F)"
                       value={form.pan || ""}
                       onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })}
+                      className={editDupCheck.byField.pan ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
                     />
+                    {editDupCheck.byField.pan && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.pan.message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">Passport Number</Label>
@@ -4032,10 +4267,19 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
     setLoading(true);
     let count = 0;
     const toImport = parsed.employees.filter((emp) => {
-      const isDup = employees.some((e) => e.empCode?.toLowerCase() === emp.empCode?.toLowerCase());
-      if (isDup && skipDuplicates) return false;
+      const dupCheck = findEmployeeDuplicates(emp, employees);
+      if (dupCheck.hasDuplicate && skipDuplicates) return false;
       return true;
     });
+
+    if (!skipDuplicates) {
+      const conflicting = parsed.employees.find((emp) => findEmployeeDuplicates(emp, employees).hasDuplicate);
+      if (conflicting) {
+        const dupResult = findEmployeeDuplicates(conflicting, employees);
+        setLoading(false);
+        return toast.error(`Cannot import duplicate employee: ${dupResult.conflicts[0]?.message || "Record already exists in database"}`);
+      }
+    }
 
     for (const emp of toImport) {
       addEmployee(emp);

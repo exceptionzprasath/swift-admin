@@ -1,4 +1,5 @@
 import type { Employee, PredefinedRole, Branch, ShiftType, Device } from "./store";
+import { findEmployeeDuplicates } from "./employee-validation";
 import * as XLSX from "xlsx";
 
 export function generateEmployeePassword(): string {
@@ -1403,8 +1404,14 @@ export function parseEmployeeCsvText(
       continue;
     }
 
-    if (existingCodes.has(empCode.toLowerCase())) {
-      duplicates.push(empCode);
+    const dupCheck = findEmployeeDuplicates(
+      { empCode, email, phone, pan, aadhaar, uan },
+      [...existingEmployees, ...(parsedList as unknown as Employee[])]
+    );
+
+    if (dupCheck.hasDuplicate) {
+      const msgs = dupCheck.conflicts.map((c) => `${c.label} duplicate: ${c.value}`).join(", ");
+      duplicates.push(`Row ${i + 1} (${empCode || name}): ${msgs}`);
     }
 
     parsedList.push({
