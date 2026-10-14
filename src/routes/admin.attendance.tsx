@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { useStore, isMockEmployee, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device } from "@/lib/store";
+import { useStore, isMockEmployee, isFrozenEmployee, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,13 +89,15 @@ import {
   ChevronUp,
   Info,
   CheckCheck,
+  UploadCloud,
 } from "lucide-react";
 import { toast } from "sonner";
 import { HardwareBridgeModal } from "@/components/biometric/HardwareBridgeModal";
 import { LiveBiometricFeed } from "@/components/biometric/LiveBiometricFeed";
 import { DeviceManagerHub } from "@/components/biometric/DeviceManagerHub";
 import { StaffBiometricDirectory } from "@/components/biometric/StaffBiometricDirectory";
-import { MonthlyStaffMatrixHub } from "@/components/attendance/MonthlyStaffMatrixHub";
+import { MonthlyStaffMatrixHub, getExportAttendanceStatus } from "@/components/attendance/MonthlyStaffMatrixHub";
+import { UniversalUsbUploadModal } from "@/components/biometric/UniversalUsbUploadModal";
 
 // Utility: Parse time string in 12h, 24h, or with seconds into total minutes of the day
 function parseTimeMinutes(s?: string): number {
@@ -321,7 +323,7 @@ function AttendancePage() {
     deleteDevice,
     loadCompanyState,
   } = useStore();
-  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e)), [rawEmployees]);
+  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)), [rawEmployees]);
   const { activeTenantId } = useAuth();
 
   // Primary Selected Date for Daily View
@@ -378,6 +380,7 @@ function AttendancePage() {
 
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isAgentGuideOpen, setIsAgentGuideOpen] = useState(false);
+  const [isUsbUploadModalOpen, setIsUsbUploadModalOpen] = useState(false);
 
   const handleOpenAddDevice = (device?: Device) => {
     if (device) {
@@ -1216,11 +1219,11 @@ function AttendancePage() {
         `"${emp.department || ""}"`,
         `"${branch?.name || ""}"`,
         `"${scheduled.shift.name || "General"}"`,
-        `"${rec?.checkIn || rec?.clockIn || "—"}"`,
-        `"${rec?.checkOut || rec?.clockOut || "—"}"`,
+        `"${rec?.checkIn || rec?.clockIn || "-"}"`,
+        `"${rec?.checkOut || rec?.clockOut || "-"}"`,
         getRecordHours(rec, company.workingHoursPerDay || 9).hoursWorked,
         getRecordHours(rec, company.workingHoursPerDay || 9).otHours,
-        `"${punctuality.status}"`,
+        `"${getExportAttendanceStatus(punctuality)}"`,
         `"${punctuality.label}"`,
         rec?.faceVerified ? "Yes" : "No",
         rec?.geofenceVerified || rec?.withinGeofence ? "Yes" : "No",
@@ -1229,7 +1232,7 @@ function AttendancePage() {
       csvRows.push(row.join(","));
     });
 
-    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -1322,6 +1325,17 @@ function AttendancePage() {
           >
             <Edit3 className="h-3.5 w-3.5 text-primary" />
             <span>Regularize Punch</span>
+          </Button>
+
+          {/* Upload USB Biometric Logs */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsUsbUploadModalOpen(true)}
+            className="gap-1.5 h-9 rounded-xl shadow-xs border-primary/40 hover:bg-primary/5 text-primary font-medium"
+          >
+            <UploadCloud className="h-3.5 w-3.5 text-primary" />
+            <span>Upload USB Logs</span>
           </Button>
 
           {/* Export Report */}
@@ -3008,6 +3022,17 @@ function AttendancePage() {
         companyName={company.name || "Head Office"}
       />
 
+      {/* ========================================================================= */}
+      {/* 9. UNIVERSAL CLOUD-NATIVE BIOMETRIC USB INGESTION & MATRIX ENGINE (AWS)    */}
+      {/* ========================================================================= */}
+      <UniversalUsbUploadModal
+        isOpen={isUsbUploadModalOpen}
+        onClose={() => setIsUsbUploadModalOpen(false)}
+        onSuccessSave={() => {
+          handleLiveSync(false);
+        }}
+      />
+
     </div>
   );
 }
@@ -3231,11 +3256,11 @@ function EmployeeAttendanceDossierModal({
         `"${dateStr}"`,
         `"${dayName}"`,
         `"${scheduled?.shift?.name || "General"}"`,
-        `"${rec?.checkIn || rec?.clockIn || "—"}"`,
-        `"${rec?.checkOut || rec?.clockOut || "—"}"`,
+        `"${rec?.checkIn || rec?.clockIn || "-"}"`,
+        `"${rec?.checkOut || rec?.clockOut || "-"}"`,
         (() => { const h = getRecordHours(rec); return h.hoursWorked; })(),
         (() => { const h = getRecordHours(rec); return h.otHours; })(),
-        `"${punctuality.status}"`,
+        `"${getExportAttendanceStatus(punctuality)}"`,
         `"${punctuality.label}"`,
         rec?.faceVerified ? "Yes" : "No",
         rec?.geofenceVerified || rec?.withinGeofence ? "Yes" : "No",
@@ -3244,7 +3269,7 @@ function EmployeeAttendanceDossierModal({
       csvRows.push(row.join(","));
     });
 
-    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;

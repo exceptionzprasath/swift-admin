@@ -229,9 +229,9 @@ export function downloadWageRegisterExcel({
     const ncpDays = absentDays;
 
     // Salary & Pay Slab
-    const fixedSalary = ov.customBasic ? ov.customBasic : (emp.fixedSalary ?? emp.basic ?? 25000);
-    const paySlab = Math.round(fixedSalary / workingDaysBase);
-    const perHrAmt = Math.round(paySlab / stdWorkingHours);
+    const fixedSalary = ov.customBasic !== undefined ? ov.customBasic : (emp.fixedSalary ?? emp.basic ?? 0);
+    const paySlab = workingDaysBase > 0 ? Math.round(fixedSalary / workingDaysBase) : 0;
+    const perHrAmt = stdWorkingHours > 0 ? Math.round(paySlab / stdWorkingHours) : 0;
     const latePunchingAmt = Math.round(latePunchHours * perHrAmt);
 
     // Compute Payroll using company rules and overrides
@@ -343,7 +343,9 @@ export function downloadWageRegisterExcel({
     const effectiveVariablePay = ov.variablePay !== undefined ? ov.variablePay : 0;
     const effectiveOtherEarnings = ov.otherEarnings !== undefined ? ov.otherEarnings : 0;
 
-    const effectiveEmp = ov.customBasic ? { ...emp, basic: ov.customBasic } : { ...emp, basic: fixedSalary };
+    const effectiveEmp = ov.customBasic !== undefined
+      ? { ...emp, basic: ov.customBasic, fixedSalary: ov.customBasic }
+      : { ...emp, basic: fixedSalary, fixedSalary: fixedSalary };
 
     const comp = computePayroll({
       company: effectiveCompany,

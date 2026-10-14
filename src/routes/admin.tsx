@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
+import { getNormalizedRequests } from "@/lib/requests-normalizer";
 import creatonsLogoBanner from "@/assets/CreatonsHR-Banner.png";
 import creatonsLogoIcon from "@/assets/CreatonHR.png";
 import { ThemeToggle } from "@/components/theme";
@@ -126,7 +127,7 @@ type NavItem = {
 
 const nav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, moduleKey: "dashboard", exact: true },
-  { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox, moduleKey: "requests", badge: 2 },
+  { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox, moduleKey: "requests" },
   { to: "/admin/ai", label: "SWIFT AI", icon: Brain, moduleKey: "ai", badge: "AI" },
   { to: "/admin/team-chat", label: "Team Chat", icon: MessagesSquare, moduleKey: "teamChat" },
   { to: "/admin/notices", label: "Notice Board", icon: Megaphone, moduleKey: "notices" },
@@ -163,7 +164,23 @@ function AdminLayout() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const employees = useStore((s) => s.employees || []);
+  const requests = useStore((s) => s.requests || []);
+  const leaves = useStore((s) => s.leaves || []);
+  const docRequests = useStore((s) => s.docRequests || []);
+  const grievances = useStore((s) => s.grievances || []);
   const selectedMenuName = getSelectedMenuName(path);
+
+  // Live count of pending requests awaiting action
+  const pendingRequestsCount = useMemo(() => {
+    const list = getNormalizedRequests({
+      requests,
+      leaves,
+      docRequests,
+      grievances,
+      employees,
+    });
+    return list.filter((r) => r.status === "Pending").length;
+  }, [requests, leaves, docRequests, grievances, employees]);
 
   // Keyboard shortcut Ctrl+K / Cmd+K to trigger global command search
   useEffect(() => {
@@ -237,9 +254,17 @@ function AdminLayout() {
     return resolveModulePermissions(activeRole);
   }, [isSuperAdminOrOwner, previewRole, activeRole]);
 
-  // Filter navigation items by role sidebar visibility and search query
+  // Filter navigation items by role sidebar visibility and search query, injecting dynamic live pending badge
   const filteredNav = useMemo(() => {
-    let list = nav;
+    let list = nav.map((item) => {
+      if (item.to === "/admin/requests" || item.moduleKey === "requests") {
+        return {
+          ...item,
+          badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined,
+        };
+      }
+      return item;
+    });
     if (activePermissions) {
       list = list.filter((item) => {
         if (!item.moduleKey) return true;
@@ -251,7 +276,7 @@ function AdminLayout() {
       list = list.filter((item) => item.label.toLowerCase().includes(searchQuery.toLowerCase()));
     }
     return list;
-  }, [activePermissions, searchQuery]);
+  }, [pendingRequestsCount, activePermissions, searchQuery]);
 
   const currentModuleKey = getPathModuleKey(path);
   const isRouteBlocked =
@@ -362,6 +387,7 @@ function AdminLayout() {
           <nav className={`overflow-y-auto flex-1 no-scrollbar ${collapsed ? "flex flex-col items-center gap-3.5 py-3 px-2 w-full" : "space-y-1.5 p-3 pt-1.5"}`}>
             {filteredNav.map((n) => {
               const active = n.exact ? path === n.to : path.startsWith(n.to);
+              const hasNumericBadge = typeof n.badge === "number" && n.badge > 0;
               return collapsed ? (
                 <Tooltip key={n.to}>
                   <TooltipTrigger asChild>
@@ -376,21 +402,44 @@ function AdminLayout() {
                             }
                           : undefined
                       }
-                      className={`h-11 w-11 aspect-square rounded-full flex items-center justify-center shrink-0 transition-all ${
+                      className={`relative h-11 w-11 aspect-square rounded-full flex items-center justify-center shrink-0 transition-all ${
                         active
                           ? "font-bold shadow-md"
                           : "text-sidebar-foreground/85 hover:text-sidebar-foreground hover:bg-sidebar-accent"
                       }`}
                     >
                       <n.icon className="h-5 w-5 shrink-0" />
+
+                      {/* Notification dot on collapsed sidebar */}
+                      {hasNumericBadge && (
+                        <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5 pointer-events-none" aria-label={`${n.badge} pending`}>
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 ring-2 ring-sidebar" />
+                        </span>
+                      )}
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent
                     side="right"
                     sideOffset={14}
-                    className="bg-slate-900 text-white text-xs font-semibold px-3.5 py-1.5 rounded-xl shadow-xl z-50 pointer-events-none"
+                    className="bg-slate-900 text-white text-xs font-semibold px-3.5 py-1.5 rounded-xl shadow-xl z-50 pointer-events-none flex items-center gap-2"
                   >
-                    {n.label}
+                    <span>{n.label}</span>
+                    {hasNumericBadge && (
+                      <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-tight">
+                        {typeof n.badge === "number" && n.badge > 99 ? "99+" : n.badge}
+                      </span>
+                    )}
+                    {n.badge === "AI" && (
+                      <span className="bg-primary/20 text-primary text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-tight">
+                        AI
+                      </span>
+                    )}
+                    {n.comingSoon && (
+                      <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-tight">
+                        Soon
+                      </span>
+                    )}
                   </TooltipContent>
                 </Tooltip>
               ) : (
@@ -422,7 +471,7 @@ function AdminLayout() {
                   </div>
 
                   {/* Badge count / status */}
-                  {(n.badge || n.comingSoon) && (
+                  {(n.badge !== undefined || n.comingSoon) && (
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full shadow-2xs shrink-0 ${
                         active
@@ -434,7 +483,11 @@ function AdminLayout() {
                           : "bg-rose-500 text-white"
                       }`}
                     >
-                      {n.comingSoon ? "Soon" : n.badge}
+                      {n.comingSoon
+                        ? "Soon"
+                        : typeof n.badge === "number" && n.badge > 99
+                        ? "99+"
+                        : n.badge}
                     </span>
                   )}
                 </Link>

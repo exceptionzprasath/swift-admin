@@ -25,6 +25,14 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
@@ -490,143 +498,272 @@ function UnifiedRequestsHubPage() {
         </div>
       </div>
 
-      {/* KPI Cards Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-        <Card className="rounded-xl border-border bg-card/60 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-xs font-medium">Total Received</span>
-              <Layers className="h-4 w-4 text-primary" />
-            </div>
-            <div className="font-display text-2xl font-bold text-foreground">{kpis.total}</div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">All Categories Combined</p>
-          </CardContent>
-        </Card>
+      {/* Executive Metric Card (Consolidated Request Distribution) */}
+      {(() => {
+        const total = kpis.total;
+        const pendingTotal = kpis.pending + kpis.escalated;
+        const approvedPct = total > 0 ? (kpis.approved / total) * 100 : 0;
+        const pendingPct = total > 0 ? (pendingTotal / total) * 100 : 0;
+        const rejectedPct = total > 0 ? (kpis.rejected / total) * 100 : 0;
 
-        <Card className="rounded-xl border-amber-500/20 bg-amber-500/5 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
-              <span className="text-xs font-medium">Pending Approvals</span>
-              <Clock className="h-4 w-4" />
-            </div>
-            <div className="font-display text-2xl font-bold text-amber-600 dark:text-amber-400">{kpis.pending}</div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Awaiting Manager / HR Sign-off</p>
-          </CardContent>
-        </Card>
+        return (
+          <Card className="rounded-2xl border border-border bg-card shadow-xs overflow-hidden">
+            <CardContent className="p-6">
+              {/* Top Row: Big Total Metric + Baseline Subtitle */}
+              <div className="flex flex-wrap items-baseline gap-3 sm:gap-4 mb-4">
+                <span className="font-display text-4xl sm:text-5xl font-extrabold tracking-tight text-foreground">
+                  {total.toLocaleString()}
+                </span>
+                <span className="text-xs sm:text-sm font-medium text-muted-foreground">
+                  Total Requests Across All Departments
+                </span>
+              </div>
 
-        <Card className="rounded-xl border-emerald-500/20 bg-emerald-500/5 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1">
-              <span className="text-xs font-medium">Approved Requests</span>
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-            <div className="font-display text-2xl font-bold text-emerald-600 dark:text-emerald-400">{kpis.approved}</div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Finalized & Dispatched</p>
-          </CardContent>
-        </Card>
+              {/* Segmented Horizontal Progress Bar */}
+              <div className="w-full h-3 rounded-full bg-muted/60 overflow-hidden flex">
+                {total === 0 ? (
+                  <div className="w-full h-full bg-muted/40" />
+                ) : (
+                  <>
+                    {approvedPct > 0 && (
+                      <div
+                        className="h-full bg-primary transition-all duration-500 ease-out"
+                        style={{ width: `${approvedPct}%` }}
+                        title={`Approved: ${kpis.approved} (${Math.round(approvedPct)}%)`}
+                      />
+                    )}
+                    {pendingPct > 0 && (
+                      <div
+                        className="h-full bg-amber-500 transition-all duration-500 ease-out"
+                        style={{ width: `${pendingPct}%` }}
+                        title={`Pending: ${pendingTotal} (${Math.round(pendingPct)}%)`}
+                      />
+                    )}
+                    {rejectedPct > 0 && (
+                      <div
+                        className="h-full bg-rose-500 transition-all duration-500 ease-out"
+                        style={{ width: `${rejectedPct}%` }}
+                        title={`Rejected: ${kpis.rejected} (${Math.round(rejectedPct)}%)`}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
 
-        <Card className="rounded-xl border-blue-500/20 bg-blue-500/5 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1">
-              <span className="text-xs font-medium">Multi-Level / In Review</span>
-              <Activity className="h-4 w-4" />
-            </div>
-            <div className="font-display text-2xl font-bold text-blue-600 dark:text-blue-400">{kpis.escalated}</div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Escalated or In-Progress</p>
-          </CardContent>
-        </Card>
+              {/* Bottom Row: Dot Legend matching Reference Image */}
+              <div className="flex flex-wrap items-center gap-6 sm:gap-8 pt-4 text-xs sm:text-sm">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter(statusFilter === "approved" ? "all" : "approved")}
+                  className={`inline-flex items-center gap-2 font-medium transition-all cursor-pointer ${
+                    statusFilter === "approved"
+                      ? "text-foreground font-semibold ring-1 ring-primary/30 bg-primary/5 px-2 py-1 rounded-md"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Filter Approved requests"
+                >
+                  <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />
+                  <span>
+                    <strong className="text-foreground font-semibold">{kpis.approved.toLocaleString()}</strong> Approved
+                  </span>
+                </button>
 
-        <Card className="rounded-xl border-destructive/20 bg-destructive/5 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-destructive mb-1">
-              <span className="text-xs font-medium">Declined / Rejected</span>
-              <XCircle className="h-4 w-4" />
-            </div>
-            <div className="font-display text-2xl font-bold text-destructive">{kpis.rejected}</div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Returned with Remarks</p>
-          </CardContent>
-        </Card>
-      </div>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter(statusFilter === "pending" ? "all" : "pending")}
+                  className={`inline-flex items-center gap-2 font-medium transition-all cursor-pointer ${
+                    statusFilter === "pending"
+                      ? "text-foreground font-semibold ring-1 ring-amber-500/30 bg-amber-500/5 px-2 py-1 rounded-md"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Filter Pending requests"
+                >
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500 shrink-0" />
+                  <span>
+                    <strong className="text-foreground font-semibold">{pendingTotal.toLocaleString()}</strong> Pending
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter(statusFilter === "rejected" ? "all" : "rejected")}
+                  className={`inline-flex items-center gap-2 font-medium transition-all cursor-pointer ${
+                    statusFilter === "rejected"
+                      ? "text-foreground font-semibold ring-1 ring-rose-500/30 bg-rose-500/5 px-2 py-1 rounded-md"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Filter Rejected requests"
+                >
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500 shrink-0" />
+                  <span>
+                    <strong className="text-foreground font-semibold">{kpis.rejected.toLocaleString()}</strong> Rejected
+                  </span>
+                </button>
+
+                {statusFilter !== "all" && (
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter("all")}
+                    className="ml-auto text-xs text-primary hover:underline font-medium cursor-pointer"
+                  >
+                    Reset Filter
+                  </button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Category Tabs & Filter Navigation */}
       <div className="space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b border-border pb-2">
-          <Tabs value={activeCategoryTab} onValueChange={setActiveCategoryTab} className="w-full md:w-auto">
-            <TabsList className="bg-muted/60 p-1 rounded-xl flex flex-wrap h-auto gap-1">
-              <TabsTrigger value="all" className="rounded-lg gap-1.5 text-xs font-medium">
-                <Inbox className="h-3.5 w-3.5" />
-                All Requests ({kpis.total})
+        {/* Single-line Request Type Navbar (Equally Distributed) */}
+        <div className="border-b border-border pb-3">
+          <Tabs value={activeCategoryTab} onValueChange={setActiveCategoryTab} className="w-full">
+            <TabsList className="w-full bg-muted/50 p-1.5 rounded-2xl flex items-center justify-between gap-1.5 h-auto overflow-x-auto scrollbar-none">
+              <TabsTrigger
+                value="all"
+                title="All Requests"
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:-translate-y-0.5 data-[state=active]:font-semibold"
+              >
+                All ({kpis.total})
               </TabsTrigger>
-              <TabsTrigger value="leave" className="rounded-lg gap-1.5 text-xs font-medium">
-                <Calendar className="h-3.5 w-3.5 text-blue-500" />
-                Leaves & Permission
+
+              <TabsTrigger
+                value="leave"
+                title="Leaves & Permissions"
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:-translate-y-0.5 data-[state=active]:font-semibold"
+              >
+                Leaves
                 {kpis.leavesPending > 0 && (
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/15 text-amber-600 font-bold">
+                  <Badge
+                    variant="secondary"
+                    className={`ml-1.5 px-1.5 py-0 text-[10px] font-bold rounded-full transition-colors ${
+                      activeCategoryTab === "leave"
+                        ? "bg-primary-foreground/25 text-primary-foreground"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
                     {kpis.leavesPending}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="attendance" className="rounded-lg gap-1.5 text-xs font-medium">
-                <CalendarCheck className="h-3.5 w-3.5 text-emerald-500" />
-                Punch Regularization
+
+              <TabsTrigger
+                value="attendance"
+                title="Punch Regularization"
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:-translate-y-0.5 data-[state=active]:font-semibold"
+              >
+                Attendance
                 {kpis.attPending > 0 && (
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/15 text-amber-600 font-bold">
+                  <Badge
+                    variant="secondary"
+                    className={`ml-1.5 px-1.5 py-0 text-[10px] font-bold rounded-full transition-colors ${
+                      activeCategoryTab === "attendance"
+                        ? "bg-primary-foreground/25 text-primary-foreground"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
                     {kpis.attPending}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="document" className="rounded-lg gap-1.5 text-xs font-medium">
-                <FileText className="h-3.5 w-3.5 text-purple-500" />
-                Letters & Documents
+
+              <TabsTrigger
+                value="document"
+                title="Letters & Documents"
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:-translate-y-0.5 data-[state=active]:font-semibold"
+              >
+                Documents
                 {kpis.docsPending > 0 && (
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/15 text-amber-600 font-bold">
+                  <Badge
+                    variant="secondary"
+                    className={`ml-1.5 px-1.5 py-0 text-[10px] font-bold rounded-full transition-colors ${
+                      activeCategoryTab === "document"
+                        ? "bg-primary-foreground/25 text-primary-foreground"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
                     {kpis.docsPending}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="loan" className="rounded-lg gap-1.5 text-xs font-medium">
-                <Banknote className="h-3.5 w-3.5 text-amber-500" />
-                Salary Advance & Loans
+
+              <TabsTrigger
+                value="loan"
+                title="Salary Advance & Loans"
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:-translate-y-0.5 data-[state=active]:font-semibold"
+              >
+                Loans
                 {kpis.loansPending > 0 && (
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/15 text-amber-600 font-bold">
+                  <Badge
+                    variant="secondary"
+                    className={`ml-1.5 px-1.5 py-0 text-[10px] font-bold rounded-full transition-colors ${
+                      activeCategoryTab === "loan"
+                        ? "bg-primary-foreground/25 text-primary-foreground"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
                     {kpis.loansPending}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="grievance" className="rounded-lg gap-1.5 text-xs font-medium">
-                <MessageSquareHeart className="h-3.5 w-3.5 text-rose-500" />
+
+              <TabsTrigger
+                value="grievance"
+                title="Grievances & Escalations"
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:-translate-y-0.5 data-[state=active]:font-semibold"
+              >
                 Grievances
                 {kpis.grvPending > 0 && (
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/15 text-amber-600 font-bold">
+                  <Badge
+                    variant="secondary"
+                    className={`ml-1.5 px-1.5 py-0 text-[10px] font-bold rounded-full transition-colors ${
+                      activeCategoryTab === "grievance"
+                        ? "bg-primary-foreground/25 text-primary-foreground"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
                     {kpis.grvPending}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="compoff" className="rounded-lg gap-1.5 text-xs font-medium">
-                <Coffee className="h-3.5 w-3.5 text-teal-500" />
-                Comp-Off & Swap
+
+              <TabsTrigger
+                value="compoff"
+                title="Comp-Off & Shift Swap"
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:-translate-y-0.5 data-[state=active]:font-semibold"
+              >
+                Comp-Off
               </TabsTrigger>
-              <TabsTrigger value="team_group" className="rounded-lg gap-1.5 text-xs font-medium">
-                <Users className="h-3.5 w-3.5 text-teal-600" />
-                Team Groups
+
+              <TabsTrigger
+                value="team_group"
+                title="Team Groups"
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:-translate-y-0.5 data-[state=active]:font-semibold"
+              >
+                Teams
                 {kpis.groupsPending > 0 && (
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/15 text-amber-600 font-bold">
+                  <Badge
+                    variant="secondary"
+                    className={`ml-1.5 px-1.5 py-0 text-[10px] font-bold rounded-full transition-colors ${
+                      activeCategoryTab === "team_group"
+                        ? "bg-primary-foreground/25 text-primary-foreground"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
                     {kpis.groupsPending}
                   </Badge>
                 )}
               </TabsTrigger>
             </TabsList>
           </Tabs>
-
-          <span className="text-xs text-muted-foreground shrink-0">
-            Showing <strong className="text-foreground">{filteredRequests.length}</strong> of {normalizedRequests.length} total
-          </span>
         </div>
 
         {/* Filter Toolbar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 bg-card p-3 rounded-xl border border-border">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 bg-card p-3 rounded-xl border border-border">
           {/* Live Search */}
-          <div className="relative lg:col-span-2">
+          <div className="relative md:col-span-2 xl:col-span-2">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search employee, request ID, subject..."
@@ -722,7 +859,7 @@ function UnifiedRequestsHubPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
                 <tr className="text-left">
-                  <th className="p-3.5 w-10 text-center">
+                  <th className="p-3.5 w-12 text-center sticky left-0 z-20 bg-muted/95 backdrop-blur-xs">
                     <input
                       type="checkbox"
                       checked={
@@ -741,18 +878,19 @@ function UnifiedRequestsHubPage() {
                       className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
                     />
                   </th>
-                  <th className="p-3.5 font-semibold min-w-[200px]">Employee</th>
-                  <th className="p-3.5 font-semibold min-w-[160px]">Category & Type</th>
-                  <th className="p-3.5 font-semibold min-w-[200px]">Subject / Details</th>
-                  <th className="p-3.5 font-semibold min-w-[130px] whitespace-nowrap">Date / Duration</th>
-                  <th className="p-3.5 font-semibold min-w-[150px] whitespace-nowrap">Workflow Status</th>
-                  <th className="p-3.5 font-semibold min-w-[110px] text-right whitespace-nowrap">Actions</th>
+                  <th className="p-3.5 font-semibold min-w-[210px] whitespace-nowrap sticky left-12 z-20 bg-muted/95 backdrop-blur-xs border-r border-border/70 shadow-[3px_0_6px_-2px_rgba(0,0,0,0.06)]">
+                    Employee
+                  </th>
+                  <th className="p-3.5 font-semibold min-w-[220px]">Request Details</th>
+                  <th className="p-3.5 font-semibold min-w-[120px] whitespace-nowrap">Timeline / Value</th>
+                  <th className="p-3.5 font-semibold min-w-[110px] whitespace-nowrap">Status</th>
+                  <th className="p-3.5 pr-4 font-semibold min-w-[90px] text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-12 text-center text-muted-foreground">
+                    <td colSpan={6} className="p-12 text-center text-muted-foreground">
                       <div className="flex flex-col items-center justify-center space-y-2">
                         <AlertTriangle className="h-8 w-8 text-muted-foreground/60" />
                         <p className="text-sm font-medium">No requests found matching your filters</p>
@@ -766,13 +904,18 @@ function UnifiedRequestsHubPage() {
                     return (
                       <tr
                         key={item.id}
-                        className={`hover:bg-muted/30 transition-colors group cursor-pointer ${
+                        className={`hover:bg-muted/40 transition-colors group cursor-pointer ${
                           isSelected ? "bg-primary/5" : ""
                         }`}
                         onClick={() => setInspectItem(item)}
                       >
-                        {/* Checkbox Column */}
-                        <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                        {/* Checkbox Column (Sticky Left) */}
+                        <td
+                          className={`p-3.5 text-center sticky left-0 z-10 transition-colors ${
+                            isSelected ? "bg-primary/10" : "bg-card group-hover:bg-muted/50"
+                          }`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {item.status === "Pending" ? (
                             <input
                               type="checkbox"
@@ -791,29 +934,32 @@ function UnifiedRequestsHubPage() {
                           )}
                         </td>
 
-                        {/* Employee Column */}
-                        <td className="p-3.5">
+                        {/* Employee Column (Sticky Left) */}
+                        <td
+                          className={`p-3.5 whitespace-nowrap sticky left-12 z-10 transition-colors border-r border-border/70 shadow-[3px_0_6px_-2px_rgba(0,0,0,0.06)] ${
+                            isSelected ? "bg-primary/10" : "bg-card group-hover:bg-muted/50"
+                          }`}
+                        >
                           <div className="flex items-center gap-3">
-                            <div className="relative">
+                            <div className="relative shrink-0">
                               {item.avatarUrl ? (
                                 <img
                                   src={item.avatarUrl}
                                   alt={item.employeeName}
-                                  className="h-9 w-9 rounded-full object-cover border border-border shrink-0"
+                                  className="h-9 w-9 rounded-full object-cover border border-border"
                                 />
                               ) : (
-                                <div className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs border border-primary/20 shrink-0">
+                                <div className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center text-xs border border-primary/20">
                                   {item.employeeName.slice(0, 2).toUpperCase()}
                                 </div>
                               )}
                             </div>
                             <div className="min-w-0">
-                              <div className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-1 truncate">
-                                <span className="truncate">{item.employeeName}</span>
-                                <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
+                              <div className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">
+                                {item.employeeName}
                               </div>
                               <div className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
-                                <span className="font-mono">{item.empCode}</span>
+                                <span className="font-mono text-[11px]">{item.empCode}</span>
                                 <span>•</span>
                                 <span className="truncate">{item.department}</span>
                               </div>
@@ -821,109 +967,68 @@ function UnifiedRequestsHubPage() {
                           </div>
                         </td>
 
-                        {/* Category & Type Column */}
-                        <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
+                        {/* Request Details Column */}
+                        <td className="p-3.5">
                           <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 whitespace-nowrap">
-                              {item.category === "leave" && <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
-                              {item.category === "attendance" && <CalendarCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
-                              {item.category === "document" && <FileText className="h-3.5 w-3.5 text-purple-500 shrink-0" />}
-                              {item.category === "loan" && <Banknote className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
-                              {item.category === "grievance" && <MessageSquareHeart className="h-3.5 w-3.5 text-rose-500 shrink-0" />}
-                              {item.category === "compoff" && <Coffee className="h-3.5 w-3.5 text-teal-500 shrink-0" />}
-                              {item.category === "team_group" && <Users className="h-3.5 w-3.5 text-teal-600 shrink-0" />}
-                              <span className="font-medium text-xs text-foreground truncate">{item.type}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal whitespace-nowrap">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-xs text-foreground truncate">
+                                {item.type}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal shrink-0 text-muted-foreground border-border">
                                 {item.categoryLabel}
                               </Badge>
                               {item.attachments && item.attachments.length > 0 && (
-                                <Badge variant="secondary" className="gap-1 text-[10px] bg-primary/10 text-primary border-primary/20 whitespace-nowrap">
-                                  <Paperclip className="h-3 w-3" />
-                                  {item.attachments.length} {item.attachments.length === 1 ? "Proof" : "Proofs"}
-                                </Badge>
+                                <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground font-medium shrink-0">
+                                  <Paperclip className="h-2.5 w-2.5" />
+                                  {item.attachments.length}
+                                </span>
                               )}
                             </div>
+                            <p className="text-xs text-muted-foreground line-clamp-1 truncate max-w-sm" title={item.title || item.details}>
+                              {item.title || item.details || "—"}
+                            </p>
                           </div>
                         </td>
 
-                        {/* Subject / Details Column */}
-                        <td className="p-3.5">
-                          <div className="space-y-0.5 max-w-xs">
-                            <div className="font-medium text-xs text-foreground truncate" title={item.title}>{item.title}</div>
-                            {item.details && (
-                              <p className="text-xs text-muted-foreground line-clamp-1" title={item.details}>{item.details}</p>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Date / Value Column */}
+                        {/* Timeline / Value Column */}
                         <td className="p-3.5 whitespace-nowrap">
                           <div className="space-y-0.5 text-xs">
                             <div className="font-semibold text-foreground">{item.amountOrDays || "—"}</div>
-                            <div className="text-muted-foreground">{item.dateStr}</div>
+                            <div className="text-[11px] text-muted-foreground">{item.dateStr}</div>
                           </div>
                         </td>
 
                         {/* Status Column */}
                         <td className="p-3.5 whitespace-nowrap">
-                          <div className="space-y-1">
-                            <Badge
-                              variant="outline"
-                              className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-xs font-semibold rounded-lg shrink-0 ${
+                          <div
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                              item.status === "Approved"
+                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                : item.status === "Pending"
+                                ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                                : item.status === "In Progress" || item.status === "Escalated"
+                                ? "bg-blue-500/10 text-blue-600 border-blue-500/20"
+                                : "bg-destructive/10 text-destructive border-destructive/20"
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full shrink-0 ${
                                 item.status === "Approved"
-                                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                  ? "bg-emerald-500"
                                   : item.status === "Pending"
-                                  ? "bg-amber-500/10 text-amber-600 border-amber-500/20 animate-pulse"
+                                  ? "bg-amber-500"
                                   : item.status === "In Progress" || item.status === "Escalated"
-                                  ? "bg-blue-500/10 text-blue-600 border-blue-500/20"
-                                  : "bg-destructive/10 text-destructive border-destructive/20"
+                                  ? "bg-blue-500"
+                                  : "bg-destructive"
                               }`}
-                            >
-                              {item.status === "Approved" && (
-                                <>
-                                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                                  <span>Approved</span>
-                                </>
-                              )}
-                              {item.status === "Pending" && (
-                                <>
-                                  <Clock className="h-3.5 w-3.5 shrink-0" />
-                                  <span>Pending Sign-off</span>
-                                </>
-                              )}
-                              {item.status === "In Progress" && (
-                                <>
-                                  <RefreshCw className="h-3.5 w-3.5 shrink-0" />
-                                  <span>In Review</span>
-                                </>
-                              )}
-                              {item.status === "Escalated" && (
-                                <>
-                                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                                  <span>Escalated</span>
-                                </>
-                              )}
-                              {item.status === "Rejected" && (
-                                <>
-                                  <XCircle className="h-3.5 w-3.5 shrink-0" />
-                                  <span>Rejected</span>
-                                </>
-                              )}
-                            </Badge>
-
-                            {item.totalLevels > 1 && (
-                              <div className="text-[11px] text-muted-foreground flex items-center gap-1 whitespace-nowrap">
-                                <span>Level {item.currentLevel} of {item.totalLevels}</span>
-                              </div>
-                            )}
+                            />
+                            <span>{item.status}</span>
                           </div>
                         </td>
 
                         {/* Actions Column */}
-                        <td className="p-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1.5">
+                        <td className="p-3.5 pr-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
                             {item.status === "Pending" && (
                               <>
                                 <TooltipProvider>
@@ -931,7 +1036,7 @@ function UnifiedRequestsHubPage() {
                                     <TooltipTrigger asChild>
                                       <Button
                                         size="sm"
-                                        variant="outline"
+                                        variant="ghost"
                                         onClick={() =>
                                           setApprovalActionModal({
                                             open: true,
@@ -940,12 +1045,12 @@ function UnifiedRequestsHubPage() {
                                             comment: "",
                                           })
                                         }
-                                        className="h-8 w-8 p-0 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 border-emerald-500/30"
+                                        className="h-7 w-7 p-0 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/15"
                                       >
-                                        <Check className="h-4 w-4" />
+                                        <Check className="h-3.5 w-3.5" />
                                       </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent>Approve Request</TooltipContent>
+                                    <TooltipContent>Quick Approve</TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
 
@@ -954,7 +1059,7 @@ function UnifiedRequestsHubPage() {
                                     <TooltipTrigger asChild>
                                       <Button
                                         size="sm"
-                                        variant="outline"
+                                        variant="ghost"
                                         onClick={() =>
                                           setApprovalActionModal({
                                             open: true,
@@ -963,12 +1068,12 @@ function UnifiedRequestsHubPage() {
                                             comment: "",
                                           })
                                         }
-                                        className="h-8 w-8 p-0 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                                        className="h-7 w-7 p-0 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/15"
                                       >
-                                        <XCircle className="h-4 w-4" />
+                                        <XCircle className="h-3.5 w-3.5" />
                                       </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent>Reject Request</TooltipContent>
+                                    <TooltipContent>Quick Reject</TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
                               </>
@@ -981,12 +1086,12 @@ function UnifiedRequestsHubPage() {
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => setInspectItem(item)}
-                                    className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-primary"
+                                    className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-primary hover:bg-muted"
                                   >
-                                    <Eye className="h-4 w-4" />
+                                    <ChevronRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>View Full Details & Approval Chain</TooltipContent>
+                                <TooltipContent>Open Details Drawer</TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
                           </div>
@@ -1001,365 +1106,385 @@ function UnifiedRequestsHubPage() {
         </div>
       </div>
 
-      {/* DETAILED REQUEST INSPECTION & APPROVAL CHAIN MODAL */}
-      {inspectItem && (
-        <Dialog open={Boolean(inspectItem)} onOpenChange={() => setInspectItem(null)}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl p-6 sm:p-8 space-y-6">
-            <DialogHeader className="border-b border-border pb-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
+      {/* DETAILED REQUEST INSPECTION & APPROVAL CHAIN DRAWER (SLIDE-OVER SHEET) */}
+      <Sheet open={Boolean(inspectItem)} onOpenChange={(open) => !open && setInspectItem(null)}>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-xl md:max-w-2xl p-0 flex flex-col h-full bg-background border-l border-border shadow-2xl overflow-hidden"
+        >
+          {inspectItem && (
+            <>
+              {/* Drawer Header */}
+              <SheetHeader className="p-6 border-b border-border bg-card/60 backdrop-blur-xs shrink-0 space-y-2">
+                <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-xs uppercase font-semibold">
                       {inspectItem.categoryLabel}
                     </Badge>
                     <span className="text-xs text-muted-foreground font-mono">ID: {inspectItem.id}</span>
                   </div>
-                  <DialogTitle className="text-xl font-bold font-display">{inspectItem.title}</DialogTitle>
+                  <div
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                      inspectItem.status === "Approved"
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                        : inspectItem.status === "Pending"
+                        ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                        : "bg-destructive/10 text-destructive border-destructive/20"
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                        inspectItem.status === "Approved"
+                          ? "bg-emerald-500"
+                          : inspectItem.status === "Pending"
+                          ? "bg-amber-500"
+                          : "bg-destructive"
+                      }`}
+                    />
+                    <span>{inspectItem.status}</span>
+                  </div>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={`px-2.5 py-1 text-xs font-semibold ${
-                    inspectItem.status === "Approved"
-                      ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                      : inspectItem.status === "Pending"
-                      ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                      : "bg-destructive/10 text-destructive border-destructive/20"
-                  }`}
-                >
-                  {inspectItem.status}
-                </Badge>
-              </div>
-            </DialogHeader>
+                <SheetTitle className="text-xl font-bold font-display text-left">
+                  {inspectItem.title}
+                </SheetTitle>
+                <SheetDescription className="text-xs text-muted-foreground text-left">
+                  Submitted on {inspectItem.dateStr} • {inspectItem.department}
+                </SheetDescription>
+              </SheetHeader>
 
-            {/* Employee Profile Header */}
-            <div className="flex items-center gap-4 bg-muted/30 p-4 rounded-2xl border border-border">
-              {inspectItem.avatarUrl ? (
-                <img
-                  src={inspectItem.avatarUrl}
-                  alt={inspectItem.employeeName}
-                  className="h-12 w-12 rounded-xl object-cover border border-border"
-                />
-              ) : (
-                <div className="h-12 w-12 rounded-xl bg-primary/10 text-primary font-bold text-lg flex items-center justify-center border border-primary/20">
-                  {inspectItem.employeeName.slice(0, 2).toUpperCase()}
+              {/* Scrollable Drawer Body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Employee Profile Header */}
+                <div className="flex items-center gap-4 bg-muted/30 p-4 rounded-2xl border border-border">
+                  {inspectItem.avatarUrl ? (
+                    <img
+                      src={inspectItem.avatarUrl}
+                      alt={inspectItem.employeeName}
+                      className="h-12 w-12 rounded-xl object-cover border border-border shrink-0"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 rounded-xl bg-primary/10 text-primary font-bold text-lg flex items-center justify-center border border-primary/20 shrink-0">
+                      {inspectItem.employeeName.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-semibold text-foreground text-base truncate">{inspectItem.employeeName}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 truncate">
+                      <span className="font-mono">{inspectItem.empCode}</span>
+                      <span>•</span>
+                      <span>{inspectItem.department}</span>
+                      <span>•</span>
+                      <span>{inspectItem.branchName}</span>
+                    </div>
+                  </div>
                 </div>
-              )}
-              <div>
-                <div className="font-semibold text-foreground text-base">{inspectItem.employeeName}</div>
-                <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                  <span className="font-mono">{inspectItem.empCode}</span>
-                  <span>•</span>
-                  <span>{inspectItem.department}</span>
-                  <span>•</span>
-                  <span>{inspectItem.branchName}</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Request Specific Details Grid */}
-            <div className="grid grid-cols-2 gap-3 bg-card p-4 rounded-2xl border border-border text-xs">
-              <div>
-                <span className="text-muted-foreground block font-medium">Request Type:</span>
-                <span className="font-semibold text-foreground mt-0.5 block">{inspectItem.type}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block font-medium">Submission Date:</span>
-                <span className="font-semibold text-foreground mt-0.5 block">{inspectItem.dateStr}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block font-medium">Amount / Days:</span>
-                <span className="font-bold text-primary text-sm mt-0.5 block">
-                  {inspectItem.amountOrDays || "Standard"}
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block font-medium">Workflow Progress:</span>
-                <span className="font-semibold text-foreground mt-0.5 block">
-                  Level {inspectItem.currentLevel} of {inspectItem.totalLevels}
-                </span>
-              </div>
-            </div>
-
-            {/* Proposed Profile Updates Diff (if category is profile) */}
-            {inspectItem.category === "profile" && (
-              <div className="space-y-3">
-                <Label className="text-xs font-semibold flex items-center justify-between">
-                  <span className="text-primary font-bold flex items-center gap-1.5">
-                    <UserCheck className="h-4 w-4" />
-                    <span>
-                      {inspectItem.originalItem?.metadata?.fieldLabel
-                        ? `Target Field: ${inspectItem.originalItem.metadata.fieldLabel}`
-                        : "Proposed Profile Updates for Approval"}
+                {/* Request Specific Details Grid */}
+                <div className="grid grid-cols-2 gap-3 bg-card p-4 rounded-2xl border border-border text-xs">
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Request Type:</span>
+                    <span className="font-semibold text-foreground mt-0.5 block">{inspectItem.type}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Submission Date:</span>
+                    <span className="font-semibold text-foreground mt-0.5 block">{inspectItem.dateStr}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Amount / Days:</span>
+                    <span className="font-bold text-primary text-sm mt-0.5 block">
+                      {inspectItem.amountOrDays || "Standard"}
                     </span>
-                  </span>
-                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[11px]">
-                    {inspectItem.originalItem?.metadata?.fieldLabel
-                      ? "1 Focused Field"
-                      : `${Object.keys(inspectItem.originalItem?.metadata?.profileUpdates || {}).length} Fields`}
-                  </Badge>
-                </Label>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Workflow Progress:</span>
+                    <span className="font-semibold text-foreground mt-0.5 block">
+                      Level {inspectItem.currentLevel} of {inspectItem.totalLevels}
+                    </span>
+                  </div>
+                </div>
 
-                {/* Single Field Old vs New Focused Diff Card */}
-                {inspectItem.originalItem?.metadata?.fieldLabel ? (
-                  <div className="bg-card rounded-2xl border border-border p-4 space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Old Value Box */}
-                      <div className="bg-muted/40 rounded-xl p-3 border border-border/80">
-                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-                          Current / Previous Value
+                {/* Proposed Profile Updates Diff (if category is profile) */}
+                {inspectItem.category === "profile" && (
+                  <div className="space-y-3">
+                    <Label className="text-xs font-semibold flex items-center justify-between">
+                      <span className="text-primary font-bold flex items-center gap-1.5">
+                        <UserCheck className="h-4 w-4" />
+                        <span>
+                          {inspectItem.originalItem?.metadata?.fieldLabel
+                            ? `Target Field: ${inspectItem.originalItem.metadata.fieldLabel}`
+                            : "Proposed Profile Updates for Approval"}
                         </span>
-                        <div className="mt-1 text-xs font-semibold text-muted-foreground break-all line-through">
-                          {inspectItem.originalItem.metadata.oldValue || "(Empty / Not set)"}
+                      </span>
+                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[11px]">
+                        {inspectItem.originalItem?.metadata?.fieldLabel
+                          ? "1 Focused Field"
+                          : `${Object.keys(inspectItem.originalItem?.metadata?.profileUpdates || {}).length} Fields`}
+                      </Badge>
+                    </Label>
+
+                    {/* Single Field Old vs New Focused Diff Card */}
+                    {inspectItem.originalItem?.metadata?.fieldLabel ? (
+                      <div className="bg-card rounded-2xl border border-border p-4 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Old Value Box */}
+                          <div className="bg-muted/40 rounded-xl p-3 border border-border/80">
+                            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
+                              Current / Previous Value
+                            </span>
+                            <div className="mt-1 text-xs font-semibold text-muted-foreground break-all line-through">
+                              {inspectItem.originalItem.metadata.oldValue || "(Empty / Not set)"}
+                            </div>
+                          </div>
+
+                          {/* New Requested Value Box */}
+                          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
+                            <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">
+                              New Requested Value (To Apply)
+                            </span>
+                            <div className="mt-1 text-xs font-bold text-emerald-700 dark:text-emerald-400 break-all">
+                              {inspectItem.originalItem.metadata.newValue ||
+                                inspectItem.originalItem.metadata.profileUpdates?.[inspectItem.originalItem.metadata.fieldKey] ||
+                                "(New Value)"}
+                            </div>
+                          </div>
                         </div>
                       </div>
-
-                      {/* New Requested Value Box */}
-                      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
-                        <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">
-                          New Requested Value (To Apply)
-                        </span>
-                        <div className="mt-1 text-xs font-bold text-emerald-700 dark:text-emerald-400 break-all">
-                          {inspectItem.originalItem.metadata.newValue ||
-                            inspectItem.originalItem.metadata.profileUpdates?.[inspectItem.originalItem.metadata.fieldKey] ||
-                            "(New Value)"}
+                    ) : (
+                      /* Multi-Field Updates List */
+                      inspectItem.originalItem?.metadata?.profileUpdates && (
+                        <div className="bg-card rounded-xl border border-border p-3.5 divide-y divide-border/60 max-h-60 overflow-y-auto">
+                          {Object.entries(inspectItem.originalItem.metadata.profileUpdates).map(([key, val]) => {
+                            if (val === undefined || val === null || val === "") return null;
+                            const labelStr = key
+                              .replace(/([A-Z])/g, " $1")
+                              .replace(/^./, (str) => str.toUpperCase());
+                            const displayVal = Array.isArray(val)
+                              ? val.map((item) => (typeof item === "object" ? (item.level || item.company || JSON.stringify(item)) : String(item))).join(", ")
+                              : String(val);
+                            return (
+                              <div key={key} className="py-2 first:pt-0 last:pb-0 flex items-start justify-between gap-4 text-xs">
+                                <span className="text-muted-foreground font-medium min-w-[140px]">{labelStr}</span>
+                                <span className="font-semibold text-foreground text-right flex-1 break-all bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded">
+                                  {displayVal}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
+                      )
+                    )}
+                  </div>
+                )}
+
+                {/* Team Group Details Section */}
+                {inspectItem.category === "team_group" && (
+                  <div className="space-y-3 bg-teal-500/5 border border-teal-500/20 rounded-2xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-sm"
+                        style={{ backgroundColor: inspectItem.originalItem?.metadata?.iconBgColor || "#075E54" }}
+                      >
+                        {inspectItem.originalItem?.metadata?.iconEmoji || "🚀"}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-base text-foreground">
+                          {inspectItem.originalItem?.metadata?.groupSubject || inspectItem.title}
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          Requested by {inspectItem.employeeName} • {inspectItem.originalItem?.metadata?.memberCount || 0} participants
+                        </p>
+                      </div>
+                    </div>
+
+                    {inspectItem.originalItem?.metadata?.groupDescription && (
+                      <div className="bg-card p-3 rounded-xl border border-border text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground block mb-1">Group Purpose:</span>
+                        {inspectItem.originalItem.metadata.groupDescription}
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5 text-teal-600" />
+                        Selected Group Participants:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(inspectItem.originalItem?.metadata?.members || []).map((m: any, idx: number) => (
+                          <Badge key={idx} variant="secondary" className="gap-1 py-1 px-2 text-xs">
+                            <span className="font-medium">{m.name}</span>
+                            {m.role && <span className="text-[10px] text-muted-foreground">({m.role})</span>}
+                          </Badge>
+                        ))}
                       </div>
                     </div>
                   </div>
-                ) : (
-                  /* Multi-Field Updates List */
-                  inspectItem.originalItem?.metadata?.profileUpdates && (
-                    <div className="bg-card rounded-xl border border-border p-3.5 divide-y divide-border/60 max-h-60 overflow-y-auto">
-                      {Object.entries(inspectItem.originalItem.metadata.profileUpdates).map(([key, val]) => {
-                        if (val === undefined || val === null || val === "") return null;
-                        const labelStr = key
-                          .replace(/([A-Z])/g, " $1")
-                          .replace(/^./, (str) => str.toUpperCase());
-                        const displayVal = Array.isArray(val)
-                          ? val.map((item) => (typeof item === "object" ? (item.level || item.company || JSON.stringify(item)) : String(item))).join(", ")
-                          : String(val);
+                )}
+
+                {/* Reason / Details Textarea */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Employee Request Reason & Details</Label>
+                  <div className="bg-muted/30 p-3.5 rounded-xl border border-border text-xs text-foreground whitespace-pre-wrap leading-relaxed">
+                    {inspectItem.details || "No additional explanation provided by employee."}
+                  </div>
+                </div>
+
+                {/* Attached Proof Documents Section */}
+                {inspectItem.attachments && inspectItem.attachments.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold flex items-center gap-1.5 text-primary">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        <span>Attached Proof & Verification Documents ({inspectItem.attachments.length})</span>
+                      </Label>
+                      <span className="text-[11px] text-muted-foreground">Click to inspect full size</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {inspectItem.attachments.map((att, idx) => {
+                        const isImg =
+                          att.startsWith("data:image") ||
+                          att.startsWith("http") ||
+                          att.endsWith(".png") ||
+                          att.endsWith(".jpg") ||
+                          att.endsWith(".jpeg");
                         return (
-                          <div key={key} className="py-2 first:pt-0 last:pb-0 flex items-start justify-between gap-4 text-xs">
-                            <span className="text-muted-foreground font-medium min-w-[140px]">{labelStr}</span>
-                            <span className="font-semibold text-foreground text-right flex-1 break-all bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded">
-                              {displayVal}
-                            </span>
+                          <div
+                            key={idx}
+                            onClick={() => setPreviewAttachmentUrl(att)}
+                            className="group relative border border-border rounded-xl overflow-hidden bg-muted/20 hover:border-primary/50 transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col items-center justify-center p-2 text-center"
+                          >
+                            {isImg ? (
+                              <div className="w-full h-24 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                                <img
+                                  src={att}
+                                  alt={`Proof Attachment ${idx + 1}`}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                />
+                              </div>
+                            ) : (
+                              <div className="w-full h-24 rounded-lg bg-muted flex flex-col items-center justify-center text-muted-foreground">
+                                <FileText className="h-8 w-8 text-primary/70 mb-1" />
+                                <span className="text-[10px] font-medium">Document {idx + 1}</span>
+                              </div>
+                            )}
+                            <div className="mt-1.5 flex items-center justify-between w-full px-1">
+                              <span className="text-[11px] font-medium text-foreground truncate">
+                                Evidence #{idx + 1}
+                              </span>
+                              <span className="text-[10px] text-primary flex items-center gap-0.5">
+                                <Eye className="h-3 w-3" /> View
+                              </span>
+                            </div>
                           </div>
                         );
                       })}
                     </div>
-                  )
-                )}
-              </div>
-            )}
-
-            {/* Team Group Details Section */}
-            {inspectItem.category === "team_group" && (
-              <div className="space-y-3 bg-teal-500/5 border border-teal-500/20 rounded-2xl p-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-sm"
-                    style={{ backgroundColor: inspectItem.originalItem?.metadata?.iconBgColor || "#075E54" }}
-                  >
-                    {inspectItem.originalItem?.metadata?.iconEmoji || "🚀"}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-base text-foreground">
-                      {inspectItem.originalItem?.metadata?.groupSubject || inspectItem.title}
-                    </h4>
-                    <p className="text-xs text-muted-foreground">
-                      Requested by {inspectItem.employeeName} • {inspectItem.originalItem?.metadata?.memberCount || 0} participants
-                    </p>
-                  </div>
-                </div>
-
-                {inspectItem.originalItem?.metadata?.groupDescription && (
-                  <div className="bg-card p-3 rounded-xl border border-border text-xs text-muted-foreground">
-                    <span className="font-semibold text-foreground block mb-1">Group Purpose:</span>
-                    {inspectItem.originalItem.metadata.groupDescription}
                   </div>
                 )}
 
-                <div className="space-y-1.5">
-                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5 text-teal-600" />
-                    Selected Group Participants:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(inspectItem.originalItem?.metadata?.members || []).map((m: any, idx: number) => (
-                      <Badge key={idx} variant="secondary" className="gap-1 py-1 px-2 text-xs">
-                        <span className="font-medium">{m.name}</span>
-                        {m.role && <span className="text-[10px] text-muted-foreground">({m.role})</span>}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Reason / Details Textarea */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Employee Request Reason & Details</Label>
-              <div className="bg-muted/30 p-3.5 rounded-xl border border-border text-xs text-foreground whitespace-pre-wrap leading-relaxed">
-                {inspectItem.details || "No additional explanation provided by employee."}
-              </div>
-            </div>
-
-            {/* Attached Proof Documents Section */}
-            {inspectItem.attachments && inspectItem.attachments.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-semibold flex items-center gap-1.5 text-primary">
-                    <Paperclip className="h-3.5 w-3.5" />
-                    <span>Attached Proof & Verification Documents ({inspectItem.attachments.length})</span>
+                {/* Multi-Level Approval Stepper */}
+                <div className="space-y-3">
+                  <Label className="text-xs font-semibold flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4 text-primary" />
+                    <span>Multi-Level Approval Chain</span>
                   </Label>
-                  <span className="text-[11px] text-muted-foreground">Click to inspect full size</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  {inspectItem.attachments.map((att, idx) => {
-                    const isImg =
-                      att.startsWith("data:image") ||
-                      att.startsWith("http") ||
-                      att.endsWith(".png") ||
-                      att.endsWith(".jpg") ||
-                      att.endsWith(".jpeg");
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => setPreviewAttachmentUrl(att)}
-                        className="group relative border border-border rounded-xl overflow-hidden bg-muted/20 hover:border-primary/50 transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col items-center justify-center p-2 text-center"
-                      >
-                        {isImg ? (
-                          <div className="w-full h-24 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-                            <img
-                              src={att}
-                              alt={`Proof Attachment ${idx + 1}`}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                            />
+
+                  <div className="space-y-2">
+                    {inspectItem.approvalSteps && inspectItem.approvalSteps.length > 0 ? (
+                      inspectItem.approvalSteps.map((step: any, idx: number) => (
+                        <div
+                          key={step.id || idx}
+                          className="flex items-center justify-between p-3 rounded-xl border border-border bg-card text-xs"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-6 w-6 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-[11px]">
+                              {step.level || idx + 1}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-foreground">{step.roleName || step.approverName}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {step.approverName ? `Assigned: ${step.approverName}` : "Hierarchy Designated"}
+                              </div>
+                            </div>
                           </div>
-                        ) : (
-                          <div className="w-full h-24 rounded-lg bg-muted flex flex-col items-center justify-center text-muted-foreground">
-                            <FileText className="h-8 w-8 text-primary/70 mb-1" />
-                            <span className="text-[10px] font-medium">Document {idx + 1}</span>
-                          </div>
-                        )}
-                        <div className="mt-1.5 flex items-center justify-between w-full px-1">
-                          <span className="text-[11px] font-medium text-foreground truncate">
-                            Evidence #{idx + 1}
-                          </span>
-                          <span className="text-[10px] text-primary flex items-center gap-0.5">
-                            <Eye className="h-3 w-3" /> View
-                          </span>
+
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] px-2 py-0.5 ${
+                              step.status === "Approved"
+                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                : step.status === "Rejected"
+                                ? "bg-destructive/10 text-destructive border-destructive/20"
+                                : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                            }`}
+                          >
+                            {step.status || "Pending"}
+                          </Badge>
                         </div>
+                      ))
+                    ) : (
+                      <div className="p-3 rounded-xl border border-border bg-card text-xs text-muted-foreground flex items-center justify-between">
+                        <span>Direct Single-Level Approval by Reporting Authority</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {inspectItem.status}
+                        </Badge>
                       </div>
-                    );
-                  })}
+                    )}
+                  </div>
                 </div>
               </div>
-            )}
 
-            {/* Multi-Level Approval Stepper */}
-            <div className="space-y-3">
-              <Label className="text-xs font-semibold flex items-center gap-1.5">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                <span>Multi-Level Approval Chain</span>
-              </Label>
+              {/* Action Footer (Sticky) */}
+              <SheetFooter className="p-4 sm:p-6 border-t border-border bg-card/60 backdrop-blur-xs shrink-0 flex flex-row items-center justify-between gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setInspectItem(null)}
+                  className="rounded-xl text-xs"
+                >
+                  Close
+                </Button>
 
-              <div className="space-y-2">
-                {inspectItem.approvalSteps && inspectItem.approvalSteps.length > 0 ? (
-                  inspectItem.approvalSteps.map((step: any, idx: number) => (
-                    <div
-                      key={step.id || idx}
-                      className="flex items-center justify-between p-3 rounded-xl border border-border bg-card text-xs"
+                {inspectItem.status === "Pending" && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setApprovalActionModal({
+                          open: true,
+                          item: inspectItem,
+                          action: "reject",
+                          comment: "",
+                        });
+                      }}
+                      className="rounded-xl text-xs text-destructive hover:bg-destructive/10 border-destructive/30"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-6 w-6 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-[11px]">
-                          {step.level || idx + 1}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-foreground">{step.roleName || step.approverName}</div>
-                          <div className="text-[11px] text-muted-foreground">
-                            {step.approverName ? `Assigned: ${step.approverName}` : "Hierarchy Designated"}
-                          </div>
-                        </div>
-                      </div>
+                      <XCircle className="h-3.5 w-3.5 mr-1" />
+                      Reject
+                    </Button>
 
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] px-2 py-0.5 ${
-                          step.status === "Approved"
-                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                            : step.status === "Rejected"
-                            ? "bg-destructive/10 text-destructive border-destructive/20"
-                            : "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                        }`}
-                      >
-                        {step.status || "Pending"}
-                      </Badge>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-3 rounded-xl border border-border bg-card text-xs text-muted-foreground flex items-center justify-between">
-                    <span>Direct Single-Level Approval by Reporting Authority</span>
-                    <Badge variant="outline" className="text-[10px]">
-                      {inspectItem.status}
-                    </Badge>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setApprovalActionModal({
+                          open: true,
+                          item: inspectItem,
+                          action: "approve",
+                          comment: "",
+                        });
+                      }}
+                      className="rounded-xl text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
+                    >
+                      <Check className="h-3.5 w-3.5 mr-1" />
+                      Approve & Authorize
+                    </Button>
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Action Footer */}
-            <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-4 border-t border-border">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setInspectItem(null)}
-                className="rounded-xl text-xs w-full sm:w-auto"
-              >
-                Close
-              </Button>
-
-              {inspectItem.status === "Pending" && (
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setApprovalActionModal({
-                        open: true,
-                        item: inspectItem,
-                        action: "reject",
-                        comment: "",
-                      });
-                    }}
-                    className="rounded-xl text-xs text-destructive hover:bg-destructive/10 border-destructive/30"
-                  >
-                    <XCircle className="h-3.5 w-3.5 mr-1" />
-                    Reject
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setApprovalActionModal({
-                        open: true,
-                        item: inspectItem,
-                        action: "approve",
-                        comment: "",
-                      });
-                    }}
-                    className="rounded-xl text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                  >
-                    <Check className="h-3.5 w-3.5 mr-1" />
-                    Approve & Authorize
-                  </Button>
-                </div>
-              )}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* APPROVAL ACTION CONFIRMATION & REMARKS MODAL */}
       {approvalActionModal.open && approvalActionModal.item && (

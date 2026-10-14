@@ -67,7 +67,7 @@ function formatHoursToHHMM(hoursVal?: number): string {
 }
 
 function formatTimeWithAmPm(timeStr?: string): string {
-  if (!timeStr) return "—";
+  if (!timeStr) return "-";
   let t = String(timeStr).trim();
   if (t.includes("T")) {
     const timePart = t.split("T")[1];
@@ -93,6 +93,49 @@ function formatTimeWithAmPm(timeStr?: string): string {
     return `${String(h).padStart(2, "0")}:${m} ${ampm}`;
   }
   return t;
+}
+
+export function getExportAttendanceStatus(punct?: { status?: string; label?: string }): string {
+  if (!punct) return "Absent";
+  const lbl = (punct.label || "").trim().toLowerCase();
+  const st = (punct.status || "").trim().toLowerCase();
+
+  // 1. Missed Out
+  if (lbl.includes("missed out") || lbl.includes("missed-out")) {
+    return "Missed Out";
+  }
+
+  // 2. Half Day
+  if (lbl.includes("half-day") || lbl.includes("half day") || st === "half-day" || st === "halfday") {
+    return "Half Day";
+  }
+
+  // 3. Present
+  if (
+    lbl === "on time" ||
+    lbl.startsWith("grace") ||
+    lbl.includes("present") ||
+    lbl.startsWith("late") ||
+    lbl.includes("permission applied") ||
+    st === "present" ||
+    st === "late"
+  ) {
+    return "Present";
+  }
+
+  // Preserve non-working day statuses
+  if (st === "weekly-off" || lbl.includes("weekly off")) {
+    return "Weekly Off";
+  }
+  if (st === "holiday" || lbl.startsWith("holiday")) {
+    return "Holiday";
+  }
+  if (st === "leave" || lbl.includes("leave")) {
+    return "Leave";
+  }
+
+  // 4. Absent
+  return "Absent";
 }
 
 export type ReportTypeOption =
@@ -547,11 +590,12 @@ Employee ID,Employee Name,Department,Branch,Date,First-In,Last-Out,Total Hours,A
           const lastOut = formatTimeWithAmPm(rec?.checkOut || rec?.clockOut);
           const isOdd = isOddPunch(rec, d.dateStr);
           const isExtra = (scheduled.isHoliday || scheduled.isWeeklyOff) && recHours.hoursWorked > 0;
-          const leaveName = punct.status === "leave" ? punct.label : "—";
+          const leaveName = punct.status === "leave" ? punct.label : "-";
           const otStr = formatMinutesToHHMM(recHours.otHours * 60);
           const totalHrsStr = formatMinutesToHHMM(recHours.hoursWorked * 60);
+          const exportStatus = getExportAttendanceStatus(punct);
 
-          csvContent += `"${emp.empCode || emp.id}","${emp.name}","${emp.department || "General"}","${branchName}","${d.dateStr}","${firstIn}","${lastOut}","${totalHrsStr}","${leaveName}","${isOdd ? "Yes" : "No"}","${isExtra ? "Yes" : "No"}","${otStr}","${punct.label}"\n`;
+          csvContent += `"${emp.empCode || emp.id}","${emp.name}","${emp.department || "General"}","${branchName}","${d.dateStr}","${firstIn}","${lastOut}","${totalHrsStr}","${leaveName}","${isOdd ? "Yes" : "No"}","${isExtra ? "Yes" : "No"}","${otStr}","${exportStatus}"\n`;
         });
       });
     }
@@ -621,7 +665,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
       });
     }
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -1125,7 +1169,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                       const lastOut = formatTimeWithAmPm(row.rec?.checkOut || row.rec?.clockOut);
                       const totalHrsStr = formatMinutesToHHMM(row.recHours.hoursWorked * 60);
                       const otStr = formatMinutesToHHMM(row.recHours.otHours * 60);
-                      const leaveName = row.punct.status === "leave" ? row.punct.label : "—";
+                      const leaveName = row.punct.status === "leave" ? row.punct.label : "-";
 
                       return (
                         <tr key={`${row.emp.id}-${row.dateStr}-${idx}`} className="hover:bg-muted/30 transition-colors">
@@ -1145,12 +1189,12 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                             <div className="text-[10px] text-muted-foreground">{row.dayShort}</div>
                           </td>
                           <td className="p-3 text-center font-mono">
-                            <span className={firstIn !== "—" ? "text-foreground font-medium" : "text-muted-foreground"}>
+                            <span className={firstIn !== "-" && firstIn !== "—" ? "text-foreground font-medium" : "text-muted-foreground"}>
                               {firstIn}
                             </span>
                           </td>
                           <td className="p-3 text-center font-mono">
-                            <span className={lastOut !== "—" ? "text-foreground font-medium" : "text-muted-foreground"}>
+                            <span className={lastOut !== "-" && lastOut !== "—" ? "text-foreground font-medium" : "text-muted-foreground"}>
                               {lastOut}
                             </span>
                           </td>

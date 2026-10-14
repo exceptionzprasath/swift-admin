@@ -181,7 +181,7 @@ export function computeEpfoEcrRecords({
     const ncpDays = Math.min(totalDaysInMonth, Math.max(0, Math.round(absentDays)));
 
     // Salary & Pay computation
-    const fixedSalary = ov.customBasic ? ov.customBasic : (emp.fixedSalary ?? emp.basic ?? 25000);
+    const fixedSalary = ov.customBasic !== undefined ? ov.customBasic : (emp.fixedSalary ?? emp.basic ?? 0);
 
     const effectiveCompany: Company = {
       ...company,
@@ -198,9 +198,9 @@ export function computeEpfoEcrRecords({
       },
     };
 
-    const effectiveEmp = ov.customBasic
-      ? { ...emp, basic: ov.customBasic, pfEligible: includeAllStaff ? true : isPfEligible }
-      : { ...emp, basic: fixedSalary, pfEligible: includeAllStaff ? true : isPfEligible };
+    const effectiveEmp = ov.customBasic !== undefined
+      ? { ...emp, basic: ov.customBasic, fixedSalary: ov.customBasic, pfEligible: includeAllStaff ? true : isPfEligible }
+      : { ...emp, basic: fixedSalary, fixedSalary: fixedSalary, pfEligible: includeAllStaff ? true : isPfEligible };
 
     const comp = computePayroll({
       company: effectiveCompany,

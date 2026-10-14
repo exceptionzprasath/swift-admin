@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useMemo, useEffect } from "react";
-import { useStore, isMockEmployee } from "@/lib/store";
+import { useStore, isMockEmployee, isFrozenEmployee } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { computePayroll, inr } from "@/lib/payroll";
 import { getNormalizedRequests, type NormalizedRequest } from "@/lib/requests-normalizer";
@@ -114,7 +114,7 @@ function Dashboard() {
   }, [activeTenantId, loadCompanyState]);
 
   const employees = useMemo(
-    () => (rawEmployees || []).filter((e) => !isMockEmployee(e)),
+    () => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)),
     [rawEmployees]
   );
 
