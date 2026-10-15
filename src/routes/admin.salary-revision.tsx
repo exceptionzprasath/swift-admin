@@ -19,7 +19,7 @@ import { Sparkles, ArrowRight, ArrowLeft, CheckCircle2, RotateCcw, AlertTriangle
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/salary-revision")({
-  head: () => ({ meta: [{ title: "Salary Revision · SWIFT AI" }] }),
+  head: () => ({ meta: [{ title: "Salary Revision · CREATONS AI" }] }),
   component: SalaryRevisionPage,
 });
 
@@ -75,7 +75,7 @@ function SalaryRevisionPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">SWIFT AI acts as your payroll officer — it analyses statutory impact and asks before changing anything.</p>
+          <p className="text-sm text-muted-foreground">CREATONS AI acts as your payroll officer — it analyses statutory impact and asks before changing anything.</p>
         </div>
         <div className="flex gap-1">
           {[1, 2, 3, 4, 5].map((n) => (

@@ -3,7 +3,7 @@ import { Scale } from "lucide-react";
 import { ComingSoonPage } from "@/components/coming-soon";
 
 export const Route = createFileRoute("/admin/compliance")({
-  head: () => ({ meta: [{ title: "Compliance AI · SWIFT AI" }] }),
+  head: () => ({ meta: [{ title: "Compliance AI · CREATONS AI" }] }),
   component: CompliancePage,
 });
 

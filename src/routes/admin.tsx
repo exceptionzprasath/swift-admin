@@ -27,7 +27,6 @@ import {
   Building2,
   ChevronDown,
   Network,
-  Brain,
   BarChart3,
   Megaphone,
   Rocket,
@@ -47,10 +46,10 @@ import {
   MessagesSquare,
   UserX,
   Lock,
-  ShieldAlert,
   Sparkles,
   UserCheck,
 } from "lucide-react";
+import { CreatonsAiIcon } from "@/components/icons/creatons-ai-icon";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -118,7 +117,7 @@ function getSelectedMenuName(currentPath: string): string {
 type NavItem = {
   to: string;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: React.ComponentType<{ className?: string }>;
   moduleKey?: ModuleKey;
   exact?: boolean;
   comingSoon?: boolean;
@@ -128,7 +127,7 @@ type NavItem = {
 const nav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, moduleKey: "dashboard", exact: true },
   { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox, moduleKey: "requests" },
-  { to: "/admin/ai", label: "SWIFT AI", icon: Brain, moduleKey: "ai", badge: "AI" },
+  { to: "/admin/ai", label: "CREATONS AI", icon: CreatonsAiIcon, moduleKey: "ai", badge: "AI" },
   { to: "/admin/team-chat", label: "Team Chat", icon: MessagesSquare, moduleKey: "teamChat" },
   { to: "/admin/notices", label: "Notice Board", icon: Megaphone, moduleKey: "notices" },
   { to: "/admin/employees", label: "Employees", icon: Users, moduleKey: "employees" },

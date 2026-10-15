@@ -6,8 +6,9 @@ import {
   FileText, Check, CheckCheck, Clock, Reply, Edit3, Trash2, Info,
   Sparkles, ShieldCheck, Users, X, Download, ShieldAlert, ArrowLeft,
   ChevronRight, Lock, BellOff, Eye, Palette, CheckCircle2, AlertCircle,
-  Play, Pause, Mic, MicOff, Volume2, Camera, Video
+  Play, Pause, Mic, MicOff, Volume2, Camera, Video,
 } from "lucide-react";
+import { CreatonsAiIcon } from "@/components/icons/creatons-ai-icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -1969,7 +1970,7 @@ function AdminTeamChatPage() {
                                   setAiModalOpen(true);
                                 }}
                               >
-                                <Sparkles className="h-3.5 w-3.5 mr-2 text-primary" /> Ask SWIFT AI
+                                <CreatonsAiIcon className="h-3.5 w-3.5 mr-2 text-primary" /> Ask CREATONS AI
                               </DropdownMenuItem>
 
                               {isMe && (
@@ -2700,7 +2701,7 @@ function AdminTeamChatPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" /> SWIFT AI Copilot (Private Chat Analysis)
+              <CreatonsAiIcon className="h-4 w-4 text-primary" /> CREATONS AI Copilot (Private Chat Analysis)
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               Ask AI about this conversation, draft responses, or extract statutory & company policy guidance.
@@ -2720,7 +2721,7 @@ function AdminTeamChatPage() {
               <Input
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder="Ask SWIFT AI..."
+                placeholder="Ask CREATONS AI..."
                 className="text-xs"
               />
             </div>

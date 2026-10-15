@@ -30,7 +30,7 @@ import {
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
   KeyRound, RefreshCw, Copy, Check, Fingerprint, Database, ChevronDown, ShieldAlert,
-  UserX, Snowflake, MoreHorizontal,
+  UserX, Snowflake, MoreHorizontal, RotateCcw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -145,7 +145,7 @@ const DOC_INSERT_AFTER: Record<string, FormStepKey> = {
 
 type FlowStep = { key: FormStepKey; title: string; icon: typeof User };
 
-export function renderEmployeeStatusBadge(status?: string) {
+export function renderEmployeeStatusBadge(status?: string, lastWorkingDate?: string) {
   const s = (status || "active").toLowerCase().trim();
   if (s === "suspended") {
     return (
@@ -169,6 +169,37 @@ export function renderEmployeeStatusBadge(status?: string) {
         <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />
         <span>Terminated</span>
       </Badge>
+    );
+  }
+  if (s === "notice_period" || s === "notice") {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const isFinalDay = !!lastWorkingDate && todayStr === lastWorkingDate;
+    const isLwdPassed = !!lastWorkingDate && todayStr > lastWorkingDate;
+    return (
+      <div className="flex flex-col items-start gap-0.5">
+        <Badge
+          variant="outline"
+          className={`text-[11px] px-2.5 py-0.5 font-medium whitespace-nowrap gap-1.5 ${
+            isLwdPassed
+              ? "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30"
+              : isFinalDay
+              ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40 animate-pulse"
+              : "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30"
+          }`}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+              isLwdPassed ? "bg-rose-500" : isFinalDay ? "bg-amber-500" : "bg-orange-500"
+            }`}
+          />
+          <span>{isLwdPassed ? "Notice Ended" : isFinalDay ? "Notice (Final Day)" : "Notice Period"}</span>
+        </Badge>
+        {lastWorkingDate && (
+          <span className="text-[10px] text-muted-foreground font-mono" title={`Last Working Day: ${lastWorkingDate}`}>
+            LWD: {lastWorkingDate}
+          </span>
+        )}
+      </div>
     );
   }
   if (s === "frozen" || s === "freezed") {
@@ -214,6 +245,32 @@ function EmployeesPage() {
     purgeMockEmployees();
   }, [purgeMockEmployees]);
 
+  // Option 1 & 2: Automatically detect notice period employees whose Last Working Day has passed (today > LWD)
+  // and smoothly auto-transition them to "Relieved", archiving them to Past Employees with full audit trail.
+  useEffect(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const expiredNoticeEmps = (rawEmployees || []).filter((e) => {
+      const s = (e.status || "").toLowerCase().trim();
+      return (s === "notice_period" || s === "notice") && !!e.lastWorkingDate && todayStr > e.lastWorkingDate;
+    });
+
+    if (expiredNoticeEmps.length > 0) {
+      expiredNoticeEmps.forEach((emp) => {
+        updateEmployee(emp.id, {
+          status: "relieved",
+          statusDate: emp.lastWorkingDate,
+          statusNote: emp.statusNote
+            ? `${emp.statusNote} · Notice period concluded on ${emp.lastWorkingDate}. Auto-relieved.`
+            : `Notice period concluded on ${emp.lastWorkingDate}. Auto-relieved.`,
+        });
+        toast.info(
+          `Notice period completed for ${emp.name} (LWD: ${emp.lastWorkingDate}). Automatically relieved and moved to Past Employees.`,
+          { duration: 6000 }
+        );
+      });
+    }
+  }, [rawEmployees, updateEmployee]);
+
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
@@ -225,7 +282,7 @@ function EmployeesPage() {
   const [freezeConfirmEmp, setFreezeConfirmEmp] = useState<Employee | null>(null);
   const [freezeReasonNote, setFreezeReasonNote] = useState<string>("");
   const [actionKind, setActionKind] = useState<"exit" | "transfer" | "manual">("exit");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "relieved" | "terminated">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "relieved" | "terminated" | "notice_period">("all");
   const [onboardingFilter, setOnboardingFilter] = useState<"all" | "completed" | "incomplete">("all");
   const [inspectOnboardingEmp, setInspectOnboardingEmp] = useState<Employee | null>(null);
 
@@ -239,12 +296,13 @@ function EmployeesPage() {
   }, [employees]);
 
   const statusCounts = useMemo(() => {
-    const counts = { all: employees.length, active: 0, suspended: 0, relieved: 0, terminated: 0 };
+    const counts = { all: employees.length, active: 0, suspended: 0, relieved: 0, terminated: 0, notice_period: 0 };
     for (const e of employees) {
       const s = (e.status || "active").toLowerCase().trim();
       if (s === "suspended") counts.suspended++;
       else if (s === "relieved" || s === "releived") counts.relieved++;
       else if (s === "terminated") counts.terminated++;
+      else if (s === "notice_period" || s === "notice") counts.notice_period++;
       else counts.active++;
     }
     return counts;
@@ -256,6 +314,7 @@ function EmployeesPage() {
       list = list.filter(({ employee: e }) => {
         const s = (e.status || "active").toLowerCase().trim();
         if (statusFilter === "relieved") return s === "relieved" || s === "releived";
+        if (statusFilter === "notice_period") return s === "notice_period" || s === "notice";
         return s === statusFilter;
       });
     }
@@ -270,46 +329,90 @@ function EmployeesPage() {
   // Status Change Dialog State
   const [statusChangeTarget, setStatusChangeTarget] = useState<{
     employee: Employee;
-    newStatus: "suspended" | "relieved" | "terminated";
+    newStatus: "suspended" | "relieved" | "terminated" | "notice_period";
   } | null>(null);
   const [statusEffectiveDate, setStatusEffectiveDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
+  const [statusLastWorkingDate, setStatusLastWorkingDate] = useState<string>("");
   const [statusReasonNote, setStatusReasonNote] = useState<string>("");
   const [statusConfirmStep, setStatusConfirmStep] = useState<boolean>(false);
 
-  const handleStatusChange = (emp: Employee, newStatus: "active" | "suspended" | "relieved" | "terminated") => {
+  // Cancel Notice Period & Restore State
+  const [restoreNoticeEmp, setRestoreNoticeEmp] = useState<Employee | null>(null);
+  const [cancelNoticeNote, setCancelNoticeNote] = useState<string>("");
+
+  const handleConfirmCancelNotice = () => {
+    if (!restoreNoticeEmp) return;
+    const emp = restoreNoticeEmp;
+    const note = cancelNoticeNote.trim()
+      ? (emp.statusNote ? `${emp.statusNote} · Notice Cancelled: ${cancelNoticeNote.trim()}` : `Notice cancelled: ${cancelNoticeNote.trim()}`)
+      : (emp.statusNote ? `${emp.statusNote} · Notice period cancelled / restored to active.` : "Notice period cancelled / restored to active");
+
+    updateEmployee(emp.id, {
+      status: "active",
+      lastWorkingDate: undefined,
+      statusDate: new Date().toISOString().slice(0, 10),
+      statusNote: note,
+    });
+
+    toast.success(`Notice period cancelled for ${emp.name}. Restored back to Active status.`);
+    setRestoreNoticeEmp(null);
+    setCancelNoticeNote("");
+  };
+
+  const handleStatusChange = (emp: Employee, newStatus: "active" | "suspended" | "relieved" | "terminated" | "notice_period") => {
     if (newStatus === "active") {
       updateEmployee(emp.id, {
         status: "active",
         statusNote: undefined,
+        lastWorkingDate: undefined,
       });
       toast.success(`${emp.name}'s status restored to Active.`);
       return;
     }
 
-    // For Suspended, Relieved, or Terminated: open Date & Note popup
+    // For Suspended, Relieved, Terminated, or Notice Period: open Date & Note popup
     setStatusChangeTarget({ employee: emp, newStatus });
     setStatusEffectiveDate(new Date().toISOString().slice(0, 10));
-    setStatusReasonNote("");
+    if (newStatus === "notice_period") {
+      const defaultLwd = new Date();
+      defaultLwd.setDate(defaultLwd.getDate() + 30);
+      setStatusLastWorkingDate(emp.lastWorkingDate || defaultLwd.toISOString().slice(0, 10));
+    } else {
+      setStatusLastWorkingDate("");
+    }
+    setStatusReasonNote(emp.statusNote || "");
     setStatusConfirmStep(false);
   };
 
   const handleFinalizeStatusChange = () => {
     if (!statusChangeTarget) return;
     const { employee, newStatus } = statusChangeTarget;
-    const label = newStatus === "relieved" ? "Relieved" : newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+    const isNotice = newStatus === "notice_period";
+    const label = isNotice
+      ? "Notice Period"
+      : newStatus === "relieved"
+      ? "Relieved"
+      : newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
 
     updateEmployee(employee.id, {
       status: newStatus,
       statusDate: statusEffectiveDate,
+      lastWorkingDate: isNotice ? (statusLastWorkingDate || undefined) : undefined,
       statusNote: statusReasonNote.trim() || undefined,
     });
 
-    toast.warning(`${employee.name}'s status changed to ${label}. Moved to Past Employees.`);
+    if (isNotice) {
+      toast.info(`${employee.name} is now on Notice Period${statusLastWorkingDate ? ` (Last working date: ${statusLastWorkingDate})` : ""}.`);
+    } else {
+      toast.warning(`${employee.name}'s status changed to ${label}. Moved to Past Employees.`);
+    }
+
     setStatusChangeTarget(null);
     setStatusConfirmStep(false);
     setStatusReasonNote("");
+    setStatusLastWorkingDate("");
   };
 
   const openWizard = (draftId?: string) => {
@@ -495,6 +598,7 @@ function EmployeesPage() {
             { id: "suspended", label: "Suspended", count: statusCounts.suspended, color: "text-amber-600 dark:text-amber-400" },
             { id: "relieved", label: "Releived", count: statusCounts.relieved, color: "text-purple-600 dark:text-purple-400" },
             { id: "terminated", label: "Terminated", count: statusCounts.terminated, color: "text-rose-600 dark:text-rose-400" },
+            { id: "notice_period", label: "Notice Period", count: statusCounts.notice_period, color: "text-orange-600 dark:text-orange-400" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -525,6 +629,23 @@ function EmployeesPage() {
           </div>
         )}
       </div>
+
+      {/* Notice Period Guidance Banner */}
+      {statusFilter === "notice_period" && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-orange-500/10 border border-orange-500/25 text-xs text-orange-950 dark:text-orange-200">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-orange-500/20 text-orange-600 dark:text-orange-400 shrink-0">
+              <Clock className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="font-semibold text-foreground">Notice Period Staff Management:</span>
+              <span className="ml-1 text-muted-foreground">
+                Employees serving notice remain fully operational with biometric attendance until their Last Working Day. Use the <strong>Restore</strong> button anytime to cancel notice period and return them to regular active status.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
@@ -581,7 +702,7 @@ function EmployeesPage() {
                       </div>
                     </td>
                     <td className="p-3 whitespace-nowrap">
-                      {renderEmployeeStatusBadge(e.status)}
+                      {renderEmployeeStatusBadge(e.status, e.lastWorkingDate)}
                     </td>
                     <td className="p-3 whitespace-nowrap">{e.department}</td>
                     <td className="p-3 whitespace-nowrap">
@@ -664,29 +785,61 @@ function EmployeesPage() {
                     </td>
                     <td className="p-3 text-right whitespace-nowrap font-mono">{inr(e.basic)}</td>
                     <td className="p-3 text-right text-primary font-medium whitespace-nowrap font-mono">{inr(p.monthlyCTC)}</td>
-                    <td className="p-3 text-center pr-4 whitespace-nowrap w-16">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                    <td className="p-3 text-right pr-4 whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {(e.status === "notice_period" || e.status === "notice") && (
                           <Button
                             size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground inline-flex items-center justify-center transition-colors"
-                            title="Employee Actions"
+                            variant="outline"
+                            onClick={() => {
+                              setCancelNoticeNote("");
+                              setRestoreNoticeEmp(e);
+                            }}
+                            className="h-7 text-xs px-2.5 font-medium text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 gap-1 shadow-xs"
+                            title="Cancel Notice Period & Restore to Active"
                           >
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Open menu</span>
+                            <RotateCcw className="h-3 w-3" />
+                            <span>Restore</span>
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52 shadow-lg">
-                          <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground">
-                            Actions · {e.empCode || e.name}
-                          </DropdownMenuLabel>
-                          <DropdownMenuSeparator />
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground inline-flex items-center justify-center transition-colors"
+                              title="Employee Actions"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                              <span className="sr-only">Open menu</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56 shadow-lg">
+                            <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground">
+                              Actions · {e.empCode || e.name}
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
 
-                          <DropdownMenuItem
-                            onClick={() => setEditingEmp(e)}
-                            className="gap-2 cursor-pointer font-medium"
-                          >
+                            {(e.status === "notice_period" || e.status === "notice") && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setCancelNoticeNote("");
+                                    setRestoreNoticeEmp(e);
+                                  }}
+                                  className="gap-2 cursor-pointer font-medium text-emerald-600 dark:text-emerald-400 focus:text-emerald-700 focus:bg-emerald-500/10"
+                                >
+                                  <RotateCcw className="h-4 w-4 text-emerald-600" />
+                                  <span>Cancel Notice & Restore</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+
+                            <DropdownMenuItem
+                              onClick={() => setEditingEmp(e)}
+                              className="gap-2 cursor-pointer font-medium"
+                            >
                             <Pencil className="h-4 w-4 text-primary" />
                             <span>Edit Employee</span>
                           </DropdownMenuItem>
@@ -747,6 +900,14 @@ function EmployeesPage() {
                                 <span className="font-medium">Terminated</span>
                                 {e.status === "terminated" && <Check className="h-3.5 w-3.5 ml-auto text-rose-600" />}
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(e, "notice_period")}
+                                className="gap-2 cursor-pointer text-orange-600 focus:text-orange-600 focus:bg-orange-500/10"
+                              >
+                                <span className="h-2 w-2 rounded-full bg-orange-500" />
+                                <span className="font-medium">Notice Period</span>
+                                {(e.status === "notice_period" || e.status === "notice") && <Check className="h-3.5 w-3.5 ml-auto text-orange-600" />}
+                              </DropdownMenuItem>
                             </DropdownMenuSubContent>
                           </DropdownMenuSub>
 
@@ -772,8 +933,9 @@ function EmployeesPage() {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    </td>
-                  </tr>
+                    </div>
+                  </td>
+                </tr>
                 );
               })
             )}
@@ -905,6 +1067,99 @@ function EmployeesPage() {
         devices={devices ?? []}
       />
 
+      {/* Cancel Notice Period & Restore Dialog */}
+      <Dialog open={!!restoreNoticeEmp} onOpenChange={(o) => !o && setRestoreNoticeEmp(null)}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 border bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                <RotateCcw className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold text-foreground">
+                  Cancel Notice Period & Restore
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Restore {restoreNoticeEmp?.name} back to full Active operational status.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {restoreNoticeEmp && (
+            <div className="space-y-3.5 py-2 text-xs">
+              <div className="p-3.5 bg-muted/50 rounded-xl border border-border space-y-1.5">
+                <div className="flex items-center justify-between font-semibold text-foreground text-sm">
+                  <span>{restoreNoticeEmp.name}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{restoreNoticeEmp.empCode}</span>
+                </div>
+                <div className="text-muted-foreground text-xs">
+                  {restoreNoticeEmp.designation} · {restoreNoticeEmp.department}
+                </div>
+                <div className="pt-2 border-t border-border grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-muted-foreground block">Scheduled Last Working Day:</span>
+                    <span className="font-mono font-semibold text-orange-600 dark:text-orange-400">
+                      {restoreNoticeEmp.lastWorkingDate || "Not specified"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block">Current Status:</span>
+                    <span className="font-semibold text-orange-600 dark:text-orange-400">Notice Period</span>
+                  </div>
+                </div>
+                {restoreNoticeEmp.statusNote && (
+                  <div className="text-[11px] text-muted-foreground pt-1">
+                    <span className="font-medium text-foreground">Status Note:</span> {restoreNoticeEmp.statusNote}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-emerald-900 dark:text-emerald-300 text-[11px] space-y-1.5 leading-relaxed">
+                <div className="font-semibold flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>Restore Action Summary:</span>
+                </div>
+                <p>
+                  • The scheduled Last Working Day (LWD) will be cancelled and cleared.<br />
+                  • The employee will be retained in <strong>Active</strong> status without any login lockout or auto-relieving.<br />
+                  • Attendance marking and standard payroll processing will continue uninterrupted.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Cancellation Reason / Retainment Note (Optional)</Label>
+                <Input
+                  placeholder="e.g. Resignation withdrawn by employee / Retained by management"
+                  value={cancelNoticeNote}
+                  onChange={(e) => setCancelNoticeNote(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRestoreNoticeEmp(null)}
+              className="text-xs"
+            >
+              Dismiss
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleConfirmCancelNotice}
+              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-sm"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Confirm & Restore to Active</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 1. Status Change Dialog: Select Date and Note */}
       <Dialog
         open={statusChangeTarget !== null && !statusConfirmStep}
@@ -921,6 +1176,8 @@ function EmployeesPage() {
                     ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
                     : statusChangeTarget?.newStatus === "terminated"
                     ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                    : statusChangeTarget?.newStatus === "notice_period"
+                    ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
                     : "bg-purple-500/10 text-purple-600 border-purple-500/20"
                 }`}
               >
@@ -928,6 +1185,8 @@ function EmployeesPage() {
                   <AlertTriangle className="h-5 w-5" />
                 ) : statusChangeTarget?.newStatus === "terminated" ? (
                   <ShieldAlert className="h-5 w-5" />
+                ) : statusChangeTarget?.newStatus === "notice_period" ? (
+                  <Clock className="h-5 w-5" />
                 ) : (
                   <UserX className="h-5 w-5" />
                 )}
@@ -938,6 +1197,8 @@ function EmployeesPage() {
                     ? "Suspend Employee"
                     : statusChangeTarget?.newStatus === "terminated"
                     ? "Terminate Employee"
+                    : statusChangeTarget?.newStatus === "notice_period"
+                    ? "Place on Notice Period"
                     : "Relieve Employee"}
                 </DialogTitle>
                 <DialogDescription className="text-xs">
@@ -948,13 +1209,20 @@ function EmployeesPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="p-3 rounded-xl bg-muted/50 border border-border text-xs text-muted-foreground">
-              This employee will be moved to <strong className="text-foreground">Past Employees</strong> and will no longer show in the active <strong className="text-foreground">Attendance</strong> area.
-            </div>
+            {statusChangeTarget?.newStatus === "notice_period" ? (
+              <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/25 text-xs text-orange-800 dark:text-orange-300">
+                This employee will remain in <strong className="text-foreground">Employees</strong> and can continue to mark <strong className="text-foreground">Attendance</strong> and log in until their last working day.
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-muted/50 border border-border text-xs text-muted-foreground">
+                This employee will be moved to <strong className="text-foreground">Past Employees</strong> and will no longer show in the active <strong className="text-foreground">Attendance</strong> area.
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">
-                Effective Date <span className="text-rose-500">*</span>
+                {statusChangeTarget?.newStatus === "notice_period" ? "Notice Start Date" : "Effective Date"}{" "}
+                <span className="text-rose-500">*</span>
               </Label>
               <Input
                 type="date"
@@ -964,17 +1232,40 @@ function EmployeesPage() {
               />
             </div>
 
+            {statusChangeTarget?.newStatus === "notice_period" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  Last Working Date / End Date <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  type="date"
+                  value={statusLastWorkingDate}
+                  onChange={(e) => setStatusLastWorkingDate(e.target.value)}
+                  className="text-xs h-9"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  The employee's official final day of employment.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Note / Reason (Optional)</Label>
               <Textarea
                 rows={3}
-                placeholder="e.g. Resignation accepted, contract completed, disciplinary action, mutual release..."
+                placeholder={
+                  statusChangeTarget?.newStatus === "notice_period"
+                    ? "e.g. Resignation submitted, 30 days notice served, transition handover..."
+                    : "e.g. Resignation accepted, contract completed, disciplinary action, mutual release..."
+                }
                 value={statusReasonNote}
                 onChange={(e) => setStatusReasonNote(e.target.value)}
                 className="text-xs resize-none"
               />
               <p className="text-[11px] text-muted-foreground">
-                This note will be saved with the employee record and visible under Past Employees.
+                {statusChangeTarget?.newStatus === "notice_period"
+                  ? "This note will be saved with the employee record."
+                  : "This note will be saved with the employee record and visible under Past Employees."}
               </p>
             </div>
           </div>
@@ -994,6 +1285,10 @@ function EmployeesPage() {
               onClick={() => {
                 if (!statusEffectiveDate) {
                   toast.error("Please select an effective date");
+                  return;
+                }
+                if (statusChangeTarget?.newStatus === "notice_period" && !statusLastWorkingDate) {
+                  toast.error("Please select a last working date");
                   return;
                 }
                 setStatusConfirmStep(true);
@@ -1016,8 +1311,18 @@ function EmployeesPage() {
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
             <div className="flex items-center gap-2.5 mb-1">
-              <div className="h-10 w-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/20">
-                <AlertTriangle className="h-5 w-5" />
+              <div
+                className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 border ${
+                  statusChangeTarget?.newStatus === "notice_period"
+                    ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
+                    : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                }`}
+              >
+                {statusChangeTarget?.newStatus === "notice_period" ? (
+                  <Clock className="h-5 w-5" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5" />
+                )}
               </div>
               <div>
                 <DialogTitle className="text-base font-semibold">
@@ -1035,16 +1340,30 @@ function EmployeesPage() {
               Are you sure you want to mark{" "}
               <strong className="text-foreground">{statusChangeTarget?.employee.name}</strong> as{" "}
               <span className="font-semibold uppercase text-foreground">
-                {statusChangeTarget?.newStatus === "relieved" ? "Relieved" : statusChangeTarget?.newStatus}
+                {statusChangeTarget?.newStatus === "notice_period"
+                  ? "Notice Period"
+                  : statusChangeTarget?.newStatus === "relieved"
+                  ? "Relieved"
+                  : statusChangeTarget?.newStatus}
               </span>
               ?
             </p>
 
             <div className="rounded-xl border border-border bg-muted/40 p-3 space-y-1.5">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Effective Date:</span>
+                <span className="text-muted-foreground">
+                  {statusChangeTarget?.newStatus === "notice_period" ? "Notice Start Date:" : "Effective Date:"}
+                </span>
                 <span className="font-semibold text-foreground">{statusEffectiveDate}</span>
               </div>
+              {statusChangeTarget?.newStatus === "notice_period" && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Last Working Date:</span>
+                  <span className="font-semibold text-orange-600 dark:text-orange-400">
+                    {statusLastWorkingDate || "Not set"}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Reason / Note:</span>
                 <span className="font-medium text-foreground text-right max-w-[200px] truncate">
@@ -1053,9 +1372,15 @@ function EmployeesPage() {
               </div>
             </div>
 
-            <p className="text-[11.5px] text-amber-600 dark:text-amber-400 font-medium">
-              ⚠ Once confirmed, this employee will be moved to Past Employees and will no longer show in Attendance.
-            </p>
+            {statusChangeTarget?.newStatus === "notice_period" ? (
+              <p className="text-[11.5px] text-emerald-600 dark:text-emerald-400 font-medium">
+                ✓ Employee will remain active and continue recording attendance until their last working day.
+              </p>
+            ) : (
+              <p className="text-[11.5px] text-amber-600 dark:text-amber-400 font-medium">
+                ⚠ Once confirmed, this employee will be moved to Past Employees and will no longer show in Attendance.
+              </p>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
@@ -1070,9 +1395,13 @@ function EmployeesPage() {
             <Button
               type="button"
               size="sm"
-              variant="destructive"
+              variant={statusChangeTarget?.newStatus === "notice_period" ? "default" : "destructive"}
               onClick={handleFinalizeStatusChange}
-              className="gap-1.5 font-semibold"
+              className={`gap-1.5 font-semibold ${
+                statusChangeTarget?.newStatus === "notice_period"
+                  ? "bg-orange-600 hover:bg-orange-700 text-white"
+                  : ""
+              }`}
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
               Yes, Confirm Status Change
@@ -1553,7 +1882,7 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                 const passed = issues.length === 0;
                 return (
                   <div className="space-y-4">
-                    <StepHead icon={ScanFace} title="AI Verification" subtitle="SWIFT AI checks the entered data before onboarding." />
+                    <StepHead icon={ScanFace} title="AI Verification" subtitle="CREATONS AI checks the entered data before onboarding." />
                     <div className={`rounded-2xl border p-5 ${passed ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/40 bg-amber-500/5"}`}>
                       <div className="flex items-center gap-2 mb-2">
                         <Sparkles className={`h-4 w-4 ${passed ? "text-emerald-600" : "text-amber-600"}`} />

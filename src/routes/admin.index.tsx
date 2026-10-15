@@ -40,13 +40,12 @@ import {
   ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
+  Search,
   Bot,
-  Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useRolePreview, type DashboardViewType } from "@/lib/roles-permissions";
-import { LiveNotificationTicker } from "@/components/live-notification-ticker";
 import { DashboardHeroCarousel } from "@/components/dashboard-hero-carousel";
 import {
   Dialog,
@@ -100,8 +99,11 @@ function Dashboard() {
   const [ticketFilter, setTicketFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending");
   const [inspectItem, setInspectItem] = useState<NormalizedRequest | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [graphMetric, setGraphMetric] = useState<"attendance" | "payroll" | "headcount">("attendance");
+  const [graphMetric, setGraphMetric] = useState<"attendance" | "payroll" | "headcount" | "kyc">("attendance");
   const [pieMetric, setPieMetric] = useState<"department" | "attendance" | "target">("department");
+  const [kycDialogOpen, setKycDialogOpen] = useState(false);
+  const [kycTabFilter, setKycTabFilter] = useState<"all" | "completed" | "incomplete">("incomplete");
+  const [kycSearchQuery, setKycSearchQuery] = useState("");
 
   const { previewRoleId } = useRolePreview();
   const roles = useStore((s) => s.roles || []);
@@ -136,7 +138,7 @@ function Dashboard() {
       setGraphMetric("payroll");
       setPieMetric("department");
     } else if (activeDashboardType === "hr") {
-      setGraphMetric("headcount");
+      setGraphMetric("kyc");
       setPieMetric("department");
     } else {
       setGraphMetric("attendance");
@@ -355,6 +357,134 @@ function Dashboard() {
     ].filter((d) => d.value > 0);
   }, [employees.length, todayAbsentees.length, todayApprovedLeaves.length]);
 
+  // Helper to check statutory KYC status for an employee
+  const checkEmployeeKyc = (emp: any) => {
+    const missing: string[] = [];
+    const completed: string[] = [];
+
+    const hasAadhaar = Boolean(
+      emp.aadhaar &&
+      String(emp.aadhaar).trim() !== "" &&
+      String(emp.aadhaar).trim() !== "-" &&
+      String(emp.aadhaar).trim() !== "—"
+    );
+    if (hasAadhaar) completed.push("Aadhaar");
+    else missing.push("Aadhaar Card");
+
+    const hasPan = Boolean(
+      (emp.pan && String(emp.pan).trim() !== "" && String(emp.pan).trim() !== "-" && String(emp.pan).trim() !== "—") ||
+      (emp.panNumber && String(emp.panNumber).trim() !== "" && String(emp.panNumber).trim() !== "-")
+    );
+    if (hasPan) completed.push("PAN");
+    else missing.push("PAN Card");
+
+    const hasBankAcc = Boolean(
+      (emp.bankAcc && String(emp.bankAcc).trim() !== "" && String(emp.bankAcc).trim() !== "-") ||
+      (emp.bankAccount && String(emp.bankAccount).trim() !== "")
+    );
+    const hasBankIfsc = Boolean(
+      emp.bankIfsc && String(emp.bankIfsc).trim() !== "" && String(emp.bankIfsc).trim() !== "-"
+    );
+    if (hasBankAcc && hasBankIfsc) completed.push("Bank Details");
+    else missing.push("Bank A/C & IFSC");
+
+    const isCompleted = missing.length === 0;
+
+    return {
+      isCompleted,
+      missing,
+      completed,
+      hasAadhaar,
+      hasPan,
+      hasBank: hasBankAcc && hasBankIfsc,
+    };
+  };
+
+  const employeeKycList = useMemo(() => {
+    return employees.map((emp) => {
+      const kyc = checkEmployeeKyc(emp);
+      return {
+        employee: emp,
+        ...kyc,
+      };
+    });
+  }, [employees]);
+
+  const kycCompletedList = useMemo(
+    () => employeeKycList.filter((k) => k.isCompleted),
+    [employeeKycList]
+  );
+
+  const kycIncompleteList = useMemo(
+    () => employeeKycList.filter((k) => !k.isCompleted),
+    [employeeKycList]
+  );
+
+  const kycCompletionPct = employees.length > 0
+    ? Math.round((kycCompletedList.length / employees.length) * 100)
+    : 0;
+
+  // Pie chart data for KYC status (Completed vs Incomplete)
+  const kycPieData = useMemo(() => {
+    return [
+      { name: "KYC Completed", value: kycCompletedList.length, color: "#10b981" },
+      { name: "KYC Incomplete", value: kycIncompleteList.length, color: "#f59e0b" },
+    ].filter((d) => d.value > 0);
+  }, [kycCompletedList.length, kycIncompleteList.length]);
+
+  // Department-wise KYC distribution for grouped bar chart
+  const deptKycData = useMemo(() => {
+    const depts: Record<string, { department: string; completed: number; incomplete: number; total: number }> = {};
+    employees.forEach((emp) => {
+      const d = emp.department || "General";
+      if (!depts[d]) {
+        depts[d] = { department: d, completed: 0, incomplete: 0, total: 0 };
+      }
+      depts[d].total += 1;
+      const kyc = checkEmployeeKyc(emp);
+      if (kyc.isCompleted) {
+        depts[d].completed += 1;
+      } else {
+        depts[d].incomplete += 1;
+      }
+    });
+    return Object.values(depts);
+  }, [employees]);
+
+  // Breakdown of top missing KYC statutory documents
+  const kycMissingBreakdown = useMemo(() => {
+    let missingAadhaar = 0;
+    let missingPan = 0;
+    let missingBank = 0;
+
+    employeeKycList.forEach((item) => {
+      if (!item.hasAadhaar) missingAadhaar++;
+      if (!item.hasPan) missingPan++;
+      if (!item.hasBank) missingBank++;
+    });
+
+    return { missingAadhaar, missingPan, missingBank };
+  }, [employeeKycList]);
+
+  // Filtered staff list for the KYC inspection modal
+  const filteredKycStaff = useMemo(() => {
+    let list = employeeKycList;
+    if (kycTabFilter === "completed") {
+      list = list.filter((k) => k.isCompleted);
+    } else if (kycTabFilter === "incomplete") {
+      list = list.filter((k) => !k.isCompleted);
+    }
+    if (!kycSearchQuery.trim()) return list;
+    const q = kycSearchQuery.toLowerCase();
+    return list.filter(
+      (k) =>
+        (k.employee?.name && k.employee.name.toLowerCase().includes(q)) ||
+        (k.employee?.empCode && k.employee.empCode.toLowerCase().includes(q)) ||
+        (k.employee?.department && k.employee.department.toLowerCase().includes(q)) ||
+        (k.employee?.designation && k.employee.designation.toLowerCase().includes(q))
+    );
+  }, [employeeKycList, kycTabFilter, kycSearchQuery]);
+
   const chartColors = [
     "var(--palette-c1, #0ea5e9)",
     "var(--palette-c2, #8b5cf6)",
@@ -505,123 +635,6 @@ function Dashboard() {
       </motion.div>
 
       {/* ========================================================================= */}
-      {/* 2. TEXT CAROUSEL (Live Notification & Notice Marquee Ticker)              */}
-      {/* ========================================================================= */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.05 }}
-      >
-        <LiveNotificationTicker />
-      </motion.div>
-
-      {/* ========================================================================= */}
-      {/* 2.2 ROLE-BASED DASHBOARD PERSPECTIVE SELECTOR                              */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-card border border-border shadow-2xs">
-        <div className="flex items-center gap-2.5">
-          <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-            <ShieldCheck className="h-4 w-4" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
-              <span>Position Perspective:</span>
-              <span className="text-primary font-extrabold">{activeRole?.name || "Company Administrator"}</span>
-              {previewRoleId && (
-                <span className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full uppercase font-bold">
-                  Preview Active
-                </span>
-              )}
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              Showing role-tailored metrics, approval queues, and charts for this position
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 bg-muted/60 p-1 rounded-xl shrink-0 overflow-x-auto">
-          <button
-            type="button"
-            onClick={() => {
-              setGraphMetric("headcount");
-              setPieMetric("department");
-            }}
-            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition cursor-pointer ${
-              graphMetric === "headcount"
-                ? "bg-card text-foreground shadow-2xs font-bold border border-border"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            HR Overview
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setGraphMetric("attendance");
-              setPieMetric("attendance");
-            }}
-            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition cursor-pointer ${
-              graphMetric === "attendance"
-                ? "bg-card text-foreground shadow-2xs font-bold border border-border"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Team Lead
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setGraphMetric("payroll");
-              setPieMetric("department");
-            }}
-            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition cursor-pointer ${
-              graphMetric === "payroll"
-                ? "bg-card text-foreground shadow-2xs font-bold border border-border"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Finance & Payroll
-          </button>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 2.5 AI MORNING EXECUTIVE BRIEFING                                         */}
-      {/* ========================================================================= */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, delay: 0.08 }}
-        className="relative rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-card/90 to-primary/5 p-3.5 sm:p-4 backdrop-blur-xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 overflow-hidden"
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="h-9 w-9 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary shrink-0 shadow-2xs">
-            <Brain className="h-4.5 w-4.5 text-primary animate-pulse" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-display font-bold text-xs sm:text-sm text-foreground">
-                SWIFT AI Executive Briefing
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Workforce turnout is at <strong className="text-foreground font-semibold">{employees.length > 0 ? Math.round(((employees.length - todayAbsentees.length) / employees.length) * 100) : 100}%</strong> ({employees.length - todayAbsentees.length}/{employees.length} present) · <strong className="text-amber-600 dark:text-amber-400 font-semibold">{pendingCount} pending approvals</strong> requiring review · Estimated monthly payroll cost stands at <strong className="text-foreground font-semibold">{inr(totalMonthlyCTC)}</strong>.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-          <Link
-            to="/admin/ai"
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 shadow-2xs transition-all cursor-pointer"
-          >
-            <Bot className="h-3.5 w-3.5" />
-            <span>Ask SWIFT AI</span>
-          </Link>
-        </div>
-      </motion.div>
-
-      {/* ========================================================================= */}
       {/* 2.8 OVERALL WORKFORCE ONBOARDING JOURNEY & COMPLETION PROGRESS            */}
       {/* ========================================================================= */}
       <motion.div
@@ -711,13 +724,24 @@ function Dashboard() {
             {/* 5 Pillar Mini Gauges */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
               {[
-                { label: "Personal & KYC", pct: overallOnboarding.stageBreakdown.personal, icon: "👤" },
+                { label: "Personal & KYC", pct: overallOnboarding.stageBreakdown.personal, icon: "👤", isKyc: true },
                 { label: "Work & Shifts", pct: overallOnboarding.stageBreakdown.work, icon: "💼" },
                 { label: "Bank & Statutory", pct: overallOnboarding.stageBreakdown.statutory, icon: "🏦" },
                 { label: "Education & Skills", pct: overallOnboarding.stageBreakdown.history, icon: "🎓" },
                 { label: "Docs & Face ID", pct: overallOnboarding.stageBreakdown.documents, icon: "📄" },
               ].map((pillar, i) => (
-                <div key={i} className="p-2.5 rounded-xl bg-muted/30 border border-border/50 space-y-1.5">
+                <div
+                  key={i}
+                  onClick={() => {
+                    if ((pillar as any).isKyc) {
+                      setKycDialogOpen(true);
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl bg-muted/30 border border-border/50 space-y-1.5 transition-all ${
+                    (pillar as any).isKyc ? "cursor-pointer hover:border-primary/50 hover:bg-muted/50" : ""
+                  }`}
+                  title={(pillar as any).isKyc ? "Click to inspect KYC details" : undefined}
+                >
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-muted-foreground font-medium truncate flex items-center gap-1">
                       <span>{pillar.icon}</span>
@@ -738,59 +762,155 @@ function Dashboard() {
             </div>
           </div>
 
-          {/* Right Column: Quick Stats & Call to Action */}
-          <div className="lg:w-72 shrink-0 flex flex-col justify-between p-4 rounded-2xl bg-muted/40 border border-border/70 space-y-3">
+          {/* Right Column: KYC Verification Ratio Donut Pie Chart & Stats */}
+          <div className="lg:w-96 shrink-0 flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-muted/35 border border-border/70 space-y-3">
+            {/* Header */}
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                Onboarding Health
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  KYC Verification Ratio
+                </h4>
+              </div>
               <span className="text-[11px] text-muted-foreground font-mono">
-                {overallOnboarding.totalCount} active staff
+                {employees.length} active staff
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-2.5 rounded-xl bg-card border border-border space-y-0.5">
-                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="h-3 w-3" /> Fully Verified
-                </div>
-                <div className="text-xl font-bold font-display text-foreground">
-                  {overallOnboarding.completedCount}
-                </div>
+            {/* Donut Chart & Stat Breakdown Side-by-Side */}
+            <div className="flex items-center gap-3">
+              {/* Donut Chart Canvas */}
+              <div className="relative h-28 w-28 shrink-0 flex items-center justify-center">
+                {employees.length === 0 ? (
+                  <div className="text-[10px] text-muted-foreground text-center">
+                    <Users className="h-5 w-5 mx-auto mb-0.5 opacity-40" />
+                    No staff
+                  </div>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={kycPieData}
+                          innerRadius={36}
+                          outerRadius={52}
+                          paddingAngle={3}
+                          dataKey="value"
+                          nameKey="name"
+                        >
+                          {kycPieData.map((entry: any, i: number) => (
+                            <Cell key={i} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(val: any, name: any) => [
+                            `${val} Staff (${Math.round((Number(val) / (employees.length || 1)) * 100)}%)`,
+                            name,
+                          ]}
+                          contentStyle={{
+                            backgroundColor: "var(--card)",
+                            borderColor: "var(--border)",
+                            borderRadius: "10px",
+                            fontSize: "11px",
+                            padding: "6px 10px",
+                            boxShadow: "0 10px 25px -5px rgba(0,0,0,0.2)",
+                            color: "var(--card-foreground)",
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="font-display text-lg font-extrabold text-foreground tracking-tight leading-none">
+                        {kycCompletionPct}%
+                      </span>
+                      <span className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">
+                        Verified
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
-              <div className="p-2.5 rounded-xl bg-card border border-border space-y-0.5">
-                <div className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" /> Incomplete
+              {/* Clickable Status Cards (Completed vs Incomplete) */}
+              <div className="flex-1 space-y-1.5">
+                <div
+                  onClick={() => {
+                    setKycTabFilter("completed");
+                    setKycDialogOpen(true);
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-card border border-emerald-500/30 hover:border-emerald-500/60 cursor-pointer transition-all hover:bg-emerald-500/5 group flex items-center justify-between"
+                  title="Click to view KYC completed staff"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div>
+                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 block leading-tight">
+                        Completed
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {kycCompletedList.length} staff
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    {kycCompletionPct}%
+                  </span>
                 </div>
-                <div className="text-xl font-bold font-display text-foreground">
-                  {overallOnboarding.inProgressCount}
+
+                <div
+                  onClick={() => {
+                    setKycTabFilter("incomplete");
+                    setKycDialogOpen(true);
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-card border border-amber-500/30 hover:border-amber-500/60 cursor-pointer transition-all hover:bg-amber-500/5 group flex items-center justify-between"
+                  title="Click to view staff who have not completed KYC"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <div>
+                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 block leading-tight">
+                        Not Completed
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {kycIncompleteList.length} staff
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
+                    {100 - kycCompletionPct}%
+                  </span>
                 </div>
               </div>
             </div>
 
-            {overallOnboarding.mostMissingFields.length > 0 && (
-              <div className="space-y-1">
-                <div className="text-[10px] font-semibold text-muted-foreground uppercase">
-                  Top Missing Requirements:
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {overallOnboarding.mostMissingFields.slice(0, 3).map((mf) => (
-                    <Badge key={mf.key} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-                      {mf.label} ({mf.count})
-                    </Badge>
-                  ))}
-                </div>
+            {/* Quick Pending Statutory Badges & Inspection Action */}
+            <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1 flex-wrap text-[10px] text-muted-foreground">
+                <span className="font-semibold text-foreground mr-0.5">Pending:</span>
+                <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal bg-card">
+                  Aadhaar ({kycMissingBreakdown.missingAadhaar})
+                </Badge>
+                <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal bg-card">
+                  PAN ({kycMissingBreakdown.missingPan})
+                </Badge>
+                <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal bg-card">
+                  Bank ({kycMissingBreakdown.missingBank})
+                </Badge>
               </div>
-            )}
 
-            <Link
-              to="/admin/employees"
-              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-all shadow-2xs"
-            >
-              <span>Manage Employee Profiles</span>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setKycTabFilter("incomplete");
+                  setKycDialogOpen(true);
+                }}
+                className="h-6 text-[10px] font-semibold px-2 rounded-lg border-primary/30 text-primary hover:bg-primary/10 gap-1 shrink-0 cursor-pointer"
+              >
+                <Eye className="h-2.5 w-2.5" />
+                <span>Inspect</span>
+              </Button>
+            </div>
           </div>
         </div>
       </motion.div>
@@ -815,6 +935,7 @@ function Dashboard() {
                     {graphMetric === "attendance" && "Workforce Attendance Trends"}
                     {graphMetric === "payroll" && "Monthly Payroll & Payout Analytics"}
                     {graphMetric === "headcount" && "Staff Headcount & Growth"}
+                    {graphMetric === "kyc" && "Department-wise KYC Verification"}
                   </h3>
                   <span className="flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
                     <TrendingUp className="h-3 w-3" /> Live
@@ -824,6 +945,7 @@ function Dashboard() {
                   {graphMetric === "attendance" && "Daily present, leave, and half-day status records."}
                   {graphMetric === "payroll" && "Historical monthly payroll payouts and company cost."}
                   {graphMetric === "headcount" && "Active employee retention and new hire milestones."}
+                  {graphMetric === "kyc" && "Employees who completed statutory KYC vs who not completed across departments."}
                 </p>
               </div>
 
@@ -861,6 +983,17 @@ function Dashboard() {
                   }`}
                 >
                   Headcount
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGraphMetric("kyc")}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                    graphMetric === "kyc"
+                      ? "bg-foreground text-background shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  KYC Status
                 </button>
               </div>
             </div>
@@ -925,6 +1058,32 @@ function Dashboard() {
                       fill="url(#payrollGradient)"
                     />
                   </AreaChart>
+                ) : graphMetric === "kyc" ? (
+                  deptKycData.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-xs text-muted-foreground">
+                      <Users className="h-8 w-8 mb-2 opacity-40" />
+                      No employee KYC data available.
+                    </div>
+                  ) : (
+                    <BarChart data={deptKycData} barGap={6}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                      <XAxis dataKey="department" fontSize={11} stroke="currentColor" opacity={0.6} tickLine={false} />
+                      <YAxis fontSize={11} stroke="currentColor" opacity={0.6} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <Tooltip
+                        formatter={(val: any, name: any) => [`${val} Staff`, name]}
+                        contentStyle={{
+                          backgroundColor: "var(--card)",
+                          borderColor: "var(--border)",
+                          borderRadius: "14px",
+                          fontSize: "12px",
+                          boxShadow: "0 10px 25px -5px rgba(0,0,0,0.2)",
+                          color: "var(--card-foreground)",
+                        }}
+                      />
+                      <Bar dataKey="completed" fill="#10b981" radius={[6, 6, 0, 0]} name="KYC Completed" />
+                      <Bar dataKey="incomplete" fill="#f59e0b" radius={[6, 6, 0, 0]} name="KYC Not Completed" />
+                    </BarChart>
+                  )
                 ) : (
                   <AreaChart data={headcountTrendData}>
                     <defs>
@@ -961,20 +1120,47 @@ function Dashboard() {
 
             {/* Sub Legend Indicator */}
             <div className="flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: chartColors[0] }} /> Present
+              {graphMetric === "kyc" ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+                  <div className="flex items-center gap-4">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Completed KYC ({kycCompletedList.length})
+                    </span>
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> Not Completed ({kycIncompleteList.length})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setKycTabFilter("incomplete");
+                      setKycDialogOpen(true);
+                    }}
+                    className="text-primary hover:underline font-semibold cursor-pointer text-xs inline-flex items-center gap-1"
+                  >
+                    <Eye className="h-3 w-3" />
+                    <span>Who Not Completed?</span>
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: chartColors[0] }} /> Present
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: chartColors[1] }} /> Leaves
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: chartColors[3] }} /> Half-Day
+                  </span>
+                </div>
+              )}
+              {graphMetric !== "kyc" && (
+                <span className="text-[11px] font-medium hidden sm:inline">
+                  Updated {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: chartColors[1] }} /> Leaves
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: chartColors[3] }} /> Half-Day
-                </span>
-              </div>
-              <span className="text-[11px] font-medium hidden sm:inline">
-                Updated {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </span>
+              )}
             </div>
           </div>
 
@@ -1798,6 +1984,220 @@ function Dashboard() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* KYC INSPECTION MODAL: WHO COMPLETED & WHO NOT COMPLETED                   */}
+      {/* ========================================================================= */}
+      <Dialog open={kycDialogOpen} onOpenChange={setKycDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden rounded-3xl border border-border shadow-2xl bg-card">
+          <DialogHeader className="p-5 sm:p-6 pb-4 border-b border-border/80 bg-muted/20">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-10 w-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold shrink-0">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base sm:text-lg font-bold tracking-tight">
+                    Employee KYC Verification Status
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                    Live breakdown of staff who completed statutory KYC and those pending requirements.
+                  </DialogDescription>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Filter Switcher & Search Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 mt-1">
+              <div className="flex items-center gap-1 p-0.5 rounded-xl bg-muted/60 border border-border/70 self-start">
+                <button
+                  type="button"
+                  onClick={() => setKycTabFilter("incomplete")}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    kycTabFilter === "incomplete"
+                      ? "bg-amber-500 text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <AlertCircle className="h-3 w-3" />
+                  <span>Not Completed ({kycIncompleteList.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKycTabFilter("completed")}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    kycTabFilter === "completed"
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <CheckCircle2 className="h-3 w-3" />
+                  <span>Completed ({kycCompletedList.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKycTabFilter("all")}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    kycTabFilter === "all"
+                      ? "bg-foreground text-background shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <span>All ({employees.length})</span>
+                </button>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-56">
+                <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={kycSearchQuery}
+                  onChange={(e) => setKycSearchQuery(e.target.value)}
+                  placeholder="Filter name, code, dept..."
+                  className="w-full text-xs pl-8 pr-3 py-1.5 rounded-xl border border-border/80 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* List of employees */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2.5">
+            {filteredKycStaff.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-xs">
+                <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                No staff found matching the selected filter.
+              </div>
+            ) : (
+              filteredKycStaff.map((item, idx) => {
+                const emp = item.employee || {};
+                return (
+                  <div
+                    key={emp.id || idx}
+                    className="p-3.5 rounded-2xl border border-border/80 bg-muted/20 hover:bg-muted/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    {/* Employee Profile Identity */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      {emp.photoDataUrl ? (
+                        <img
+                          src={emp.photoDataUrl}
+                          alt={emp.name || "Employee"}
+                          className="h-10 w-10 rounded-full object-cover border border-border shrink-0"
+                        />
+                      ) : (
+                        <div
+                          className={`h-10 w-10 rounded-full font-bold text-xs flex items-center justify-center shrink-0 border ${
+                            item.isCompleted
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                              : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                          }`}
+                        >
+                          {(emp.name || "E").slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-foreground truncate">
+                            {emp.name || "Unnamed Employee"}
+                          </span>
+                          <span className="text-[10px] font-mono text-muted-foreground">
+                            {emp.empCode || "—"}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {emp.department || "General"} · {emp.designation || "Staff"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* KYC Badges & Missing Details */}
+                    <div className="flex flex-col sm:items-end gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {item.isCompleted ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 flex items-center gap-1"
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>KYC Completed</span>
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 flex items-center gap-1"
+                          >
+                            <AlertCircle className="h-3 w-3" />
+                            <span>KYC Incomplete</span>
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1 flex-wrap text-[10px]">
+                        {item.isCompleted ? (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓ Aadhaar</span>
+                            <span>·</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓ PAN</span>
+                            <span>·</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓ Bank</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="text-muted-foreground text-[10px]">Missing:</span>
+                            {item.missing.map((m, mi) => (
+                              <span
+                                key={mi}
+                                className="px-1.5 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 font-medium text-[10px]"
+                              >
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Direct Link to Update */}
+                    <div className="shrink-0 flex items-center">
+                      <Link
+                        to="/admin/employees"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline px-2.5 py-1.5 rounded-lg hover:bg-primary/10 transition-colors"
+                      >
+                        <span>Update KYC</span>
+                        <ChevronRight className="h-3 w-3" />
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <DialogFooter className="p-4 bg-muted/30 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">
+              Total: <strong>{employees.length}</strong> staff · <strong>{kycCompletedList.length}</strong> Completed ·{" "}
+              <strong className="text-amber-600 dark:text-amber-400">{kycIncompleteList.length}</strong> Pending
+            </span>
+
+            <div className="flex items-center gap-2">
+              <Link
+                to="/admin/employees"
+                className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1"
+              >
+                Go to Employees Directory <ExternalLink className="h-3 w-3" />
+              </Link>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setKycDialogOpen(false)}
+                className="text-xs h-8 rounded-full"
+              >
+                Close
+              </Button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

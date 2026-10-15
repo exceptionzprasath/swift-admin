@@ -9,8 +9,8 @@ import { useUnifiedAiStore } from "@/lib/ai-unified-store";
 import { aiOrchestrator } from "@/lib/ai-orchestrator";
 import { AIResponseRenderer } from "@/components/ai/AIResponseRenderer";
 import { Button } from "@/components/ui/button";
+import { CreatonsAiIcon } from "@/components/icons/creatons-ai-icon";
 import {
-  Brain,
   X,
   Send,
   Loader2,
@@ -189,6 +189,11 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
   };
 
   const hasUserMessages = messages.some((m) => m.role === "user");
+  const conversationMessages = useMemo(() => {
+    return hasUserMessages
+      ? messages.filter((m) => !m.id.startsWith("welcome-") && !m.content.includes("Welcome to"))
+      : [];
+  }, [messages, hasUserMessages]);
   const currentTimeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   return (
@@ -201,16 +206,14 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
           exit={{ opacity: 0, x: 20 }}
           whileHover={{ scale: 1.06, x: -3 }}
           onClick={() => setIsMinimized(false)}
-          className="fixed right-0 bottom-22 z-40 rounded-l-full bg-white/90 dark:bg-card/90 text-foreground pl-3.5 pr-3 py-2.5 shadow-xl shadow-black/10 flex items-center gap-2 cursor-pointer border-y border-l border-border/70 backdrop-blur-2xl text-xs font-semibold group transition-all duration-300"
-          title="Click to restore SWIFT Digital Teammate"
+          className="fixed right-0 bottom-22 z-40 rounded-l-full bg-card/90 dark:bg-card/85 text-foreground hover:text-primary pl-3.5 pr-3 py-2 shadow-lg shadow-black/10 flex items-center gap-2 cursor-pointer border-y border-l border-border/80 backdrop-blur-xl text-xs font-semibold group transition-all duration-300"
+          title="Click to restore CREATONS Digital Teammate"
         >
-          <div className="h-6 w-6 rounded-full border border-primary/30 flex items-center justify-center text-primary bg-primary/10">
-            <Brain className="h-3.5 w-3.5 animate-pulse" />
-          </div>
+          <CreatonsAiIcon className="h-4 w-4 text-primary" />
           <span className="hidden group-hover:inline text-[11px] font-bold tracking-wide pr-0.5 text-foreground">
-            SWIFT AI
+            CREATONS AI
           </span>
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
         </motion.button>
       )}
 
@@ -231,7 +234,7 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
             }}
             className="absolute -top-1.5 -left-1.5 z-50 h-5 w-5 rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-md border border-border/80 flex items-center justify-center cursor-pointer opacity-0 scale-75 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto hover:scale-110 transition-all duration-200"
             title="Minimize to side tab"
-            aria-label="Minimize SWIFT AI"
+            aria-label="Minimize CREATONS AI"
           >
             <Minus className="h-2.5 w-2.5 stroke-[3]" />
           </button>
@@ -239,17 +242,15 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="relative h-12 w-12 sm:h-13 sm:w-13 rounded-full bg-white/90 dark:bg-card/90 text-primary shadow-lg shadow-black/10 border border-white/80 dark:border-white/20 backdrop-blur-2xl flex items-center justify-center cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-xl hover:border-primary/40 focus:outline-none"
-            aria-label="Open SWIFT Digital Teammate"
-            title="SWIFT Digital Teammate"
+            className="relative h-12 w-12 sm:h-13 sm:w-13 flex items-center justify-center cursor-pointer transition-all duration-300 hover:scale-110 active:scale-95 focus:outline-none"
+            aria-label="Open CREATONS Digital Teammate"
+            title="CREATONS Digital Teammate"
           >
-            <div className="h-9 w-9 rounded-full border border-primary/25 bg-primary/10 flex items-center justify-center">
-              <Brain className="h-5 w-5 text-primary animate-pulse" />
-            </div>
+            <CreatonsAiIcon className="h-11 w-11 sm:h-12 sm:w-12 text-primary drop-shadow-[0_4px_14px_rgba(0,0,0,0.18)]" />
 
-            {/* Notification / Guide pulse badge */}
+            {/* Notification / Guide badge (solid, no blinking) */}
             {(guideActive || pulse) && (
-              <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-background animate-ping" />
+              <span className="absolute top-0 right-0 h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-background pointer-events-none" />
             )}
           </button>
         </motion.div>
@@ -269,11 +270,11 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
             <div className="px-4 py-3.5 border-b border-border/40 bg-white/40 dark:bg-card/40 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="h-9 w-9 rounded-full border border-primary/20 bg-primary/10 flex items-center justify-center text-primary shadow-xs shrink-0">
-                  <Brain className="h-4.5 w-4.5 text-primary" />
+                  <CreatonsAiIcon className="h-4.5 w-4.5 text-primary" />
                 </div>
                 <div>
                   <div className="font-semibold text-xs sm:text-sm text-foreground tracking-tight leading-snug">
-                    SWIFT Digital Teammate
+                    CREATONS Digital Teammate
                   </div>
                   <div className="text-[10px] sm:text-[11px] text-muted-foreground leading-none mt-0.5">
                     We help companies provide instant answers
@@ -307,46 +308,46 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
 
             {/* Chat Body */}
             <div ref={scroller} className="flex-1 overflow-y-auto p-3.5 space-y-3.5 bg-gradient-to-b from-transparent to-muted/20">
-              {/* Default Welcome Message (Exact format from Image 1) */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium pl-1">
-                  <div className="h-5 w-5 rounded-full border border-primary/30 bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                    <Brain className="h-2.5 w-2.5" />
+              {/* Default Welcome Message (Hidden once questions are asked) */}
+              {!hasUserMessages && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium pl-1">
+                    <div className="h-5 w-5 rounded-full border border-primary/30 bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                      <CreatonsAiIcon className="h-2.5 w-2.5" />
+                    </div>
+                    <span>CREATONS AI • {currentTimeStr}</span>
                   </div>
-                  <span>SWIFT AI • {currentTimeStr}</span>
-                </div>
 
-                <div className="rounded-2xl p-3.5 bg-white/70 dark:bg-card/70 border border-white/80 dark:border-white/10 shadow-xs text-xs space-y-2 text-foreground">
-                  <p>
-                    Hi <strong className="font-bold text-foreground">{company.name || "there"}</strong>! We help companies provide instant, accurate, and on-brand responses 24/7.
-                  </p>
-                  <p className="text-muted-foreground text-[11px]">
-                    Here are a few ways I can assist you right now:
-                  </p>
-                  <div className="space-y-1 pt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => send("Show company policies and quick guidelines")}
-                      className="block text-teal-600 dark:text-teal-400 hover:underline font-medium text-xs text-left cursor-pointer"
-                    >
-                      Learns your products & policies ⚡
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => send("Help me coordinate workforce and HR operations")}
-                      className="block text-teal-600 dark:text-teal-400 hover:underline font-medium text-xs text-left cursor-pointer"
-                    >
-                      Chat with SWIFT HR services 💬
-                    </button>
+                  <div className="rounded-2xl p-3.5 bg-white/70 dark:bg-card/70 border border-white/80 dark:border-white/10 shadow-xs text-xs space-y-2 text-foreground">
+                    <p>
+                      Hi <strong className="font-bold text-foreground">{company.name || "there"}</strong>! We help companies provide instant, accurate, and on-brand responses 24/7.
+                    </p>
+                    <p className="text-muted-foreground text-[11px]">
+                      Here are a few ways I can assist you right now:
+                    </p>
+                    <div className="space-y-1 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => send("Show company policies and quick guidelines")}
+                        className="block text-teal-600 dark:text-teal-400 hover:underline font-medium text-xs text-left cursor-pointer"
+                      >
+                        Learns your products & policies ⚡
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => send("Help me coordinate workforce and HR operations")}
+                        className="block text-teal-600 dark:text-teal-400 hover:underline font-medium text-xs text-left cursor-pointer"
+                      >
+                        Chat with CREATONS HR services 💬
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Quick Action Pill Buttons (Chat & Voice) */}
-                {!hasUserMessages && (
+                  {/* Quick Action Pill Buttons (Chat & Voice) */}
                   <div className="flex items-center gap-2 pl-1 pt-1">
                     <button
                       type="button"
-                      onClick={() => send("Hello SWIFT AI, I want to chat about workforce details")}
+                      onClick={() => send("Hello CREATONS AI, I want to chat about workforce details")}
                       className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white dark:bg-card border border-border/80 text-xs font-semibold text-foreground shadow-2xs hover:bg-muted/40 transition cursor-pointer active:scale-95"
                     >
                       <MessageSquare className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
@@ -361,12 +362,11 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
                       <span>{isListening ? "Listening..." : "Voice"}</span>
                     </button>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Dynamic Conversation Messages */}
-              {messages.map((m, i) => {
-                if (m.role === "assistant" && i === 0 && !hasUserMessages) return null;
+              {conversationMessages.map((m, i) => {
 
                 const isUser = m.role === "user";
 
@@ -383,9 +383,9 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
                       {!isUser ? (
                         <>
                           <div className="h-5 w-5 rounded-full border border-primary/30 bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                            <Brain className="h-2.5 w-2.5" />
+                            <CreatonsAiIcon className="h-2.5 w-2.5" />
                           </div>
-                          <span>SWIFT AI • {m.timestamp}</span>
+                          <span>CREATONS AI • {m.timestamp}</span>
                         </>
                       ) : (
                         <>
@@ -418,7 +418,7 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
                       {m.isFormatPrompt && (
                         <div className="mt-2.5 pt-2 border-t border-border/40 flex flex-col gap-1.5">
                           <div className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
-                            <Brain className="h-3 w-3 text-primary" /> Select output format:
+                            <CreatonsAiIcon className="h-3 w-3 text-primary" /> Select output format:
                           </div>
                           <div className="grid grid-cols-3 gap-1">
                             <button
@@ -451,14 +451,14 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
                           </span>
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => handleGeneratePdfForQuery(m.downloadQuery || "SWIFT AI Report", m.content, m.structuredData)}
+                              onClick={() => handleGeneratePdfForQuery(m.downloadQuery || "CREATONS AI Report", m.content, m.structuredData)}
                               className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-semibold transition cursor-pointer active:scale-95 border border-primary/20 shadow-2xs"
                               title="Download PDF"
                             >
                               <Download className="h-3 w-3" /> PDF
                             </button>
                             <button
-                              onClick={() => handleGenerateExcelForQuery(m.downloadQuery || "SWIFT AI Report", m.content, m.structuredData)}
+                              onClick={() => handleGenerateExcelForQuery(m.downloadQuery || "CREATONS AI Report", m.content, m.structuredData)}
                               className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold transition cursor-pointer active:scale-95 border border-emerald-500/25 shadow-2xs"
                               title="Download Excel"
                             >
@@ -475,7 +475,7 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
               {busy && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-2 items-center pl-1">
                   <div className="h-6 w-6 rounded-full border border-primary/30 bg-primary/10 flex items-center justify-center text-primary">
-                    <Brain className="h-3.5 w-3.5 animate-pulse" />
+                    <CreatonsAiIcon className="h-3.5 w-3.5 animate-pulse" />
                   </div>
                   <div className="bg-white/70 dark:bg-card/70 border border-white/80 dark:border-white/10 rounded-2xl rounded-bl-xs px-3.5 py-2 flex gap-1 items-center">
                     {[0, 1, 2].map((d) => (
@@ -489,7 +489,7 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
               {messages.length <= 1 && !busy && (
                 <div className="pt-2 space-y-1.5">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 font-semibold pl-1">
-                    <Brain className="h-3 w-3 text-primary" /> Suggested
+                    <CreatonsAiIcon className="h-3 w-3 text-primary" /> Suggested
                   </div>
                   {suggestions.slice(0, 5).map((s: string, idx) => (
                     <motion.button
@@ -519,7 +519,7 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
                 {/* Paperclip & Smile icons */}
                 <button
                   type="button"
-                  onClick={() => toast.info("Attach documents in full SWIFT AI hub")}
+                  onClick={() => toast.info("Attach documents in full CREATONS AI hub")}
                   className="text-muted-foreground hover:text-foreground cursor-pointer transition p-0.5"
                   title="Attach file"
                 >
@@ -527,7 +527,7 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
                 </button>
                 <button
                   type="button"
-                  onClick={() => toast.info("Emojis available in full SWIFT AI hub")}
+                  onClick={() => toast.info("Emojis available in full CREATONS AI hub")}
                   className="text-muted-foreground hover:text-foreground cursor-pointer transition p-0.5"
                   title="Emoji"
                 >

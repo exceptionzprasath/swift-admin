@@ -591,8 +591,9 @@ export type Employee = {
   bankIfsc?: string;
   shiftId?: string;
   faceRegistered?: boolean;
-  status: "active" | "suspended" | "relieved" | "releived" | "terminated" | "inactive" | "frozen" | "freezed";
+  status: "active" | "suspended" | "relieved" | "releived" | "terminated" | "inactive" | "frozen" | "freezed" | "notice_period" | "notice";
   statusDate?: string;
+  lastWorkingDate?: string;
   statusNote?: string;
   managerId?: string;
   about?: string;

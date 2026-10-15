@@ -524,11 +524,11 @@ function AttendancePage() {
     handleLiveSync(true);
   }, [handleLiveSync]);
 
-  // Only active employees are tracked in the Attendance Area (Past employees: suspended, relieved, terminated are excluded)
+  // Only active and notice-period employees are tracked in the Attendance Area (Past employees: suspended, relieved, terminated are excluded)
   const activeEmployees = useMemo(() => {
     return employees.filter((e) => {
       const s = (e.status || "active").toLowerCase().trim();
-      return s === "active";
+      return s === "active" || s === "notice_period" || s === "notice";
     });
   }, [employees]);
 

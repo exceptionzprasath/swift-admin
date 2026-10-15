@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo, useRef } from "react";
-import { useStore, getUpwardHierarchyChain, type Employee } from "@/lib/store";
+import { useStore, getUpwardHierarchyChain, type Employee, type EmployeeDocument } from "@/lib/store";
 import {
   useDigitalDocStore,
   PRESET_DOCUMENTS,
@@ -96,6 +96,14 @@ import {
   Zap,
   Network,
   Info,
+  Upload,
+  Filter,
+  CreditCard,
+  GraduationCap,
+  Briefcase,
+  FileCheck2,
+  BadgeCheck,
+  Landmark,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -108,8 +116,34 @@ export const Route = createFileRoute("/admin/documentation-alt")({
 
 type ViewMode = "list" | "composer" | "detail";
 
+export type KycDocType = "aadhaar" | "bank" | "pan" | "education" | "experience" | "appointment" | "nda" | "other";
+export type KycSubmissionStatus = "APPROVED" | "SUBMITTED" | "PENDING" | "NOT_SUBMITTED";
+
+export interface KycDocumentRecord {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string;
+  designation: string;
+  department: string;
+  branchId?: string;
+  branchName: string;
+  employeeStatus: string;
+  docType: KycDocType;
+  docTypeName: string;
+  docCategory: string;
+  identifierNumber?: string;
+  fileDataUrl?: string;
+  fileName?: string;
+  status: KycSubmissionStatus;
+  uploadedAt?: string;
+  verifiedAt?: string;
+  verifiedBy?: string;
+  rejectionReason?: string;
+}
+
 export default function DigitalDocumentationPage() {
-  const { company, employees, currentUser, roles, docAssets } = useStore();
+  const { company, employees, currentUser, roles, docAssets, updateEmployee } = useStore();
   const {
     documents,
     addDocument,
@@ -128,7 +162,25 @@ export default function DigitalDocumentationPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
 
-  // List Filters & Search
+  // PayTime+ Style Document View & Filter States
+  const [activeDocViewTab, setActiveDocViewTab] = useState<"kyc" | "digital">("kyc");
+  const [filterEmpQuery, setFilterEmpQuery] = useState("");
+  const [filterEmpStatus, setFilterEmpStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  const [filterDocType, setFilterDocType] = useState<string>("ALL");
+  const [filterBranch, setFilterBranch] = useState("all");
+  const [filterDepartment, setFilterDepartment] = useState("all");
+
+  // KYC Proofs Actions & Modals State
+  const [kycDocOverrides, setKycDocOverrides] = useState<Record<string, Partial<KycDocumentRecord>>>({});
+  const [viewProofModalDoc, setViewProofModalDoc] = useState<KycDocumentRecord | null>(null);
+  const [uploadModalDoc, setUploadModalDoc] = useState<KycDocumentRecord | null>(null);
+  const [rejectionModalDoc, setRejectionModalDoc] = useState<KycDocumentRecord | null>(null);
+  const [rejectionReasonText, setRejectionReasonText] = useState("");
+  const [uploadIdentifierInput, setUploadIdentifierInput] = useState("");
+  const [uploadFileName, setUploadFileName] = useState("");
+
+  // List Filters & Search (Company Letters)
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
@@ -501,31 +553,435 @@ export default function DigitalDocumentationPage() {
     return documents.find((d) => d.id === selectedDocId) || documents[0] || null;
   }, [documents, selectedDocId]);
 
-  // Filtered documents for hub table
+  // Branches & Departments for PayTime Filtering
+  const availableBranches = useMemo(() => {
+    if (company?.branches && company.branches.length > 0) {
+      return company.branches;
+    }
+    return [
+      { id: "br-chennai", name: "Chennai Main Office (HQ)" },
+      { id: "br-bangalore", name: "Bangalore Tech Park" },
+      { id: "br-mumbai", name: "Mumbai Regional Office" },
+    ];
+  }, [company?.branches]);
+
+  const availableDepartments = useMemo(() => {
+    const depts = new Set<string>();
+    (company?.departments || []).forEach((d) => depts.add(d));
+    employees.forEach((e) => {
+      if (e.department) depts.add(e.department);
+    });
+    ["Sales", "Engineering", "Human Resources", "Finance", "Product Design", "Operations"].forEach((d) => depts.add(d));
+    return Array.from(depts);
+  }, [company?.departments, employees]);
+
+  // Combined baseline employees (merges store employees + realistic mock profiles for complete KYC view)
+  const allEmployeesList = useMemo(() => {
+    const map = new Map<string, Partial<Employee>>();
+    const DEMO_EMPLOYEES: Partial<Employee>[] = [
+      {
+        id: "emp-1024",
+        empCode: "EMP-1024",
+        name: "Jawahar Kumar",
+        designation: "Business Development Manager",
+        department: "Sales",
+        status: "active",
+        branchId: "br-chennai",
+        aadhaar: "4829 1048 7124",
+        bankAcc: "5010049281720",
+        bankIfsc: "HDFC0001024",
+        bankName: "HDFC Bank",
+        pan: "BNZPK4829E",
+        ndaSigned: true,
+      },
+      {
+        id: "emp-1018",
+        empCode: "EMP-1018",
+        name: "Arun Kumar",
+        designation: "Senior Full Stack Engineer",
+        department: "Engineering",
+        status: "active",
+        branchId: "br-bangalore",
+        aadhaar: "7821 9012 9912",
+        bankAcc: "002105009182",
+        bankIfsc: "ICIC0000021",
+        bankName: "ICICI Bank",
+        pan: "AZUPK9102L",
+        ndaSigned: false,
+      },
+      {
+        id: "emp-1005",
+        empCode: "EMP-1005",
+        name: "Rahul Sundaram",
+        designation: "Lead UI/UX Designer",
+        department: "Product Design",
+        status: "active",
+        branchId: "br-chennai",
+        aadhaar: "6120 4812 3419",
+        bankAcc: "914020081726",
+        bankIfsc: "UTIB0000140",
+        bankName: "Axis Bank",
+        pan: "CRKPR3190M",
+        ndaSigned: true,
+      },
+      {
+        id: "emp-1012",
+        empCode: "EMP-1012",
+        name: "Meera Nair",
+        designation: "Talent Acquisition Lead",
+        department: "Human Resources",
+        status: "active",
+        branchId: "br-chennai",
+        aadhaar: "9102 3847 5521",
+        bankAcc: "30918274610",
+        bankIfsc: "SBIN0004018",
+        bankName: "State Bank of India",
+        pan: "MERNK9012P",
+        ndaSigned: true,
+      },
+      {
+        id: "emp-1015",
+        empCode: "EMP-1015",
+        name: "Priya Iyer",
+        designation: "Operations Specialist",
+        department: "Operations",
+        status: "notice_period",
+        branchId: "br-bangalore",
+        aadhaar: "5520 1829 4018",
+        bankAcc: "60182749102",
+        bankIfsc: "BARB0BANGAL",
+        bankName: "Bank of Baroda",
+        pan: "PRIYP4018T",
+        ndaSigned: true,
+      },
+    ];
+
+    DEMO_EMPLOYEES.forEach((d) => {
+      map.set(d.id!, d);
+    });
+
+    // Store employees overlay
+    employees.forEach((e) => {
+      map.set(e.id, e);
+    });
+
+    return Array.from(map.values());
+  }, [employees]);
+
+  // Master KYC documents repository across all employees
+  const allKycDocs = useMemo<KycDocumentRecord[]>(() => {
+    const list: KycDocumentRecord[] = [];
+
+    allEmployeesList.forEach((emp) => {
+      const empId = emp.id || "emp-unk";
+      const empName = emp.name || "Employee";
+      const empCode = emp.empCode || "EMP-000";
+      const designation = emp.designation || "Staff";
+      const department = emp.department || "Operations";
+      const branchId = emp.branchId || "br-chennai";
+      const branchObj = availableBranches.find((b) => b.id === branchId);
+      const branchName = branchObj ? branchObj.name : "Chennai Main Office (HQ)";
+      const empStatus = emp.status || "active";
+
+      // 1. Aadhaar Card
+      const aadhaarId = `${empId}_aadhaar`;
+      const baseAadhaarStatus: KycSubmissionStatus =
+        emp.empCode === "EMP-1024" ? "SUBMITTED" : emp.aadhaar ? "APPROVED" : "NOT_SUBMITTED";
+      const aadhaarRecord: KycDocumentRecord = {
+        id: aadhaarId,
+        employeeId: empId,
+        employeeName: empName,
+        employeeCode: empCode,
+        designation,
+        department,
+        branchId,
+        branchName,
+        employeeStatus: empStatus,
+        docType: "aadhaar",
+        docTypeName: "Aadhaar Card (UIDAI)",
+        docCategory: "Govt Identity Proof",
+        identifierNumber: emp.aadhaar ? `XXXX-XXXX-${emp.aadhaar.replace(/\s+/g, "").slice(-4)}` : undefined,
+        fileName: emp.aadhaar ? `Aadhaar_${empCode}.pdf` : undefined,
+        status: baseAadhaarStatus,
+        uploadedAt: emp.aadhaar ? "08/09/2026, 11:30 AM" : undefined,
+        verifiedAt: baseAadhaarStatus === "APPROVED" ? "10/09/2026, 02:45 PM" : undefined,
+        verifiedBy: baseAadhaarStatus === "APPROVED" ? "Arunachalam (HR Admin)" : undefined,
+      };
+      list.push({ ...aadhaarRecord, ...(kycDocOverrides[aadhaarId] || {}) });
+
+      // 2. Bank Account Details / Passbook
+      const bankId = `${empId}_bank`;
+      const baseBankStatus: KycSubmissionStatus =
+        emp.empCode === "EMP-1018" ? "SUBMITTED" : emp.bankAcc ? "APPROVED" : "NOT_SUBMITTED";
+      const bankRecord: KycDocumentRecord = {
+        id: bankId,
+        employeeId: empId,
+        employeeName: empName,
+        employeeCode: empCode,
+        designation,
+        department,
+        branchId,
+        branchName,
+        employeeStatus: empStatus,
+        docType: "bank",
+        docTypeName: "Bank Passbook / Cheque",
+        docCategory: "Banking & Payroll",
+        identifierNumber: emp.bankAcc
+          ? `${emp.bankName || "Bank"} · A/C ...${emp.bankAcc.slice(-4)} (${emp.bankIfsc || "IFSC Verified"})`
+          : undefined,
+        fileName: emp.bankAcc ? `Bank_Proof_${empCode}.jpg` : undefined,
+        status: baseBankStatus,
+        uploadedAt: emp.bankAcc ? "09/09/2026, 04:15 PM" : undefined,
+        verifiedAt: baseBankStatus === "APPROVED" ? "11/09/2026, 10:00 AM" : undefined,
+        verifiedBy: baseBankStatus === "APPROVED" ? "Finance Head (Venkatesh)" : undefined,
+      };
+      list.push({ ...bankRecord, ...(kycDocOverrides[bankId] || {}) });
+
+      // 3. PAN Card
+      const panId = `${empId}_pan`;
+      const basePanStatus: KycSubmissionStatus =
+        emp.empCode === "EMP-1005" ? "SUBMITTED" : emp.pan ? "APPROVED" : "NOT_SUBMITTED";
+      const panRecord: KycDocumentRecord = {
+        id: panId,
+        employeeId: empId,
+        employeeName: empName,
+        employeeCode: empCode,
+        designation,
+        department,
+        branchId,
+        branchName,
+        employeeStatus: empStatus,
+        docType: "pan",
+        docTypeName: "PAN Card (Income Tax)",
+        docCategory: "Tax & Statutory",
+        identifierNumber: emp.pan ? emp.pan : undefined,
+        fileName: emp.pan ? `PAN_Card_${empCode}.png` : undefined,
+        status: basePanStatus,
+        uploadedAt: emp.pan ? "07/09/2026, 01:20 PM" : undefined,
+        verifiedAt: basePanStatus === "APPROVED" ? "10/09/2026, 03:10 PM" : undefined,
+        verifiedBy: basePanStatus === "APPROVED" ? "Arunachalam (HR Admin)" : undefined,
+      };
+      list.push({ ...panRecord, ...(kycDocOverrides[panId] || {}) });
+
+      // 4. Educational Degree Certificate
+      const eduId = `${empId}_education`;
+      const baseEduStatus: KycSubmissionStatus =
+        emp.empCode === "EMP-1018"
+          ? "NOT_SUBMITTED"
+          : emp.empCode === "EMP-1024"
+          ? "PENDING"
+          : "APPROVED";
+      const eduRecord: KycDocumentRecord = {
+        id: eduId,
+        employeeId: empId,
+        employeeName: empName,
+        employeeCode: empCode,
+        designation,
+        department,
+        branchId,
+        branchName,
+        employeeStatus: empStatus,
+        docType: "education",
+        docTypeName: "Degree Certificate",
+        docCategory: "Academic Qualification",
+        identifierNumber:
+          baseEduStatus !== "NOT_SUBMITTED"
+            ? emp.empCode === "EMP-1024"
+              ? "MBA in International Business (Anna Univ)"
+              : emp.empCode === "EMP-1005"
+              ? "Master of Design (NID Ahmedabad)"
+              : "B.Tech Computer Science"
+            : undefined,
+        fileName: baseEduStatus !== "NOT_SUBMITTED" ? `Degree_Cert_${empCode}.pdf` : undefined,
+        status: baseEduStatus,
+        uploadedAt: baseEduStatus !== "NOT_SUBMITTED" ? "05/09/2026, 09:30 AM" : undefined,
+        verifiedAt: baseEduStatus === "APPROVED" ? "08/09/2026, 05:20 PM" : undefined,
+        verifiedBy: baseEduStatus === "APPROVED" ? "Arunachalam (HR Admin)" : undefined,
+      };
+      list.push({ ...eduRecord, ...(kycDocOverrides[eduId] || {}) });
+
+      // 5. Experience / Relieving Letter
+      const expId = `${empId}_experience`;
+      const baseExpStatus: KycSubmissionStatus =
+        emp.empCode === "EMP-1015" ? "SUBMITTED" : "APPROVED";
+      const expRecord: KycDocumentRecord = {
+        id: expId,
+        employeeId: empId,
+        employeeName: empName,
+        employeeCode: empCode,
+        designation,
+        department,
+        branchId,
+        branchName,
+        employeeStatus: empStatus,
+        docType: "experience",
+        docTypeName: "Experience / Relieving Letter",
+        docCategory: "Employment History",
+        identifierNumber:
+          emp.empCode === "EMP-1024"
+            ? "Zenith Corp (3.5 Yrs Sr Executive)"
+            : emp.empCode === "EMP-1018"
+            ? "Tech Mahindra (4 Yrs Full Stack Lead)"
+            : "Previous Employer Relieving Letter",
+        fileName: `Relieving_Letter_${empCode}.pdf`,
+        status: baseExpStatus,
+        uploadedAt: "06/09/2026, 12:00 PM",
+        verifiedAt: baseExpStatus === "APPROVED" ? "09/09/2026, 04:00 PM" : undefined,
+        verifiedBy: baseExpStatus === "APPROVED" ? "Arunachalam (HR Admin)" : undefined,
+      };
+      list.push({ ...expRecord, ...(kycDocOverrides[expId] || {}) });
+
+      // 6. Signed Appointment Letter
+      const apptId = `${empId}_appointment`;
+      const baseApptStatus: KycSubmissionStatus =
+        emp.empCode === "EMP-1024" ? "PENDING" : "APPROVED";
+      const apptRecord: KycDocumentRecord = {
+        id: apptId,
+        employeeId: empId,
+        employeeName: empName,
+        employeeCode: empCode,
+        designation,
+        department,
+        branchId,
+        branchName,
+        employeeStatus: empStatus,
+        docType: "appointment",
+        docTypeName: "Appointment Letter",
+        docCategory: "Company Issued Letter",
+        identifierNumber:
+          emp.empCode === "EMP-1024"
+            ? "CHR-DOC-2026-001 (In Approval)"
+            : `CHR-APPT-${empCode}-2026`,
+        fileName: `Appointment_Letter_${empCode}.pdf`,
+        status: baseApptStatus,
+        uploadedAt: "01/09/2026, 10:00 AM",
+        verifiedAt: baseApptStatus === "APPROVED" ? "05/09/2026, 02:00 PM" : undefined,
+        verifiedBy: baseApptStatus === "APPROVED" ? "HR Head & Director" : undefined,
+      };
+      list.push({ ...apptRecord, ...(kycDocOverrides[apptId] || {}) });
+
+      // 7. Non-Disclosure Agreement (NDA)
+      const ndaId = `${empId}_nda`;
+      const baseNdaStatus: KycSubmissionStatus =
+        emp.empCode === "EMP-1018" ? "SUBMITTED" : "APPROVED";
+      const ndaRecord: KycDocumentRecord = {
+        id: ndaId,
+        employeeId: empId,
+        employeeName: empName,
+        employeeCode: empCode,
+        designation,
+        department,
+        branchId,
+        branchName,
+        employeeStatus: empStatus,
+        docType: "nda",
+        docTypeName: "Non-Disclosure Agreement (NDA)",
+        docCategory: "Legal & Confidentiality",
+        identifierNumber:
+          emp.empCode === "EMP-1018"
+            ? "CHR-DOC-2026-002 (Waiting on Emp)"
+            : `NDA-EXECUTED-${empCode}`,
+        fileName: `NDA_Signed_${empCode}.pdf`,
+        status: baseNdaStatus,
+        uploadedAt: "02/09/2026, 03:30 PM",
+        verifiedAt: baseNdaStatus === "APPROVED" ? "06/09/2026, 11:15 AM" : undefined,
+        verifiedBy: baseNdaStatus === "APPROVED" ? "Legal Counsel & HR Head" : undefined,
+      };
+      list.push({ ...ndaRecord, ...(kycDocOverrides[ndaId] || {}) });
+    });
+
+    return list;
+  }, [allEmployeesList, availableBranches, kycDocOverrides]);
+
+  // Filtered KYC Documents
+  const filteredKycDocs = useMemo(() => {
+    return allKycDocs.filter((doc) => {
+      // 1. Employee Name / ID search
+      const q = (filterEmpQuery || searchQuery).toLowerCase().trim();
+      const matchesQuery =
+        !q ||
+        doc.employeeName.toLowerCase().includes(q) ||
+        doc.employeeCode.toLowerCase().includes(q) ||
+        doc.docTypeName.toLowerCase().includes(q) ||
+        (doc.identifierNumber || "").toLowerCase().includes(q) ||
+        doc.department.toLowerCase().includes(q) ||
+        doc.branchName.toLowerCase().includes(q);
+
+      // 2. Employee Status
+      const matchesEmpStatus =
+        filterEmpStatus === "all" ||
+        doc.employeeStatus.toLowerCase() === filterEmpStatus.toLowerCase();
+
+      // 3. Document Submission Status
+      const matchesStatus =
+        filterStatus === "ALL" ||
+        doc.status === filterStatus;
+
+      // 4. Document Type
+      const matchesDocType =
+        filterDocType === "ALL" ||
+        doc.docType.toLowerCase() === filterDocType.toLowerCase();
+
+      // 5. Branch
+      const matchesBranch =
+        filterBranch === "all" ||
+        doc.branchId === filterBranch;
+
+      // 6. Department
+      const matchesDept =
+        filterDepartment === "all" ||
+        doc.department.toLowerCase() === filterDepartment.toLowerCase();
+
+      return matchesQuery && matchesEmpStatus && matchesStatus && matchesDocType && matchesBranch && matchesDept;
+    });
+  }, [allKycDocs, filterEmpQuery, searchQuery, filterEmpStatus, filterStatus, filterDocType, filterBranch, filterDepartment]);
+
+  // Quick stats for KYC Proofs
+  const kycStats = useMemo(() => {
+    const total = allKycDocs.length;
+    const approved = allKycDocs.filter((d) => d.status === "APPROVED").length;
+    const submitted = allKycDocs.filter((d) => d.status === "SUBMITTED").length;
+    const pending = allKycDocs.filter((d) => d.status === "PENDING").length;
+    const notSubmitted = allKycDocs.filter((d) => d.status === "NOT_SUBMITTED").length;
+    return { total, approved, submitted, pending, notSubmitted };
+  }, [allKycDocs]);
+
+  // Filtered documents for Company Letters table
   const filteredDocuments = useMemo(() => {
     return documents.filter((doc) => {
-      const q = searchQuery.toLowerCase().trim();
+      const q = (filterEmpQuery || searchQuery).toLowerCase().trim();
       const matchesQuery =
         !q ||
         doc.name.toLowerCase().includes(q) ||
         doc.employeeName.toLowerCase().includes(q) ||
         doc.employeeCode.toLowerCase().includes(q) ||
         doc.docNumber.toLowerCase().includes(q) ||
-        doc.department.toLowerCase().includes(q);
+        doc.department.toLowerCase().includes(q) ||
+        (doc.documentType || "").toLowerCase().includes(q);
 
       const matchesStatus =
-        statusFilter === "ALL" ||
+        (statusFilter === "ALL" && filterStatus === "ALL") ||
         (statusFilter === "DRAFT" && doc.status === "DRAFT") ||
-        (statusFilter === "PENDING_APPROVAL" && (doc.status === "PENDING_APPROVAL" || doc.status === "PARTIALLY_APPROVED")) ||
+        ((statusFilter === "PENDING_APPROVAL" || filterStatus === "PENDING") && (doc.status === "PENDING_APPROVAL" || doc.status === "PARTIALLY_APPROVED")) ||
         (statusFilter === "WAITING_EMPLOYEE" && doc.status === "PENDING_EMPLOYEE_ACTION") ||
-        (statusFilter === "COMPLETED" && (doc.status === "COMPLETED" || doc.status === "ACKNOWLEDGED")) ||
-        (statusFilter === "REJECTED" && doc.status === "REJECTED");
+        ((statusFilter === "COMPLETED" || filterStatus === "APPROVED") && (doc.status === "COMPLETED" || doc.status === "ACKNOWLEDGED")) ||
+        (statusFilter === "REJECTED" && doc.status === "REJECTED") ||
+        (filterStatus === "SUBMITTED" && (doc.status === "PENDING_APPROVAL" || doc.status === "PENDING_EMPLOYEE_ACTION"));
 
-      return matchesQuery && matchesStatus;
+      const matchesDocType =
+        filterDocType === "ALL" ||
+        (doc.documentType || "").toLowerCase().includes(filterDocType.toLowerCase()) ||
+        (doc.name || "").toLowerCase().includes(filterDocType.toLowerCase());
+
+      const matchesDept =
+        filterDepartment === "all" ||
+        doc.department.toLowerCase() === filterDepartment.toLowerCase();
+
+      return matchesQuery && matchesStatus && matchesDocType && matchesDept;
     });
-  }, [documents, searchQuery, statusFilter]);
+  }, [documents, searchQuery, filterEmpQuery, statusFilter, filterStatus, filterDocType, filterDepartment]);
 
-  // Quick stats
+  // Quick stats for Company Letters
   const stats = useMemo(() => {
     const total = documents.length;
     const inApproval = documents.filter((d) => d.status === "PENDING_APPROVAL" || d.status === "PARTIALLY_APPROVED").length;
@@ -534,6 +990,150 @@ export default function DigitalDocumentationPage() {
     const drafts = documents.filter((d) => d.status === "DRAFT").length;
     return { total, inApproval, waitingEmp, completed, drafts };
   }, [documents]);
+
+  // KYC Actions
+  function handleApproveKycDoc(doc: KycDocumentRecord) {
+    const nowStr = new Date().toLocaleDateString("en-GB") + " · " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const actor = currentUser?.name || "HR Admin (Arunachalam)";
+
+    setKycDocOverrides((prev) => ({
+      ...prev,
+      [doc.id]: {
+        ...prev[doc.id],
+        status: "APPROVED",
+        verifiedAt: nowStr,
+        verifiedBy: actor,
+        rejectionReason: undefined,
+      },
+    }));
+
+    // If real employee in store, update verification
+    const realEmp = employees.find((e) => e.id === doc.employeeId || e.empCode === doc.employeeCode);
+    if (realEmp && updateEmployee) {
+      const existingDocs = realEmp.documentsUploaded || [];
+      const updatedDocs = existingDocs.map((d) =>
+        d.type.toLowerCase().includes(doc.docType) ? { ...d, verified: true } : d
+      );
+      updateEmployee(realEmp.id, { documentsUploaded: updatedDocs });
+    }
+
+    toast.success(`${doc.docTypeName} for ${doc.employeeName} approved & marked Verified!`);
+
+    if (viewProofModalDoc?.id === doc.id) {
+      setViewProofModalDoc((prev) =>
+        prev ? { ...prev, status: "APPROVED", verifiedAt: nowStr, verifiedBy: actor, rejectionReason: undefined } : null
+      );
+    }
+  }
+
+  function handleConfirmRejectKycDoc() {
+    if (!rejectionModalDoc) return;
+    const reason = rejectionReasonText.trim() || "Document illegible or information mismatch. Please re-upload.";
+
+    setKycDocOverrides((prev) => ({
+      ...prev,
+      [rejectionModalDoc.id]: {
+        ...prev[rejectionModalDoc.id],
+        status: "NOT_SUBMITTED",
+        rejectionReason: reason,
+        verifiedAt: undefined,
+        verifiedBy: undefined,
+      },
+    }));
+
+    toast.error(`${rejectionModalDoc.docTypeName} rejected: ${reason}`);
+    if (viewProofModalDoc?.id === rejectionModalDoc.id) {
+      setViewProofModalDoc(null);
+    }
+    setRejectionModalDoc(null);
+    setRejectionReasonText("");
+  }
+
+  function handleConfirmUploadProof() {
+    if (!uploadModalDoc) return;
+    const idVal = uploadIdentifierInput.trim() || uploadModalDoc.identifierNumber || "Uploaded Document";
+    const fName = uploadFileName.trim() || `${uploadModalDoc.docType.toUpperCase()}_Proof_${uploadModalDoc.employeeCode}.pdf`;
+    const nowStr = new Date().toLocaleDateString("en-GB") + " · " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    setKycDocOverrides((prev) => ({
+      ...prev,
+      [uploadModalDoc.id]: {
+        ...prev[uploadModalDoc.id],
+        status: "SUBMITTED",
+        identifierNumber: idVal,
+        fileName: fName,
+        uploadedAt: nowStr,
+        rejectionReason: undefined,
+      },
+    }));
+
+    toast.success(`Proof for ${uploadModalDoc.docTypeName} uploaded successfully and marked Submitted!`);
+    setUploadModalDoc(null);
+    setUploadIdentifierInput("");
+    setUploadFileName("");
+  }
+
+  function handleResetKycDoc(doc: KycDocumentRecord) {
+    setKycDocOverrides((prev) => {
+      const copy = { ...prev };
+      delete copy[doc.id];
+      return copy;
+    });
+    toast.info(`Reset ${doc.docTypeName} status to default`);
+    if (viewProofModalDoc?.id === doc.id) {
+      setViewProofModalDoc(null);
+    }
+  }
+
+  function handleClearFilters() {
+    setFilterEmpQuery("");
+    setSearchQuery("");
+    setFilterEmpStatus("all");
+    setFilterStatus("ALL");
+    setStatusFilter("ALL");
+    setFilterDocType("ALL");
+    setFilterBranch("all");
+    setFilterDepartment("all");
+    toast.info("All search & filter options cleared");
+  }
+
+  function downloadDocumentSubmissionReport() {
+    const headers = [
+      "Employee Code",
+      "Employee Name",
+      "Department",
+      "Branch",
+      "Employee Status",
+      "Document Type",
+      "Proof Identifier",
+      "Submission Status",
+      "Uploaded Date",
+      "Verified Date",
+      "Verified By",
+    ];
+    const rows = filteredKycDocs.map((item) => [
+      `"${item.employeeCode}"`,
+      `"${item.employeeName}"`,
+      `"${item.department}"`,
+      `"${item.branchName}"`,
+      `"${item.employeeStatus}"`,
+      `"${item.docTypeName}"`,
+      `"${item.identifierNumber || "Not Provided"}"`,
+      `"${item.status}"`,
+      `"${item.uploadedAt || "-"}"`,
+      `"${item.verifiedAt || "-"}"`,
+      `"${item.verifiedBy || "-"}"`,
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Document_Submission_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Document Submission Report (CSV) downloaded successfully!");
+  }
 
   // Handle Category Filter Change in Composer
   function handleCategoryFilterChange(cat: string) {
@@ -1199,285 +1799,542 @@ export default function DigitalDocumentationPage() {
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
       {/* VIEW 1: HUB / LIST VIEW */}
       {viewMode === "list" && (
-        <div className="space-y-6">
-          {/* Top Header */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 rounded-2xl border border-primary/20">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-primary text-primary-foreground shadow-sm">
-                  <FileText className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    Compose, approve, dispatch, and track verifiable digital HR documents with one smooth email-like workflow.
-                  </p>
-                </div>
+        <div className="space-y-5">
+          {/* Top Header - Removed banner text per request */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card p-5 rounded-2xl border border-border shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-primary text-primary-foreground shadow-sm">
+                <FileCheck2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                  <span>View / Approve Documents</span>
+                  <Badge variant="outline" className="text-[11px] font-semibold bg-primary/10 text-primary border-primary/20">
+                    PayTime+ Console
+                  </Badge>
+                </h1>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Verify and approve employee identity proofs, banking records, compliance letters, and digital HR documents.
+                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={resetToDefaults}
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="text-xs text-muted-foreground hover:text-foreground h-9"
                 title="Reset mock documents to default"
               >
                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset Demo
               </Button>
               <Button
-                size="lg"
+                size="sm"
                 onClick={() => handleStartNewDoc()}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-md gap-2 rounded-xl px-5"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs gap-1.5 rounded-xl h-9 px-4 text-xs"
               >
-                <Plus className="h-5 w-5" />
+                <Plus className="h-4 w-4" />
                 <span>+ Create Document</span>
               </Button>
             </div>
           </div>
 
-          {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div
-              onClick={() => setStatusFilter("ALL")}
-              className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-primary/40 ${
-                statusFilter === "ALL" ? "ring-2 ring-primary border-transparent shadow-sm" : ""
-              }`}
-            >
-              <div className="text-xs text-muted-foreground font-medium">All Documents</div>
-              <div className="text-2xl font-bold mt-1 text-foreground">{stats.total}</div>
+          {/* PayTime+ Filter Card */}
+          <div className="bg-card rounded-2xl border border-border p-5 shadow-xs space-y-4">
+            {/* Row 1: Employee Name/ID, Employee Status, Status, Document Type */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              {/* Employee Name / ID */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Employee Name / ID</Label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Enter Employee Name / ID"
+                    className="pl-8 h-9 text-xs"
+                    value={filterEmpQuery}
+                    onChange={(e) => setFilterEmpQuery(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Employee Status */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Employee Status</Label>
+                <Select value={filterEmpStatus} onValueChange={setFilterEmpStatus}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="notice_period">Notice Period</SelectItem>
+                    <SelectItem value="relieved">Relieved</SelectItem>
+                    <SelectItem value="terminated">Terminated</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Status */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Status</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All</SelectItem>
+                    <SelectItem value="APPROVED">Approved</SelectItem>
+                    <SelectItem value="SUBMITTED">Submitted</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="NOT_SUBMITTED">Not Submitted</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Document Type (Aadhaar, Bank, PAN, etc.) */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Document Type</Label>
+                <Select value={filterDocType} onValueChange={setFilterDocType}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Documents</SelectItem>
+                    <SelectItem value="aadhaar">Aadhaar Card</SelectItem>
+                    <SelectItem value="bank">Bank Details / Passbook</SelectItem>
+                    <SelectItem value="pan">PAN Card</SelectItem>
+                    <SelectItem value="education">Degree / Educational Certificate</SelectItem>
+                    <SelectItem value="experience">Experience / Relieving Letter</SelectItem>
+                    <SelectItem value="appointment">Appointment Letter</SelectItem>
+                    <SelectItem value="nda">Non-Disclosure Agreement (NDA)</SelectItem>
+                    <SelectItem value="salary_certificate">Salary Certificate</SelectItem>
+                    <SelectItem value="warning">Warning Letter</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div
-              onClick={() => setStatusFilter("PENDING_APPROVAL")}
-              className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-amber-500/40 ${
-                statusFilter === "PENDING_APPROVAL" ? "ring-2 ring-amber-500 border-transparent shadow-sm" : ""
-              }`}
-            >
-              <div className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
-                <Clock className="h-3.5 w-3.5" /> In Approval
+            {/* Row 2: Branch, Department, Search, Clear */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 items-end pt-1">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Branch</Label>
+                <Select value={filterBranch} onValueChange={setFilterBranch}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Branches</SelectItem>
+                    {availableBranches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="text-2xl font-bold mt-1 text-amber-700 dark:text-amber-300">{stats.inApproval}</div>
-            </div>
 
-            <div
-              onClick={() => setStatusFilter("WAITING_EMPLOYEE")}
-              className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-blue-500/40 ${
-                statusFilter === "WAITING_EMPLOYEE" ? "ring-2 ring-blue-500 border-transparent shadow-sm" : ""
-              }`}
-            >
-              <div className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
-                <Smartphone className="h-3.5 w-3.5" /> Waiting on Emp
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Department</Label>
+                <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Departments</SelectItem>
+                    {availableDepartments.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="text-2xl font-bold mt-1 text-blue-700 dark:text-blue-300">{stats.waitingEmp}</div>
-            </div>
 
-            <div
-              onClick={() => setStatusFilter("COMPLETED")}
-              className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-emerald-500/40 ${
-                statusFilter === "COMPLETED" ? "ring-2 ring-emerald-500 border-transparent shadow-sm" : ""
-              }`}
-            >
-              <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Completed
-              </div>
-              <div className="text-2xl font-bold mt-1 text-emerald-700 dark:text-emerald-300">{stats.completed}</div>
-            </div>
+              <div className="flex items-center gap-2 lg:col-span-2 justify-end pt-2 sm:pt-0">
+                <Button
+                  type="button"
+                  onClick={() => toast.success("Filters applied")}
+                  className="h-9 px-6 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-xs gap-1.5 rounded-lg"
+                >
+                  <Search className="h-3.5 w-3.5" /> Search
+                </Button>
 
-            <div
-              onClick={() => setStatusFilter("DRAFT")}
-              className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-slate-500/40 ${
-                statusFilter === "DRAFT" ? "ring-2 ring-slate-500 border-transparent shadow-sm" : ""
-              }`}
-            >
-              <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">
-                <Edit3 className="h-3.5 w-3.5" /> Drafts
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleClearFilters}
+                  className="h-9 px-6 bg-rose-600 hover:bg-rose-700 text-white font-medium text-xs shadow-xs gap-1.5 rounded-lg"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Clear
+                </Button>
               </div>
-              <div className="text-2xl font-bold mt-1 text-foreground">{stats.drafts}</div>
             </div>
           </div>
 
-          {/* Search & Filter Controls */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-card p-3 rounded-xl border border-border">
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search document, employee, ID, ref..."
-                className="pl-9 h-9 text-xs"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+          {/* Quick Metrics Bar (Reflects current tab) */}
+          {activeDocViewTab === "kyc" ? (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div
+                onClick={() => setFilterStatus("ALL")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-primary/40 ${
+                  filterStatus === "ALL" ? "ring-2 ring-primary border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-muted-foreground font-medium">All Documents</div>
+                <div className="text-2xl font-bold mt-1 text-foreground">{kycStats.total}</div>
+              </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-              {["ALL", "PENDING_APPROVAL", "WAITING_EMPLOYEE", "COMPLETED", "REJECTED", "DRAFT"].map((st) => (
+              <div
+                onClick={() => setFilterStatus("APPROVED")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-emerald-500/40 ${
+                  filterStatus === "APPROVED" ? "ring-2 ring-emerald-500 border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Approved
+                </div>
+                <div className="text-2xl font-bold mt-1 text-emerald-700 dark:text-emerald-300">
+                  {kycStats.approved}
+                </div>
+              </div>
+
+              <div
+                onClick={() => setFilterStatus("SUBMITTED")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-blue-500/40 ${
+                  filterStatus === "SUBMITTED" ? "ring-2 ring-blue-500 border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+                  <FileText className="h-3.5 w-3.5" /> Submitted
+                </div>
+                <div className="text-2xl font-bold mt-1 text-blue-700 dark:text-blue-300">
+                  {kycStats.submitted}
+                </div>
+              </div>
+
+              <div
+                onClick={() => setFilterStatus("PENDING")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-amber-500/40 ${
+                  filterStatus === "PENDING" ? "ring-2 ring-amber-500 border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" /> Pending
+                </div>
+                <div className="text-2xl font-bold mt-1 text-amber-700 dark:text-amber-300">
+                  {kycStats.pending}
+                </div>
+              </div>
+
+              <div
+                onClick={() => setFilterStatus("NOT_SUBMITTED")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-rose-500/40 ${
+                  filterStatus === "NOT_SUBMITTED" ? "ring-2 ring-rose-500 border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" /> Not Submitted
+                </div>
+                <div className="text-2xl font-bold mt-1 text-rose-700 dark:text-rose-300">
+                  {kycStats.notSubmitted}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div
+                onClick={() => setStatusFilter("ALL")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-primary/40 ${
+                  statusFilter === "ALL" ? "ring-2 ring-primary border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-muted-foreground font-medium">All Documents</div>
+                <div className="text-2xl font-bold mt-1 text-foreground">{stats.total}</div>
+              </div>
+
+              <div
+                onClick={() => setStatusFilter("PENDING_APPROVAL")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-amber-500/40 ${
+                  statusFilter === "PENDING_APPROVAL" ? "ring-2 ring-amber-500 border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" /> In Approval
+                </div>
+                <div className="text-2xl font-bold mt-1 text-amber-700 dark:text-amber-300">
+                  {stats.inApproval}
+                </div>
+              </div>
+
+              <div
+                onClick={() => setStatusFilter("WAITING_EMPLOYEE")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-blue-500/40 ${
+                  statusFilter === "WAITING_EMPLOYEE" ? "ring-2 ring-blue-500 border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+                  <Smartphone className="h-3.5 w-3.5" /> Waiting on Emp
+                </div>
+                <div className="text-2xl font-bold mt-1 text-blue-700 dark:text-blue-300">
+                  {stats.waitingEmp}
+                </div>
+              </div>
+
+              <div
+                onClick={() => setStatusFilter("COMPLETED")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-emerald-500/40 ${
+                  statusFilter === "COMPLETED" ? "ring-2 ring-emerald-500 border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Completed
+                </div>
+                <div className="text-2xl font-bold mt-1 text-emerald-700 dark:text-emerald-300">
+                  {stats.completed}
+                </div>
+              </div>
+
+              <div
+                onClick={() => setStatusFilter("DRAFT")}
+                className={`p-3.5 rounded-xl border bg-card cursor-pointer transition-all hover:border-slate-500/40 ${
+                  statusFilter === "DRAFT" ? "ring-2 ring-slate-500 border-transparent shadow-sm" : ""
+                }`}
+              >
+                <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                  <Edit3 className="h-3.5 w-3.5" /> Drafts
+                </div>
+                <div className="text-2xl font-bold mt-1 text-foreground">{stats.drafts}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Document Summary Header & Tab Navigation */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-bold text-foreground">Document Summary</h2>
+              <div className="inline-flex items-center p-1 bg-muted rounded-xl border border-border">
                 <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                    statusFilter === st
-                      ? "bg-primary text-primary-foreground shadow-xs font-semibold"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  type="button"
+                  onClick={() => setActiveDocViewTab("kyc")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    activeDocViewTab === "kyc"
+                      ? "bg-card text-foreground font-semibold shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {st === "ALL"
-                    ? "All"
-                    : st === "PENDING_APPROVAL"
-                    ? "In Approval"
-                    : st === "WAITING_EMPLOYEE"
-                    ? "Waiting Employee"
-                    : st === "COMPLETED"
-                    ? "Completed"
-                    : st === "REJECTED"
-                    ? "Rejected"
-                    : "Drafts"}
+                  View / Approve Documents (KYC)
+                  <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] bg-primary/10 text-primary font-bold">
+                    {filteredKycDocs.length}
+                  </span>
                 </button>
-              ))}
+
+                <button
+                  type="button"
+                  onClick={() => setActiveDocViewTab("digital")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    activeDocViewTab === "digital"
+                      ? "bg-card text-foreground font-semibold shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Company Letters & Workflows
+                  <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] bg-primary/10 text-primary font-bold">
+                    {filteredDocuments.length}
+                  </span>
+                </button>
+              </div>
             </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadDocumentSubmissionReport}
+              className="text-xs font-medium gap-1.5 text-primary border-primary/20 hover:bg-primary/10 h-8"
+              title="Download Document Submission Status Report (Excel/CSV)"
+            >
+              <FileDown className="h-3.5 w-3.5" /> Document Submission Report
+            </Button>
           </div>
 
-          {/* Document Table */}
-          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase font-semibold text-[11px] tracking-wider">
-                  <tr>
-                    <th className="px-4 py-3">Document</th>
-                    <th className="px-4 py-3">Recipient Employee</th>
-                    <th className="px-4 py-3">Delivery</th>
-                    <th className="px-4 py-3">Approval Workflow</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Version</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {filteredDocuments.map((doc) => {
-                    const emp = employees.find((e) => e.id === doc.employeeId);
-                    return (
-                      <tr key={doc.id} className="hover:bg-muted/30 transition-colors">
+          {/* TAB 1: KYC / VIEW & APPROVE DOCUMENTS (PayTime Reference View) */}
+          {activeDocViewTab === "kyc" && (
+            <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase font-semibold text-[11px] tracking-wider">
+                    <tr>
+                      <th className="px-4 py-3">Employee</th>
+                      <th className="px-4 py-3">Document Type</th>
+                      <th className="px-4 py-3">Proof / Identifier</th>
+                      <th className="px-4 py-3">Submission Status</th>
+                      <th className="px-4 py-3">Verified By / Date</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filteredKycDocs.map((item) => (
+                      <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                        {/* Employee Details */}
                         <td className="px-4 py-3.5">
-                          <div className="flex items-start gap-2.5">
-                            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0 mt-0.5">
-                              <FileText className="h-4 w-4" />
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-8 w-8 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center text-xs shrink-0">
+                              {item.employeeName[0]}
                             </div>
                             <div>
-                              <div
-                                onClick={() => {
-                                  setSelectedDocId(doc.id);
-                                  setViewMode("detail");
-                                }}
-                                className="font-semibold text-sm text-foreground hover:text-primary cursor-pointer hover:underline"
-                              >
-                                {doc.name}
+                              <div className="font-semibold text-foreground text-xs">{item.employeeName}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {item.employeeCode} · {item.designation}
                               </div>
-                              <div className="text-[11px] text-muted-foreground font-mono">
-                                {doc.docNumber} · {new Date(doc.updatedAt).toLocaleDateString()}
+                              <div className="text-[10px] text-muted-foreground font-mono">
+                                {item.department} • {item.branchName}
                               </div>
                             </div>
                           </div>
                         </td>
 
+                        {/* Document Type (Requested column) */}
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2">
-                            <div className="h-7 w-7 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center text-xs">
-                              {doc.employeeName[0]}
+                            <div className="p-1.5 rounded-lg bg-primary/10 text-primary shrink-0">
+                              {item.docType === "aadhaar" && <CreditCard className="h-4 w-4" />}
+                              {item.docType === "bank" && <Landmark className="h-4 w-4" />}
+                              {item.docType === "pan" && <FileCheck2 className="h-4 w-4" />}
+                              {item.docType === "education" && <GraduationCap className="h-4 w-4" />}
+                              {item.docType === "experience" && <Briefcase className="h-4 w-4" />}
+                              {item.docType === "appointment" && <FileText className="h-4 w-4" />}
+                              {item.docType === "nda" && <ShieldCheck className="h-4 w-4" />}
+                              {item.docType === "other" && <FileText className="h-4 w-4" />}
                             </div>
                             <div>
-                              <div className="font-medium text-foreground">{doc.employeeName}</div>
-                              <div className="text-[11px] text-muted-foreground">
-                                {doc.employeeCode} · {doc.designation}
-                              </div>
+                              <div className="font-medium text-foreground text-xs">{item.docTypeName}</div>
+                              <div className="text-[10px] text-muted-foreground">{item.docCategory}</div>
                             </div>
                           </div>
                         </td>
 
+                        {/* Proof / Identifier */}
                         <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5">
-                            {doc.delivery.channel === "email" && (
-                              <Badge variant="outline" className="text-[10px] gap-1 font-normal bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20">
-                                <Mail className="h-3 w-3" /> Email
-                              </Badge>
-                            )}
-                            {doc.delivery.channel === "app" && (
-                              <Badge variant="outline" className="text-[10px] gap-1 font-normal bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20">
-                                <Smartphone className="h-3 w-3" /> CreatonsHR App
-                              </Badge>
-                            )}
-                            {doc.delivery.channel === "both" && (
-                              <Badge variant="outline" className="text-[10px] gap-1 font-normal bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/20">
-                                <Layers className="h-3 w-3" /> Email + App
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          {!doc.approvalRequired ? (
-                            <span className="text-[11px] text-muted-foreground">Not Required (Direct)</span>
+                          {item.identifierNumber ? (
+                            <div>
+                              <span className="font-mono text-xs text-foreground font-medium">
+                                {item.identifierNumber}
+                              </span>
+                              {item.fileName && (
+                                <div className="text-[10px] text-primary flex items-center gap-1 mt-0.5">
+                                  <FileText className="h-3 w-3" /> {item.fileName}
+                                </div>
+                              )}
+                            </div>
                           ) : (
-                            <div>
-                              <div className="flex items-center gap-1 font-medium capitalize text-[11px]">
-                                <GitBranch className="h-3 w-3 text-primary" />
-                                <span>{doc.approvalMode.replace(/_/g, " ")}</span>
-                              </div>
-                              <div className="text-[10px] text-muted-foreground truncate max-w-[160px]">
-                                {doc.approvers.map((a) => a.approverRoleOrName).join(" → ")}
-                              </div>
+                            <span className="text-[11px] text-muted-foreground italic">No document file attached</span>
+                          )}
+                        </td>
+
+                        {/* Status (Submitted / Not Submitted / Approved / Pending) */}
+                        <td className="px-4 py-3.5">
+                          {item.status === "APPROVED" && (
+                            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 font-semibold text-[11px]">
+                              <CheckCircle2 className="h-3 w-3" /> Approved
+                            </Badge>
+                          )}
+                          {item.status === "SUBMITTED" && (
+                            <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 gap-1 font-semibold text-[11px]">
+                              <FileText className="h-3 w-3" /> Submitted
+                            </Badge>
+                          )}
+                          {item.status === "PENDING" && (
+                            <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 gap-1 font-semibold text-[11px]">
+                              <Clock className="h-3 w-3" /> Pending Review
+                            </Badge>
+                          )}
+                          {item.status === "NOT_SUBMITTED" && (
+                            <Badge variant="outline" className="bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30 gap-1 font-semibold text-[11px]">
+                              <AlertCircle className="h-3 w-3" /> Not Submitted
+                            </Badge>
+                          )}
+                          {item.rejectionReason && (
+                            <div className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 max-w-[170px] truncate" title={item.rejectionReason}>
+                              ⚠️ {item.rejectionReason}
                             </div>
                           )}
                         </td>
 
+                        {/* Verified By / Date */}
                         <td className="px-4 py-3.5">
-                          <StatusBadgeView status={doc.status} />
+                          {item.status === "APPROVED" && (
+                            <div>
+                              <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+                                {item.verifiedBy || "HR Admin"}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">
+                                {item.verifiedAt || "Verified"}
+                              </div>
+                            </div>
+                          )}
+                          {item.status === "SUBMITTED" && (
+                            <div>
+                              <div className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">
+                                Awaiting HR Review
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">
+                                {item.uploadedAt || "Uploaded recently"}
+                              </div>
+                            </div>
+                          )}
+                          {item.status === "PENDING" && (
+                            <div className="text-[11px] text-amber-700 dark:text-amber-400">
+                              Verification In Progress
+                            </div>
+                          )}
+                          {item.status === "NOT_SUBMITTED" && (
+                            <span className="text-[11px] text-muted-foreground italic">
+                              Pending Employee Upload
+                            </span>
+                          )}
                         </td>
 
-                        <td className="px-4 py-3.5">
-                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-muted border border-border">
-                            v{doc.currentVersion}
-                          </span>
-                        </td>
-
+                        {/* Actions */}
                         <td className="px-4 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setSelectedDocId(doc.id);
-                                setViewMode("detail");
-                                setDetailActiveTab("tracking");
-                              }}
-                              className="h-7 text-xs px-2 text-primary hover:bg-primary/10"
-                              title="Track progress timeline"
-                            >
-                              <Clock className="h-3.5 w-3.5 mr-1" /> Track
-                            </Button>
-
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* View Proof Button */}
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => {
-                                setSelectedDocId(doc.id);
-                                setViewMode("detail");
-                                setDetailActiveTab("preview");
-                              }}
-                              className="h-7 text-xs px-2"
-                              title="View Document"
+                              onClick={() => setViewProofModalDoc(item)}
+                              className="h-7 text-xs px-2.5 gap-1 text-primary hover:bg-primary/10 border-primary/20"
+                              title="View Document Proof"
                             >
-                              <Eye className="h-3.5 w-3.5" />
+                              <Eye className="h-3.5 w-3.5" /> View
                             </Button>
 
-                            {/* Edit allowed for Draft or Rejected */}
-                            {(doc.status === "DRAFT" || doc.status === "REJECTED") && (
+                            {/* Quick Approve Button if Submitted or Pending */}
+                            {(item.status === "SUBMITTED" || item.status === "PENDING") && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleApproveKycDoc(item)}
+                                className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs"
+                                title="Approve & Mark Verified"
+                              >
+                                <Check className="h-3.5 w-3.5" /> Approve
+                              </Button>
+                            )}
+
+                            {/* Upload Proof Button if Not Submitted */}
+                            {item.status === "NOT_SUBMITTED" && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleEditExistingDoc(doc)}
-                                className="h-7 text-xs px-2 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
-                                title="Edit Document"
+                                onClick={() => {
+                                  setUploadModalDoc(item);
+                                  setUploadIdentifierInput("");
+                                  setUploadFileName("");
+                                }}
+                                className="h-7 text-xs px-2.5 gap-1 text-foreground hover:bg-muted"
+                                title="Upload Proof on behalf of employee"
                               >
-                                <Edit3 className="h-3.5 w-3.5" />
+                                <Upload className="h-3.5 w-3.5" /> Upload
                               </Button>
                             )}
 
@@ -1488,39 +2345,525 @@ export default function DigitalDocumentationPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="text-xs">
-                                <DropdownMenuItem onClick={() => handleDownloadPDF(doc)}>
-                                  <FileDown className="h-3.5 w-3.5 mr-2 text-primary" /> Download PDF
+                                <DropdownMenuItem onClick={() => setViewProofModalDoc(item)}>
+                                  <Eye className="h-3.5 w-3.5 mr-2 text-primary" /> Full Verification Inspector
                                 </DropdownMenuItem>
-                                {doc.status === "PENDING_EMPLOYEE_ACTION" && (
-                                  <DropdownMenuItem onClick={() => acknowledgeDocument(doc.id)}>
-                                    <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-emerald-600" /> Simulate Employee Ack
+                                {item.status !== "APPROVED" ? (
+                                  <DropdownMenuItem onClick={() => handleApproveKycDoc(item)}>
+                                    <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-emerald-600" /> One-Click Approve
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem onClick={() => handleResetKycDoc(item)}>
+                                    <RotateCcw className="h-3.5 w-3.5 mr-2 text-amber-600" /> Revoke Approval
                                   </DropdownMenuItem>
                                 )}
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setUploadModalDoc(item);
+                                    setUploadIdentifierInput(item.identifierNumber || "");
+                                    setUploadFileName(item.fileName || "");
+                                  }}
+                                >
+                                  <Upload className="h-3.5 w-3.5 mr-2 text-blue-600" /> Replace / Update Document
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => deleteDocument(doc.id)}
-                                  className="text-red-600 focus:text-red-600"
+                                  onClick={() => {
+                                    setRejectionModalDoc(item);
+                                    setRejectionReasonText("");
+                                  }}
+                                  className="text-rose-600 focus:text-rose-600"
                                 >
-                                  <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete Document
+                                  <XCircle className="h-3.5 w-3.5 mr-2" /> Reject & Request Resubmission
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
-                  {filteredDocuments.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
-                        No documents found matching the filter.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    ))}
+                    {filteredKycDocs.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="text-center py-12 text-muted-foreground text-sm">
+                          <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                          No employee KYC documents match the selected filters.
+                          <div className="mt-2">
+                            <Button size="sm" variant="outline" onClick={handleClearFilters} className="text-xs">
+                              Clear Filters
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* TAB 2: COMPANY ISSUED DOCUMENTS & LETTERS TABLE (With added DOCUMENT TYPE column) */}
+          {activeDocViewTab === "digital" && (
+            <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase font-semibold text-[11px] tracking-wider">
+                    <tr>
+                      <th className="px-4 py-3">Document</th>
+                      {/* ADDED COLUMN: DOCUMENT TYPE */}
+                      <th className="px-4 py-3">Document Type</th>
+                      <th className="px-4 py-3">Recipient Employee</th>
+                      <th className="px-4 py-3">Delivery</th>
+                      <th className="px-4 py-3">Approval Workflow</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Version</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filteredDocuments.map((doc) => {
+                      return (
+                        <tr key={doc.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-start gap-2.5">
+                              <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0 mt-0.5">
+                                <FileText className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <div
+                                  onClick={() => {
+                                    setSelectedDocId(doc.id);
+                                    setViewMode("detail");
+                                  }}
+                                  className="font-semibold text-sm text-foreground hover:text-primary cursor-pointer hover:underline"
+                                >
+                                  {doc.name}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground font-mono">
+                                  {doc.docNumber} · {new Date(doc.updatedAt).toLocaleDateString()}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* ADDED COLUMN: DOCUMENT TYPE BADGE */}
+                          <td className="px-4 py-3.5">
+                            <Badge
+                              variant="outline"
+                              className="text-[11px] font-semibold bg-primary/5 text-primary border-primary/20 whitespace-nowrap"
+                            >
+                              {doc.documentType || "Official Letter"}
+                            </Badge>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <div className="h-7 w-7 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center text-xs">
+                                {doc.employeeName[0]}
+                              </div>
+                              <div>
+                                <div className="font-medium text-foreground">{doc.employeeName}</div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  {doc.employeeCode} · {doc.designation}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-1.5">
+                              {doc.delivery.channel === "email" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] gap-1 font-normal bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20"
+                                >
+                                  <Mail className="h-3 w-3" /> Email
+                                </Badge>
+                              )}
+                              {doc.delivery.channel === "app" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] gap-1 font-normal bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20"
+                                >
+                                  <Smartphone className="h-3 w-3" /> CreatonsHR App
+                                </Badge>
+                              )}
+                              {doc.delivery.channel === "both" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] gap-1 font-normal bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/20"
+                                >
+                                  <Layers className="h-3 w-3" /> Email + App
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            {!doc.approvalRequired ? (
+                              <span className="text-[11px] text-muted-foreground">Not Required (Direct)</span>
+                            ) : (
+                              <div>
+                                <div className="flex items-center gap-1 font-medium capitalize text-[11px]">
+                                  <GitBranch className="h-3 w-3 text-primary" />
+                                  <span>{doc.approvalMode.replace(/_/g, " ")}</span>
+                                </div>
+                                <div className="text-[10px] text-muted-foreground truncate max-w-[160px]">
+                                  {doc.approvers.map((a) => a.approverRoleOrName).join(" → ")}
+                                </div>
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <StatusBadgeView status={doc.status} />
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-muted border border-border">
+                              v{doc.currentVersion}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setSelectedDocId(doc.id);
+                                  setViewMode("detail");
+                                  setDetailActiveTab("tracking");
+                                }}
+                                className="h-7 text-xs px-2 text-primary hover:bg-primary/10"
+                                title="Track progress timeline"
+                              >
+                                <Clock className="h-3.5 w-3.5 mr-1" /> Track
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedDocId(doc.id);
+                                  setViewMode("detail");
+                                  setDetailActiveTab("preview");
+                                }}
+                                className="h-7 text-xs px-2"
+                                title="View Document"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+
+                              {/* Edit allowed for Draft or Rejected */}
+                              {(doc.status === "DRAFT" || doc.status === "REJECTED") && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEditExistingDoc(doc)}
+                                  className="h-7 text-xs px-2 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                                  title="Edit Document"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                                    •••
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="text-xs">
+                                  <DropdownMenuItem onClick={() => handleDownloadPDF(doc)}>
+                                    <FileDown className="h-3.5 w-3.5 mr-2 text-primary" /> Download PDF
+                                  </DropdownMenuItem>
+                                  {doc.status === "PENDING_EMPLOYEE_ACTION" && (
+                                    <DropdownMenuItem onClick={() => acknowledgeDocument(doc.id)}>
+                                      <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-emerald-600" /> Simulate Employee Ack
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => deleteDocument(doc.id)}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete Document
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {filteredDocuments.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
+                          No company documents found matching the filter.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW / APPROVE KYC PROOF MODAL */}
+          <Dialog open={!!viewProofModalDoc} onOpenChange={(open) => !open && setViewProofModalDoc(null)}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <div className="flex items-center justify-between">
+                  <DialogTitle className="text-base font-bold flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5 text-primary" />
+                    <span>KYC Document Inspector & Verification</span>
+                  </DialogTitle>
+                  {viewProofModalDoc && (
+                    <Badge
+                      className={
+                        viewProofModalDoc.status === "APPROVED"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                          : viewProofModalDoc.status === "SUBMITTED"
+                          ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                          : viewProofModalDoc.status === "PENDING"
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                          : "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30"
+                      }
+                    >
+                      {viewProofModalDoc.status}
+                    </Badge>
+                  )}
+                </div>
+                <DialogDescription className="text-xs">
+                  Review submitted proof details and statutory credentials against official databases.
+                </DialogDescription>
+              </DialogHeader>
+
+              {viewProofModalDoc && (
+                <div className="space-y-4 pt-2">
+                  {/* Employee Banner */}
+                  <div className="p-3 bg-muted/50 rounded-xl border border-border flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center text-sm">
+                        {viewProofModalDoc.employeeName[0]}
+                      </div>
+                      <div>
+                        <div className="font-bold text-foreground text-sm">{viewProofModalDoc.employeeName}</div>
+                        <div className="text-muted-foreground">
+                          {viewProofModalDoc.employeeCode} · {viewProofModalDoc.designation} ({viewProofModalDoc.department})
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right text-[11px] text-muted-foreground">
+                      <div>Branch: {viewProofModalDoc.branchName}</div>
+                      <div>Status: <span className="capitalize font-semibold text-foreground">{viewProofModalDoc.employeeStatus}</span></div>
+                    </div>
+                  </div>
+
+                  {/* Document Card Representation */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-card via-muted/30 to-muted/10 border-2 border-primary/20 shadow-xs relative overflow-hidden">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+                          Official KYC Record
+                        </span>
+                        <h3 className="text-lg font-bold text-foreground mt-0.5">{viewProofModalDoc.docTypeName}</h3>
+                        <p className="text-xs text-muted-foreground">{viewProofModalDoc.docCategory}</p>
+                      </div>
+                      <div className="p-3 bg-primary/10 text-primary rounded-xl">
+                        {viewProofModalDoc.docType === "aadhaar" && <CreditCard className="h-6 w-6" />}
+                        {viewProofModalDoc.docType === "bank" && <Landmark className="h-6 w-6" />}
+                        {viewProofModalDoc.docType === "pan" && <FileCheck2 className="h-6 w-6" />}
+                        {viewProofModalDoc.docType === "education" && <GraduationCap className="h-6 w-6" />}
+                        {viewProofModalDoc.docType === "experience" && <Briefcase className="h-6 w-6" />}
+                        {viewProofModalDoc.docType === "appointment" && <FileText className="h-6 w-6" />}
+                        {viewProofModalDoc.docType === "nda" && <ShieldCheck className="h-6 w-6" />}
+                        {viewProofModalDoc.docType === "other" && <FileText className="h-6 w-6" />}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 pt-4 border-t border-border grid grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">Credential / Identifier</span>
+                        <span className="font-mono font-bold text-sm text-foreground">
+                          {viewProofModalDoc.identifierNumber || "Not Provided"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">Attached File</span>
+                        <span className="font-mono text-primary font-medium">
+                          {viewProofModalDoc.fileName || "No file uploaded"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">Submission Timestamp</span>
+                        <span className="text-foreground">
+                          {viewProofModalDoc.uploadedAt || "Awaiting submission"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">Audit Verification Status</span>
+                        <span className="text-foreground font-medium">
+                          {viewProofModalDoc.verifiedBy
+                            ? `${viewProofModalDoc.verifiedBy} (${viewProofModalDoc.verifiedAt})`
+                            : "Pending Official Audit"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Verified watermark badge */}
+                    {viewProofModalDoc.status === "APPROVED" && (
+                      <div className="absolute right-4 bottom-3 opacity-20 pointer-events-none flex items-center gap-1 text-emerald-600 font-black text-2xl rotate-[-12deg]">
+                        <BadgeCheck className="h-10 w-10" />
+                        <span>VERIFIED</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2">
+                <Button variant="ghost" size="sm" onClick={() => setViewProofModalDoc(null)} className="text-xs">
+                  Close
+                </Button>
+
+                {viewProofModalDoc && (
+                  <div className="flex items-center gap-2">
+                    {viewProofModalDoc.status !== "APPROVED" ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setRejectionModalDoc(viewProofModalDoc);
+                            setViewProofModalDoc(null);
+                          }}
+                          className="text-xs text-rose-600 border-rose-300 hover:bg-rose-50"
+                        >
+                          <XCircle className="h-3.5 w-3.5 mr-1" /> Reject Proof
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleApproveKycDoc(viewProofModalDoc)}
+                          className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-sm"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Approve & Mark Verified
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleResetKycDoc(viewProofModalDoc)}
+                        className="text-xs text-amber-600 border-amber-300 hover:bg-amber-50"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 mr-1" /> Revoke Approval
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* UPLOAD / UPDATE PROOF MODAL */}
+          <Dialog open={!!uploadModalDoc} onOpenChange={(open) => !open && setUploadModalDoc(null)}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-base font-bold flex items-center gap-2">
+                  <Upload className="h-5 w-5 text-primary" />
+                  <span>Upload Document Proof</span>
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Upload file or enter identifier credentials on behalf of {uploadModalDoc?.employeeName}.
+                </DialogDescription>
+              </DialogHeader>
+
+              {uploadModalDoc && (
+                <div className="space-y-3.5 py-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Document Identifier / Number</Label>
+                    <Input
+                      placeholder={
+                        uploadModalDoc.docType === "aadhaar"
+                          ? "e.g. 1234 5678 9012"
+                          : uploadModalDoc.docType === "pan"
+                          ? "e.g. ABCDE1234F"
+                          : uploadModalDoc.docType === "bank"
+                          ? "e.g. HDFC Bank · A/C 5010049281720"
+                          : "Enter certificate or document number"
+                      }
+                      value={uploadIdentifierInput}
+                      onChange={(e) => setUploadIdentifierInput(e.target.value)}
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Select File (PDF / Image)</Label>
+                    <Input
+                      type="file"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setUploadFileName(file.name);
+                        }
+                      }}
+                      className="text-xs h-9 cursor-pointer"
+                    />
+                    {uploadFileName && (
+                      <p className="text-[11px] text-muted-foreground font-mono">
+                        Selected: {uploadFileName}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" size="sm" onClick={() => setUploadModalDoc(null)} className="text-xs">
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleConfirmUploadProof} className="text-xs bg-primary font-semibold">
+                  Confirm & Mark Submitted
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* REJECT PROOF MODAL */}
+          <Dialog open={!!rejectionModalDoc} onOpenChange={(open) => !open && setRejectionModalDoc(null)}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-base font-bold text-rose-600 flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-rose-600" />
+                  <span>Reject KYC Document</span>
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Specify reason for rejecting {rejectionModalDoc?.docTypeName} for {rejectionModalDoc?.employeeName}.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-2 py-2">
+                <Label className="text-xs font-semibold">Rejection Reason</Label>
+                <Input
+                  placeholder="e.g. Document image is blurry, or name does not match official records."
+                  value={rejectionReasonText}
+                  onChange={(e) => setRejectionReasonText(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" size="sm" onClick={() => setRejectionModalDoc(null)} className="text-xs">
+                  Cancel
+                </Button>
+                <Button size="sm" variant="destructive" onClick={handleConfirmRejectKycDoc} className="text-xs font-semibold">
+                  Confirm Rejection
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
