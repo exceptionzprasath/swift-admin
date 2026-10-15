@@ -210,7 +210,6 @@ export function SwiftAiCopilot({ role: propRole, viewerEmployeeId: propViewerEmp
           <span className="hidden group-hover:inline text-[11px] font-bold tracking-wide pr-0.5 text-foreground">
             SWIFT AI
           </span>
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
         </motion.button>
       )}
 

@@ -51,6 +51,16 @@ export type AIStructuredData =
         absentDays30d?: number;
         attendancePct?: number;
       };
+      salaryDetails?: {
+        fixedGross: number;
+        basicPay: number;
+        hra?: number;
+        annualCtc: number;
+        lpa?: number;
+        pfEligible?: boolean;
+        esiEligible?: boolean;
+        bankAccMasked?: string;
+      };
     }
   | {
       type: "EMPLOYEE_LIST";

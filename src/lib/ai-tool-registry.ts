@@ -28,6 +28,10 @@ import { useComplianceDocs, blobToDataUrl } from "./compliance-docs-store";
 import { buildEnterpriseSnapshot } from "./ai-knowledge";
 import type { AIDocumentMeta, AIStructuredData } from "./ai-unified-types";
 import { AIQueryEngine } from "./ai-query-engine";
+import { downloadWageRegisterExcel } from "./wage-register-excel";
+import { generateSalarySlipPDF } from "./pdf";
+import { computePayroll } from "./payroll";
+import { downloadEpfoEcrXlsx } from "./epfo-ecr";
 
 export interface ToolExecutionContext {
   company: any;
@@ -38,6 +42,75 @@ export interface ToolExecutionContext {
   docRequests?: any[];
   role?: string;
   viewerEmployeeId?: string;
+}
+
+/**
+ * Intelligently extracts or computes the target YYYY-MM from user query text.
+ * Understands "last month", "this month", "previous month", month names ("September", "Aug 2026"), and YYYY-MM formats.
+ */
+export function resolveTargetMonth(query: string): string {
+  const q = query.toLowerCase();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonthIdx = now.getMonth(); // 0-indexed (e.g. 9 for October)
+
+  // 1. Explicit relative keywords
+  if (/\b(last\s+month|previous\s+month|past\s+month|prior\s+month)\b/i.test(q)) {
+    const prevDate = new Date(currentYear, currentMonthIdx - 1, 1);
+    const y = prevDate.getFullYear();
+    const m = String(prevDate.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  }
+  if (/\b(this\s+month|current\s+month)\b/i.test(q)) {
+    const m = String(currentMonthIdx + 1).padStart(2, "0");
+    return `${currentYear}-${m}`;
+  }
+  if (/\b(next\s+month)\b/i.test(q)) {
+    const nextDate = new Date(currentYear, currentMonthIdx + 1, 1);
+    const y = nextDate.getFullYear();
+    const m = String(nextDate.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  }
+
+  // 2. Format YYYY-MM or YYYY/MM (e.g. 2026-09, 2026/09)
+  const yyyyMm = q.match(/\b(202\d)[-/](0[1-9]|1[0-2])\b/);
+  if (yyyyMm) {
+    return `${yyyyMm[1]}-${yyyyMm[2]}`;
+  }
+
+  // 3. Format MM-YYYY or MM/YYYY (e.g. 09-2026, 09/2026)
+  const mmYyyy = q.match(/\b(0[1-9]|1[0-2])[-/](202\d)\b/);
+  if (mmYyyy) {
+    return `${mmYyyy[2]}-${mmYyyy[1]}`;
+  }
+
+  // 4. Named months (e.g. "september 2026", "august", "sep")
+  const MONTHS: Record<string, number> = {
+    january: 1, jan: 1,
+    february: 2, feb: 2,
+    march: 3, mar: 3,
+    april: 4, apr: 4,
+    may: 5,
+    june: 6, jun: 6,
+    july: 7, jul: 7,
+    august: 8, aug: 8,
+    september: 9, sep: 9, sept: 9,
+    october: 10, oct: 10,
+    november: 11, nov: 11,
+    december: 12, dec: 12,
+  };
+
+  for (const [mName, mNum] of Object.entries(MONTHS)) {
+    const regex = new RegExp(`\\b${mName}\\b`, "i");
+    if (regex.test(q)) {
+      const yearMatch = q.match(/\b(202\d)\b/);
+      const targetYear = yearMatch ? parseInt(yearMatch[1], 10) : currentYear;
+      return `${targetYear}-${String(mNum).padStart(2, "0")}`;
+    }
+  }
+
+  // Default to current month
+  return `${currentYear}-${String(currentMonthIdx + 1).padStart(2, "0")}`;
 }
 
 export function isReportQuery(text: string): boolean {
@@ -51,6 +124,244 @@ export function isReportQuery(text: string): boolean {
 
 export class AIToolRegistry {
   private static executedActionIds = new Set<string>();
+
+  /**
+   * Executes official 50-column Statutory Wage Register Excel download.
+   */
+  static executeWageRegisterDownload(
+    query: string,
+    context: ToolExecutionContext,
+    actionId?: string
+  ): { resultText: string; docMeta: AIDocumentMeta; filename: string } {
+    if (actionId && this.executedActionIds.has(actionId)) {
+      return {
+        resultText: "Wage Register downloaded.",
+        docMeta: { title: "Wage Register", filename: "wage_register.xlsx", docType: "excel" },
+        filename: "wage_register.xlsx",
+      };
+    }
+    if (actionId) this.executedActionIds.add(actionId);
+
+    const selectedMonth = resolveTargetMonth(query);
+
+    downloadWageRegisterExcel({
+      company: context.company,
+      employees: context.employees || [],
+      attendance: context.attendance || [],
+      roster: (context as any).roster || [],
+      requests: (context as any).requests || [],
+      monthlyOverrides: (context as any).monthlyOverrides || {},
+      selectedMonth,
+    });
+
+    const companyClean = (context.company?.name || "Company").replace(/[^a-zA-Z0-9]/g, "_");
+    const filename = `${companyClean}_Wage_Register_${selectedMonth}.xlsx`;
+
+    const resultText = `📊 **Statutory Wage Register Downloaded**\n\nThe complete **50-column Statutory Wage Register** for **${selectedMonth}** has been generated and downloaded to your device as an Excel spreadsheet (.xlsx).\n\n• **Includes:** Worked Days, PF & ESI Qualifying Wages, Employee Deductions (EPF 12%, ESI 0.75%, PT, Advance, TDS), Net Take-Home Pay, Employer Shares (13% EPF & 3.25% ESI), UAN, ESIC No., and Bank Disbursement Accounts.`;
+
+    return {
+      resultText,
+      filename,
+      docMeta: {
+        title: `Wage Register (${selectedMonth})`,
+        filename,
+        docType: "excel",
+      },
+    };
+  }
+
+  /**
+   * Executes official Payslip PDF generation and browser download using actual payroll data.
+   */
+  static async executePayslipDownload(
+    query: string,
+    context: ToolExecutionContext,
+    actionId?: string
+  ): Promise<{ resultText: string; docMeta: AIDocumentMeta; filename: string } | null> {
+    if (actionId && this.executedActionIds.has(actionId)) {
+      return {
+        resultText: "Payslip downloaded.",
+        docMeta: { title: "Payslip", filename: "payslip.pdf", docType: "pdf" },
+        filename: "payslip.pdf",
+      };
+    }
+    if (actionId) this.executedActionIds.add(actionId);
+
+    const employees = context.employees || [];
+    let targetEmp: any = null;
+
+    for (const emp of employees) {
+      const codeRegex = new RegExp(`\\b${emp.empCode}\\b`, "i");
+      if (emp.empCode && codeRegex.test(query)) {
+        targetEmp = emp;
+        break;
+      }
+      const nameLower = (emp.name || "").toLowerCase();
+      if (nameLower && query.toLowerCase().includes(nameLower)) {
+        targetEmp = emp;
+        break;
+      }
+      const parts = nameLower.split(/\s+/).filter((p: string) => p.length >= 3);
+      if (parts.length > 0 && parts.some((p: string) => new RegExp(`\\b${p}\\b`, "i").test(query))) {
+        targetEmp = emp;
+        break;
+      }
+    }
+
+    if (!targetEmp && context.viewerEmployeeId) {
+      targetEmp = employees.find((e) => e.id === context.viewerEmployeeId);
+    }
+    if (!targetEmp && employees.length > 0) {
+      targetEmp = employees[0];
+    }
+
+    if (!targetEmp) return null;
+
+    const selectedMonth = resolveTargetMonth(query);
+    const [y, m] = selectedMonth.split("-");
+    const monthDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+    const monthName = monthDate.toLocaleDateString("en-US", { month: "long" }).toLowerCase();
+
+    // 1. Check if a saved payroll run exists for this employee in selectedMonth
+    const existingPayroll = (context.payrolls || []).find((p: any) => {
+      const matchesEmp = p.employeeId === targetEmp.id || p.empCode === targetEmp.empCode;
+      if (!matchesEmp) return false;
+      const pMonth = (p.month || "").toLowerCase();
+      const pId = (p.id || "").toLowerCase();
+      return (
+        pMonth === selectedMonth ||
+        pMonth.includes(selectedMonth) ||
+        pMonth.includes(monthName) ||
+        pId.includes(selectedMonth)
+      );
+    });
+
+    let comp: any;
+    let paidDays: number;
+    let weekOffDays: number;
+
+    if (existingPayroll?.computed) {
+      // Use the authoritative calculated payroll record from the Payroll module
+      comp = existingPayroll.computed;
+      paidDays = existingPayroll.daysWorked !== undefined 
+        ? existingPayroll.daysWorked 
+        : (existingPayroll.computed?.daysWorked !== undefined 
+            ? existingPayroll.computed.daysWorked 
+            : (context.company?.workingDaysPerMonth || 26));
+      weekOffDays = existingPayroll.overrideData?.weekOffDays !== undefined 
+        ? existingPayroll.overrideData.weekOffDays 
+        : 4;
+    } else {
+      // Derive accurately from live attendance in selectedMonth matching admin.payroll.tsx exactly
+      const monthAtt = (context.attendance || []).filter((a) => {
+        const matchesEmp =
+          a.employeeId === targetEmp.id ||
+          (targetEmp.name && a.employeeName === targetEmp.name) ||
+          (targetEmp.empCode && a.empCode === targetEmp.empCode);
+        if (!matchesEmp) return false;
+        return a.date && a.date.startsWith(selectedMonth);
+      });
+
+      const daysPresent = monthAtt.filter((a) => (a.status || "").toLowerCase() === "present").length;
+      const daysHalf = monthAtt.filter(
+        (a) => (a.status || "").toLowerCase() === "half-day" || (a.status || "").toLowerCase() === "half_day"
+      ).length;
+      const daysLeave = monthAtt.filter((a) => (a.status || "").toLowerCase() === "leave").length;
+      const actualPresent = daysPresent + daysLeave + daysHalf * 0.5;
+
+      const ov = (context.payrolls || []).find((p: any) => {
+        const matchesEmp = p.employeeId === targetEmp.id || p.empCode === targetEmp.empCode;
+        if (!matchesEmp) return false;
+        const pMonth = (p.month || "").toLowerCase();
+        return pMonth === selectedMonth || pMonth.includes(selectedMonth) || pMonth.includes(monthName);
+      })?.overrideData || (context.payrolls || []).find((p: any) => p.employeeId === targetEmp.id)?.overrideData || {};
+
+      paidDays = ov.daysWorked !== undefined ? ov.daysWorked : (monthAtt.length > 0 ? actualPresent : (context.company?.workingDaysPerMonth || 26));
+      weekOffDays = ov.weekOffDays !== undefined ? ov.weekOffDays : 4;
+      const otHours = ov.otStatus === "approved" ? (ov.otApprovedHours || ov.otHours || 0) : 0;
+
+      const effectiveEmp = ov.customBasic ? { ...targetEmp, basic: ov.customBasic, fixedSalary: ov.customBasic } : targetEmp;
+
+      comp = computePayroll({
+        company: context.company,
+        employee: effectiveEmp,
+        daysWorked: paidDays,
+        otHours,
+        shiftDays: paidDays,
+        incentive: ov.incentive || 0,
+        loan: ov.loan || 0,
+        advance: ov.advance || 0,
+        bonus: ov.bonus || 0,
+      });
+    }
+
+    await generateSalarySlipPDF(
+      context.company,
+      targetEmp,
+      selectedMonth,
+      comp,
+      paidDays,
+      weekOffDays,
+      context.company?.documentAssets || context.company?.logoDataUrl
+    );
+
+    const safeEmpCode = (targetEmp.empCode || "EMP").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const filename = `Payslip_${safeEmpCode}_${selectedMonth}.pdf`;
+
+    const resultText = `📄 **Salary Slip (Payslip) PDF Downloaded**\n\nThe official monthly salary slip for **${targetEmp.name} (${targetEmp.empCode})** for **${selectedMonth}** has been generated and downloaded to your device with exact attendance calculations, actual deductions, and corporate branding.\n\n• **Paid Days:** ${paidDays} days\n• **Gross Earned:** ₹${Math.round(comp.gross || 0).toLocaleString("en-IN")}\n• **Net Take-Home:** ₹${Math.round(comp.net || 0).toLocaleString("en-IN")}`;
+
+    return {
+      resultText,
+      filename,
+      docMeta: {
+        title: `Payslip — ${targetEmp.name} (${selectedMonth})`,
+        filename,
+        docType: "pdf",
+      },
+    };
+  }
+
+  /**
+   * Executes EPFO ECR Excel download.
+   */
+  static executeEpfoEcrDownload(
+    query: string,
+    context: ToolExecutionContext,
+    actionId?: string
+  ): { resultText: string; docMeta: AIDocumentMeta; filename: string } {
+    if (actionId && this.executedActionIds.has(actionId)) {
+      return {
+        resultText: "EPFO ECR downloaded.",
+        docMeta: { title: "EPFO ECR", filename: "epfo_ecr.xlsx", docType: "excel" },
+        filename: "epfo_ecr.xlsx",
+      };
+    }
+    if (actionId) this.executedActionIds.add(actionId);
+
+    const selectedMonth = resolveTargetMonth(query);
+
+    downloadEpfoEcrXlsx({
+      company: context.company,
+      employees: context.employees || [],
+      attendance: context.attendance || [],
+      selectedMonth,
+    });
+
+    const companyClean = (context.company?.name || "Company").replace(/[^a-zA-Z0-9]/g, "_");
+    const filename = `${companyClean}_EPFO_ECR_${selectedMonth}.xlsx`;
+
+    const resultText = `🏛️ **EPFO ECR Spreadsheet Downloaded**\n\nThe monthly **EPFO Electronic Challan cum Return (ECR)** file for **${selectedMonth}** has been generated and downloaded with formatted text UANs, Gross wages, and EPF/EPS/EDLI contributions.`;
+
+    return {
+      resultText,
+      filename,
+      docMeta: {
+        title: `EPFO ECR (${selectedMonth})`,
+        filename,
+        docType: "excel",
+      },
+    };
+  }
 
   /**
    * Executes compliance document bundle generation tool.

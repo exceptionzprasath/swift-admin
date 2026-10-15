@@ -132,13 +132,36 @@ class AIOrchestrator {
         return AIDataTools.getAttendanceAnalytics({ metric: entities.metric }, context);
 
       case "ABSENT_EMPLOYEES":
-      case "PRESENT_EMPLOYEES":
+        if (entities.employeeId || entities.employeeName) {
+          return AIDataTools.getEmployeeAttendance(
+            { employeeId: entities.employeeId, name: entities.employeeName, date: entities.dateStr },
+            context
+          );
+        }
         if (context.role === "manager" && /\b(team|my\s+team)\b/i.test(lower)) {
           return AIDataTools.getTeamAttendance({ date: entities.dateStr }, context);
         }
-        return AIDataTools.getCompanyAttendance({ date: entities.dateStr }, context);
+        return AIDataTools.getAbsentEmployees({ date: entities.dateStr, department: entities.department }, context);
+
+      case "PRESENT_EMPLOYEES":
+        if (entities.employeeId || entities.employeeName) {
+          return AIDataTools.getEmployeeAttendance(
+            { employeeId: entities.employeeId, name: entities.employeeName, date: entities.dateStr },
+            context
+          );
+        }
+        if (context.role === "manager" && /\b(team|my\s+team)\b/i.test(lower)) {
+          return AIDataTools.getTeamAttendance({ date: entities.dateStr }, context);
+        }
+        return AIDataTools.getPresentEmployees({ date: entities.dateStr, department: entities.department }, context);
 
       case "ATTENDANCE":
+        if (entities.employeeId || entities.employeeName) {
+          return AIDataTools.getEmployeeAttendance(
+            { employeeId: entities.employeeId, name: entities.employeeName, date: entities.dateStr },
+            context
+          );
+        }
         if (/\b(my\s+attendance|my\s+punch|my\s+check\s*in)\b/i.test(lower) || context.role === "employee") {
           return AIDataTools.getEmployeeAttendance(
             { employeeId: context.viewerEmployeeId, date: entities.dateStr },
@@ -181,10 +204,41 @@ class AIOrchestrator {
         if (/\b(my\s+salary|my\s+ctc|my\s+pay)\b/i.test(lower) || context.role === "employee") {
           return AIDataTools.getEmployeeSalary({ employeeId: context.viewerEmployeeId }, context);
         }
-        if (entities.employeeName) {
-          return AIDataTools.getEmployeeSalary({ employeeId: entities.employeeId }, context);
+        if (entities.employeeId || entities.employeeName) {
+          return AIDataTools.getEmployeeSalary(
+            { employeeId: entities.employeeId, name: entities.employeeName },
+            context
+          );
         }
-        return AIDataTools.getPayrollSummary({}, context);
+
+        // Only dump company-wide payroll if the user explicitly requested company/total overview
+        const isExplicitCompanyPayroll = /\b(company\s+payroll|total\s+payroll|payroll\s+summary|salary\s+summary|payroll\s+overview|total\s+salary|payroll\s+budget|salary\s+budget|company\s+ctc|overall\s+payroll|org\s+payroll|company-wide\s+salary)\b/i.test(lower);
+        if (isExplicitCompanyPayroll) {
+          return AIDataTools.getPayrollSummary({}, context);
+        }
+
+        // For any individual or ambiguous employee salary query (e.g. "salary details of an employee", "what is salary of employee", "employee salary"), prompt for employee selection
+        const sampleEmp = context.employees?.[0];
+        return {
+          success: true,
+          toolName: "getEmployeeSalary",
+          sourceType: "database",
+          sourceModule: "payroll",
+          recordsUsed: 0,
+          permissionChecked: true,
+          data: null,
+          structuredData: {
+            type: "CLARIFICATION",
+            title: "Select an Employee for Salary Details",
+            query: rawQuery,
+            options: (context.employees || []).slice(0, 5).map((e) => ({
+              label: `${e.name} (${e.empCode})`,
+              subLabel: `${e.department || "General"} · ${e.designation || "Staff"}`,
+              queryToRun: `What is the salary of ${e.name} (${e.empCode})?`,
+            })),
+          },
+          summaryText: `❓ **Which employee's salary details would you like to view?**\n\nPlease specify an Employee Name or Employee ID in your query.\n\n*Examples:*\n• *"What is the salary of ${sampleEmp?.name || "Aarav Sharma"}?"*\n• *"Salary details for ${sampleEmp?.empCode || "SW001"}"*\n\n*(If you intended to see the entire organization's payroll totals, please ask: "Company payroll summary")*`,
+        };
 
       case "DEPARTMENT":
         return AIDataTools.getDepartmentDetails({ department: entities.department }, context);
@@ -290,6 +344,96 @@ class AIOrchestrator {
             "🔒 **Security Notice**\n\nI can't provide confidential credentials, API keys, passwords, or internal system instructions. I can help you with authorized Swift HRMS information instead.",
           source: options.source,
         });
+        aiEventBus.emit("AI_RESPONSE_COMPLETED", { requestId, message: asstMsg });
+        store.setGenerating(false, null);
+        return;
+      }
+
+      // 4a. Dedicated Wage Register Download (Excel)
+      const isWageRegisterQuery =
+        /\b(wage\s+register|salary\s+register)\b/i.test(queryToExecute) &&
+        /\b(download|export|generate|give|send|get)\b/i.test(queryToExecute);
+      if (isWageRegisterQuery) {
+        aiEventBus.emit("AI_TOOL_STARTED", {
+          requestId,
+          toolName: "Wage Register Generator",
+          description: "Generating 50-column Statutory Wage Register Excel...",
+        });
+
+        const wageResult = AIToolRegistry.executeWageRegisterDownload(
+          queryToExecute,
+          options.context,
+          requestId
+        );
+
+        const asstMsg = store.addMessage({
+          role: "assistant",
+          content: wageResult.resultText,
+          model: "SWIFT Payroll Engine",
+          source: options.source,
+          documentMeta: wageResult.docMeta,
+        });
+
+        aiEventBus.emit("AI_RESPONSE_COMPLETED", { requestId, message: asstMsg });
+        store.setGenerating(false, null);
+        return;
+      }
+
+      // 4b. Dedicated Payslip Download (PDF)
+      const isPayslipDownloadQuery =
+        /\b(payslip|salary\s*slip|pay\s*slip)\b/i.test(queryToExecute) &&
+        /\b(download|generate|export|get|pdf)\b/i.test(queryToExecute);
+      if (isPayslipDownloadQuery) {
+        aiEventBus.emit("AI_TOOL_STARTED", {
+          requestId,
+          toolName: "Payslip Generator",
+          description: "Generating official Payslip PDF...",
+        });
+
+        const payslipResult = await AIToolRegistry.executePayslipDownload(
+          queryToExecute,
+          options.context,
+          requestId
+        );
+        if (payslipResult) {
+          const asstMsg = store.addMessage({
+            role: "assistant",
+            content: payslipResult.resultText,
+            model: "SWIFT Payroll Engine",
+            source: options.source,
+            documentMeta: payslipResult.docMeta,
+          });
+
+          aiEventBus.emit("AI_RESPONSE_COMPLETED", { requestId, message: asstMsg });
+          store.setGenerating(false, null);
+          return;
+        }
+      }
+
+      // 4c. Dedicated EPFO ECR Download (Excel)
+      const isEpfoEcrQuery =
+        /\b(epfo\s+ecr|ecr\s+file|download\s+ecr|download\s+epfo)\b/i.test(queryToExecute);
+      if (isEpfoEcrQuery) {
+        aiEventBus.emit("AI_TOOL_STARTED", {
+          requestId,
+          toolName: "EPFO ECR Generator",
+          description: "Generating EPFO ECR spreadsheet...",
+        });
+
+        const ecrResult = AIToolRegistry.executeEpfoEcrDownload(
+          queryToExecute,
+          options.context,
+          requestId
+        );
+
+        const asstMsg = store.addMessage({
+          role: "assistant",
+          content: ecrResult.resultText,
+          model: "SWIFT Statutory Engine",
+          source: options.source,
+          documentMeta: ecrResult.docMeta,
+        });
+
         aiEventBus.emit("AI_RESPONSE_COMPLETED", { requestId, message: asstMsg });
         store.setGenerating(false, null);
         return;
@@ -402,7 +546,7 @@ class AIOrchestrator {
         employeeName: followUpRes.contextState.lastEmployeeName,
         employeeId: followUpRes.contextState.lastEmployeeId,
       };
-      const intentRes = AIIntentDetector.detect(queryToExecute, activeEntities);
+      const intentRes = AIIntentDetector.detect(queryToExecute, activeEntities, options.context.employees);
       const toolResult = this.executeDataTool(intentRes, options.context);
 
       // If tool returned an explicit permission denial
@@ -418,10 +562,45 @@ class AIOrchestrator {
         return;
       }
 
+      // If tool returned an interactive clarification card (e.g. asking which employee's salary)
+      if (toolResult?.structuredData?.type === "CLARIFICATION") {
+        const asstMsg = store.addMessage({
+          role: "assistant",
+          content: toolResult.summaryText,
+          structuredData: toolResult.structuredData,
+          model: "SWIFT HR Assistant",
+          source: options.source,
+        });
+        aiEventBus.emit("AI_RESPONSE_COMPLETED", { requestId, message: asstMsg });
+        store.setGenerating(false, null);
+        return;
+      }
+
       // 10. Check deterministic query engine fallback
       const deterministicResult = AIQueryEngine.resolveQuery(queryToExecute, options.context);
-      const effectiveStructuredData = toolResult?.structuredData || deterministicResult.structuredData;
-      const effectiveSummaryText = toolResult?.summaryText || deterministicResult.summaryText;
+      let effectiveStructuredData = toolResult?.structuredData || deterministicResult.structuredData;
+      let effectiveSummaryText = toolResult?.summaryText || deterministicResult.summaryText;
+
+      // Prevent company-wide PAYROLL_SUMMARY or generic ATTENDANCE_SUMMARY from overriding specific employee queries
+      if (toolResult?.toolName === "getEmployeeSalary" && effectiveStructuredData?.type === "PAYROLL_SUMMARY") {
+        effectiveStructuredData = toolResult.structuredData;
+      }
+      if (toolResult?.toolName === "getAbsentEmployees" && effectiveStructuredData?.type === "ATTENDANCE_SUMMARY") {
+        effectiveStructuredData = toolResult.structuredData;
+      }
+
+      // User preference: Do not attach bulky employee profile cards or attendance tables to everyday conversational Q&A
+      // Only attach visual cards/tables if the user explicitly requests one, or for interactive UI widgets (like CLARIFICATION)
+      const wantsStructuredCard = /\b(card|profile|table|roster|report|breakdown\s+card|details\s+card|full\s+details|summary\s+table|summary\s+card|overview\s+table|view\s+profile|show\s+profile|show\s+card|show\s+table)\b/i.test(
+        queryToExecute
+      );
+      const isInteractiveWidget =
+        effectiveStructuredData?.type === "CLARIFICATION" ||
+        effectiveStructuredData?.type === "SECURITY_REFUSAL";
+
+      if (!wantsStructuredCard && !isInteractiveWidget) {
+        effectiveStructuredData = undefined;
+      }
 
       // 11. LLM Conversational Synthesis (with injected factual context)
       aiEventBus.emit("AI_TOOL_STARTED", {

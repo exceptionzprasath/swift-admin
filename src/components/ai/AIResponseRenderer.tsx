@@ -46,21 +46,27 @@ export function AIResponseRenderer({
 
   // 1. STRUCTURED DATA HANDLERS
   if (structured) {
+    let card: React.ReactNode = null;
     switch (structured.type) {
       case "EMPLOYEE_DETAILS":
-        return <EmployeeDetailsCard data={structured} compact={compact} />;
+        card = <EmployeeDetailsCard data={structured} compact={compact} />;
+        break;
 
       case "EMPLOYEE_LIST":
-        return <EmployeeListCard data={structured} compact={compact} onSelectEmp={onRunQuery} />;
+        card = <EmployeeListCard data={structured} compact={compact} onSelectEmp={onRunQuery} />;
+        break;
 
       case "ATTENDANCE_SUMMARY":
-        return <AttendanceSummaryCard data={structured} compact={compact} onFilterClick={onRunQuery} />;
+        card = <AttendanceSummaryCard data={structured} compact={compact} onFilterClick={onRunQuery} />;
+        break;
 
       case "LEAVE_SUMMARY":
-        return <LeaveSummaryCard data={structured} compact={compact} />;
+        card = <LeaveSummaryCard data={structured} compact={compact} />;
+        break;
 
       case "PAYROLL_SUMMARY":
-        return <PayrollSummaryCard data={structured} compact={compact} />;
+        card = <PayrollSummaryCard data={structured} compact={compact} />;
+        break;
 
       case "CLARIFICATION":
         return <ClarificationCard data={structured} onSelectOption={onRunQuery} />;
@@ -70,6 +76,19 @@ export function AIResponseRenderer({
 
       case "NO_DATA":
         return <NoDataCard data={structured} onSelectSuggestion={onRunQuery} />;
+    }
+
+    if (card) {
+      return (
+        <div className="space-y-3">
+          {message.content && (
+            <div className="text-foreground">
+              <MarkdownMessageContent content={message.content} isUser={false} />
+            </div>
+          )}
+          {card}
+        </div>
+      );
     }
   }
 
@@ -143,7 +162,9 @@ function EmployeeDetailsCard({
           <span className="text-muted-foreground text-[11px] flex items-center gap-1">
             <MapPin className="h-3 w-3 text-primary" /> Branch
           </span>
-          <p className="font-medium text-foreground">{emp.branch || "Head Office"}</p>
+          <p className="font-medium text-foreground">
+            {emp.branch && !/^\d{7,}$/.test(emp.branch) ? emp.branch : "Head Office"}
+          </p>
         </div>
 
         {emp.email && (
@@ -175,6 +196,68 @@ function EmployeeDetailsCard({
           </div>
         )}
       </div>
+
+      {/* Compensation & Salary Breakdown */}
+      {(data.salaryDetails || emp.basicSalary !== undefined) && (
+        <div className="px-4 py-3 bg-gradient-to-br from-emerald-500/10 via-primary/5 to-transparent border-t border-border/60 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+              <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              Compensation Structure
+            </span>
+            {data.salaryDetails?.lpa ? (
+              <Badge variant="outline" className="text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
+                {data.salaryDetails.lpa} LPA
+              </Badge>
+            ) : emp.basicSalary ? (
+              <Badge variant="outline" className="text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
+                {((emp.basicSalary * 12) / 100000).toFixed(2)} LPA
+              </Badge>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-card border border-border/60">
+              <span className="text-[10px] text-muted-foreground block font-medium">Fixed Gross</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                ₹{(data.salaryDetails?.fixedGross ?? emp.basicSalary ?? 0).toLocaleString("en-IN")}
+                <span className="text-[10px] font-normal text-muted-foreground ml-0.5">/mo</span>
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-card border border-border/60">
+              <span className="text-[10px] text-muted-foreground block font-medium">Basic Pay + DA</span>
+              <span className="font-semibold text-foreground text-xs">
+                ₹{(data.salaryDetails?.basicPay ?? Math.round((emp.basicSalary || 0) * 0.4)).toLocaleString("en-IN")}
+                <span className="text-[10px] font-normal text-muted-foreground ml-0.5">/mo</span>
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-card border border-border/60">
+              <span className="text-[10px] text-muted-foreground block font-medium">HRA</span>
+              <span className="font-semibold text-foreground text-xs">
+                ₹{(data.salaryDetails?.hra ?? Math.round((emp.basicSalary || 0) * 0.2)).toLocaleString("en-IN")}
+                <span className="text-[10px] font-normal text-muted-foreground ml-0.5">/mo</span>
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-card border border-border/60">
+              <span className="text-[10px] text-muted-foreground block font-medium">Annual CTC</span>
+              <span className="font-bold text-foreground text-xs">
+                ₹{(data.salaryDetails?.annualCtc ?? ((emp.basicSalary || 0) * 12)).toLocaleString("en-IN")}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground pt-0.5 flex-wrap">
+            <span>PF Eligible: <strong className="text-foreground">{data.salaryDetails?.pfEligible !== false ? "✅ Yes (12%)" : "❌ No"}</strong></span>
+            <span>ESI: <strong className="text-foreground">{data.salaryDetails?.esiEligible ? "✅ Yes" : "❌ No"}</strong></span>
+            {data.salaryDetails?.bankAccMasked && (
+              <span>Disbursement: <strong className="text-foreground font-mono">{data.salaryDetails.bankAccMasked}</strong></span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Live Attendance Mini Footer */}
       {att && (
@@ -345,6 +428,37 @@ function AttendanceSummaryCard({
           />
         </div>
       </div>
+
+      {data.absentEmployees && data.absentEmployees.length > 0 && (
+        <div className="px-4 pb-3 pt-2.5 border-t border-border/50">
+          <div className="text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5" /> Absent Staff Roster
+            </span>
+            <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/20">
+              {data.absentEmployees.length} Absent
+            </Badge>
+          </div>
+          <div className="divide-y divide-border/30 max-h-[220px] overflow-y-auto">
+            {data.absentEmployees.map((e, idx) => (
+              <div
+                key={idx}
+                onClick={() => onFilterClick && onFilterClick(`Who is ${e.name}?`)}
+                className="py-1.5 flex items-center justify-between text-xs hover:bg-muted/40 px-1 rounded cursor-pointer transition"
+              >
+                <div>
+                  <span className="font-semibold text-foreground">{e.name}</span>
+                  <span className="text-[11px] text-muted-foreground ml-1.5 font-mono">{e.empCode}</span>
+                  <p className="text-[10px] text-muted-foreground">{e.department} · {e.designation}</p>
+                </div>
+                <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/20">
+                  Absent
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
