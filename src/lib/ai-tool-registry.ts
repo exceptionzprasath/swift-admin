@@ -30,7 +30,7 @@ import type { AIDocumentMeta, AIStructuredData } from "./ai-unified-types";
 import { AIQueryEngine } from "./ai-query-engine";
 import { downloadWageRegisterExcel } from "./wage-register-excel";
 import { generateSalarySlipPDF } from "./pdf";
-import { computePayroll } from "./payroll";
+import { computePayroll, computeMonthlyAttendanceSummary } from "./payroll";
 import { downloadEpfoEcrXlsx } from "./epfo-ecr";
 
 export interface ToolExecutionContext {
@@ -253,15 +253,13 @@ export class AIToolRegistry {
         : 4;
     } else {
       // Derive accurately from live attendance in selectedMonth matching admin.payroll.tsx exactly
-      const monthAtt = (context.attendance || []).filter((a) => {
-        if (a.employeeId !== targetEmp.id && a.employeeName !== targetEmp.name) return false;
-        return a.date && a.date.startsWith(selectedMonth);
-      });
-
-      const daysPresent = monthAtt.filter((a) => a.status === "present").length;
-      const daysHalf = monthAtt.filter((a) => a.status === "half-day").length;
-      const daysLeave = monthAtt.filter((a) => a.status === "leave").length;
-      const actualPresent = daysPresent + daysLeave + daysHalf * 0.5;
+      const attSummary = computeMonthlyAttendanceSummary(
+        context.attendance || [],
+        targetEmp,
+        selectedMonth
+      );
+      const { monthAtt, daysPresent, daysHalf, daysLeave, rawPresentDays, basePresentDays } = attSummary;
+      const actualPresent = basePresentDays;
 
       const ov = (context.payrolls || []).find((p: any) => {
         const matchesEmp = p.employeeId === targetEmp.id || p.empCode === targetEmp.empCode;

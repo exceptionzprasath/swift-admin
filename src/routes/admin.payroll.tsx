@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect } from "react";
 import { useStore, safeFetch, isMockEmployee, isFrozenEmployee, isMockAttendance, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
-import { computePayroll, inr, type PayrollComputation } from "@/lib/payroll";
+import { computePayroll, computeMonthlyAttendanceSummary, inr, type PayrollComputation } from "@/lib/payroll";
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
 import { PayslipTemplateView } from "@/components/payroll/PayslipTemplateView";
 import { EmployeeOtCalendarModal } from "@/components/payroll/EmployeeOtCalendarModal";
@@ -901,19 +901,13 @@ export function PayrollPage() {
     const wd = company?.workingDaysPerMonth || 26;
 
     return (filteredEmployees || []).map((emp) => {
-      const monthAtt = (attendance || []).filter((a) => {
-        if (a.employeeId !== emp.id && a.employeeName !== emp.name) return false;
-        if (isCustomDateRange && customStartDate && customEndDate) {
-          return a.date >= customStartDate && a.date <= customEndDate;
-        }
-        return a.date.startsWith(selectedMonth);
-      });
-
-      const daysPresent = monthAtt.filter((a) => a.status === "present").length;
-      const daysHalf = monthAtt.filter((a) => a.status === "half-day").length;
-      const daysLeave = monthAtt.filter((a) => a.status === "leave").length;
-      const daysAbsent = monthAtt.filter((a) => a.status === "absent").length;
-      const rawPresentDays = daysPresent + daysHalf * 0.5;
+      const attSummary = computeMonthlyAttendanceSummary(
+        attendance,
+        emp,
+        selectedMonth,
+        isCustomDateRange ? { start: customStartDate, end: customEndDate } : undefined
+      );
+      const { monthAtt, daysPresent, daysHalf, daysLeave, daysAbsent, rawPresentDays } = attSummary;
 
       // Compute daily OT breakdown and total OT hours from actual check-in/check-out timestamps or explicit otHours for each day
       const dailyOtRecords: { date: string; checkIn: string; checkOut: string; status: string; workedHours: number; otHours: number }[] = [];

@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Company, Employee, AttendanceRecord } from "./store";
-import { computePayroll } from "./payroll";
+import { computePayroll, computeMonthlyAttendanceSummary } from "./payroll";
 
 function autoFitColumns(rows: any[][]): { wch: number }[] {
   if (!rows || rows.length === 0) return [];
@@ -185,17 +185,9 @@ export function downloadWageRegisterExcel({
     const permanentAddress = emp.addressLine2 || emp.addressLine1 || emp.address || emp.city || "—";
 
     // Attendance computation for employee in selectedMonth
-    const empAtt = attendance.filter(
-      (a) =>
-        (a.employeeId === emp.id || a.employeeName === emp.name || (emp.empCode && a.empCode === emp.empCode)) &&
-        a.date &&
-        a.date.startsWith(selectedMonth)
-    );
-
-    const daysPresent = empAtt.filter((a) => a.status === "present").length;
-    const daysHalf = empAtt.filter((a) => a.status === "half-day" || a.status === "halfday").length;
-    const daysLeave = empAtt.filter((a) => a.status === "leave").length;
-    const workedDays = daysPresent + daysHalf * 0.5;
+    const attSummary = computeMonthlyAttendanceSummary(attendance, emp, selectedMonth);
+    const empAtt = attSummary.monthAtt;
+    const { daysPresent, daysHalf, daysLeave, rawPresentDays: workedDays } = attSummary;
 
     // Check for late punch hours
     const latePunchMinutes = empAtt.reduce((sum, a) => sum + (Number(a.lateBy) || 0), 0);

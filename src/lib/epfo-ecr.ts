@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Company, Employee, AttendanceRecord } from "./store";
-import { computePayroll } from "./payroll";
+import { computePayroll, computeMonthlyAttendanceSummary } from "./payroll";
 
 function saveBlob(blob: Blob, fileName: string) {
   if (typeof window === "undefined") return;
@@ -157,17 +157,9 @@ export function computeEpfoEcrRecords({
       .slice(0, 85);
 
     // Attendance computation
-    const empAtt = attendance.filter(
-      (a) =>
-        (a.employeeId === emp.id || a.employeeName === emp.name || (emp.empCode && a.empCode === emp.empCode)) &&
-        a.date &&
-        a.date.startsWith(selectedMonth)
-    );
-
-    const daysPresent = empAtt.filter((a) => a.status === "present").length;
-    const daysHalf = empAtt.filter((a) => a.status === "half-day" || a.status === "halfday").length;
-    const daysLeave = empAtt.filter((a) => a.status === "leave").length;
-    const workedDays = daysPresent + daysHalf * 0.5;
+    const attSummary = computeMonthlyAttendanceSummary(attendance, emp, selectedMonth);
+    const empAtt = attSummary.monthAtt;
+    const { daysPresent, daysHalf, daysLeave, rawPresentDays: workedDays } = attSummary;
 
     // Overrides check
     const overrideKey = `${selectedMonth}_${emp.id}`;
