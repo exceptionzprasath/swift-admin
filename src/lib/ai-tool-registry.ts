@@ -254,19 +254,13 @@ export class AIToolRegistry {
     } else {
       // Derive accurately from live attendance in selectedMonth matching admin.payroll.tsx exactly
       const monthAtt = (context.attendance || []).filter((a) => {
-        const matchesEmp =
-          a.employeeId === targetEmp.id ||
-          (targetEmp.name && a.employeeName === targetEmp.name) ||
-          (targetEmp.empCode && a.empCode === targetEmp.empCode);
-        if (!matchesEmp) return false;
+        if (a.employeeId !== targetEmp.id && a.employeeName !== targetEmp.name) return false;
         return a.date && a.date.startsWith(selectedMonth);
       });
 
-      const daysPresent = monthAtt.filter((a) => (a.status || "").toLowerCase() === "present").length;
-      const daysHalf = monthAtt.filter(
-        (a) => (a.status || "").toLowerCase() === "half-day" || (a.status || "").toLowerCase() === "half_day"
-      ).length;
-      const daysLeave = monthAtt.filter((a) => (a.status || "").toLowerCase() === "leave").length;
+      const daysPresent = monthAtt.filter((a) => a.status === "present").length;
+      const daysHalf = monthAtt.filter((a) => a.status === "half-day").length;
+      const daysLeave = monthAtt.filter((a) => a.status === "leave").length;
       const actualPresent = daysPresent + daysLeave + daysHalf * 0.5;
 
       const ov = (context.payrolls || []).find((p: any) => {
