@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStore, isMockEmployee, isFrozenEmployee, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
+import { useStore, isMockEmployee, isFrozenEmployee, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type EducationDocument, type PriorEmployerDoc, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { aiNotify } from "@/lib/ai-guide-bus";
 import { generateAppointmentPDF, generateAppointmentPDFBlob } from "@/lib/pdf";
@@ -30,7 +30,7 @@ import {
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
   KeyRound, RefreshCw, Copy, Check, Fingerprint, Database, ChevronDown, ShieldAlert,
-  UserX, Snowflake, MoreHorizontal, RotateCcw,
+  UserX, Snowflake, MoreHorizontal, RotateCcw, FileCheck, AlertCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -50,8 +50,19 @@ import { DepartmentSelect } from "@/components/department-select";
 import { EmploymentTypeSelect, EmploymentTypeBadge } from "@/components/employment-type-select";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { INDIAN_STATES } from "@/lib/india-locations";
+import { INDIAN_STATES, lookupPincode } from "@/lib/india-locations";
 import { OnboardingChecklistDialog } from "@/components/OnboardingChecklistDialog";
+import {
+  findEmployeeDuplicates,
+  checkEmployeeDuplicatesRemote,
+  validatePanFormat,
+  validateAadhaarFormat,
+  validateDrivingLicenseFormat,
+  validateVoterIdFormat,
+  validateRationCardFormat,
+  validateBankAccountFormat,
+} from "@/lib/employee-validation";
+import { useAuth } from "@/lib/auth";
 import { DeleteEmployeeDialog } from "@/components/delete-employee-dialog";
 
 export const Route = createFileRoute("/admin/employees")({
@@ -73,6 +84,32 @@ export const EMERGENCY_RELATIONS = [
   "Other",
 ] as const;
 
+function computeCalculatedCtc(company: any, employeeForm: any, fixedSalaryValue: number): number {
+  if (!fixedSalaryValue || fixedSalaryValue <= 0) return 0;
+  try {
+    const dummyEmp: Employee = {
+      ...employeeForm,
+      fixedSalary: fixedSalaryValue,
+      basic: fixedSalaryValue,
+      salary: fixedSalaryValue,
+    };
+    const p = computePayroll({
+      company,
+      employee: dummyEmp,
+      daysWorked: company?.workingDaysPerMonth || 26,
+      otHours: 0,
+      incentive: 0,
+      shiftDays: 0,
+      loan: 0,
+      advance: 0,
+      bonus: 0,
+    });
+    return Math.round(p.monthlyCTC || fixedSalaryValue);
+  } catch (err) {
+    return fixedSalaryValue;
+  }
+}
+
 const empty: Omit<Employee, "id"> = {
   empCode: "",
   password: generateEmployeePassword(),
@@ -84,6 +121,8 @@ const empty: Omit<Employee, "id"> = {
   doj: new Date().toISOString().slice(0, 10),
   basic: 25000,
   fixedSalary: 25000,
+  ctc: 27800,
+  insuranceForNonEsi: true,
   pfEligible: true,
   esiEligible: false,
   ptEligible: true,
@@ -108,6 +147,8 @@ const empty: Omit<Employee, "id"> = {
   branchId: undefined,
   branchIds: [],
   photoDataUrl: undefined,
+  education: [],
+  educationDocuments: [],
 };
 
 type SignatureRec = { docCode: string; docTitle: string; letterKey?: string; signatureDataUrl?: string; signedBy?: string };
@@ -117,7 +158,7 @@ type SignatureRec = { docCode: string; docTitle: string; letterKey?: string; sig
 const FORM_STEPS = [
   { key: "photo", title: "Photo & Identity", icon: Camera },
   { key: "personal", title: "Personal Details", icon: User },
-  { key: "address", title: "Address & KYC", icon: Home },
+  { key: "address", title: "KYC", icon: FileCheck },
   { key: "family", title: "Family & Emergency", icon: UsersIcon },
   { key: "education", title: "Education", icon: GraduationCap },
   { key: "experience", title: "Prior Experience", icon: Briefcase },
@@ -465,7 +506,7 @@ function EmployeesPage() {
                 <Plus className="mr-2 h-4 w-4" /> Add Employee
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl w-[95vw] sm:w-full h-[85vh] max-h-[85vh] flex flex-col p-0 overflow-hidden rounded-3xl border border-primary/25 shadow-2xl bg-card/95 backdrop-blur-xl transition-colors">
+            <DialogContent className="max-w-5xl w-[96vw] h-[90vh] max-h-[90vh] flex flex-col p-0 overflow-hidden rounded-3xl border border-primary/25 shadow-2xl bg-card/95 backdrop-blur-xl transition-colors">
               <RegistrationWizard key={resumeDraftId ?? "new"} draftId={resumeDraftId} onDone={() => setOpen(false)} />
             </DialogContent>
           </Dialog>
@@ -1425,6 +1466,36 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
   const [form, setForm] = useState<Omit<Employee, "id">>({ ...empty, ...(initialDraft?.data ?? {}) } as Omit<Employee, "id">);
   const draftIdRef = useRef<string>(initialDraft?.id ?? crypto.randomUUID());
   const [savedAt, setSavedAt] = useState<string | null>(initialDraft?.updatedAt ?? null);
+  const [pincodeLoading, setPincodeLoading] = useState(false);
+  const [previewPdfModal, setPreviewPdfModal] = useState<{ name?: string; fileName?: string; dataUrl?: string; fileSize?: string } | null>(null);
+
+  const handlePincodeChange = async (pinValue: string) => {
+    const cleanPin = pinValue.replace(/\D/g, "").slice(0, 6);
+    setForm((prev) => ({ ...prev, pincode: cleanPin }));
+
+    if (cleanPin.length === 6) {
+      setPincodeLoading(true);
+      try {
+        const res = await lookupPincode(cleanPin);
+        if (res) {
+          setForm((prev) => ({
+            ...prev,
+            pincode: cleanPin,
+            city: res.city || prev.city,
+            state: res.state || prev.state,
+            country: "India",
+          }));
+          toast.success(`Auto-detected ${res.city}, ${res.state} for PIN ${cleanPin}`);
+        } else {
+          toast.info(`PIN ${cleanPin} entered. Please select State and City.`);
+        }
+      } catch (err) {
+        console.error("Pincode lookup error:", err);
+      } finally {
+        setPincodeLoading(false);
+      }
+    }
+  };
 
   // Autosave with debounce
   useEffect(() => {
@@ -1439,16 +1510,176 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
   const flow = FORM_STEPS;
   const current = flow[step];
 
+  // Real-time duplicate employee validation against in-memory loaded employee database
+  const duplicatesResult = useMemo(() => {
+    return findEmployeeDuplicates(form, employees);
+  }, [form, employees]);
+
+  const currentStepConflict = useMemo(() => {
+    if (!current) return null;
+    if (current.key === "photo") return duplicatesResult.byField.empCode || null;
+    if (current.key === "personal") {
+      return (
+        duplicatesResult.byField.email ||
+        duplicatesResult.byField.phone ||
+        null
+      );
+    }
+    if (current.key === "address") {
+      return (
+        duplicatesResult.byField.pan ||
+        duplicatesResult.byField.aadhaar ||
+        duplicatesResult.byField.uan ||
+        null
+      );
+    }
+    if (current.key === "employment") return duplicatesResult.byField.uan || null;
+    return null;
+  }, [current, duplicatesResult]);
+
+  const [visitedSteps, setVisitedSteps] = useState<Record<number, boolean>>({ 0: true });
+  const [direction, setDirection] = useState<number>(0);
+  const activeStepRef = useRef<HTMLDivElement>(null);
+  const stepperScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeStepRef.current) {
+      activeStepRef.current.scrollIntoView({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
+    }
+  }, [step]);
+
+  const goToStep = (newStep: number) => {
+    if (newStep < 0 || newStep >= flow.length) return;
+    setDirection(newStep > step ? 1 : -1);
+    setVisitedSteps((prev) => ({ ...prev, [step]: true, [newStep]: true }));
+    setStep(newStep);
+  };
+
+  const getStepStatus = (stepKey: FormStepKey): { isComplete: boolean; missingCount: number; missingFields: string[] } => {
+    const missing: string[] = [];
+
+    switch (stepKey) {
+      case "photo":
+        if (!form.name?.trim()) missing.push("Full Name");
+        if (!form.empCode?.trim()) missing.push("Employee Code");
+        break;
+
+      case "personal":
+        if (!form.email?.trim()) missing.push("Work/Personal Email");
+        if (!form.phone?.trim()) missing.push("Phone Number");
+        if (!form.gender) missing.push("Gender");
+        if (!form.dob) missing.push("Date of Birth");
+        break;
+
+      case "address":
+        if (!form.pan || !validatePanFormat(form.pan, true).valid) missing.push("Valid PAN");
+        if (!form.aadhaar || !validateAadhaarFormat(form.aadhaar, true).valid) missing.push("Valid Aadhaar");
+        if (!form.bankAcc?.trim()) missing.push("Bank Account");
+        break;
+
+      case "family":
+        if (!form.emergencyContact?.trim() && !form.emergencyPhone2?.trim() && !form.emergencyName?.trim()) {
+          missing.push("Emergency Contact");
+        }
+        break;
+
+      case "education":
+        const hasEdu = (form.education && form.education.length > 0) || (form.educationDocuments && form.educationDocuments.length > 0);
+        if (!hasEdu) missing.push("Educational Details");
+        break;
+
+      case "experience":
+        if (form.experience && form.experience.length > 0) {
+          if (form.experience.some((e) => !e.company?.trim())) missing.push("Company Name");
+        }
+        break;
+
+      case "skills":
+        if (!form.skills || form.skills.length === 0) missing.push("Skills");
+        if (!form.languagesKnown || form.languagesKnown.length === 0) missing.push("Languages");
+        break;
+
+      case "compliance":
+        if (!form.backgroundCheckStatus) missing.push("Background Check Status");
+        break;
+
+      case "employment":
+        if (!form.department?.trim()) missing.push("Department");
+        if (!form.designation?.trim()) missing.push("Designation");
+        if (!form.doj) missing.push("Date of Joining");
+        if ((form.fixedSalary ?? 0) <= 0) missing.push("Fixed Salary");
+        break;
+
+      case "branch":
+        const hasBranch = form.branchId || (form.branchIds && form.branchIds.length > 0);
+        if (!hasBranch) missing.push("Branch");
+        break;
+
+      case "verify":
+      case "review":
+        break;
+    }
+
+    return {
+      isComplete: missing.length === 0,
+      missingCount: missing.length,
+      missingFields: missing,
+    };
+  };
+
   const canNext = () => {
     if (!current) return false;
-    if (current.key === "photo") return !!form.name && !!form.empCode;
-    if (current.key === "personal") return !!form.name && !!form.email && !!form.phone;
-    if (current.key === "employment") return !!form.designation && !!form.department && !!form.doj;
+    if (currentStepConflict) return false;
+    // On photo step, at least require name and empCode so the draft/employee has an identity
+    if (current.key === "photo") {
+      return !!form.name?.trim() && !!form.empCode?.trim() && !duplicatesResult.byField.empCode;
+    }
+    // Allow navigation across subsequent steps even if fields are missing,
+    // so the stepper marks incomplete modules with the warning downward icon!
     return true;
   };
 
-  const finish = () => {
+  const finish = async () => {
     if (!form.empCode || !form.name) return toast.error("Employee code and name required");
+
+    // 1. Immediate in-memory database check
+    const localDup = findEmployeeDuplicates(form, employees);
+    if (localDup.hasDuplicate) {
+      const topConflict = localDup.conflicts[0];
+      toast.error(`Already in database: ${topConflict.message}`);
+      // Automatically jump to the step containing the conflict so HR can see and resolve it
+      if (topConflict.field === "empCode") {
+        setStep(flow.findIndex((s) => s.key === "photo"));
+      } else if (["email", "phone"].includes(topConflict.field)) {
+        setStep(flow.findIndex((s) => s.key === "personal"));
+      } else if (["pan", "aadhaar", "uan"].includes(topConflict.field)) {
+        setStep(flow.findIndex((s) => s.key === "address"));
+      }
+      return;
+    }
+
+    // 2. Real-time remote check against backend DynamoDB database
+    const activeTenantId = useAuth.getState().activeTenantId || (company as any).id;
+    if (activeTenantId && !activeTenantId.startsWith("demo-tenant-")) {
+      const remoteDup = await checkEmployeeDuplicatesRemote(activeTenantId, form);
+      if (remoteDup.hasDuplicate) {
+        const topConflict = remoteDup.conflicts[0];
+        toast.error(`Already in database: ${topConflict.message}`);
+        if (topConflict.field === "empCode") {
+          setStep(flow.findIndex((s) => s.key === "photo"));
+        } else if (["email", "phone"].includes(topConflict.field)) {
+          setStep(flow.findIndex((s) => s.key === "personal"));
+        } else if (["pan", "aadhaar", "uan"].includes(topConflict.field)) {
+          setStep(flow.findIndex((s) => s.key === "address"));
+        }
+        return;
+      }
+    }
+
     const emp = addEmployee({ ...form, faceRegistered: !!form.photoDataUrl || form.faceRegistered });
     ensureJourney(emp.id);
     const p = computePayroll({ company, employee: emp, daysWorked: company.workingDaysPerMonth, otHours: 0, incentive: 0, shiftDays: 0, loan: 0, advance: 0, bonus: 0 });
@@ -1468,80 +1699,175 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
   };
 
   return (
-    <div className="grid grid-cols-[260px_1fr] h-full max-h-full overflow-hidden">
-      {/* Rail */}
-      <aside className="border-r border-border/80 bg-muted/40 p-3 flex flex-col overflow-hidden h-full max-h-full">
-        <div className="px-2 pt-1 pb-3 mb-2 border-b border-primary/15 relative overflow-hidden shrink-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent rounded-2xl">
-          <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full bg-primary/15 blur-2xl pointer-events-none" />
-          <DialogHeader className="mb-2">
-            <DialogTitle className="flex items-center gap-2 text-sm font-bold font-display text-foreground">
-              <div className="h-7 w-7 rounded-lg bg-gradient-brand text-white flex items-center justify-center shrink-0 shadow-glow ring-1 ring-primary/25">
-                <Sparkles className="h-4 w-4" />
+    <div className="flex flex-col h-full max-h-full overflow-hidden bg-background">
+      {/* Top Header */}
+      <div className="shrink-0 px-6 py-3 border-b border-border/70 flex items-center justify-between bg-card/70 backdrop-blur-md">
+        <DialogHeader className="m-0 p-0 text-left">
+          <DialogTitle className="flex items-center gap-2.5 text-base font-bold font-display text-foreground">
+            <div className="h-8 w-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shrink-0 shadow-sm ring-2 ring-primary/20">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span>Add Employee</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                  Guided Wizard
+                </span>
               </div>
-              <span>Guided Registration</span>
-            </DialogTitle>
-          </DialogHeader>
-          <Progress value={((step + 1) / flow.length) * 100} className="h-1.5 mb-1.5 bg-primary/15" />
-          <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+            </div>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex items-center gap-3">
+          <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 font-medium px-3 py-1 rounded-full bg-muted/60 border border-border/60 shadow-2xs">
             <Save className="h-3 w-3 text-primary" />
-            {savedAt ? `Autosaved ${new Date(savedAt).toLocaleTimeString()}` : "Draft not saved yet"}
+            <span>{savedAt ? `Autosaved ${new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Draft autosave active"}</span>
           </div>
         </div>
+      </div>
 
-        <ol className="space-y-1 text-sm overflow-y-auto pr-1 flex-1">
-          {flow.map((s, i) => {
-            const Icon = s.icon;
-            const done = i < step;
-            const active = i === step;
-            return (
-              <li key={s.key}>
-                <button
-                  onClick={() => setStep(i)}
-                  className={`w-full relative flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-left transition-all ${
-                    active
-                      ? "bg-gradient-brand text-white shadow-glow font-semibold"
-                      : done
-                      ? "text-emerald-600 dark:text-emerald-400 hover:bg-muted font-medium"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
+      {/* Top Horizontal Connected Stepper Bar */}
+      <div className="shrink-0 border-b border-border/70 bg-muted/20 backdrop-blur-xs py-3 px-4 sm:px-6 overflow-hidden">
+        <div
+          ref={stepperScrollRef}
+          className="flex items-start overflow-x-auto no-scrollbar scroll-smooth py-1"
+        >
+          <div className="flex items-start min-w-max mx-auto px-2">
+            {flow.map((s, i) => {
+              const Icon = s.icon;
+              const isActive = i === step;
+              const isPast = i < step;
+              const isVisited = !!visitedSteps[i] || isPast;
+              const status = getStepStatus(s.key);
+              const isComplete = status.isComplete;
+              const isWarning = isVisited && !isComplete && !isActive;
+
+              return (
+                <div
+                  key={s.key}
+                  ref={isActive ? activeStepRef : undefined}
+                  className="flex items-start shrink-0"
                 >
-                  <div
-                    className={`h-5 w-5 rounded-full grid place-items-center text-[10px] font-bold shrink-0 ${
-                      active
-                        ? "bg-white/20 text-white"
-                        : done
-                        ? "bg-emerald-500 text-white"
-                        : "bg-muted-foreground/15 text-muted-foreground"
-                    }`}
+                  {/* Step Node */}
+                  <button
+                    type="button"
+                    onClick={() => goToStep(i)}
+                    className="flex flex-col items-center group focus:outline-hidden transition-transform duration-200 hover:scale-[1.02]"
+                    title={
+                      isWarning
+                        ? `${s.title}: Incomplete (${status.missingCount} fields missing: ${status.missingFields.join(", ")})`
+                        : s.title
+                    }
                   >
-                    {done ? "✓" : i + 1}
-                  </div>
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate text-xs">{s.title}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-        <div className="mt-3 pt-3 text-[11px] text-muted-foreground border-t border-border/80">
-          <div className="flex items-center gap-1 font-semibold text-foreground">
-            <Sparkles className="h-3 w-3 text-primary" /> Creatons AI Onboarding
+                    {/* Circle Node */}
+                    <div className="relative flex items-center justify-center">
+                      <div
+                        className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full flex items-center justify-center font-bold text-xs sm:text-sm transition-all duration-300 select-none ${
+                          isActive
+                            ? "bg-primary text-primary-foreground shadow-md ring-4 ring-primary/20 scale-105 z-10"
+                            : isWarning
+                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-2 border-amber-500 shadow-2xs"
+                            : isVisited && isComplete
+                            ? "bg-primary/15 text-primary border-2 border-primary/90 font-semibold"
+                            : "bg-muted/70 text-muted-foreground border border-border/80 group-hover:bg-muted group-hover:text-foreground"
+                        }`}
+                      >
+                        {isActive ? (
+                          <span>{i + 1}</span>
+                        ) : isWarning ? (
+                          <div className="flex items-center justify-center">
+                            <AlertCircle className="h-5 w-5 stroke-[2.2]" />
+                          </div>
+                        ) : isVisited && isComplete ? (
+                          <Check className="h-5 w-5 stroke-[2.5]" />
+                        ) : (
+                          <span>{i + 1}</span>
+                        )}
+                      </div>
+
+                      {/* Warning downward indicator badge */}
+                      {isWarning && (
+                        <div className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                          <ChevronDown className="h-2.5 w-2.5 stroke-[3]" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Step Icon & Title Label */}
+                    <div className="mt-2 flex flex-col items-center text-center max-w-[80px] sm:max-w-[95px] px-0.5">
+                      <div
+                        className={`flex items-center gap-1 transition-colors duration-200 ${
+                          isActive
+                            ? "text-primary font-bold"
+                            : isWarning
+                            ? "text-amber-600 dark:text-amber-400 font-semibold"
+                            : isVisited && isComplete
+                            ? "text-foreground/90 font-medium"
+                            : "text-muted-foreground group-hover:text-foreground font-normal"
+                        }`}
+                      >
+                        <Icon className="h-3 w-3 shrink-0" />
+                        <span className="text-[11px] sm:text-xs truncate tracking-tight">
+                          {s.title}
+                        </span>
+                      </div>
+                      {isWarning ? (
+                        <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5 leading-none">
+                          {status.missingCount} pending
+                        </span>
+                      ) : isActive ? (
+                        <span className="text-[9.5px] text-primary font-medium mt-0.5 leading-none">
+                          In Progress
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+
+                  {/* Connecting Line between steps */}
+                  {i < flow.length - 1 && (
+                    <div className="w-5 sm:w-8 md:w-12 flex items-center justify-center px-1 self-start mt-4 sm:mt-5">
+                      <div
+                        className={`h-[2px] w-full rounded-full transition-all duration-300 ${
+                          i < step
+                            ? "bg-primary"
+                            : "bg-border/80"
+                        }`}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <div className="mt-0.5 text-[10.5px]">Documents & signatures are handled via employee app.</div>
         </div>
-      </aside>
+      </div>
 
-      {/* Body */}
-      <div className="flex flex-col h-full min-h-0 overflow-hidden">
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
-
-          <AnimatePresence mode="wait">
+      {/* Body / Fields Area */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 bg-card/20">
+        <div className="max-w-4xl mx-auto">
+          <AnimatePresence mode="wait" custom={direction}>
             <motion.div
               key={current?.key ?? step}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.15 }}
+              custom={direction}
+              variants={{
+                enter: (dir: number) => ({
+                  opacity: 0,
+                  x: dir > 0 ? 20 : -20,
+                }),
+                center: {
+                  opacity: 1,
+                  x: 0,
+                  transition: { duration: 0.2, ease: "easeOut" },
+                },
+                exit: (dir: number) => ({
+                  opacity: 0,
+                  x: dir > 0 ? -20 : 20,
+                  transition: { duration: 0.15, ease: "easeIn" },
+                }),
+              }}
+              initial="enter"
+              animate="center"
+              exit="exit"
               className="space-y-5"
             >
               {current?.key === "photo" && (
@@ -1600,7 +1926,13 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
 
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Full Name *" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-                    <Field label="Employee Code *" value={form.empCode} onChange={(v) => setForm({ ...form, empCode: v })} placeholder="SW0001" />
+                    <Field
+                      label="Employee Code *"
+                      value={form.empCode}
+                      onChange={(v) => setForm({ ...form, empCode: v })}
+                      placeholder="SW0001"
+                      error={duplicatesResult.byField.empCode?.message}
+                    />
 
                     {/* Auto Generated Password Card */}
                     <div className="col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2.5">
@@ -1659,10 +1991,20 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
 
               {current?.key === "personal" && (
                 <div className="space-y-4">
-                  <StepHead icon={User} title="Personal Details" subtitle="Contact and KYC. Fields you skip can be filled by the employee later." />
+                  <StepHead icon={User} title="Personal Details" subtitle="Contact and residential address details." />
                   <div className="grid grid-cols-2 gap-4">
-                    <Field label="Email *" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
-                    <Field label="Phone *" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
+                    <Field
+                      label="Email *"
+                      value={form.email}
+                      onChange={(v) => setForm({ ...form, email: v })}
+                      error={duplicatesResult.byField.email?.message}
+                    />
+                    <Field
+                      label="Phone *"
+                      value={form.phone}
+                      onChange={(v) => setForm({ ...form, phone: v })}
+                      error={duplicatesResult.byField.phone?.message}
+                    />
                     <Field label="Date of Birth" type="date" value={form.dob || ""} onChange={(v) => setForm({ ...form, dob: v })} />
                     <div>
                       <Label>Gender</Label>
@@ -1686,24 +2028,22 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                         </SelectContent>
                       </Select>
                     </div>
-                    <Field label="Emergency Contact" value={form.emergencyContact || ""} onChange={(v) => setForm({ ...form, emergencyContact: v })} />
-                    <div className="col-span-2">
-                      <Label>Address</Label>
-                      <Input value={form.address || ""} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-                    </div>
-                    <Field label="PAN" value={form.pan || ""} onChange={(v) => setForm({ ...form, pan: v.toUpperCase() })} />
-                    <Field label="Aadhaar" value={form.aadhaar || ""} onChange={(v) => setForm({ ...form, aadhaar: v })} />
-                  </div>
-                </div>
-              )}
-
-              {current?.key === "address" && (
-                <div className="space-y-4">
-                  <StepHead icon={Home} title="Address & Extended KYC" subtitle="Current and permanent address, statutory numbers." />
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="Address Line 1" value={form.addressLine1 || ""} onChange={(v) => setForm({ ...form, addressLine1: v })} />
-                    <Field label="Address Line 2" value={form.addressLine2 || ""} onChange={(v) => setForm({ ...form, addressLine2: v })} />
-                    <Field label="City" value={form.city || ""} onChange={(v) => setForm({ ...form, city: v })} />
+                    <div className="hidden sm:block" />
+                    <Field
+                      label="Address Line 1"
+                      value={form.addressLine1 || form.address || ""}
+                      onChange={(v) => setForm({ ...form, addressLine1: v, address: v })}
+                    />
+                    <Field
+                      label="Address Line 2"
+                      value={form.addressLine2 || ""}
+                      onChange={(v) => setForm({ ...form, addressLine2: v })}
+                    />
+                    <Field
+                      label="City"
+                      value={form.city || ""}
+                      onChange={(v) => setForm({ ...form, city: v })}
+                    />
                     <div>
                       <Label>State</Label>
                       <Select value={form.state || ""} onValueChange={(v) => setForm({ ...form, state: v })}>
@@ -1715,19 +2055,105 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                         </SelectContent>
                       </Select>
                     </div>
-                    <Field label="Country" value={form.country || "India"} onChange={(v) => setForm({ ...form, country: v })} />
-                    <Field label="Pincode" value={form.pincode || ""} onChange={(v) => setForm({ ...form, pincode: v })} />
-                    <Field label="UAN" value={form.uan || ""} onChange={(v) => setForm({ ...form, uan: v })} />
-                    <Field label="ESIC" value={form.esic || ""} onChange={(v) => setForm({ ...form, esic: v })} />
-                    <Field label="PF Number" value={form.pfNumber || ""} onChange={(v) => setForm({ ...form, pfNumber: v })} />
-                    <Field label="Passport #" value={form.passportNumber || ""} onChange={(v) => setForm({ ...form, passportNumber: v })} />
+                    <Field
+                      label="Country"
+                      value={form.country || "India"}
+                      onChange={(v) => setForm({ ...form, country: v })}
+                    />
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label>PIN</Label>
+                        {pincodeLoading && (
+                          <span className="text-[11px] text-primary font-medium animate-pulse">Detecting City & State...</span>
+                        )}
+                      </div>
+                      <Input
+                        value={form.pincode || ""}
+                        onChange={(e) => handlePincodeChange(e.target.value)}
+                        maxLength={6}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {current?.key === "address" && (
+                <div className="space-y-4">
+                  <StepHead icon={FileCheck} title="KYC" subtitle="Government identity cards, statutory KYC, and bank account details." />
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field
+                      label="PAN Card Number"
+                      value={form.pan || ""}
+                      onChange={(v) => setForm({ ...form, pan: v.replace(/[\s-]/g, "").toUpperCase().slice(0, 10) })}
+                      error={duplicatesResult.byField.pan?.message || (form.pan ? validatePanFormat(form.pan).message : undefined)}
+                    />
+                    <Field
+                      label="Aadhaar Card Number"
+                      value={form.aadhaar || ""}
+                      onChange={(v) => setForm({ ...form, aadhaar: v.replace(/\D/g, "").slice(0, 12) })}
+                      error={duplicatesResult.byField.aadhaar?.message || (form.aadhaar ? validateAadhaarFormat(form.aadhaar).message : undefined)}
+                    />
+                    <Field
+                      label="Bank Account Number"
+                      value={form.bankAcc || ""}
+                      onChange={(v) => setForm({ ...form, bankAcc: v.replace(/\D/g, "").slice(0, 18) })}
+                      error={form.bankAcc ? validateBankAccountFormat(form.bankAcc).message : undefined}
+                    />
+                    <Field
+                      label="Bank IFSC Code"
+                      value={form.bankIfsc || ""}
+                      onChange={(v) => setForm({ ...form, bankIfsc: v.replace(/[\s-]/g, "").toUpperCase().slice(0, 11) })}
+                    />
+                    <div className="col-span-2">
+                      <Field
+                        label="Driving License (DL)"
+                        value={form.drivingLicense || ""}
+                        onChange={(v) => setForm({ ...form, drivingLicense: v.replace(/[\s-]/g, "").toUpperCase().slice(0, 15) })}
+                        error={form.drivingLicense ? validateDrivingLicenseFormat(form.drivingLicense).message : undefined}
+                      />
+                    </div>
+                    <Field
+                      label="Voter ID (EPIC)"
+                      value={form.voterId || ""}
+                      onChange={(v) => setForm({ ...form, voterId: v.replace(/[\s-]/g, "").toUpperCase().slice(0, 10) })}
+                      error={form.voterId ? validateVoterIdFormat(form.voterId).message : undefined}
+                    />
+                    <Field
+                      label="Ration Card"
+                      value={form.rationCard || ""}
+                      onChange={(v) => setForm({ ...form, rationCard: v.trim().toUpperCase().slice(0, 20) })}
+                      error={form.rationCard ? validateRationCardFormat(form.rationCard).message : undefined}
+                    />
+                    <Field
+                      label="PF Number"
+                      value={form.pfNumber || ""}
+                      onChange={(v) => setForm({ ...form, pfNumber: v })}
+                    />
+                    <Field
+                      label="UAN Number"
+                      value={form.uan || ""}
+                      onChange={(v) => setForm({ ...form, uan: v.replace(/\D/g, "").slice(0, 12) })}
+                      error={duplicatesResult.byField.uan?.message}
+                    />
+                    <Field
+                      label="Passport Number"
+                      value={form.passportNumber || ""}
+                      onChange={(v) => setForm({ ...form, passportNumber: v.toUpperCase() })}
+                    />
+                    <Field
+                      label="ESIC Number"
+                      value={form.esic || ""}
+                      onChange={(v) => setForm({ ...form, esic: v })}
+                    />
                   </div>
                 </div>
               )}
 
               {current?.key === "family" && (
                 <div className="space-y-4">
-                  <StepHead icon={UsersIcon} title="Family & Emergency" subtitle="Dependents, nominee, and emergency contact." />
+                  <StepHead icon={UsersIcon} title="Family & Emergency" subtitle="Family members, statutory Aadhaar, family photograph, and emergency contact." />
+
+                  {/* Personal & Family Core Details */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Marital Status</Label>
@@ -1745,67 +2171,92 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                     <Field label="Father's Name" value={form.fatherName || ""} onChange={(v) => setForm({ ...form, fatherName: v })} />
                     <Field label="Mother's Name" value={form.motherName || ""} onChange={(v) => setForm({ ...form, motherName: v })} />
                     <Field label="Spouse Name" value={form.spouseName || ""} onChange={(v) => setForm({ ...form, spouseName: v })} />
-                    <Field label="Emergency Contact Name" value={form.emergencyName || ""} onChange={(v) => setForm({ ...form, emergencyName: v })} />
-                    <div>
-                      <Label>Emergency Relation</Label>
-                      <Select value={form.emergencyRelation || ""} onValueChange={(v) => setForm({ ...form, emergencyRelation: v })}>
-                        <SelectTrigger><SelectValue placeholder="Select Relation" /></SelectTrigger>
-                        <SelectContent>
-                          {EMERGENCY_RELATIONS.map((rel) => (
-                            <SelectItem key={rel} value={rel}>{rel}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Field label="Emergency Phone (Alt)" value={form.emergencyPhone2 || ""} onChange={(v) => setForm({ ...form, emergencyPhone2: v })} />
                   </div>
-                  <RepeatingList<FamilyMember>
-                    label="Dependents / Family"
-                    items={form.family || []}
-                    empty={{ name: "", relation: "" }}
+
+                  {/* Emergency Contact Section */}
+                  <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                      <span>Emergency Contact Details</span>
+                      <span className="text-[11px] text-primary lowercase tracking-normal">Primary emergency reach</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <Label className="text-xs">Emergency Contact Name</Label>
+                        <Input
+                          value={form.emergencyName || ""}
+                          onChange={(e) => setForm({ ...form, emergencyName: e.target.value })}
+                          className="text-xs h-9 mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Emergency Relation</Label>
+                        <Select value={form.emergencyRelation || ""} onValueChange={(v) => setForm({ ...form, emergencyRelation: v })}>
+                          <SelectTrigger className="text-xs h-9 mt-1"><SelectValue placeholder="Select Relation" /></SelectTrigger>
+                          <SelectContent>
+                            {EMERGENCY_RELATIONS.map((rel) => (
+                              <SelectItem key={rel} value={rel}>{rel}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Emergency Contact</Label>
+                        <Input
+                          type="tel"
+                          value={form.emergencyContact || ""}
+                          maxLength={10}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                            setForm({ ...form, emergencyContact: digits });
+                          }}
+                          className="text-xs h-9 mt-1 font-mono tracking-wider"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Family Photograph with *ESI Toggle */}
+                  <FamilyPhotoCard
+                    value={form.familyPhotoUrl}
+                    esiCovered={form.familyPhotoEsiCovered}
+                    onChange={(url) => setForm({ ...form, familyPhotoUrl: url })}
+                    onEsiChange={(esi) => setForm({ ...form, familyPhotoEsiCovered: esi })}
+                  />
+
+                  {/* Family Members with Relation and Aadhaar */}
+                  <FamilyMembersManager
+                    members={form.family || []}
                     onChange={(family) => setForm({ ...form, family })}
-                    columns={[
-                      { key: "name", label: "Name" },
-                      { key: "relation", label: "Relation", placeholder: "Spouse / Child" },
-                      { key: "dob", label: "DOB", type: "date" },
-                    ]}
                   />
                 </div>
               )}
 
               {current?.key === "education" && (
                 <div className="space-y-4">
-                  <StepHead icon={GraduationCap} title="Education" subtitle="Highest and prior qualifications." />
-                  <RepeatingList<EducationEntry>
-                    label="Qualifications"
+                  <StepHead icon={GraduationCap} title="Education & Certificates" subtitle="Academic qualifications and certified document PDF uploads." />
+
+                  {/* Educational Qualifications List */}
+                  <EducationQualificationsManager
                     items={form.education || []}
-                    empty={{ level: "", institute: "" }}
                     onChange={(education) => setForm({ ...form, education })}
-                    columns={[
-                      { key: "level", label: "Degree / Level", placeholder: "B.E. / MBA / HSC" },
-                      { key: "institute", label: "Institute" },
-                      { key: "year", label: "Year" },
-                      { key: "grade", label: "Grade / CGPA" },
-                    ]}
+                  />
+
+                  {/* Education Documents Upload Option (PDFs with Name Type Box) */}
+                  <EducationDocumentsManager
+                    documents={form.educationDocuments || []}
+                    onChange={(educationDocuments) => setForm({ ...form, educationDocuments })}
+                    onPreview={(doc) => setPreviewPdfModal(doc)}
                   />
                 </div>
               )}
 
               {current?.key === "experience" && (
                 <div className="space-y-4">
-                  <StepHead icon={Briefcase} title="Prior Experience" subtitle="Previous employers, roles, and last drawn CTC." />
-                  <RepeatingList<ExperienceEntry>
-                    label="Employers"
+                  <StepHead icon={Briefcase} title="Prior Experience" subtitle="Previous employers, roles, CTC, payslips, experience and appointment letters." />
+                  <PriorExperienceManager
                     items={form.experience || []}
-                    empty={{ company: "", role: "" }}
                     onChange={(experience) => setForm({ ...form, experience })}
-                    columns={[
-                      { key: "company", label: "Company" },
-                      { key: "role", label: "Role" },
-                      { key: "from", label: "From", type: "date" },
-                      { key: "to", label: "To", type: "date" },
-                      { key: "ctc", label: "Last CTC", type: "number" },
-                    ]}
+                    onPreview={(doc) => setPreviewPdfModal(doc)}
                   />
                 </div>
               )}
@@ -1819,7 +2270,6 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       <Input
                         value={(form.skills || []).join(", ")}
                         onChange={(e) => setForm({ ...form, skills: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
-                        placeholder="React, Payroll, MS Excel"
                       />
                     </div>
                     <div>
@@ -1827,7 +2277,13 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       <Input
                         value={(form.languagesKnown || []).join(", ")}
                         onChange={(e) => setForm({ ...form, languagesKnown: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
-                        placeholder="English, Hindi, Tamil"
+                      />
+                    </div>
+                    <div>
+                      <Label>Extra Curricular</Label>
+                      <Input
+                        value={(form.extraCurricular || []).join(", ")}
+                        onChange={(e) => setForm({ ...form, extraCurricular: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
                       />
                     </div>
                   </div>
@@ -1933,14 +2389,39 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                     <Field
                       label="Fixed Salary (Monthly ₹) *"
                       type="number"
-                      value={String(form.fixedSalary ?? form.basic)}
-                      onChange={(v) => setForm({ ...form, fixedSalary: +v || 0, basic: +v || 0 })}
+                      value={String(form.fixedSalary ?? form.basic ?? 0)}
+                      onChange={(v) => {
+                        const salaryVal = +v || 0;
+                        const ctcVal = computeCalculatedCtc(company, form, salaryVal);
+                        setForm({ ...form, fixedSalary: salaryVal, basic: salaryVal, salary: salaryVal, ctc: ctcVal });
+                      }}
+                    />
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold text-primary">CTC (Monthly ₹) *</Label>
+                        {(form.ctc || computeCalculatedCtc(company, form, form.fixedSalary ?? form.basic ?? 0)) > 0 && (
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            ₹{((form.ctc || computeCalculatedCtc(company, form, form.fixedSalary ?? form.basic ?? 0)) * 12).toLocaleString("en-IN")}/yr
+                          </span>
+                        )}
+                      </div>
+                      <Input
+                        type="number"
+                        className="font-bold text-xs h-9 mt-1 font-mono"
+                        value={String(form.ctc ?? computeCalculatedCtc(company, form, form.fixedSalary ?? form.basic ?? 0))}
+                        onChange={(e) => setForm({ ...form, ctc: +e.target.value || 0 })}
+                      />
+                    </div>
+                    <Field
+                      label="PF Number"
+                      value={form.pfNumber || ""}
+                      onChange={(v) => setForm({ ...form, pfNumber: v })}
                     />
                     <Field
-                      label="PF UAN No"
-                      placeholder="12-digit UAN (e.g. 100987654321)"
+                      label="UAN Number"
                       value={form.uan || ""}
                       onChange={(v) => setForm({ ...form, uan: v.replace(/\D/g, "").slice(0, 12) })}
+                      error={duplicatesResult.byField.uan?.message}
                     />
                     <Field label="Bank Account" value={form.bankAcc || ""} onChange={(v) => setForm({ ...form, bankAcc: v })} />
                     <Field label="IFSC" value={form.bankIfsc || ""} onChange={(v) => setForm({ ...form, bankIfsc: v.toUpperCase() })} />
@@ -2002,7 +2483,12 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       <label className="flex items-center gap-2.5 text-xs font-medium cursor-pointer p-2.5 rounded-lg bg-muted/40 hover:bg-muted border border-border">
                         <Checkbox
                           checked={form.pfEligible ?? true}
-                          onCheckedChange={(c) => setForm({ ...form, pfEligible: !!c })}
+                          onCheckedChange={(c) => {
+                            const pfEligible = !!c;
+                            const nextForm = { ...form, pfEligible };
+                            const ctcVal = computeCalculatedCtc(company, nextForm, form.fixedSalary ?? form.basic ?? 0);
+                            setForm({ ...nextForm, ctc: ctcVal });
+                          }}
                         />
                         <span>PF (Provident Fund)</span>
                       </label>
@@ -2010,7 +2496,16 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       <label className="flex items-center gap-2.5 text-xs font-medium cursor-pointer p-2.5 rounded-lg bg-muted/40 hover:bg-muted border border-border">
                         <Checkbox
                           checked={form.esiEligible ?? false}
-                          onCheckedChange={(c) => setForm({ ...form, esiEligible: !!c })}
+                          onCheckedChange={(c) => {
+                            const esiEligible = !!c;
+                            const nextForm = {
+                              ...form,
+                              esiEligible,
+                              insuranceForNonEsi: !esiEligible ? form.insuranceForNonEsi : false,
+                            };
+                            const ctcVal = computeCalculatedCtc(company, nextForm, form.fixedSalary ?? form.basic ?? 0);
+                            setForm({ ...nextForm, ctc: ctcVal });
+                          }}
                         />
                         <span>ESI (Medical Scheme)</span>
                       </label>
@@ -2030,6 +2525,29 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                         />
                         <span>TDS (Income Tax)</span>
                       </label>
+                    </div>
+
+                    {/* Insurance for Non-ESI Toggle */}
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/30 mt-3">
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-semibold flex items-center gap-2">
+                          <ShieldCheck className="h-4 w-4 text-primary" />
+                          <span>Insurance for Non-ESI</span>
+                          {form.esiEligible && (
+                            <Badge variant="outline" className="text-[9px] text-muted-foreground">
+                              Covered under ESI
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Commercial medical & accident insurance coverage for employees not covered under statutory ESI scheme.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={Boolean(form.insuranceForNonEsi ?? (!form.esiEligible && (form.fixedSalary ?? 0) > 21000))}
+                        disabled={form.esiEligible}
+                        onCheckedChange={(c) => setForm({ ...form, insuranceForNonEsi: c })}
+                      />
                     </div>
                   </div>
 
@@ -2600,24 +3118,71 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
             </motion.div>
           </AnimatePresence>
         </div>
-
-        <div className="shrink-0 flex items-center justify-between border-t border-border bg-card/95 backdrop-blur px-6 py-3">
-          <Button variant="ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>
-            <ChevronLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
-          <div className="text-xs text-muted-foreground">Step {step + 1} of {flow.length}</div>
-          {step < flow.length - 1 ? (
-            <Button className="bg-gradient-brand text-white" disabled={!canNext()} onClick={() => setStep(step + 1)}>
-              Continue <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          ) : (
-            <Button className="bg-gradient-brand text-white shadow-glow" onClick={finish}>
-              <CheckCircle2 className="h-4 w-4 mr-1" /> Create Employee
-            </Button>
-          )}
-        </div>
       </div>
 
+      {/* Bottom Sticky Action Footer */}
+      <div className="shrink-0 flex items-center justify-between border-t border-border bg-card/95 backdrop-blur px-6 py-3.5 shadow-lg">
+        <Button
+          variant="outline"
+          disabled={step === 0}
+          onClick={() => goToStep(step - 1)}
+          className="rounded-xl border-border/80 text-xs sm:text-sm font-medium hover:bg-muted"
+        >
+          <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+        </Button>
+
+        <div className="flex flex-col items-center">
+          <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <span>Step {step + 1} of {flow.length}</span>
+            <span className="text-muted-foreground/40">•</span>
+            <span className="font-semibold text-foreground">{current?.title}</span>
+          </div>
+          {currentStepConflict ? (
+            <span className="text-[11px] font-semibold text-destructive animate-pulse mt-0.5 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              <span>{currentStepConflict.label} already in database</span>
+            </span>
+          ) : (
+            (() => {
+              const currStatus = getStepStatus(current?.key);
+              if (!currStatus.isComplete && currStatus.missingCount > 0) {
+                return (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1 mt-0.5">
+                    <AlertCircle className="h-3 w-3 shrink-0" />
+                    <span>{currStatus.missingCount} recommended field{currStatus.missingCount > 1 ? "s" : ""} empty ({currStatus.missingFields.slice(0, 2).join(", ")}{currStatus.missingCount > 2 ? "..." : ""})</span>
+                  </span>
+                );
+              }
+              return null;
+            })()
+          )}
+        </div>
+
+        {step < flow.length - 1 ? (
+          <Button
+            className="bg-primary text-primary-foreground hover:bg-primary/90 font-medium shadow-sm rounded-xl px-5"
+            disabled={!canNext()}
+            onClick={() => goToStep(step + 1)}
+          >
+            Continue <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        ) : (
+          <Button
+            className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md font-semibold rounded-xl px-6"
+            disabled={duplicatesResult.hasDuplicate}
+            onClick={finish}
+          >
+            <CheckCircle2 className="h-4 w-4 mr-1.5" /> Complete Onboarding
+          </Button>
+        )}
+      </div>
+
+      {/* PDF Document Preview Modal */}
+      <PdfPreviewDialog
+        doc={previewPdfModal}
+        open={!!previewPdfModal}
+        onClose={() => setPreviewPdfModal(null)}
+      />
     </div>
   );
 }
@@ -3276,11 +3841,1397 @@ function StepHead({ icon: Icon, title, subtitle }: { icon: typeof User; title: s
   );
 }
 
-function Field({ label, value, onChange, type = "text", placeholder }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  error,
+  warning,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  error?: string;
+  warning?: string;
+  className?: string;
+}) {
   return (
-    <div>
-      <Label>{label}</Label>
-      <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+    <div className={`space-y-1.5 ${className || ""}`}>
+      <div className="flex items-center justify-between">
+        <Label className={`text-xs font-medium ${error ? "text-destructive font-semibold" : "text-foreground/90"}`}>{label}</Label>
+      </div>
+      <div className="relative">
+        <Input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={`h-10 text-xs sm:text-sm rounded-xl border-border/80 bg-background/70 hover:bg-background focus:bg-background transition-all shadow-2xs focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary ${
+            error
+              ? "border-destructive focus-visible:ring-destructive/30 bg-destructive/5 text-destructive pr-9 font-medium"
+              : warning
+              ? "border-amber-500 focus-visible:ring-amber-500/30 bg-amber-500/5 pr-9 font-medium"
+              : ""
+          }`}
+        />
+        {error && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-destructive pointer-events-none">
+            <AlertTriangle className="h-4 w-4" />
+          </div>
+        )}
+      </div>
+      {error && (
+        <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1.5 animate-in fade-in-50">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span>{error}</span>
+        </p>
+      )}
+      {!error && warning && (
+        <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1.5">
+          <span>⚠ {warning}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function FamilyPhotoCard({
+  value,
+  esiCovered,
+  onChange,
+  onEsiChange,
+}: {
+  value?: string;
+  esiCovered?: boolean;
+  onChange: (url?: string) => void;
+  onEsiChange: (val: boolean) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file (PNG, JPG, WEBP)");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      onChange(result);
+      toast.success("Family photograph attached");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
+        <div>
+          <div className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <UsersIcon className="h-4 w-4 text-primary" />
+            <span>Family Photo</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Group photo of employee and dependent family members for statutory records.
+          </p>
+        </div>
+
+        {/* ESI Toggle when adding family photo */}
+        <div className="flex items-center gap-3 p-2.5 rounded-xl bg-primary/5 border border-primary/20 shrink-0">
+          <div className="space-y-0.5">
+            <div className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+              <span className="text-destructive font-bold">*</span>
+              <span>ESI Family Medical Scheme</span>
+              <Badge
+                variant="outline"
+                className={`text-[9px] px-1.5 py-0 ${
+                  esiCovered
+                    ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {esiCovered ? "ESI Enrolled" : "Not Enrolled"}
+              </Badge>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Enroll family for ESIC Pehchan Card dependent healthcare benefits
+            </p>
+          </div>
+          <Switch
+            checked={!!esiCovered}
+            onCheckedChange={onEsiChange}
+          />
+        </div>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFile}
+      />
+
+      {value ? (
+        <div className="flex flex-col sm:flex-row items-center gap-4 p-3 rounded-xl bg-muted/30 border border-border/80">
+          <div className="relative h-32 w-48 sm:h-28 sm:w-44 rounded-xl overflow-hidden border border-border shadow-sm shrink-0 bg-muted">
+            <img src={value} alt="Family" className="h-full w-full object-cover" />
+          </div>
+          <div className="space-y-2 text-center sm:text-left flex-1 min-w-0">
+            <div className="text-xs font-semibold text-foreground">Family Photo Attached</div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              This photograph will be attached to the employee&apos;s digital statutory profile and ESIC dependent enrollment dossier.
+            </p>
+            <div className="flex items-center justify-center sm:justify-start gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs bg-card"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Camera className="h-3 w-3 mr-1 text-primary" /> Change Photo
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                onClick={() => onChange(undefined)}
+              >
+                <Trash2 className="h-3 w-3 mr-1" /> Remove
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          className="border-2 border-dashed border-border/80 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer rounded-2xl p-5 text-center flex flex-col items-center justify-center gap-2 group"
+        >
+          <div className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center group-hover:scale-105 transition-transform">
+            <Upload className="h-4 w-4" />
+          </div>
+          <div className="text-xs font-semibold text-foreground">Click to upload Family Photo</div>
+          <p className="text-[11px] text-muted-foreground max-w-sm">
+            Upload clear photo of employee with family members. Supports JPG, PNG, WEBP.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FamilyMembersManager({
+  members,
+  onChange,
+  isSubmitting = false,
+}: {
+  members: FamilyMember[];
+  onChange: (members: FamilyMember[]) => void;
+  isSubmitting?: boolean;
+}) {
+  const addMember = () => {
+    onChange([
+      ...members,
+      { name: "", relation: "Spouse", aadhaar: "", esiCovered: true },
+    ]);
+  };
+
+  const updateMember = (index: number, patch: Partial<FamilyMember>) => {
+    const next = [...members];
+    next[index] = { ...next[index], ...patch };
+    onChange(next);
+  };
+
+  const removeMember = (index: number) => {
+    onChange(members.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between pb-2 border-b border-border/60">
+        <div>
+          <div className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <UsersIcon className="h-4 w-4 text-primary" />
+            <span>Family Members &amp; Aadhaars</span>
+            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary">
+              {members.length} {members.length === 1 ? "Member" : "Members"}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Add multiple family members with relationship and 12-digit Aadhaar for statutory &amp; ESI compliance.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={addMember}
+          className="text-xs h-8 border-primary/30 text-primary hover:bg-primary/5"
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" /> Add Family Member
+        </Button>
+      </div>
+
+      {members.length === 0 ? (
+        <div className="text-center py-6 border border-dashed border-border/80 rounded-xl bg-muted/20">
+          <p className="text-xs text-muted-foreground">No family members added yet.</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={addMember}
+            className="mt-2 text-xs text-primary font-medium"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add Family Member
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {members.map((m, idx) => {
+            const cleanAadhaar = String(m.aadhaar || "").replace(/\D/g, "");
+            const aadhaarCheck = validateAadhaarFormat(m.aadhaar, isSubmitting);
+            const hasError = !aadhaarCheck.valid;
+
+            return (
+              <div
+                key={idx}
+                className="rounded-xl border border-border/80 bg-background/60 p-3.5 space-y-3 relative group transition-all hover:border-primary/40 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                    <span className="h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                      {idx + 1}
+                    </span>
+                    <span className="font-medium text-foreground">{m.name || "Family Member"}</span>
+                    {m.relation && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                        {m.relation}
+                      </Badge>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeMember(idx)}
+                    title="Remove member"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+                  {/* Name */}
+                  <div className="sm:col-span-4">
+                    <Label className="text-xs">Full Name</Label>
+                    <Input
+                      value={m.name || ""}
+                      onChange={(e) => updateMember(idx, { name: e.target.value })}
+                      className="text-xs h-9 mt-1"
+                    />
+                  </div>
+
+                  {/* Relation */}
+                  <div className="sm:col-span-3">
+                    <Label className="text-xs">Relation</Label>
+                    <Select
+                      value={m.relation || "Spouse"}
+                      onValueChange={(val) => updateMember(idx, { relation: val })}
+                    >
+                      <SelectTrigger className="text-xs h-9 mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EMERGENCY_RELATIONS.map((rel) => (
+                          <SelectItem key={rel} value={rel}>{rel}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Aadhaar Number */}
+                  <div className="sm:col-span-3">
+                    <div className="flex items-center justify-between">
+                      <Label className={`text-xs ${hasError ? "text-destructive font-medium" : ""}`}>
+                        Aadhaar Number
+                      </Label>
+                      {cleanAadhaar.length > 0 && cleanAadhaar.length < 12 && (
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {cleanAadhaar.length}/12
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative mt-1">
+                      <Input
+                        value={m.aadhaar || ""}
+                        maxLength={12}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, "").slice(0, 12);
+                          updateMember(idx, { aadhaar: digitsOnly });
+                        }}
+                        className={`text-xs font-mono tracking-wider h-9 ${
+                          hasError
+                            ? "border-destructive focus-visible:ring-destructive/30 bg-destructive/5 text-destructive"
+                            : ""
+                        }`}
+                      />
+                    </div>
+                    {hasError && (
+                      <p className="text-[10px] text-destructive mt-1 font-medium flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        <span>{aadhaarCheck.message}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Date of Birth */}
+                  <div className="sm:col-span-2">
+                    <Label className="text-xs">DOB</Label>
+                    <Input
+                      type="date"
+                      value={m.dob || ""}
+                      onChange={(e) => updateMember(idx, { dob: e.target.value })}
+                      className="text-xs h-9 mt-1"
+                    />
+                  </div>
+                </div>
+
+                {/* ESI Toggle per family member */}
+                <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id={`esi-member-${idx}`}
+                      checked={m.esiCovered !== false}
+                      onCheckedChange={(checked) => updateMember(idx, { esiCovered: !!checked })}
+                    />
+                    <Label htmlFor={`esi-member-${idx}`} className="text-xs text-muted-foreground cursor-pointer font-normal">
+                      Include in ESIC Dependent Healthcare Card
+                    </Label>
+                  </div>
+                  {cleanAadhaar.length === 12 && (
+                    <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" /> Aadhaar Valid
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function PdfPreviewDialog({
+  doc,
+  open,
+  onClose,
+}: {
+  doc: { name?: string; dataUrl?: string; fileName?: string; fileSize?: string } | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!doc) return null;
+
+  const isImg =
+    doc.dataUrl?.startsWith("data:image/") ||
+    /\.(png|jpe?g|webp|gif|svg)$/i.test(doc.fileName || doc.dataUrl || "");
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-4xl w-[95vw] h-[85vh] flex flex-col p-0 rounded-3xl overflow-hidden border border-border shadow-2xl bg-card">
+        <DialogHeader className="px-5 py-3.5 border-b border-border bg-muted/30 shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0 pr-4">
+              <Badge
+                variant="outline"
+                className={`text-[10px] font-bold shrink-0 ${
+                  isImg
+                    ? "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                    : "bg-rose-500/10 text-rose-600 border-rose-500/30"
+                }`}
+              >
+                {isImg ? "IMAGE" : "PDF"}
+              </Badge>
+              <DialogTitle className="text-sm font-semibold truncate text-foreground">
+                {doc.name || doc.fileName || "Document Preview"}
+              </DialogTitle>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {doc.dataUrl && (
+                <a
+                  href={doc.dataUrl}
+                  download={doc.fileName || `${doc.name || "document"}.${isImg ? "png" : "pdf"}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 bg-card">
+                    <Download className="h-3.5 w-3.5" /> Download
+                  </Button>
+                </a>
+              )}
+              <Button size="sm" variant="ghost" onClick={onClose} className="h-7 text-xs">
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogHeader>
+        <div className="flex-1 bg-muted/10 p-2 overflow-hidden flex items-center justify-center">
+          {doc.dataUrl ? (
+            isImg ? (
+              <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
+                <img
+                  src={doc.dataUrl}
+                  alt={doc.name || doc.fileName || "Document Preview"}
+                  className="max-h-full max-w-full object-contain rounded-xl border border-border shadow-md"
+                />
+              </div>
+            ) : (
+              <iframe
+                src={doc.dataUrl}
+                className="w-full h-full rounded-xl border border-border bg-white shadow-inner"
+                title={doc.name || "Document Preview"}
+              />
+            )
+          ) : (
+            <div className="h-full grid place-items-center text-xs text-muted-foreground">
+              No document preview available.
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EducationQualificationsManager({
+  items,
+  onChange,
+}: {
+  items: EducationEntry[];
+  onChange: (items: EducationEntry[]) => void;
+}) {
+  const addEntry = () => {
+    onChange([
+      ...items,
+      { level: "", institute: "", year: "", grade: "" },
+    ]);
+  };
+
+  const updateEntry = (index: number, patch: Partial<EducationEntry>) => {
+    const next = [...items];
+    next[index] = { ...next[index], ...patch };
+    onChange(next);
+  };
+
+  const removeEntry = (index: number) => {
+    onChange(items.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between pb-2 border-b border-border/60">
+        <div>
+          <div className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <GraduationCap className="h-4 w-4 text-primary" />
+            <span>Educational Qualifications</span>
+            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary">
+              {items.length} {items.length === 1 ? "Entry" : "Entries"}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Academic degrees, board examinations, diplomas, and higher qualifications.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={addEntry}
+          className="text-xs h-8 border-primary/30 text-primary hover:bg-primary/5"
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" /> Add Qualification
+        </Button>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="text-center py-6 border border-dashed border-border/80 rounded-xl bg-muted/20">
+          <p className="text-xs text-muted-foreground">No qualifications entered yet.</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={addEntry}
+            className="mt-2 text-xs text-primary font-medium"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add Qualification
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((it, idx) => (
+            <div
+              key={idx}
+              className="rounded-xl border border-border/80 bg-background/60 p-3.5 space-y-3 relative group transition-all hover:border-primary/40 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <span className="h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                    {idx + 1}
+                  </span>
+                  <span className="font-medium text-foreground">{it.level || "Qualification"}</span>
+                  {it.institute && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                      {it.institute}
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeEntry(idx)}
+                  title="Remove qualification"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+                <div className="sm:col-span-4">
+                  <Label className="text-xs">Degree / Level</Label>
+                  <Input
+                    value={it.level || ""}
+                    onChange={(e) => updateEntry(idx, { level: e.target.value })}
+                    className="text-xs h-9 mt-1"
+                  />
+                </div>
+                <div className="sm:col-span-4">
+                  <Label className="text-xs">Institute / University</Label>
+                  <Input
+                    value={it.institute || ""}
+                    onChange={(e) => updateEntry(idx, { institute: e.target.value })}
+                    className="text-xs h-9 mt-1"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs">Passing Year</Label>
+                  <Input
+                    value={it.year || ""}
+                    maxLength={4}
+                    onChange={(e) => updateEntry(idx, { year: e.target.value.replace(/\D/g, "").slice(0, 4) })}
+                    className="text-xs h-9 mt-1 font-mono"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs">Grade / CGPA</Label>
+                  <Input
+                    value={it.grade || ""}
+                    onChange={(e) => updateEntry(idx, { grade: e.target.value })}
+                    className="text-xs h-9 mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EducationDocumentsManager({
+  documents,
+  onChange,
+  onPreview,
+}: {
+  documents: EducationDocument[];
+  onChange: (docs: EducationDocument[]) => void;
+  onPreview?: (doc: EducationDocument) => void;
+}) {
+  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  const addDocumentRow = () => {
+    const newDoc: EducationDocument = {
+      id: "edudoc-" + crypto.randomUUID().slice(0, 8),
+      name: "",
+      uploadedAt: new Date().toISOString(),
+    };
+    onChange([...documents, newDoc]);
+  };
+
+  const updateDoc = (index: number, patch: Partial<EducationDocument>) => {
+    const next = [...documents];
+    next[index] = { ...next[index], ...patch };
+    onChange(next);
+  };
+
+  const removeDoc = (index: number) => {
+    onChange(documents.filter((_, i) => i !== index));
+  };
+
+  const handleFileUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      toast.error("Please upload PDF documents only");
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("PDF size exceeds 15 MB limit");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const currentDoc = documents[index];
+      const autoName = currentDoc.name.trim() || file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+      updateDoc(index, {
+        name: autoName,
+        fileName: file.name,
+        fileSize: formatFileSize(file.size),
+        dataUrl,
+        uploadedAt: new Date().toISOString(),
+      });
+      toast.success(`Attached ${file.name}`);
+    };
+    reader.readAsDataURL(file);
+    if (e.target) e.target.value = "";
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between pb-2 border-b border-border/60">
+        <div>
+          <div className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <FileText className="h-4 w-4 text-primary" />
+            <span>Educational Documents (PDFs)</span>
+            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary">
+              {documents.filter((d) => !!d.dataUrl).length} Uploaded
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Upload marksheet and degree certificate PDFs. Enter the document name for every upload.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={addDocumentRow}
+          className="text-xs h-8 border-primary/30 text-primary hover:bg-primary/5"
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" /> Add Document
+        </Button>
+      </div>
+
+      {documents.length === 0 ? (
+        <div className="text-center py-6 border border-dashed border-border/80 rounded-xl bg-muted/20">
+          <p className="text-xs text-muted-foreground">No educational documents attached yet.</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={addDocumentRow}
+            className="mt-2 text-xs text-primary font-medium"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add First Document
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {documents.map((doc, idx) => (
+            <div
+              key={doc.id || idx}
+              className="rounded-xl border border-border/80 bg-background/60 p-3.5 space-y-3 relative group transition-all hover:border-primary/40 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <span className="h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                    {idx + 1}
+                  </span>
+                  <span className="font-medium text-foreground">{doc.name || "Untitled Document"}</span>
+                </div>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeDoc(idx)}
+                  title="Remove document"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                {/* Document Name / Type Box */}
+                <div className="sm:col-span-6 space-y-1">
+                  <Label className="text-xs font-medium">Document Name / Type *</Label>
+                  <Input
+                    value={doc.name}
+                    onChange={(e) => updateDoc(idx, { name: e.target.value })}
+                    className="text-xs h-9"
+                  />
+                </div>
+
+                {/* PDF File Upload / Status */}
+                <div className="sm:col-span-6 space-y-1">
+                  <Label className="text-xs font-medium">Document PDF *</Label>
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    ref={(el) => { fileInputRefs.current[doc.id || idx] = el; }}
+                    className="hidden"
+                    onChange={(e) => handleFileUpload(idx, e)}
+                  />
+
+                  {doc.dataUrl ? (
+                    <div className="flex items-center justify-between gap-2 p-1.5 px-2.5 rounded-lg border border-border bg-muted/40 h-9">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/30 px-1 py-0 font-bold shrink-0">
+                          PDF
+                        </Badge>
+                        <span className="text-xs font-mono truncate text-foreground" title={doc.fileName}>
+                          {doc.fileName || "document.pdf"}
+                        </span>
+                        {doc.fileSize && (
+                          <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
+                            ({doc.fileSize})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-[11px] text-primary hover:bg-primary/10"
+                          onClick={() => {
+                            if (onPreview) onPreview(doc);
+                            else if (doc.dataUrl) window.open(doc.dataUrl, "_blank");
+                          }}
+                        >
+                          <Eye className="h-3 w-3 mr-1" /> View
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-1.5 text-[11px] text-muted-foreground hover:bg-muted"
+                          onClick={() => fileInputRefs.current[doc.id || idx]?.click()}
+                          title="Replace PDF"
+                        >
+                          <Upload className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRefs.current[doc.id || idx]?.click()}
+                      className="w-full h-9 text-xs border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary justify-center gap-1.5"
+                    >
+                      <Upload className="h-3.5 w-3.5" /> Upload PDF File
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PriorExperienceManager({
+  items,
+  onChange,
+  onPreview,
+}: {
+  items: ExperienceEntry[];
+  onChange: (items: ExperienceEntry[]) => void;
+  onPreview?: (doc: { name?: string; fileName?: string; dataUrl?: string; fileSize?: string }) => void;
+}) {
+  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  const addEmployer = () => {
+    onChange([
+      ...items,
+      {
+        company: "",
+        role: "",
+        from: "",
+        to: "",
+        ctc: undefined,
+        payslips: [],
+        experienceLetter: undefined,
+        appointmentLetter: undefined,
+      },
+    ]);
+  };
+
+  const updateEntry = (index: number, patch: Partial<ExperienceEntry>) => {
+    const next = [...items];
+    next[index] = { ...next[index], ...patch };
+    onChange(next);
+  };
+
+  const removeEmployer = (index: number) => {
+    onChange(items.filter((_, i) => i !== index));
+  };
+
+  const processFileUpload = (
+    file: File,
+    allowedTypes: "pdf" | "any",
+    onSuccess: (doc: PriorEmployerDoc) => void
+  ) => {
+    const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+    const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name);
+
+    if (allowedTypes === "pdf" && !isPdf) {
+      toast.error("Please upload PDF document only for Experience Letter");
+      return;
+    }
+
+    if (!isPdf && !isImage) {
+      toast.error("Please upload a PDF or image file (PNG, JPG, WebP)");
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("File size exceeds 15 MB limit");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const doc: PriorEmployerDoc = {
+        id: "expdoc-" + crypto.randomUUID().slice(0, 8),
+        name: file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
+        fileName: file.name,
+        fileSize: formatFileSize(file.size),
+        dataUrl,
+        uploadedAt: new Date().toISOString(),
+      };
+      onSuccess(doc);
+      toast.success(`Attached ${file.name}`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePayslipUpload = (empIdx: number, slotIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const entry = items[empIdx];
+    processFileUpload(file, "any", (newDoc) => {
+      const payslips = [...(entry.payslips || [])];
+      payslips[slotIdx] = {
+        ...newDoc,
+        name: `${entry.company ? entry.company + " - " : ""}Payslip ${slotIdx + 1}`,
+      };
+      updateEntry(empIdx, { payslips });
+    });
+    if (e.target) e.target.value = "";
+  };
+
+  const removePayslip = (empIdx: number, slotIdx: number) => {
+    const entry = items[empIdx];
+    const payslips = [...(entry.payslips || [])];
+    payslips.splice(slotIdx, 1);
+    updateEntry(empIdx, { payslips });
+  };
+
+  const handleExperienceLetterUpload = (empIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const entry = items[empIdx];
+    processFileUpload(file, "pdf", (newDoc) => {
+      updateEntry(empIdx, {
+        experienceLetter: {
+          ...newDoc,
+          name: `${entry.company ? entry.company + " - " : ""}Experience Letter`,
+        },
+      });
+    });
+    if (e.target) e.target.value = "";
+  };
+
+  const handleAppointmentLetterUpload = (empIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const entry = items[empIdx];
+    processFileUpload(file, "any", (newDoc) => {
+      updateEntry(empIdx, {
+        appointmentLetter: {
+          ...newDoc,
+          name: `${entry.company ? entry.company + " - " : ""}Appointment Letter`,
+        },
+      });
+    });
+    if (e.target) e.target.value = "";
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <Briefcase className="h-4 w-4 text-primary" />
+            <span>Previous Employers & Verification Documents</span>
+            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary">
+              {items.length} {items.length === 1 ? "Employer" : "Employers"}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Record previous work experience, last drawn CTC, payslips, experience letters, and appointment letters.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={addEmployer}
+          className="text-xs h-8 border-primary/30 text-primary hover:bg-primary/5"
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" /> Add Previous Employer
+        </Button>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="text-center py-8 border border-dashed border-border/80 rounded-2xl bg-muted/20">
+          <Briefcase className="h-8 w-8 mx-auto text-muted-foreground/60 mb-2" />
+          <p className="text-sm font-medium text-foreground">No prior experience added</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Click below to record previous employment history and upload verification documents.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={addEmployer}
+            className="mt-3 text-xs border-primary/30 text-primary hover:bg-primary/5"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add Previous Employer
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {items.map((entry, idx) => {
+            const expLetterKey = `exp-${idx}-experience-letter`;
+            const apptLetterKey = `exp-${idx}-appointment-letter`;
+
+            return (
+              <div
+                key={idx}
+                className="rounded-2xl border border-border bg-card p-4 space-y-4 relative shadow-sm"
+              >
+                {/* Employer Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                  <div className="flex items-center gap-2">
+                    <span className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
+                      {idx + 1}
+                    </span>
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">
+                        {entry.company || `Previous Employer #${idx + 1}`}
+                      </div>
+                      {entry.role && (
+                        <div className="text-xs text-muted-foreground">
+                          {entry.role}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeEmployer(idx)}
+                    title="Remove employer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Primary Employer Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs font-medium">Company Name *</Label>
+                    <Input
+                      value={entry.company || ""}
+                      onChange={(e) => updateEntry(idx, { company: e.target.value })}
+                      className="text-xs h-9 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium">Designation / Role *</Label>
+                    <Input
+                      value={entry.role || ""}
+                      onChange={(e) => updateEntry(idx, { role: e.target.value })}
+                      className="text-xs h-9 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium">Last Drawn CTC (₹ / annum)</Label>
+                    <Input
+                      type="number"
+                      value={entry.ctc ?? ""}
+                      onChange={(e) => updateEntry(idx, { ctc: e.target.value ? Number(e.target.value) : undefined })}
+                      className="text-xs h-9 mt-1 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium">From Date</Label>
+                    <Input
+                      type="date"
+                      value={entry.from || ""}
+                      onChange={(e) => updateEntry(idx, { from: e.target.value })}
+                      className="text-xs h-9 mt-1 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium">To Date</Label>
+                    <Input
+                      type="date"
+                      value={entry.to || ""}
+                      onChange={(e) => updateEntry(idx, { to: e.target.value })}
+                      className="text-xs h-9 mt-1 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Verification Documents Container */}
+                <div className="pt-3 border-t border-border/60 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-primary" />
+                      Verification Documents
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">PDF or Photos (Max 15MB)</span>
+                  </div>
+
+                  {/* 1. Last 3 Payslips Section */}
+                  <div className="space-y-2 rounded-xl bg-muted/20 border border-border/70 p-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium text-foreground flex items-center gap-2">
+                        <span>Last 3 Payslips from previous company</span>
+                        <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                          {(entry.payslips || []).filter((p) => !!p?.dataUrl).length}/3 Uploaded
+                        </Badge>
+                      </Label>
+                      <span className="text-[11px] text-muted-foreground">Photo or PDF</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {[0, 1, 2].map((slotIdx) => {
+                        const slotDoc = (entry.payslips || [])[slotIdx];
+                        const payslipInputKey = `exp-${idx}-payslip-${slotIdx}`;
+                        const isSlotImg =
+                          slotDoc?.dataUrl?.startsWith("data:image/") ||
+                          /\.(png|jpe?g|webp|gif|svg)$/i.test(slotDoc?.fileName || slotDoc?.dataUrl || "");
+
+                        return (
+                          <div key={slotIdx} className="space-y-1">
+                            <input
+                              type="file"
+                              accept="application/pdf,image/*,.pdf"
+                              ref={(el) => {
+                                fileInputRefs.current[payslipInputKey] = el;
+                              }}
+                              className="hidden"
+                              onChange={(e) => handlePayslipUpload(idx, slotIdx, e)}
+                            />
+
+                            <div className="text-[11px] font-medium text-muted-foreground">
+                              {slotIdx === 0 ? "Payslip 1 (Latest)" : `Payslip ${slotIdx + 1}`}
+                            </div>
+
+                            {slotDoc?.dataUrl ? (
+                              <div className="p-2 rounded-lg border border-border bg-card shadow-2xs space-y-1.5">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[9px] px-1 py-0 font-bold shrink-0 ${
+                                      isSlotImg
+                                        ? "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                                        : "bg-rose-500/10 text-rose-600 border-rose-500/30"
+                                    }`}
+                                  >
+                                    {isSlotImg ? "PHOTO" : "PDF"}
+                                  </Badge>
+                                  <span className="text-[11px] font-mono truncate text-foreground flex-1" title={slotDoc.fileName}>
+                                    {slotDoc.fileName || `Payslip ${slotIdx + 1}`}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+                                  <span>{slotDoc.fileSize || "Attached"}</span>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 px-1.5 text-[10px] text-primary hover:bg-primary/10"
+                                      onClick={() => {
+                                        if (onPreview) onPreview(slotDoc);
+                                        else if (slotDoc.dataUrl) window.open(slotDoc.dataUrl, "_blank");
+                                      }}
+                                    >
+                                      <Eye className="h-3 w-3 mr-0.5" /> View
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 px-1 text-[10px] text-muted-foreground hover:bg-muted"
+                                      onClick={() => fileInputRefs.current[payslipInputKey]?.click()}
+                                      title="Replace"
+                                    >
+                                      <Upload className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 px-1 text-[10px] text-muted-foreground hover:text-destructive"
+                                      onClick={() => removePayslip(idx, slotIdx)}
+                                      title="Remove"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => fileInputRefs.current[payslipInputKey]?.click()}
+                                className="w-full h-14 text-xs border-dashed border-border hover:border-primary/50 bg-background/50 hover:bg-primary/5 text-muted-foreground hover:text-primary flex flex-col items-center justify-center gap-0.5"
+                              >
+                                <Upload className="h-3.5 w-3.5" />
+                                <span className="text-[10px]">Upload {slotIdx === 0 ? "Payslip 1" : `Payslip ${slotIdx + 1}`}</span>
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 2. Experience Letter & Appointment Letter (Side by Side) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Experience Letter (PDF Only) */}
+                    <div className="space-y-1.5 rounded-xl bg-muted/20 border border-border/70 p-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                          <span>Experience Letter</span>
+                          <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/30 font-bold">
+                            PDF ONLY
+                          </Badge>
+                        </Label>
+                      </div>
+
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        ref={(el) => {
+                          fileInputRefs.current[expLetterKey] = el;
+                        }}
+                        className="hidden"
+                        onChange={(e) => handleExperienceLetterUpload(idx, e)}
+                      />
+
+                      {entry.experienceLetter?.dataUrl ? (
+                        <div className="p-2 rounded-lg border border-border bg-card shadow-2xs space-y-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Badge variant="outline" className="text-[9px] px-1 py-0 font-bold shrink-0 bg-rose-500/10 text-rose-600 border-rose-500/30">
+                              PDF
+                            </Badge>
+                            <span className="text-[11px] font-mono truncate text-foreground flex-1" title={entry.experienceLetter.fileName}>
+                              {entry.experienceLetter.fileName || "experience_letter.pdf"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+                            <span>{entry.experienceLetter.fileSize || "Attached"}</span>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-5 px-1.5 text-[10px] text-primary hover:bg-primary/10"
+                                onClick={() => {
+                                  if (onPreview) onPreview(entry.experienceLetter!);
+                                  else if (entry.experienceLetter?.dataUrl) window.open(entry.experienceLetter.dataUrl, "_blank");
+                                }}
+                              >
+                                <Eye className="h-3 w-3 mr-0.5" /> View
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-5 px-1 text-[10px] text-muted-foreground hover:bg-muted"
+                                onClick={() => fileInputRefs.current[expLetterKey]?.click()}
+                                title="Replace"
+                              >
+                                <Upload className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-5 px-1 text-[10px] text-muted-foreground hover:text-destructive"
+                                onClick={() => updateEntry(idx, { experienceLetter: undefined })}
+                                title="Remove"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => fileInputRefs.current[expLetterKey]?.click()}
+                          className="w-full h-14 text-xs border-dashed border-border hover:border-primary/50 bg-background/50 hover:bg-primary/5 text-muted-foreground hover:text-primary flex flex-col items-center justify-center gap-0.5"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          <span className="text-[10px]">Upload Experience Letter (PDF)</span>
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Appointment Letter (Photo or PDF) */}
+                    <div className="space-y-1.5 rounded-xl bg-muted/20 border border-border/70 p-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                          <span>Appointment Letter</span>
+                          <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                            Photo or PDF
+                          </Badge>
+                        </Label>
+                      </div>
+
+                      <input
+                        type="file"
+                        accept="application/pdf,image/*,.pdf"
+                        ref={(el) => {
+                          fileInputRefs.current[apptLetterKey] = el;
+                        }}
+                        className="hidden"
+                        onChange={(e) => handleAppointmentLetterUpload(idx, e)}
+                      />
+
+                      {entry.appointmentLetter?.dataUrl ? (
+                        (() => {
+                          const isApptImg =
+                            entry.appointmentLetter.dataUrl?.startsWith("data:image/") ||
+                            /\.(png|jpe?g|webp|gif|svg)$/i.test(entry.appointmentLetter.fileName || entry.appointmentLetter.dataUrl || "");
+
+                          return (
+                            <div className="p-2 rounded-lg border border-border bg-card shadow-2xs space-y-1.5">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[9px] px-1 py-0 font-bold shrink-0 ${
+                                    isApptImg
+                                      ? "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                                      : "bg-rose-500/10 text-rose-600 border-rose-500/30"
+                                  }`}
+                                >
+                                  {isApptImg ? "PHOTO" : "PDF"}
+                                </Badge>
+                                <span className="text-[11px] font-mono truncate text-foreground flex-1" title={entry.appointmentLetter.fileName}>
+                                  {entry.appointmentLetter.fileName || "appointment_letter"}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+                                <span>{entry.appointmentLetter.fileSize || "Attached"}</span>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 px-1.5 text-[10px] text-primary hover:bg-primary/10"
+                                    onClick={() => {
+                                      if (onPreview) onPreview(entry.appointmentLetter!);
+                                      else if (entry.appointmentLetter?.dataUrl) window.open(entry.appointmentLetter.dataUrl, "_blank");
+                                    }}
+                                  >
+                                    <Eye className="h-3 w-3 mr-0.5" /> View
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 px-1 text-[10px] text-muted-foreground hover:bg-muted"
+                                    onClick={() => fileInputRefs.current[apptLetterKey]?.click()}
+                                    title="Replace"
+                                  >
+                                    <Upload className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 px-1 text-[10px] text-muted-foreground hover:text-destructive"
+                                    onClick={() => updateEntry(idx, { appointmentLetter: undefined })}
+                                    title="Remove"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => fileInputRefs.current[apptLetterKey]?.click()}
+                          className="w-full h-14 text-xs border-dashed border-border hover:border-primary/50 bg-background/50 hover:bg-primary/5 text-muted-foreground hover:text-primary flex flex-col items-center justify-center gap-0.5"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          <span className="text-[10px]">Upload Appointment Letter (PDF/Photo)</span>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -3341,12 +5292,87 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
     }
   }, [employee]);
 
+  const editDupCheck = useMemo(() => {
+    if (!employee) return { hasDuplicate: false, conflicts: [], byField: {} };
+    return findEmployeeDuplicates(form, employees, employee.id);
+  }, [form, employees, employee]);
+
+  const [pincodeLoading, setPincodeLoading] = useState(false);
+  const [previewPdfModal, setPreviewPdfModal] = useState<{ name?: string; fileName?: string; dataUrl?: string; fileSize?: string } | null>(null);
+
+  const handlePincodeChange = async (pinValue: string) => {
+    const cleanPin = pinValue.replace(/\D/g, "").slice(0, 6);
+    setForm((prev) => ({ ...prev, pincode: cleanPin }));
+
+    if (cleanPin.length === 6) {
+      setPincodeLoading(true);
+      try {
+        const res = await lookupPincode(cleanPin);
+        if (res) {
+          setForm((prev) => ({
+            ...prev,
+            pincode: cleanPin,
+            city: res.city || prev.city,
+            state: res.state || prev.state,
+            country: "India",
+          }));
+          toast.success(`Auto-detected ${res.city}, ${res.state} for PIN ${cleanPin}`);
+        } else {
+          toast.info(`PIN ${cleanPin} entered. Please select State and City.`);
+        }
+      } catch (err) {
+        console.error("Pincode lookup error:", err);
+      } finally {
+        setPincodeLoading(false);
+      }
+    }
+  };
+
   if (!employee) return null;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name?.trim() || !form.empCode?.trim()) {
       return toast.error("Full Name and Employee Code are required");
     }
+
+    const panCheck = validatePanFormat(form.pan);
+    if (!panCheck.valid) return toast.error(panCheck.message);
+    const aadhaarCheck = validateAadhaarFormat(form.aadhaar);
+    if (!aadhaarCheck.valid) return toast.error(aadhaarCheck.message);
+    const dlCheck = validateDrivingLicenseFormat(form.drivingLicense);
+    if (!dlCheck.valid) return toast.error(dlCheck.message);
+    const voterCheck = validateVoterIdFormat(form.voterId);
+    if (!voterCheck.valid) return toast.error(voterCheck.message);
+    const rcCheck = validateRationCardFormat(form.rationCard);
+    if (!rcCheck.valid) return toast.error(rcCheck.message);
+    const bankCheck = validateBankAccountFormat(form.bankAcc);
+    if (!bankCheck.valid) return toast.error(bankCheck.message);
+
+    for (const m of form.family || []) {
+      if (m.aadhaar) {
+        const chk = validateAadhaarFormat(m.aadhaar, true);
+        if (!chk.valid) return toast.error(`${m.name || "Family member"}: ${chk.message}`);
+      }
+    }
+
+    for (const d of form.educationDocuments || []) {
+      if (d.dataUrl && !d.name.trim()) {
+        return toast.error("Please enter a name for all uploaded education documents");
+      }
+    }
+
+    if (editDupCheck.hasDuplicate) {
+      return toast.error(`Already in database: ${editDupCheck.conflicts[0].message}`);
+    }
+
+    const activeTenantId = useAuth.getState().activeTenantId || (company as any).id;
+    if (activeTenantId && !activeTenantId.startsWith("demo-tenant-")) {
+      const remoteDup = await checkEmployeeDuplicatesRemote(activeTenantId, form, employee.id);
+      if (remoteDup.hasDuplicate) {
+        return toast.error(`Already in database: ${remoteDup.conflicts[0].message}`);
+      }
+    }
+
     updateEmployee(employee.id, { ...form, faceRegistered: !!form.photoDataUrl || form.faceRegistered });
     toast.success(`${form.name} updated successfully`);
     onClose();
@@ -3355,7 +5381,7 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
   const tabs = [
     { id: "identity", label: "Profile & Identity", icon: User },
     { id: "employment", label: "Employment & Salary", icon: Briefcase },
-    { id: "address_kyc", label: "Address & KYC", icon: Home },
+    { id: "address_kyc", label: "KYC", icon: FileCheck },
     { id: "branches_policy", label: "Branches & Policy", icon: Building2 },
     { id: "family_edu", label: "Family & Education", icon: GraduationCap },
     { id: "experience_skills", label: "Experience & Skills", icon: Award },
@@ -3457,8 +5483,18 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                           <Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                         </div>
                         <div>
-                          <Label className="text-xs">Employee Code *</Label>
-                          <Input value={form.empCode || ""} onChange={(e) => setForm({ ...form, empCode: e.target.value })} />
+                          <Label className={`text-xs ${editDupCheck.byField.empCode ? "text-destructive font-medium" : ""}`}>Employee Code *</Label>
+                          <Input
+                            value={form.empCode || ""}
+                            onChange={(e) => setForm({ ...form, empCode: e.target.value })}
+                            className={editDupCheck.byField.empCode ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                          />
+                          {editDupCheck.byField.empCode && (
+                            <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                              <span>{editDupCheck.byField.empCode.message}</span>
+                            </p>
+                          )}
                         </div>
                         <div className="sm:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
                           <div className="flex items-center justify-between">
@@ -3603,26 +5639,65 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                       </div>
                       <div>
                         <Label className="text-xs">Personal Email (Alt)</Label>
-                        <Input type="email" value={form.about || ""} onChange={(e) => setForm({ ...form, about: e.target.value })} placeholder="personal@gmail.com" />
+                        <Input type="email" value={form.about || ""} onChange={(e) => setForm({ ...form, about: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Address Details</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">Address Line 1</Label>
+                        <Input
+                          value={form.addressLine1 || form.address || ""}
+                          onChange={(e) => setForm({ ...form, addressLine1: e.target.value, address: e.target.value })}
+                        />
                       </div>
                       <div>
-                        <Label className="text-xs">Emergency Contact Person</Label>
-                        <Input value={form.emergencyName || form.emergencyContact || ""} onChange={(e) => setForm({ ...form, emergencyName: e.target.value, emergencyContact: e.target.value })} />
+                        <Label className="text-xs">Address Line 2</Label>
+                        <Input
+                          value={form.addressLine2 || ""}
+                          onChange={(e) => setForm({ ...form, addressLine2: e.target.value })}
+                        />
                       </div>
                       <div>
-                        <Label className="text-xs">Emergency Relation</Label>
-                        <Select value={form.emergencyRelation || ""} onValueChange={(v) => setForm({ ...form, emergencyRelation: v })}>
-                          <SelectTrigger className="text-xs"><SelectValue placeholder="Select Relation" /></SelectTrigger>
-                          <SelectContent>
-                            {EMERGENCY_RELATIONS.map((rel) => (
-                              <SelectItem key={rel} value={rel}>{rel}</SelectItem>
+                        <Label className="text-xs">City</Label>
+                        <Input
+                          value={form.city || ""}
+                          onChange={(e) => setForm({ ...form, city: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">State</Label>
+                        <Select value={form.state || ""} onValueChange={(v) => setForm({ ...form, state: v })}>
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="Select State" /></SelectTrigger>
+                          <SelectContent className="max-h-56">
+                            {INDIAN_STATES.map((st) => (
+                              <SelectItem key={st} value={st}>{st}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
                       <div>
-                        <Label className="text-xs">Emergency Contact Number</Label>
-                        <Input type="tel" value={form.emergencyPhone2 || ""} onChange={(e) => setForm({ ...form, emergencyPhone2: e.target.value })} />
+                        <Label className="text-xs">Country</Label>
+                        <Input
+                          value={form.country || "India"}
+                          onChange={(e) => setForm({ ...form, country: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">PIN</Label>
+                          {pincodeLoading && (
+                            <span className="text-[11px] text-primary font-medium animate-pulse">Detecting...</span>
+                          )}
+                        </div>
+                        <Input
+                          value={form.pincode || ""}
+                          onChange={(e) => handlePincodeChange(e.target.value)}
+                          maxLength={6}
+                        />
                       </div>
                     </div>
                   </div>
@@ -3636,12 +5711,34 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Work Assignment & Role</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <Label className="text-xs">Work Email</Label>
-                    <Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                    <Label className={`text-xs ${editDupCheck.byField.email ? "text-destructive font-medium" : ""}`}>Work Email</Label>
+                    <Input
+                      type="email"
+                      value={form.email || ""}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      className={editDupCheck.byField.email ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                    />
+                    {editDupCheck.byField.email && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.email.message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <Label className="text-xs">Phone Number</Label>
-                    <Input type="tel" value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                    <Label className={`text-xs ${editDupCheck.byField.phone ? "text-destructive font-medium" : ""}`}>Phone Number</Label>
+                    <Input
+                      type="tel"
+                      value={form.phone || ""}
+                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                      className={editDupCheck.byField.phone ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                    />
+                    {editDupCheck.byField.phone && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.phone.message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <EmploymentTypeSelect
@@ -3739,102 +5836,204 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     <Label className="text-xs font-semibold text-primary">Fixed Salary (Monthly ₹) *</Label>
                     <Input
                       type="number"
-                      value={form.fixedSalary ?? form.basic ?? 25000}
-                      onChange={(e) => setForm({ ...form, fixedSalary: +e.target.value, basic: +e.target.value })}
-                      className="font-bold"
+                      value={form.fixedSalary ?? form.basic ?? 0}
+                      onChange={(e) => {
+                        const salaryVal = +e.target.value || 0;
+                        const ctcVal = computeCalculatedCtc(company, form, salaryVal);
+                        setForm({
+                          ...form,
+                          fixedSalary: salaryVal,
+                          basic: salaryVal,
+                          salary: salaryVal,
+                          ctc: ctcVal,
+                        });
+                      }}
+                      className="font-bold text-xs h-9 mt-1"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">PF UAN No</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold text-primary">CTC (Monthly ₹) *</Label>
+                      {((form.ctc || computeCalculatedCtc(company, form, form.fixedSalary ?? form.basic ?? 0)) > 0) && (
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          ₹{(((form.ctc || computeCalculatedCtc(company, form, form.fixedSalary ?? form.basic ?? 0))) * 12).toLocaleString("en-IN")}/yr
+                        </span>
+                      )}
+                    </div>
                     <Input
-                      placeholder="12-digit UAN"
+                      type="number"
+                      value={form.ctc ?? computeCalculatedCtc(company, form, form.fixedSalary ?? form.basic ?? 0)}
+                      onChange={(e) => setForm({ ...form, ctc: +e.target.value || 0 })}
+                      className="font-bold text-xs h-9 mt-1 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">PF Number</Label>
+                    <Input
+                      value={form.pfNumber || ""}
+                      onChange={(e) => setForm({ ...form, pfNumber: e.target.value })}
+                      className="text-xs h-9 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className={`text-xs ${editDupCheck.byField.uan ? "text-destructive font-medium" : ""}`}>UAN Number</Label>
+                    <Input
                       value={form.uan || ""}
                       onChange={(e) => setForm({ ...form, uan: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                      className={`text-xs h-9 mt-1 ${editDupCheck.byField.uan ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}`}
                     />
-                  </div>
-                  <div>
-                    <Label className="text-xs">PF Number / Member ID</Label>
-                    <Input value={form.pfNumber || ""} onChange={(e) => setForm({ ...form, pfNumber: e.target.value })} />
+                    {editDupCheck.byField.uan && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.uan.message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">ESIC Insurance Number</Label>
-                    <Input value={form.esic || ""} onChange={(e) => setForm({ ...form, esic: e.target.value })} />
+                    <Input value={form.esic || ""} onChange={(e) => setForm({ ...form, esic: e.target.value })} className="text-xs h-9 mt-1" />
                   </div>
                   <div>
                     <Label className="text-xs">Professional Tax (PT) Reg No</Label>
-                    <Input value={form.ptNumber || ""} onChange={(e) => setForm({ ...form, ptNumber: e.target.value })} />
+                    <Input value={form.ptNumber || ""} onChange={(e) => setForm({ ...form, ptNumber: e.target.value })} className="text-xs h-9 mt-1" />
                   </div>
+                </div>
+
+                {/* Insurance for Non-ESI Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/30">
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-semibold flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-primary" />
+                      <span>Insurance for Non-ESI</span>
+                      {form.esiEligible && (
+                        <Badge variant="outline" className="text-[9px] text-muted-foreground">
+                          Covered under ESI
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Commercial medical & accident insurance coverage for employees exempt from statutory ESI scheme.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={Boolean(form.insuranceForNonEsi ?? (!form.esiEligible && (form.fixedSalary ?? 0) > 21000))}
+                    disabled={form.esiEligible}
+                    onCheckedChange={(c) => setForm({ ...form, insuranceForNonEsi: c })}
+                  />
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 3: ADDRESS, KYC & BANK */}
+          {/* TAB 3: KYC & BANK */}
           {activeTab === "address_kyc" && (
             <div className="space-y-4">
-              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Address Information</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <Label className="text-xs">Address Line 1</Label>
-                    <Input value={form.addressLine1 || form.address || ""} onChange={(e) => setForm({ ...form, addressLine1: e.target.value, address: e.target.value })} placeholder="House/Flat No, Street" />
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="text-xs">Address Line 2</Label>
-                    <Input value={form.addressLine2 || ""} onChange={(e) => setForm({ ...form, addressLine2: e.target.value })} placeholder="Apartment, Landmark" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">City</Label>
-                    <Input value={form.city || ""} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">State</Label>
-                    <Select value={form.state || ""} onValueChange={(v) => setForm({ ...form, state: v })}>
-                      <SelectTrigger className="text-xs"><SelectValue placeholder="Select State" /></SelectTrigger>
-                      <SelectContent className="max-h-56">
-                        {INDIAN_STATES.map((st) => (
-                          <SelectItem key={st} value={st}>{st}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Country</Label>
-                    <Input value={form.country || "India"} onChange={(e) => setForm({ ...form, country: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Pincode</Label>
-                    <Input value={form.pincode || ""} onChange={(e) => setForm({ ...form, pincode: e.target.value })} />
-                  </div>
-                </div>
-              </div>
-
               <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Statutory KYC & Government IDs</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Aadhaar Card Number</Label>
+                    <Label className={`text-xs ${editDupCheck.byField.pan || (form.pan && !validatePanFormat(form.pan).valid) ? "text-destructive font-medium" : ""}`}>PAN Card Number</Label>
                     <Input
-                      placeholder="12-digit Aadhaar Number"
-                      value={form.aadhaar || ""}
-                      onChange={(e) => setForm({ ...form, aadhaar: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                      value={form.pan || ""}
+                      onChange={(e) => setForm({ ...form, pan: e.target.value.replace(/[\s-]/g, "").toUpperCase().slice(0, 10) })}
+                      className={editDupCheck.byField.pan || (form.pan && !validatePanFormat(form.pan).valid) ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
                     />
+                    {editDupCheck.byField.pan && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.pan.message}</span>
+                      </p>
+                    )}
+                    {!editDupCheck.byField.pan && form.pan && !validatePanFormat(form.pan).valid && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{validatePanFormat(form.pan).message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <Label className="text-xs">PAN Card Number</Label>
+                    <Label className={`text-xs ${editDupCheck.byField.aadhaar || (form.aadhaar && !validateAadhaarFormat(form.aadhaar).valid) ? "text-destructive font-medium" : ""}`}>Aadhaar Card Number</Label>
                     <Input
-                      placeholder="10-digit PAN (e.g. ABCDE1234F)"
-                      value={form.pan || ""}
-                      onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })}
+                      value={form.aadhaar || ""}
+                      onChange={(e) => setForm({ ...form, aadhaar: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                      className={editDupCheck.byField.aadhaar || (form.aadhaar && !validateAadhaarFormat(form.aadhaar).valid) ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
                     />
+                    {editDupCheck.byField.aadhaar && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.aadhaar.message}</span>
+                      </p>
+                    )}
+                    {!editDupCheck.byField.aadhaar && form.aadhaar && !validateAadhaarFormat(form.aadhaar).valid && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{validateAadhaarFormat(form.aadhaar).message}</span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label className={`text-xs ${form.drivingLicense && !validateDrivingLicenseFormat(form.drivingLicense).valid ? "text-destructive font-medium" : ""}`}>Driving License Number (DL)</Label>
+                    <Input
+                      value={form.drivingLicense || ""}
+                      onChange={(e) => setForm({ ...form, drivingLicense: e.target.value.replace(/[\s-]/g, "").toUpperCase().slice(0, 15) })}
+                      className={form.drivingLicense && !validateDrivingLicenseFormat(form.drivingLicense).valid ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                    />
+                    {form.drivingLicense && !validateDrivingLicenseFormat(form.drivingLicense).valid && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{validateDrivingLicenseFormat(form.drivingLicense).message}</span>
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className={`text-xs ${form.voterId && !validateVoterIdFormat(form.voterId).valid ? "text-destructive font-medium" : ""}`}>Voter ID (EPIC)</Label>
+                    <Input
+                      value={form.voterId || ""}
+                      onChange={(e) => setForm({ ...form, voterId: e.target.value.replace(/[\s-]/g, "").toUpperCase().slice(0, 10) })}
+                      className={form.voterId && !validateVoterIdFormat(form.voterId).valid ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                    />
+                    {form.voterId && !validateVoterIdFormat(form.voterId).valid && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{validateVoterIdFormat(form.voterId).message}</span>
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className={`text-xs ${form.rationCard && !validateRationCardFormat(form.rationCard).valid ? "text-destructive font-medium" : ""}`}>Ration Card</Label>
+                    <Input
+                      value={form.rationCard || ""}
+                      onChange={(e) => setForm({ ...form, rationCard: e.target.value.trim().toUpperCase().slice(0, 20) })}
+                      className={form.rationCard && !validateRationCardFormat(form.rationCard).valid ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                    />
+                    {form.rationCard && !validateRationCardFormat(form.rationCard).valid && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{validateRationCardFormat(form.rationCard).message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">Passport Number</Label>
                     <Input value={form.passportNumber || ""} onChange={(e) => setForm({ ...form, passportNumber: e.target.value.toUpperCase() })} />
                   </div>
                   <div>
-                    <Label className="text-xs">Driving License Number</Label>
-                    <Input value={form.drivingLicense || ""} onChange={(e) => setForm({ ...form, drivingLicense: e.target.value.toUpperCase() })} />
+                    <Label className="text-xs">PF Number</Label>
+                    <Input value={form.pfNumber || ""} onChange={(e) => setForm({ ...form, pfNumber: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className={`text-xs ${editDupCheck.byField.uan ? "text-destructive font-medium" : ""}`}>UAN Number</Label>
+                    <Input
+                      value={form.uan || ""}
+                      onChange={(e) => setForm({ ...form, uan: e.target.value.replace(/\D/g, "").slice(0, 12) })}
+                      className={editDupCheck.byField.uan ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                    />
+                    {editDupCheck.byField.uan && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{editDupCheck.byField.uan.message}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -3843,20 +6042,30 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Bank Account Details (for Direct Deposit)</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Bank Account Number</Label>
-                    <Input value={form.bankAcc || ""} onChange={(e) => setForm({ ...form, bankAcc: e.target.value })} />
+                    <Label className={`text-xs ${form.bankAcc && !validateBankAccountFormat(form.bankAcc).valid ? "text-destructive font-medium" : ""}`}>Bank Account Number</Label>
+                    <Input
+                      value={form.bankAcc || ""}
+                      onChange={(e) => setForm({ ...form, bankAcc: e.target.value.replace(/\D/g, "").slice(0, 18) })}
+                      className={form.bankAcc && !validateBankAccountFormat(form.bankAcc).valid ? "border-destructive text-destructive bg-destructive/5 font-medium" : ""}
+                    />
+                    {form.bankAcc && !validateBankAccountFormat(form.bankAcc).valid && (
+                      <p className="text-[11px] font-semibold text-destructive mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{validateBankAccountFormat(form.bankAcc).message}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">IFSC Code</Label>
-                    <Input value={form.bankIfsc || ""} onChange={(e) => setForm({ ...form, bankIfsc: e.target.value.toUpperCase() })} placeholder="e.g. HDFC0001234" />
+                    <Input value={form.bankIfsc || ""} onChange={(e) => setForm({ ...form, bankIfsc: e.target.value.replace(/[\s-]/g, "").toUpperCase().slice(0, 11) })} />
                   </div>
                   <div>
                     <Label className="text-xs">Bank Name</Label>
-                    <Input value={form.bankName || ""} onChange={(e) => setForm({ ...form, bankName: e.target.value })} placeholder="e.g. HDFC Bank, SBI" />
+                    <Input value={form.bankName || ""} onChange={(e) => setForm({ ...form, bankName: e.target.value })} />
                   </div>
                   <div>
                     <Label className="text-xs">Branch Name</Label>
-                    <Input value={form.bankBranch || ""} onChange={(e) => setForm({ ...form, bankBranch: e.target.value })} placeholder="e.g. Koramangala Branch" />
+                    <Input value={form.bankBranch || ""} onChange={(e) => setForm({ ...form, bankBranch: e.target.value })} />
                   </div>
                 </div>
               </div>
@@ -4275,7 +6484,16 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                   <label className="flex items-center gap-2 text-xs font-medium cursor-pointer p-2 rounded-lg bg-muted/40 hover:bg-muted border border-border">
                     <Checkbox
                       checked={form.esiEligible ?? false}
-                      onCheckedChange={(c) => setForm({ ...form, esiEligible: !!c })}
+                      onCheckedChange={(c) => {
+                        const esiEligible = !!c;
+                        const nextForm = {
+                          ...form,
+                          esiEligible,
+                          insuranceForNonEsi: !esiEligible ? form.insuranceForNonEsi : false,
+                        };
+                        const ctcVal = computeCalculatedCtc(company, nextForm, form.fixedSalary ?? form.basic ?? 0);
+                        setForm({ ...nextForm, ctc: ctcVal });
+                      }}
                     />
                     <span>ESI (Medical)</span>
                   </label>
@@ -4293,6 +6511,29 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     />
                     <span>TDS (Tax)</span>
                   </label>
+                </div>
+
+                {/* Insurance for Non-ESI Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30 mt-2">
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-semibold flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-primary" />
+                      <span>Insurance for Non-ESI</span>
+                      {form.esiEligible && (
+                        <Badge variant="outline" className="text-[9px] text-muted-foreground">
+                          Covered under ESI
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Commercial medical & accident insurance coverage for employees exempt from statutory ESI scheme.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={Boolean(form.insuranceForNonEsi ?? (!form.esiEligible && (form.fixedSalary ?? 0) > 21000))}
+                    disabled={form.esiEligible}
+                    onCheckedChange={(c) => setForm({ ...form, insuranceForNonEsi: c })}
+                  />
                 </div>
 
                 <div className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-4 mt-2">
@@ -4319,54 +6560,83 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
           {activeTab === "family_edu" && (
             <div className="space-y-4">
               <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
-                <RepeatingList<FamilyMember>
-                  label="Family Members & Nominees"
-                  items={form.family || []}
-                  empty={{ name: "", relation: "" }}
-                  onChange={(family) => setForm({ ...form, family })}
-                  columns={[
-                    { key: "name", label: "Name", placeholder: "Full Name" },
-                    { key: "relation", label: "Relation", placeholder: "Spouse / Child / Father" },
-                    { key: "dob", label: "Date of Birth", type: "date" },
-                  ]}
-                />
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                  <span>Emergency Contact Details</span>
+                  <span className="text-[11px] text-primary lowercase tracking-normal">Primary emergency reach</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Emergency Contact Person</Label>
+                    <Input
+                      value={form.emergencyName || ""}
+                      onChange={(e) => setForm({ ...form, emergencyName: e.target.value })}
+                      className="text-xs h-9 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Emergency Relation</Label>
+                    <Select value={form.emergencyRelation || ""} onValueChange={(v) => setForm({ ...form, emergencyRelation: v })}>
+                      <SelectTrigger className="text-xs h-9 mt-1"><SelectValue placeholder="Select Relation" /></SelectTrigger>
+                      <SelectContent>
+                        {EMERGENCY_RELATIONS.map((rel) => (
+                          <SelectItem key={rel} value={rel}>{rel}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Emergency Contact</Label>
+                    <Input
+                      type="tel"
+                      value={form.emergencyContact || ""}
+                      maxLength={10}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                        setForm({ ...form, emergencyContact: digits });
+                      }}
+                      className="text-xs h-9 mt-1 font-mono tracking-wider"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
-                <RepeatingList<EducationEntry>
-                  label="Educational Qualifications"
-                  items={form.education || []}
-                  empty={{ level: "", institute: "" }}
-                  onChange={(education) => setForm({ ...form, education })}
-                  columns={[
-                    { key: "level", label: "Degree / Level", placeholder: "B.E. / MBA / B.Com / Diploma" },
-                    { key: "institute", label: "University / Institute" },
-                    { key: "year", label: "Year of Passing", placeholder: "2022" },
-                    { key: "grade", label: "Grade / Percentage / CGPA", placeholder: "8.5 CGPA / First Class" },
-                  ]}
-                />
-              </div>
+              {/* Family Photograph & ESI Card Toggle */}
+              <FamilyPhotoCard
+                value={form.familyPhotoUrl}
+                esiCovered={form.familyPhotoEsiCovered}
+                onChange={(url) => setForm({ ...form, familyPhotoUrl: url })}
+                onEsiChange={(esi) => setForm({ ...form, familyPhotoEsiCovered: esi })}
+              />
+
+              {/* Family Members with Relation and Aadhaar */}
+              <FamilyMembersManager
+                members={form.family || []}
+                onChange={(family) => setForm({ ...form, family })}
+              />
+
+              {/* Educational Qualifications List */}
+              <EducationQualificationsManager
+                items={form.education || []}
+                onChange={(education) => setForm({ ...form, education })}
+              />
+
+              {/* Education Documents Upload Option (PDFs with Name Type Box) */}
+              <EducationDocumentsManager
+                documents={form.educationDocuments || []}
+                onChange={(educationDocuments) => setForm({ ...form, educationDocuments })}
+                onPreview={(doc) => setPreviewPdfModal(doc)}
+              />
             </div>
           )}
 
           {/* TAB 6: EXPERIENCE & SKILLS */}
           {activeTab === "experience_skills" && (
             <div className="space-y-4">
-              <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
-                <RepeatingList<ExperienceEntry>
-                  label="Prior Employment History"
-                  items={form.experience || []}
-                  empty={{ company: "", role: "" }}
-                  onChange={(experience) => setForm({ ...form, experience })}
-                  columns={[
-                    { key: "company", label: "Company Name" },
-                    { key: "role", label: "Designation / Role" },
-                    { key: "from", label: "From Date", type: "date" },
-                    { key: "to", label: "To Date", type: "date" },
-                    { key: "ctc", label: "Last CTC (₹)", type: "number" },
-                  ]}
-                />
-              </div>
+              <PriorExperienceManager
+                items={form.experience || []}
+                onChange={(experience) => setForm({ ...form, experience })}
+                onPreview={(doc) => setPreviewPdfModal(doc)}
+              />
 
               <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Skills & Language Proficiencies</div>
@@ -4376,7 +6646,6 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     <Input
                       value={(form.skills || []).join(", ")}
                       onChange={(e) => setForm({ ...form, skills: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
-                      placeholder="e.g. React, Node.js, Payroll Accounting, Sales, Customer Support"
                     />
                   </div>
                   <div>
@@ -4384,7 +6653,13 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     <Input
                       value={(form.languagesKnown || []).join(", ")}
                       onChange={(e) => setForm({ ...form, languagesKnown: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
-                      placeholder="e.g. English, Hindi, Tamil, Telugu, Kannada"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Extra Curricular (Comma-separated)</Label>
+                    <Input
+                      value={(form.extraCurricular || []).join(", ")}
+                      onChange={(e) => setForm({ ...form, extraCurricular: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
                     />
                   </div>
                 </div>
@@ -4462,6 +6737,13 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
           </div>
         </div>
       </DialogContent>
+
+      {/* PDF Document Preview Modal */}
+      <PdfPreviewDialog
+        doc={previewPdfModal}
+        open={!!previewPdfModal}
+        onClose={() => setPreviewPdfModal(null)}
+      />
     </Dialog>
   );
 }
@@ -4503,10 +6785,19 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
     setLoading(true);
     let count = 0;
     const toImport = parsed.employees.filter((emp) => {
-      const isDup = employees.some((e) => e.empCode?.toLowerCase() === emp.empCode?.toLowerCase());
-      if (isDup && skipDuplicates) return false;
+      const dupCheck = findEmployeeDuplicates(emp, employees);
+      if (dupCheck.hasDuplicate && skipDuplicates) return false;
       return true;
     });
+
+    if (!skipDuplicates) {
+      const conflicting = parsed.employees.find((emp) => findEmployeeDuplicates(emp, employees).hasDuplicate);
+      if (conflicting) {
+        const dupResult = findEmployeeDuplicates(conflicting, employees);
+        setLoading(false);
+        return toast.error(`Cannot import duplicate employee: ${dupResult.conflicts[0]?.message || "Record already exists in database"}`);
+      }
+    }
 
     for (const emp of toImport) {
       addEmployee(emp);
@@ -4645,7 +6936,7 @@ function BulkUploadDialog({ open, onClose }: { open: boolean; onClose: () => voi
                           </td>
                           <td className="p-2 text-muted-foreground">{emp.department}</td>
                           <td className="p-2 text-muted-foreground">{emp.designation}</td>
-                          <td className="p-2 font-mono">₹{(emp.fixedSalary ?? 0).toLocaleString()}</td>
+                          <td className="p-2 font-mono">₹{(emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0).toLocaleString()}</td>
                           <td className="p-2 font-mono text-[11px]">{emp.doj}</td>
                           <td className="p-2">
                             <div className="text-[11px] font-medium">{branchObj ? branchObj.name : emp.branchId || "All Branches"}</div>

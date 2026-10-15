@@ -299,6 +299,7 @@ export interface DigitalDocument {
 
   // Approval Config
   approvalRequired: boolean;
+  canBeDownloaded?: boolean;
   approvalMode: ApprovalMode;
   approvers: ApprovalStepItem[];
   currentStepIndex: number;

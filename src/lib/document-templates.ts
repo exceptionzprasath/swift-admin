@@ -492,8 +492,8 @@ export function substitutePlaceholders(
   const branchName = company?.branches?.find((b) => b.id === employee?.branchId)?.name || company?.branches?.[0]?.name || "Head Office";
   const doj = employee?.doj || (employee as any)?.joiningDate || "01-Jul-2024";
   const managerName = employee?.reportingManager || "Reporting Manager";
-  const annualCtcNum = (employee?.basic || employee?.fixedSalary || 45000) * 12;
-  const monthlyCtcNum = employee?.basic || employee?.fixedSalary || 45000;
+  const annualCtcNum = (employee?.fixedSalary ?? employee?.basic ?? 0) * 12;
+  const monthlyCtcNum = employee?.fixedSalary ?? employee?.basic ?? 0;
   const annualCtcStr = "₹" + annualCtcNum.toLocaleString("en-IN");
   const monthlyCtcStr = "₹" + monthlyCtcNum.toLocaleString("en-IN");
   const compName = company?.legalName || company?.name || "CreatonsHR Technologies Pvt Ltd";

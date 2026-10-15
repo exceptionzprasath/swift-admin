@@ -255,7 +255,7 @@ export async function generateSalarySlipPDF(
     totalMonthDays = 30;
   }
 
-  const fixedGross = comp.fixedGross || employee.basic || 30000;
+  const fixedGross = comp.fixedGross ?? employee.fixedSalary ?? employee.basic ?? employee.salary ?? 0;
   const dailyPaySlab = workingDays > 0 ? Math.round(fixedGross / workingDays) : Math.round(fixedGross / 30);
   const prorateFactor = workingDays > 0 ? Math.min(1, actualPresent / workingDays) : 1;
 

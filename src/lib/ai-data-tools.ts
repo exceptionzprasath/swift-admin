@@ -104,12 +104,21 @@ export class AIDataTools {
 
     if (query.employeeId) {
       emp = employees.find(
-        (e) => e.id === query.employeeId || e.empCode.toLowerCase() === query.employeeId?.toLowerCase()
+        (e) => e.id === query.employeeId || e.empCode?.toLowerCase() === query.employeeId?.toLowerCase()
       );
-    } else if (query.name) {
+    }
+    if (!emp && query.name) {
       const q = query.name.toLowerCase().trim();
-      emp = employees.find((e) => e.name.toLowerCase().includes(q));
-    } else if (context.viewerEmployeeId) {
+      emp = employees.find((e) => e.name?.toLowerCase().includes(q) || e.empCode?.toLowerCase() === q);
+      if (!emp) {
+        const tokens = q.split(/\s+/).filter((t) => t.length >= 3);
+        emp = employees.find((e) => {
+          const empParts = (e.name || "").toLowerCase().split(/\s+/);
+          return tokens.some((t) => empParts.some((p) => p === t || (t.length >= 4 && p.includes(t))));
+        });
+      }
+    }
+    if (!emp && !query.employeeId && !query.name && context.viewerEmployeeId) {
       emp = employees.find((e) => e.id === context.viewerEmployeeId);
     }
 
@@ -146,7 +155,7 @@ export class AIDataTools {
       context.role === "hr_manager" ||
       emp.id === context.viewerEmployeeId;
 
-    const summaryText = `👤 **${emp.name} (${emp.empCode})**\n\n• **Department:** ${emp.department || "General"}\n• **Designation:** ${emp.designation || "Staff"}\n• **Branch:** ${emp.branchId || "Headquarters"}\n• **Status:** ${emp.status.toUpperCase()}\n• **Date of Joining:** ${emp.doj || "N/A"}${isSelfOrAdmin ? `\n• **Monthly CTC:** ${formatInr(emp.basic * 1.094 || 15000)}` : ""}`;
+    const summaryText = `Certainly! Here are the profile details for **${emp.name} (${emp.empCode})**:\n\n👤 **${emp.name} (${emp.empCode})**\n\n• **Department:** ${emp.department || "General"}\n• **Designation:** ${emp.designation || "Staff"}\n• **Branch:** ${emp.branchId || "Headquarters"}\n• **Status:** ${emp.status.toUpperCase()}\n• **Date of Joining:** ${emp.doj || "N/A"}${isSelfOrAdmin ? `\n• **Monthly CTC:** ${formatInr(emp.basic * 1.094 || 15000)}` : ""}`;
 
     return {
       success: true,
@@ -179,12 +188,31 @@ export class AIDataTools {
 
   // 2. getEmployeeAttendance
   static getEmployeeAttendance(
-    query: { employeeId?: string; date?: string },
+    query: { employeeId?: string; name?: string; date?: string },
     context: ToolExecutionContext
   ): DataToolResult {
     const employees = context.employees || [];
-    const empId = query.employeeId || context.viewerEmployeeId;
-    const emp = employees.find((e) => e.id === empId || e.empCode === empId);
+    let emp: Employee | undefined;
+
+    if (query.employeeId) {
+      emp = employees.find(
+        (e) => e.id === query.employeeId || e.empCode?.toLowerCase() === query.employeeId?.toLowerCase()
+      );
+    }
+    if (!emp && query.name) {
+      const q = query.name.toLowerCase().trim();
+      emp = employees.find((e) => e.name?.toLowerCase().includes(q) || e.empCode?.toLowerCase() === q);
+      if (!emp) {
+        const tokens = q.split(/\s+/).filter((t) => t.length >= 3);
+        emp = employees.find((e) => {
+          const empParts = (e.name || "").toLowerCase().split(/\s+/);
+          return tokens.some((t) => empParts.some((p) => p === t || (t.length >= 4 && p.includes(t))));
+        });
+      }
+    }
+    if (!emp && !query.employeeId && !query.name && context.viewerEmployeeId) {
+      emp = employees.find((e) => e.id === context.viewerEmployeeId);
+    }
 
     if (!emp) {
       return {
@@ -195,7 +223,7 @@ export class AIDataTools {
         recordsUsed: 0,
         permissionChecked: true,
         data: null,
-        summaryText: "Employee not found for attendance lookup.",
+        summaryText: "Employee not found for attendance lookup. Please specify their name or Employee ID (e.g., SW001).",
       };
     }
 
@@ -209,7 +237,7 @@ export class AIDataTools {
         permissionChecked: true,
         deniedReason: "unauthorized_attendance_access",
         data: null,
-        summaryText: "You are not authorized to view this employee's attendance.",
+        summaryText: "You are not authorized to view this employee's attendance records.",
       };
     }
 
@@ -219,15 +247,35 @@ export class AIDataTools {
     );
     const todayRec = attRecords.find((a) => a.date === targetDate);
 
+    const punchIn = todayRec?.checkIn || todayRec?.clockIn || null;
+    const isPresent = Boolean(punchIn || (todayRec?.status || "").toLowerCase() === "present");
+    const isLeave = (todayRec?.status || "").toLowerCase() === "leave";
+
     const presentCount = attRecords.filter((a) => (a.status || "").toLowerCase() === "present").length;
     const absentCount = attRecords.filter((a) => (a.status || "").toLowerCase() === "absent").length;
     const workingDays = context.company?.workingDaysPerMonth || 26;
     const rate = workingDays > 0 ? Math.round((presentCount / workingDays) * 100) : 0;
 
-    const punchIn = todayRec?.checkIn || todayRec?.clockIn || "Not Punched Yet";
-    const status = todayRec?.status || (todayRec?.checkIn ? "present" : "not_punched");
+    const isClockInQuery = /\b(clock\s*in|check\s*in|punch|punched|arrived|here|present)\b/i.test(
+      query.name || ""
+    );
 
-    const summaryText = `📊 **Attendance — ${emp.name} (${emp.empCode})**\n*Date: ${targetDate}*\n\n• **Today Status:** ${status.toUpperCase()}\n• **Check-In Punch:** ${punchIn}\n• **Monthly Present:** ${presentCount} days\n• **Monthly Absent:** ${absentCount} days\n• **Attendance Rate:** ${rate}%`;
+    let directAnswer = "";
+    if (isLeave) {
+      directAnswer = `**${emp.name} (${emp.empCode})** is **on approved leave** today (${targetDate}).`;
+    } else if (isPresent) {
+      directAnswer = `Yes, **${emp.name} (${emp.empCode})** clocked in today (${targetDate}) at **${punchIn}**.`;
+    } else {
+      directAnswer = `No, **${emp.name} (${emp.empCode})** has **not clocked in** today (${targetDate}). They are marked absent as no punch record has been registered yet.`;
+    }
+
+    const summaryText =
+      `${directAnswer}\n\n` +
+      `📊 **Attendance Details — ${emp.name} (${emp.empCode})**\n` +
+      `• **Status:** ${isLeave ? "🌴 On Approved Leave" : isPresent ? "✅ Present" : "❌ Absent (Not Punched)"}\n` +
+      `• **Check-In Punch:** ${punchIn || "Not Punched Yet"}\n` +
+      `• **Monthly Overview:** ${presentCount} days present, ${absentCount} days absent (${rate}% rate)\n\n` +
+      `*Feel free to ask if you would like to view their shift schedule or leave balance!*`;
 
     return {
       success: true,
@@ -236,8 +284,10 @@ export class AIDataTools {
       sourceModule: "attendance",
       recordsUsed: attRecords.length,
       permissionChecked: true,
-      data: { emp, todayRec, presentCount, absentCount, rate },
+      data: { emp, todayRec, presentCount, absentCount, rate, isPresent, isLeave },
       summaryText,
+      // Do not attach an intrusive employee profile card to an attendance question
+      structuredData: undefined,
     };
   }
 
@@ -371,6 +421,145 @@ export class AIDataTools {
             department: r.department,
             checkIn: r.checkIn,
           })),
+      },
+    };
+  }
+
+  // 4a. getAbsentEmployees (HR / Admin / Manager - Specific Absentee List)
+  static getAbsentEmployees(
+    query: { date?: string; department?: string },
+    context: ToolExecutionContext
+  ): DataToolResult {
+    const snapshot = buildAiSnapshot({
+      company: context.company,
+      employees: context.employees,
+      attendance: context.attendance,
+      payrolls: context.payrolls,
+      leaves: context.leaves,
+      docRequests: context.docRequests || [],
+      role: context.role as any,
+      viewerEmployeeId: context.viewerEmployeeId,
+    });
+
+    let roster = snapshot.attendance?.todayLiveRoster || [];
+    if (query.department) {
+      const deptLower = query.department.toLowerCase();
+      roster = roster.filter((r) => r.department.toLowerCase().includes(deptLower));
+    }
+
+    const absentList = roster.filter((r) => r.isAbsentOrNotPunched || r.status === "absent" || r.status === "leave");
+    const totalScheduled = roster.length;
+    const onLeaveList = roster.filter((r) => r.status === "leave");
+    const unexcusedList = roster.filter((r) => r.isAbsentOrNotPunched);
+
+    let summaryText = `👥 **Absent Employees — ${snapshot.today}**\n\n`;
+    summaryText += `• **Total Staff:** ${totalScheduled} | **Present:** ${snapshot.attendance.today.present} | **Total Absentees:** ${absentList.length}\n`;
+    summaryText += `• **Unexcused / Not Punched:** ${unexcusedList.length} | **On Approved Leave:** ${onLeaveList.length}\n\n`;
+
+    if (absentList.length === 0) {
+      summaryText += `🎉 **Full Attendance!** Every scheduled employee has clocked in today.\n`;
+    } else {
+      summaryText += `| Employee | Emp ID | Department | Designation | Shift | Status |\n`;
+      summaryText += `|---|---|---|---|---|---|\n`;
+      absentList.forEach((r) => {
+        const statusBadge = r.status === "leave" ? "🌴 On Approved Leave" : "❌ Absent (No Punch)";
+        summaryText += `| **${r.name}** | \`${r.empCode}\` | ${r.department} | ${r.designation} | ${r.shiftName} | ${statusBadge} |\n`;
+      });
+    }
+
+    return {
+      success: true,
+      toolName: "getAbsentEmployees",
+      sourceType: "database",
+      sourceModule: "attendance",
+      recordsUsed: absentList.length,
+      permissionChecked: true,
+      data: { absentList, unexcusedList, onLeaveList, totalScheduled },
+      summaryText,
+      structuredData: {
+        type: "EMPLOYEE_LIST",
+        title: `Absent Employees (${snapshot.today})`,
+        subtitle: `Total: ${absentList.length} absent (${unexcusedList.length} unexcused · ${onLeaveList.length} on leave)`,
+        count: absentList.length,
+        category: "absent",
+        employees: absentList.map((r) => ({
+          id: r.employeeId,
+          name: r.name,
+          empCode: r.empCode,
+          department: r.department,
+          designation: r.designation,
+          status: r.status === "leave" ? "On Approved Leave" : "Not Punched",
+          badge: r.status === "leave" ? "On Leave" : "Absent",
+        })),
+      },
+    };
+  }
+
+  // 4b. getPresentEmployees (HR / Admin / Manager - Specific Present List)
+  static getPresentEmployees(
+    query: { date?: string; department?: string },
+    context: ToolExecutionContext
+  ): DataToolResult {
+    const snapshot = buildAiSnapshot({
+      company: context.company,
+      employees: context.employees,
+      attendance: context.attendance,
+      payrolls: context.payrolls,
+      leaves: context.leaves,
+      docRequests: context.docRequests || [],
+      role: context.role as any,
+      viewerEmployeeId: context.viewerEmployeeId,
+    });
+
+    let roster = snapshot.attendance?.todayLiveRoster || [];
+    if (query.department) {
+      const deptLower = query.department.toLowerCase();
+      roster = roster.filter((r) => r.department.toLowerCase().includes(deptLower));
+    }
+
+    const presentList = roster.filter((r) => r.isPresent);
+    const totalScheduled = roster.length;
+
+    const turnoutRate = totalScheduled > 0 ? Math.round((presentList.length / totalScheduled) * 100) : 0;
+    let summaryText = `✅ **Present Employees — ${snapshot.today}**\n\n`;
+    summaryText += `• **Total Staff:** ${totalScheduled} | **Present:** ${presentList.length} (${turnoutRate}% Turnout)\n\n`;
+
+    if (presentList.length === 0) {
+      summaryText += `⚠️ **No employees have clocked in yet today.**\n`;
+    } else {
+      summaryText += `| Employee | Emp ID | Department | Check-In | Punctuality | Shift |\n`;
+      summaryText += `|---|---|---|---|---|---|\n`;
+      presentList.forEach((r) => {
+        const punctBadge = r.isLate ? `⏰ Late (${r.lateByMinutes}m)` : "🟢 On-Time";
+        summaryText += `| **${r.name}** | \`${r.empCode}\` | ${r.department} | ${r.checkIn} | ${punctBadge} | ${r.shiftName} |\n`;
+      });
+    }
+
+    return {
+      success: true,
+      toolName: "getPresentEmployees",
+      sourceType: "database",
+      sourceModule: "attendance",
+      recordsUsed: presentList.length,
+      permissionChecked: true,
+      data: { presentList, totalScheduled },
+      summaryText,
+      structuredData: {
+        type: "EMPLOYEE_LIST",
+        title: `Present Employees (${snapshot.today})`,
+        subtitle: `Total: ${presentList.length} clocked in today (${turnoutRate}% turnout)`,
+        count: presentList.length,
+        category: "present",
+        employees: presentList.map((r) => ({
+          id: r.employeeId,
+          name: r.name,
+          empCode: r.empCode,
+          department: r.department,
+          designation: r.designation,
+          status: r.isLate ? `Late (${r.lateByMinutes}m)` : "On Time",
+          badge: r.isLate ? "Late" : "Present",
+          checkIn: r.checkIn,
+        })),
       },
     };
   }
@@ -810,11 +999,33 @@ export class AIDataTools {
 
   // 12. getEmployeeSalary
   static getEmployeeSalary(
-    query: { employeeId?: string },
+    query: { employeeId?: string; name?: string },
     context: ToolExecutionContext
   ): DataToolResult {
-    const empId = query.employeeId || context.viewerEmployeeId;
-    const emp = (context.employees || []).find((e) => e.id === empId || e.empCode === empId);
+    const employees = context.employees || [];
+    let emp: Employee | undefined;
+
+    if (query.employeeId) {
+      emp = employees.find(
+        (e) => e.id === query.employeeId || e.empCode?.toLowerCase() === query.employeeId?.toLowerCase()
+      );
+    }
+    if (!emp && query.name) {
+      const q = query.name.toLowerCase().trim();
+      emp = employees.find(
+        (e) => e.name?.toLowerCase().includes(q) || e.empCode?.toLowerCase() === q
+      );
+      if (!emp) {
+        const tokens = q.split(/\s+/).filter((t) => t.length >= 3);
+        emp = employees.find((e) => {
+          const empParts = (e.name || "").toLowerCase().split(/\s+/);
+          return tokens.some((t) => empParts.some((p) => p === t || (t.length >= 4 && p.includes(t))));
+        });
+      }
+    }
+    if (!emp && !query.employeeId && !query.name && context.viewerEmployeeId) {
+      emp = employees.find((e) => e.id === context.viewerEmployeeId);
+    }
 
     if (!emp) {
       return {
@@ -825,7 +1036,7 @@ export class AIDataTools {
         recordsUsed: 0,
         permissionChecked: true,
         data: null,
-        summaryText: "Employee not found for salary lookup.",
+        summaryText: "Employee not found for salary lookup. Please check the spelling or provide an Employee ID (e.g., SW001).",
       };
     }
 
@@ -849,11 +1060,24 @@ export class AIDataTools {
       };
     }
 
-    const basic = emp.basic || 15000;
-    const ctc = Math.round(basic * 1.094);
-    const annualCtc = ctc * 12;
+    const fixedGross = emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0;
+    const basicPct = context.company.basicPct ?? 20;
+    const daPct = context.company.daEnabled !== false ? (context.company.daPct ?? 13.33) : 0;
+    const coreWage = Math.round(fixedGross * ((basicPct + daPct) / 100));
+    const hra = context.company.hraEnabled !== false ? Math.round(fixedGross * ((context.company.hraPct ?? 16.67) / 100)) : 0;
+    const annualCtc = fixedGross * 12;
 
-    const summaryText = `💰 **Compensation Structure — ${emp.name} (${emp.empCode})**\n\n• **Basic Salary:** ${formatInr(basic)} / month\n• **Monthly Gross / CTC:** ${formatInr(ctc)}\n• **Annual CTC:** ${formatInr(annualCtc)}\n• **PF Eligible:** ${emp.pfEligible !== false ? "Yes" : "No"}\n• **ESI Eligible:** ${emp.esiEligible !== false ? "Yes" : "No"}`;
+    const summaryText =
+      `Sure! Here are the salary and compensation details for **${emp.name} (${emp.empCode})**:\n\n` +
+      `💰 **Compensation Structure — ${emp.name} (${emp.empCode})**\n*Department: ${emp.department || "General"} · Designation: ${emp.designation || "Staff"}*\n\n` +
+      `• **Monthly Fixed Salary (Gross):** ${formatInr(fixedGross)} / month\n` +
+      `• **Basic Pay + DA:** ${formatInr(coreWage)} / month\n` +
+      (hra > 0 ? `• **House Rent Allowance (HRA):** ${formatInr(hra)} / month\n` : "") +
+      `• **Annual CTC:** ${formatInr(annualCtc)} (${(annualCtc / 100000).toFixed(2)} LPA)\n` +
+      `• **PF Eligible:** ${emp.pfEligible !== false ? "✅ Yes (12%)" : "❌ No"}\n` +
+      `• **ESI Eligible:** ${emp.esiEligible !== false ? "✅ Yes" : "❌ No"}\n` +
+      (emp.bankAcc ? `• **Disbursement Account:** A/C ending in \`${emp.bankAcc.slice(-4)}\`\n\n` : "\n") +
+      `*Feel free to ask if you'd like to adjust any allowance components or generate a report!*`;
 
     return {
       success: true,
@@ -863,12 +1087,40 @@ export class AIDataTools {
       recordsUsed: 1,
       permissionChecked: true,
       data: {
-        basic,
-        ctc,
+        fixedGross,
+        basic: coreWage,
+        ctc: fixedGross,
         annualCtc,
         employee: { id: emp.id, name: emp.name, empCode: emp.empCode, department: emp.department },
       },
       summaryText,
+      structuredData: {
+        type: "EMPLOYEE_DETAILS",
+        employee: {
+          id: emp.id,
+          name: emp.name,
+          empCode: emp.empCode,
+          department: emp.department || "General",
+          designation: emp.designation || "Staff",
+          branch: (emp as any).branch && !/^\d{7,}$/.test((emp as any).branch) ? (emp as any).branch : "Head Office",
+          email: emp.email,
+          phone: emp.phone,
+          doj: emp.doj,
+          basicSalary: fixedGross,
+          status: emp.status || "Active",
+          isFaceRegistered: !!(emp as any).faceEnrolled,
+        },
+        salaryDetails: {
+          fixedGross,
+          basicPay: coreWage,
+          hra,
+          annualCtc,
+          lpa: Number((annualCtc / 100000).toFixed(2)),
+          pfEligible: emp.pfEligible !== false,
+          esiEligible: emp.esiEligible !== false,
+          bankAccMasked: emp.bankAcc ? `•••• ${emp.bankAcc.slice(-4)}` : undefined,
+        },
+      },
     };
   }
 

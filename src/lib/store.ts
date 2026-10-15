@@ -628,17 +628,23 @@ export type Employee = {
   ptNumber?: string;
   passportNumber?: string;
   drivingLicense?: string;
+  voterId?: string;
+  rationCard?: string;
   bankName?: string;
   bankBranch?: string;
   bankAccountType?: "savings" | "current";
   emergencyName?: string;
   emergencyRelation?: string;
   emergencyPhone2?: string;
+  familyPhotoUrl?: string;
+  familyPhotoEsiCovered?: boolean;
   family?: FamilyMember[];
   education?: EducationEntry[];
+  educationDocuments?: EducationDocument[];
   experience?: ExperienceEntry[];
   skills?: string[];
   languagesKnown?: string[];
+  extraCurricular?: string[];
   complianceNotes?: string;
   policeVerification?: boolean;
   backgroundCheckStatus?: "pending" | "clear" | "flagged";
@@ -675,6 +681,8 @@ export type Employee = {
   roleId?: string;
   roleName?: string;
   fixedSalary?: number;
+  ctc?: number;
+  insuranceForNonEsi?: boolean;
   pfEligible?: boolean;
   esiEligible?: boolean;
   ptEligible?: boolean;
@@ -769,9 +777,41 @@ export function canRoleApproveDocument(
   return true;
 }
 
-export type FamilyMember = { name: string; relation: string; dob?: string; dependent?: boolean };
+export type FamilyMember = {
+  name: string;
+  relation: string;
+  dob?: string;
+  dependent?: boolean;
+  aadhaar?: string;
+  esiCovered?: boolean;
+};
 export type EducationEntry = { level: string; institute: string; year?: string; grade?: string };
-export type ExperienceEntry = { company: string; role: string; from?: string; to?: string; ctc?: number };
+export type EducationDocument = {
+  id: string;
+  name: string;
+  fileName?: string;
+  fileSize?: string;
+  dataUrl?: string;
+  uploadedAt: string;
+};
+export type PriorEmployerDoc = {
+  id: string;
+  name?: string;
+  fileName?: string;
+  fileSize?: string;
+  dataUrl?: string;
+  uploadedAt: string;
+};
+export type ExperienceEntry = {
+  company: string;
+  role: string;
+  from?: string;
+  to?: string;
+  ctc?: number;
+  payslips?: PriorEmployerDoc[];
+  experienceLetter?: PriorEmployerDoc;
+  appointmentLetter?: PriorEmployerDoc;
+};
 export type EmployeeDocument = { id: string; type: string; name: string; dataUrl?: string; files?: string[]; uploadedAt: string; verified?: boolean };
 
 export type RegistrationDraft = {
@@ -2953,10 +2993,112 @@ export const useStore = create<State>()(
                 }));
               }
             }
+            let finalFamilyPhotoUrl = emp.familyPhotoUrl;
+            if (emp.familyPhotoUrl && emp.familyPhotoUrl.startsWith("data:")) {
+              try {
+                const s3Url = await uploadToS3(tenantId, `family-photos/${emp.id}.png`, emp.familyPhotoUrl);
+                if (s3Url && s3Url.startsWith("http")) {
+                  finalFamilyPhotoUrl = s3Url;
+                  set((s) => ({
+                    employees: s.employees.map((x) => x.id === emp.id ? { ...x, familyPhotoUrl: s3Url } : x)
+                  }));
+                } else {
+                  finalFamilyPhotoUrl = undefined;
+                }
+              } catch (err) {
+                console.error("Family photo upload failed:", err);
+                finalFamilyPhotoUrl = undefined;
+              }
+            }
+
+            let finalEduDocs = emp.educationDocuments ?? [];
+            if (emp.educationDocuments && emp.educationDocuments.length > 0) {
+              finalEduDocs = await Promise.all(
+                emp.educationDocuments.map(async (doc) => {
+                  if (doc.dataUrl && doc.dataUrl.startsWith("data:")) {
+                    const s3Url = await uploadToS3(tenantId, `education-documents/${emp.id}/${doc.id}.pdf`, doc.dataUrl);
+                    return { ...doc, dataUrl: s3Url && s3Url.startsWith("http") ? s3Url : undefined };
+                  }
+                  return doc;
+                })
+              );
+              set((s) => ({
+                employees: s.employees.map((x) => x.id === emp.id ? { ...x, educationDocuments: finalEduDocs } : x)
+              }));
+            }
+
+            let finalDocs = emp.documentsUploaded ?? [];
+            if (emp.documentsUploaded && emp.documentsUploaded.length > 0) {
+              finalDocs = await Promise.all(
+                emp.documentsUploaded.map(async (doc) => {
+                  if (doc.dataUrl && doc.dataUrl.startsWith("data:")) {
+                    const s3Url = await uploadToS3(tenantId, `employee-documents/${emp.id}/${doc.id}.pdf`, doc.dataUrl);
+                    return { ...doc, dataUrl: s3Url && s3Url.startsWith("http") ? s3Url : undefined };
+                  }
+                  return doc;
+                })
+              );
+              set((s) => ({
+                employees: s.employees.map((x) => x.id === emp.id ? { ...x, documentsUploaded: finalDocs } : x)
+              }));
+            }
+
+            let finalExp = emp.experience ?? [];
+            if (emp.experience && emp.experience.length > 0) {
+              finalExp = await Promise.all(
+                emp.experience.map(async (entry, expIdx) => {
+                  let payslips = entry.payslips;
+                  if (entry.payslips && entry.payslips.length > 0) {
+                    payslips = await Promise.all(
+                      entry.payslips.map(async (ps, psIdx) => {
+                        if (ps.dataUrl && ps.dataUrl.startsWith("data:")) {
+                          const ext = ps.fileName?.split(".").pop() || "pdf";
+                          const s3Url = await uploadToS3(tenantId, `experience-documents/${emp.id}/exp${expIdx}_payslip${psIdx + 1}.${ext}`, ps.dataUrl);
+                          return { ...ps, dataUrl: s3Url && s3Url.startsWith("http") ? s3Url : undefined };
+                        }
+                        return ps;
+                      })
+                    );
+                  }
+                  let expLetter = entry.experienceLetter;
+                  if (entry.experienceLetter?.dataUrl && entry.experienceLetter.dataUrl.startsWith("data:")) {
+                    const ext = entry.experienceLetter.fileName?.split(".").pop() || "pdf";
+                    const s3Url = await uploadToS3(tenantId, `experience-documents/${emp.id}/exp${expIdx}_experience_letter.${ext}`, entry.experienceLetter.dataUrl);
+                    expLetter = { ...entry.experienceLetter, dataUrl: s3Url && s3Url.startsWith("http") ? s3Url : undefined };
+                  }
+                  let appLetter = entry.appointmentLetter;
+                  if (entry.appointmentLetter?.dataUrl && entry.appointmentLetter.dataUrl.startsWith("data:")) {
+                    const ext = entry.appointmentLetter.fileName?.split(".").pop() || "pdf";
+                    const s3Url = await uploadToS3(tenantId, `experience-documents/${emp.id}/exp${expIdx}_appointment_letter.${ext}`, entry.appointmentLetter.dataUrl);
+                    appLetter = { ...entry.appointmentLetter, dataUrl: s3Url && s3Url.startsWith("http") ? s3Url : undefined };
+                  }
+                  return {
+                    ...entry,
+                    payslips,
+                    experienceLetter: expLetter,
+                    appointmentLetter: appLetter,
+                  };
+                })
+              );
+              set((s) => ({
+                employees: s.employees.map((x) => x.id === emp.id ? { ...x, experience: finalExp } : x)
+              }));
+            }
+
             // Never write a raw base64 blob to DynamoDB — it exceeds the 400 KB item limit
             // and causes a silent write failure. Strip the photo if S3 upload did not succeed.
             const safePhotoUrl = finalPhotoUrl && finalPhotoUrl.startsWith("http") ? finalPhotoUrl : undefined;
-            syncItem("employees", { tenantId, ...emp, photoDataUrl: safePhotoUrl, faceRegistered: !!safePhotoUrl });
+            const safeFamilyPhotoUrl = finalFamilyPhotoUrl && finalFamilyPhotoUrl.startsWith("http") ? finalFamilyPhotoUrl : undefined;
+            syncItem("employees", {
+              tenantId,
+              ...emp,
+              photoDataUrl: safePhotoUrl,
+              faceRegistered: !!safePhotoUrl,
+              familyPhotoUrl: safeFamilyPhotoUrl,
+              educationDocuments: finalEduDocs,
+              documentsUploaded: finalDocs,
+              experience: finalExp,
+            });
           };
           runRegisterAndSync();
 
@@ -3058,8 +3200,84 @@ export const useStore = create<State>()(
                 }));
               }
 
+              let eduDocs = normalizedPatch.educationDocuments ?? before.educationDocuments ?? [];
+              if (normalizedPatch.educationDocuments) {
+                const uploadedEduDocs = await Promise.all(
+                  normalizedPatch.educationDocuments.map(async (doc) => {
+                    if (doc.dataUrl && doc.dataUrl.startsWith("data:")) {
+                      const s3Url = await uploadToS3(tenantId, `education-documents/${id}/${doc.id}.pdf`, doc.dataUrl);
+                      return { ...doc, dataUrl: s3Url && s3Url.startsWith("http") ? s3Url : undefined };
+                    }
+                    return doc;
+                  })
+                );
+                eduDocs = uploadedEduDocs;
+                set((s) => ({
+                  employees: s.employees.map((x) => x.id === id ? { ...x, educationDocuments: eduDocs } : x)
+                }));
+              }
+
+              let expList = normalizedPatch.experience ?? before.experience ?? [];
+              if (normalizedPatch.experience) {
+                const uploadedExp = await Promise.all(
+                  normalizedPatch.experience.map(async (entry, expIdx) => {
+                    let payslips = entry.payslips;
+                    if (entry.payslips && entry.payslips.length > 0) {
+                      payslips = await Promise.all(
+                        entry.payslips.map(async (ps, psIdx) => {
+                          if (ps.dataUrl && ps.dataUrl.startsWith("data:")) {
+                            const ext = ps.fileName?.split(".").pop() || "pdf";
+                            const s3Url = await uploadToS3(tenantId, `experience-documents/${id}/exp${expIdx}_payslip${psIdx + 1}.${ext}`, ps.dataUrl);
+                            return { ...ps, dataUrl: s3Url && s3Url.startsWith("http") ? s3Url : undefined };
+                          }
+                          return ps;
+                        })
+                      );
+                    }
+                    let expLetter = entry.experienceLetter;
+                    if (entry.experienceLetter?.dataUrl && entry.experienceLetter.dataUrl.startsWith("data:")) {
+                      const ext = entry.experienceLetter.fileName?.split(".").pop() || "pdf";
+                      const s3Url = await uploadToS3(tenantId, `experience-documents/${id}/exp${expIdx}_experience_letter.${ext}`, entry.experienceLetter.dataUrl);
+                      expLetter = { ...entry.experienceLetter, dataUrl: s3Url && s3Url.startsWith("http") ? s3Url : undefined };
+                    }
+                    let appLetter = entry.appointmentLetter;
+                    if (entry.appointmentLetter?.dataUrl && entry.appointmentLetter.dataUrl.startsWith("data:")) {
+                      const ext = entry.appointmentLetter.fileName?.split(".").pop() || "pdf";
+                      const s3Url = await uploadToS3(tenantId, `experience-documents/${id}/exp${expIdx}_appointment_letter.${ext}`, entry.appointmentLetter.dataUrl);
+                      appLetter = { ...entry.appointmentLetter, dataUrl: s3Url && s3Url.startsWith("http") ? s3Url : undefined };
+                    }
+                    return {
+                      ...entry,
+                      payslips,
+                      experienceLetter: expLetter,
+                      appointmentLetter: appLetter,
+                    };
+                  })
+                );
+                expList = uploadedExp;
+                set((s) => ({
+                  employees: s.employees.map((x) => x.id === id ? { ...x, experience: expList } : x)
+                }));
+              }
+
+              let finalFamilyPhotoUrl = normalizedPatch.familyPhotoUrl ?? before.familyPhotoUrl;
+              if (normalizedPatch.familyPhotoUrl && normalizedPatch.familyPhotoUrl.startsWith("data:")) {
+                try {
+                  const s3Url = await uploadToS3(tenantId, `family-photos/${id}.png`, normalizedPatch.familyPhotoUrl);
+                  if (s3Url && s3Url.startsWith("http")) {
+                    finalFamilyPhotoUrl = s3Url;
+                    set((s) => ({
+                      employees: s.employees.map((x) => x.id === id ? { ...x, familyPhotoUrl: s3Url } : x)
+                    }));
+                  }
+                } catch (err) {
+                  console.error("Family photo update upload failed:", err);
+                }
+              }
+
               // Never write a raw base64 blob to DynamoDB — strip if S3 upload did not succeed.
               const safePhotoUrl = finalPhotoUrl && finalPhotoUrl.startsWith("http") ? finalPhotoUrl : undefined;
+              const safeFamilyPhotoUrl = finalFamilyPhotoUrl && finalFamilyPhotoUrl.startsWith("http") ? finalFamilyPhotoUrl : undefined;
               // Preserve the existing faceRegistered flag when the new photo upload failed —
               // a failed upload should not retroactively de-register a previously enrolled face.
               const faceRegisteredToSave = safePhotoUrl
@@ -3071,7 +3289,10 @@ export const useStore = create<State>()(
                 ...normalizedPatch,
                 photoDataUrl: safePhotoUrl,
                 faceRegistered: faceRegisteredToSave,
-                documentsUploaded: docs
+                familyPhotoUrl: safeFamilyPhotoUrl,
+                educationDocuments: eduDocs,
+                documentsUploaded: docs,
+                experience: expList,
               });
             };
             runUpdateAndSync();

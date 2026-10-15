@@ -282,7 +282,7 @@ export function EmployeeOtCalendarModal({
     const statusVal: "pending" | "approved" | "rejected" = ov.otStatus ? ov.otStatus : (roundedTotalOt > 0 ? "pending" : "pending");
 
     // Potential OT Pay Calculation
-    const fixedGross = employee.basic || employee.salary || 30000;
+    const fixedGross = employee.fixedSalary ?? employee.basic ?? employee.salary ?? 0;
     const wd = company.workingDaysPerMonth || 26;
     const hourlyRate = fixedGross / (wd * stdHours);
     const otMult = company.otMultiplier || 2;

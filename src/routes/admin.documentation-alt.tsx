@@ -241,6 +241,7 @@ export default function DigitalDocumentationPage() {
 
   // Approval Matrix & Signatory Configuration
   const [approvalRequired, setApprovalRequired] = useState(true);
+  const [canBeDownloaded, setCanBeDownloaded] = useState(true);
   const [approvalMode, setApprovalMode] = useState<ApprovalMode>("sequential");
   const [approvers, setApprovers] = useState<ApprovalStepItem[]>([
     {
@@ -1236,6 +1237,7 @@ export default function DigitalDocumentationPage() {
     setDeliveryChannel("both");
     setDeliverySubject(preset.defaultSubject);
     setApprovalRequired(true);
+    setCanBeDownloaded(true);
     setApprovalMode(preset.defaultApprovalMode);
     setApprovers(
       preset.defaultApprovers.map((name, i) => ({
@@ -1323,6 +1325,7 @@ export default function DigitalDocumentationPage() {
     setDeliveryChannel(doc.delivery.channel);
     setDeliverySubject(doc.delivery.subject);
     setApprovalRequired(doc.approvalRequired);
+    setCanBeDownloaded(doc.canBeDownloaded !== false);
     setApprovalMode(doc.approvalMode);
     setApprovers(
       doc.approvers?.length > 0
@@ -1538,6 +1541,7 @@ export default function DigitalDocumentationPage() {
         subject: deliverySubject || `${docName} — Template`,
       },
       approvalRequired,
+      canBeDownloaded,
       approvalMode,
       approvers,
       includeCompanySeal,
@@ -3178,6 +3182,11 @@ export default function DigitalDocumentationPage() {
                     <Switch checked={approvalRequired} onCheckedChange={setApprovalRequired} />
                   </div>
 
+                  <div className="flex items-center gap-2 bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
+                    <span className="text-xs font-semibold text-foreground">Can be Download?</span>
+                    <Switch checked={canBeDownloaded} onCheckedChange={setCanBeDownloaded} />
+                  </div>
+
                   {approvalRequired && (
                     <div className="flex items-center gap-2">
                       <Button
@@ -4220,6 +4229,15 @@ export default function DigitalDocumentationPage() {
                         {activeDetailDoc.approvalRequired
                           ? `${activeDetailDoc.approvalMode.replace(/_/g, " ")} (${activeDetailDoc.approvers.length} Approvers)`
                           : "Direct Dispatch (No Approval)"}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-muted-foreground text-[11px]">Download Permission</div>
+                      <div className="font-semibold text-foreground capitalize mt-0.5">
+                        {activeDetailDoc.canBeDownloaded !== false
+                          ? "Allowed (Can be Downloaded)"
+                          : "Restricted (No Download)"}
                       </div>
                     </div>
 

@@ -1,4 +1,5 @@
 import type { Employee, PredefinedRole, Branch, ShiftType, Device } from "./store";
+import { findEmployeeDuplicates } from "./employee-validation";
 import * as XLSX from "xlsx";
 
 export function generateEmployeePassword(): string {
@@ -227,6 +228,7 @@ export function downloadBulkEmployeesExcel(
     "Benefits Eligible Date",
     "Probation End Date",
     "Fixed Salary (Monthly ₹)",
+    "CTC (Monthly ₹)",
     "Basic Salary (₹)",
     "PF UAN",
     "PF Number",
@@ -261,6 +263,7 @@ export function downloadBulkEmployeesExcel(
     "Leave Apply Mobile Eligible",
     "PF Eligible",
     "ESI Eligible",
+    "Insurance for Non-ESI",
     "PT Eligible",
     "TDS Eligible",
     "Biometric Enabled",
@@ -275,6 +278,7 @@ export function downloadBulkEmployeesExcel(
     "Experience Summary",
     "Technical Skills",
     "Languages Known",
+    "Extra Curricular",
     // 7. Compliance & BGV
     "BGV Status",
     "Police Verification",
@@ -320,6 +324,7 @@ export function downloadBulkEmployeesExcel(
       normalizeExcelDate(e.eligibleDate || e.doj) || "—",
       normalizeExcelDate(e.probationDate) || "—",
       e.fixedSalary ?? e.basic ?? 0,
+      e.ctc || e.fixedSalary || 0,
       e.basic ?? e.fixedSalary ?? 0,
       e.uan || "—",
       e.pfNumber || "—",
@@ -352,6 +357,7 @@ export function downloadBulkEmployeesExcel(
       formatBool(e.leaveApplyEligible, true),
       formatBool(e.pfEligible, true),
       formatBool(e.esiEligible, false),
+      formatBool(e.insuranceForNonEsi, !e.esiEligible && (e.fixedSalary ?? 0) > 21000),
       formatBool(e.ptEligible, true),
       formatBool(e.tdsEligible, false),
       formatBool(e.biometricEnabled, false),
@@ -364,6 +370,7 @@ export function downloadBulkEmployeesExcel(
       expSummary || "—",
       (e.skills || []).join(", ") || "—",
       (e.languagesKnown || []).join(", ") || "—",
+      (e.extraCurricular || []).join(", ") || "—",
       e.backgroundCheckStatus ? e.backgroundCheckStatus.toUpperCase() : "PENDING",
       formatBool(e.policeVerification, false),
       formatBool(e.medicalFitness, false),
@@ -638,11 +645,13 @@ export function downloadBulkEmployeesExcel(
     "Last CTC (₹)",
     "Technical Skills",
     "Languages Known",
+    "Extra Curricular",
   ];
   const expRows: any[][] = [];
   employees.forEach((e) => {
     const skillsStr = (e.skills || []).join(", ") || "—";
     const langsStr = (e.languagesKnown || []).join(", ") || "—";
+    const extraCurrStr = (e.extraCurricular || []).join(", ") || "—";
     if (e.experience && e.experience.length > 0) {
       e.experience.forEach((ex) => {
         expRows.push([
@@ -655,6 +664,7 @@ export function downloadBulkEmployeesExcel(
           ex.ctc ? `₹${ex.ctc}` : "—",
           skillsStr,
           langsStr,
+          extraCurrStr,
         ]);
       });
     } else {
@@ -668,6 +678,7 @@ export function downloadBulkEmployeesExcel(
         "—",
         skillsStr,
         langsStr,
+        extraCurrStr,
       ]);
     }
   });
@@ -1403,8 +1414,14 @@ export function parseEmployeeCsvText(
       continue;
     }
 
-    if (existingCodes.has(empCode.toLowerCase())) {
-      duplicates.push(empCode);
+    const dupCheck = findEmployeeDuplicates(
+      { empCode, email, phone, pan, aadhaar, uan },
+      [...existingEmployees, ...(parsedList as unknown as Employee[])]
+    );
+
+    if (dupCheck.hasDuplicate) {
+      const msgs = dupCheck.conflicts.map((c) => `${c.label} duplicate: ${c.value}`).join(", ");
+      duplicates.push(`Row ${i + 1} (${empCode || name}): ${msgs}`);
     }
 
     parsedList.push({

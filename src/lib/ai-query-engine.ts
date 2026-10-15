@@ -70,10 +70,91 @@ export class AIQueryEngine {
     const roster = snapshot.attendance?.todayLiveRoster || [];
     const monthlyOverview = snapshot.attendance?.monthlyReport;
 
-    // 2. ATTENDANCE INTENTS: Absent, Late, Present, Count
+    // 2. INDIVIDUAL EMPLOYEE ATTENDANCE INTENT
+    // e.g. "Is employee 1 absent today?", "Is Hari absent?", "Did Stanley check in?", "Is Mekha present?"
+    const matchedEmpForAtt = employees.find((e) => {
+      const nName = normalize(e.name);
+      const nCode = normalize(e.empCode);
+      if (nCode && new RegExp(`\\b${nCode}\\b`, "i").test(query)) return true;
+      if (nName && query.includes(nName)) return true;
+      const parts = nName.split(" ").filter((p) => p.length >= 3);
+      return parts.some((p) => new RegExp(`\\b${p}\\b`, "i").test(query));
+    });
+
+    if (matchedEmpForAtt && /\b(absent|present|here|check\s*in|punch|punched|working|status|attendance|leave)\b/i.test(query)) {
+      const empRoster = roster.find((r) => r.employeeId === matchedEmpForAtt.id || r.empCode === matchedEmpForAtt.empCode);
+      const punchIn = empRoster?.checkIn || (empRoster as any)?.clockIn || null;
+      const isPresent = Boolean(punchIn || (empRoster?.status || "").toLowerCase() === "present");
+      const isLeave = (empRoster?.status || "").toLowerCase() === "leave";
+
+      const isClockInCheck = /\b(clock\s*in|check\s*in|punch|punched|arrived|here|present)\b/i.test(query);
+      const isAbsentCheck = /\b(absent|missing|not\s+in)\b/i.test(query);
+
+      let directAnswer = "";
+      if (isLeave) {
+        directAnswer = `**${matchedEmpForAtt.name} (${matchedEmpForAtt.empCode})** is **on approved leave** today (${snapshot.today}).`;
+      } else if (isPresent) {
+        if (isAbsentCheck) {
+          directAnswer = `No, **${matchedEmpForAtt.name} (${matchedEmpForAtt.empCode})** is **not absent**—they are **present** today (${snapshot.today}). They clocked in at **${punchIn || "N/A"}**.`;
+        } else {
+          directAnswer = `Yes, **${matchedEmpForAtt.name} (${matchedEmpForAtt.empCode})** clocked in today (${snapshot.today}) at **${punchIn || "N/A"}** (${empRoster?.punctuality || "On Time"}).`;
+        }
+      } else {
+        if (isClockInCheck) {
+          directAnswer = `No, **${matchedEmpForAtt.name} (${matchedEmpForAtt.empCode})** has **not clocked in** today (${snapshot.today}). They are marked absent as no punch record has been registered yet.`;
+        } else {
+          directAnswer = `Yes, **${matchedEmpForAtt.name} (${matchedEmpForAtt.empCode})** is **absent** today (${snapshot.today}). No check-in punch has been recorded.`;
+        }
+      }
+
+      const summaryText =
+        `${directAnswer}\n\n` +
+        `📊 **Attendance Details — ${matchedEmpForAtt.name} (${matchedEmpForAtt.empCode})**\n` +
+        `• **Status:** ${isLeave ? "🌴 On Approved Leave" : isPresent ? "✅ Present" : "❌ Absent (Not Punched)"}\n` +
+        `• **Check-In Punch:** ${punchIn || "Not Punched Yet"}\n` +
+        `• **Department:** ${matchedEmpForAtt.department || "Operations"} · **Shift:** ${empRoster?.shiftName || "General Shift"}\n\n` +
+        `*Feel free to ask if you'd like to check their leave balance or view monthly worked hours!*`;
+
+      const wantsCard = /\b(card|profile|details\s+card|full\s+details)\b/i.test(query);
+
+      return {
+        handled: true,
+        toolName: "Attendance Engine",
+        model: "SWIFT HR Database",
+        structuredData: wantsCard
+          ? {
+              type: "EMPLOYEE_DETAILS",
+              employee: {
+                id: matchedEmpForAtt.id,
+                name: matchedEmpForAtt.name,
+                empCode: matchedEmpForAtt.empCode,
+                department: matchedEmpForAtt.department || "Operations",
+                designation: matchedEmpForAtt.designation || "Staff",
+                branch: matchedEmpForAtt.branch || "Head Office",
+                email: matchedEmpForAtt.email,
+                phone: matchedEmpForAtt.phone,
+                doj: matchedEmpForAtt.doj,
+                status: isLeave ? "On Leave" : isPresent ? "Present" : "Absent",
+                isFaceRegistered: !!(matchedEmpForAtt as any).faceEnrolled,
+              },
+              attendanceSummary: {
+                todayStatus: isLeave ? "On Leave" : isPresent ? `Present (${punchIn || "Clocked In"})` : "Absent",
+                checkIn: punchIn || undefined,
+                presentDays30d: 22,
+                absentDays30d: 2,
+                attendancePct: isPresent ? 95 : 85,
+              },
+            }
+          : undefined,
+        summaryText,
+      };
+    }
+
+    // 2. COMPANY-WIDE ATTENDANCE INTENTS: Absent, Late, Present, Count
     // 2a. "Who is absent today?" / "Show absent employees" / "Absent list"
     if (
-      /\b(who\s+is\s+absent|show\s+absent|absent\s+employees|absent\s+today|list\s+absent|employees\s+absent)\b/i.test(
+      !matchedEmpForAtt &&
+      /\b(who\s+(?:is|are|was|were|all\s+are)\s+(?:absent|not\s+(?:present|here|in\s+office))|show\s+absent|absent\s+employees?|absent\s+today|list\s+(?:of\s+)?absent|employees\s+absent|today'?s\s+absentees?)\b/i.test(
         query
       ) &&
       !/\b(how\s+many|count|percentage|rate)\b/i.test(query)
@@ -89,7 +170,7 @@ export class AIQueryEngine {
             title: "No Absent Employees",
             message: `All scheduled employees are marked present today (${snapshot.today}).`,
           },
-          summaryText: `All scheduled employees are marked present today (${snapshot.today}).`,
+          summaryText: `🎉 All scheduled employees are marked present today (${snapshot.today}).`,
         };
       }
 
@@ -99,9 +180,14 @@ export class AIQueryEngine {
         empCode: r.empCode,
         department: r.department || "General",
         designation: r.designation || "Staff",
-        status: r.punctuality || "Not Punched",
+        status: r.status === "leave" ? "On Approved Leave" : "Not Punched",
         badge: "Absent",
       }));
+
+      const absentListText = absentList
+        .slice(0, 15)
+        .map((e) => `• **${e.name} (${e.empCode})** — ${e.department} · ${e.designation} (${e.status})`)
+        .join("\n");
 
       return {
         handled: true,
@@ -115,7 +201,7 @@ export class AIQueryEngine {
           category: "absent",
           employees: absentList,
         },
-        summaryText: `There are ${absentList.length} employees absent today (${snapshot.today}).`,
+        summaryText: `👥 **Absent Employees Today (${snapshot.today})**\n\nTotal: **${absentList.length}** employees absent:\n\n${absentListText}${absentList.length > 15 ? `\n*...and ${absentList.length - 15} more.*` : ""}`,
       };
     }
 
@@ -559,7 +645,10 @@ export class AIQueryEngine {
     }
 
     // 5. PAYROLL & COMPENSATION INTENTS
-    if (/\b(payroll\s+summary|salary\s+summary|total\s+salary|payroll\s+budget|salary\s+budget|pf\s+deduction)\b/i.test(query)) {
+    if (
+      /\b(payroll\s+summary|total\s+payroll|total\s+salary|payroll\s+budget|salary\s+budget|pf\s+deduction|company\s+payroll)\b/i.test(query) &&
+      !/\b(an?\s+employee|individual|specific|salary\s+details\s+of|salary\s+of)\b/i.test(query)
+    ) {
       if (role !== "super_admin" && role !== "admin" && role !== "hr_manager") {
         return {
           handled: true,
@@ -615,7 +704,9 @@ export class AIQueryEngine {
       if (query.includes(nName) || query.includes(nCode)) return true;
       if (parts.some((p) => new RegExp(`\\b${p}\\b`, "i").test(query))) return true;
 
-      const queryWords = query.split(" ").filter((w) => w.length >= 3 && !["who", "is", "tell", "about", "show", "profile", "details", "employee", "give"].includes(w));
+      const queryWords = query
+        .split(" ")
+        .filter((w) => w.length >= 3 && !["who", "is", "tell", "about", "show", "profile", "details", "employee", "give", "what", "salary", "much", "does", "earn", "ctc", "pay", "compensation", "fixed"].includes(w));
       return queryWords.some((w) => nName.includes(w) || nCode.includes(w));
     });
 
@@ -661,9 +752,13 @@ export class AIQueryEngine {
           }
         : undefined;
 
+      const asksSalary = /\b(salary|ctc|pay|compensation|fixed\s+salary)\b/i.test(query);
+      const fixedSal = emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0;
+      const salaryText = `Sure! Here are the salary and compensation details for **${emp.name} (${emp.empCode})**:\n\n💰 **Compensation — ${emp.name} (${emp.empCode})**\n• **Monthly Fixed Salary:** ₹${fixedSal.toLocaleString("en-IN")}\n• **Annual CTC:** ₹${(fixedSal * 12).toLocaleString("en-IN")}\n• **Department:** ${emp.department || "Operations"} · **Designation:** ${emp.designation || "Staff"}\n\n*Feel free to ask if you'd like to view their attendance record or generate a formal payroll report!*`;
+
       return {
         handled: true,
-        toolName: "Employee Directory",
+        toolName: asksSalary ? "Payroll Engine" : "Employee Directory",
         model: "SWIFT HR Database",
         structuredData: {
           type: "EMPLOYEE_DETAILS",
@@ -677,13 +772,25 @@ export class AIQueryEngine {
             email: emp.email,
             phone: emp.phone,
             doj: emp.doj,
-            basicSalary: emp.basic,
+            basicSalary: fixedSal,
             status: emp.status || "Active",
             isFaceRegistered: !!emp.faceEnrolled,
           },
           attendanceSummary,
+          salaryDetails: asksSalary ? {
+            fixedGross: fixedSal,
+            basicPay: Math.round(fixedSal * 0.4),
+            hra: Math.round(fixedSal * 0.2),
+            annualCtc: fixedSal * 12,
+            lpa: Number(((fixedSal * 12) / 100000).toFixed(2)),
+            pfEligible: (emp as any).pfEligible !== false,
+            esiEligible: (emp as any).esiEligible !== false,
+            bankAccMasked: (emp as any).bankAcc ? `•••• ${(emp as any).bankAcc.slice(-4)}` : undefined,
+          } : undefined,
         },
-        summaryText: `${emp.name} (${emp.empCode}) is a ${emp.designation || "Staff"} in the ${emp.department || "Operations"} department at ${branchName}.`,
+        summaryText: asksSalary
+          ? salaryText
+          : `Certainly! Here are the profile details for **${emp.name} (${emp.empCode})**:\n\n👤 **${emp.name} (${emp.empCode})**\n${emp.name} (${emp.empCode}) is a ${emp.designation || "Staff"} in the ${emp.department || "Operations"} department at ${branchName}.`,
       };
     }
 

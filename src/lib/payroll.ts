@@ -121,7 +121,7 @@ function evalEarning(
       return asNum(map[c.inputKey || c.id]);
     }
     case "pctOfCtc": {
-      const ctcMonthly = (employee.basic || 0) * (c.value / 100);
+      const ctcMonthly = (employee.fixedSalary ?? employee.basic ?? employee.salary ?? 0) * (c.value / 100);
       return ctcMonthly * prorateFactor;
     }
     default:
@@ -205,8 +205,9 @@ export function computePayroll(opts: {
   const prorateFactor = wd > 0 ? paidDays / wd : 1;
 
   // The employee's monthly fixed gross salary (e.g. ₹25,000 or ₹30,000)
-  const fixedGross = e.basic || 30000;
-  const hourly = fixedGross / (wd * (c.workingHoursPerDay || 8));
+  const rawGross = e.fixedSalary ?? e.basic ?? e.salary ?? 0;
+  const fixedGross = typeof rawGross === "number" && !isNaN(rawGross) ? rawGross : 0;
+  const hourly = wd > 0 && (c.workingHoursPerDay || 8) > 0 && fixedGross > 0 ? fixedGross / (wd * (c.workingHoursPerDay || 8)) : 0;
 
   // 1. Resolve Salary Structure Components according to Company Master & Toggles
   // Merged Basic + DA (Core Mandatory Wage Head)
@@ -640,7 +641,8 @@ export function explainPayroll(company: Company, employee: Employee, p: PayrollC
   const out: { id: string; text: string }[] = [];
   const wd = c.workingDaysPerMonth || 26;
 
-  out.push({ id: "basic", text: `Basic = ₹${Math.round(employee.basic).toLocaleString("en-IN")} × days worked ÷ ${wd} working days.` });
+  const baseSalary = employee.fixedSalary ?? employee.basic ?? 0;
+  out.push({ id: "basic", text: `Basic = ₹${Math.round(baseSalary).toLocaleString("en-IN")} × days worked ÷ ${wd} working days.` });
 
   for (const row of p.earningsList) {
     if (row.id === "basic") continue;
@@ -696,3 +698,86 @@ export const inr = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(
     Math.round(n)
   );
+
+export interface MonthlyAttendanceSummary {
+  monthAtt: any[];
+  daysPresent: number;
+  daysHalf: number;
+  daysLeave: number;
+  daysAbsent: number;
+  rawPresentDays: number;
+  basePresentDays: number;
+}
+
+/**
+ * Authoritative monthly attendance aggregation for payroll calculations.
+ * - Handles case-insensitive status matching ("present", "Present", "half-day", "Half-Day", "leave").
+ * - Filters out future date records when computing current ongoing month.
+ * - Deduplicates multi-punch / multiple records on the same calendar day for an employee.
+ */
+export function computeMonthlyAttendanceSummary(
+  attendance: any[],
+  emp: { id: string; name?: string; empCode?: string },
+  selectedMonth: string,
+  customRange?: { start?: string; end?: string }
+): MonthlyAttendanceSummary {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const currentMonth = todayStr.slice(0, 7);
+
+  const rawAtt = (attendance || []).filter((a) => {
+    if (!a || !a.date) return false;
+    const matchesEmp =
+      a.employeeId === emp.id ||
+      (emp.name && a.employeeName === emp.name) ||
+      (emp.empCode && a.empCode === emp.empCode);
+    if (!matchesEmp) return false;
+
+    if (customRange?.start && customRange?.end) {
+      return a.date >= customRange.start && a.date <= customRange.end;
+    }
+
+    if (!a.date.startsWith(selectedMonth)) return false;
+    // Disallow future date attendance records for current ongoing month
+    if (selectedMonth === currentMonth && a.date > todayStr) return false;
+    return true;
+  });
+
+  // Deduplicate by date for each employee (priority: present > half-day > leave > absent)
+  const dateMap = new Map<string, any>();
+  rawAtt.forEach((rec) => {
+    const existing = dateMap.get(rec.date);
+    if (!existing) {
+      dateMap.set(rec.date, rec);
+    } else {
+      const sOld = (existing.status || "").toLowerCase().trim();
+      const sNew = (rec.status || "").toLowerCase().trim();
+      const priority = (s: string) => (s === "present" ? 3 : s.startsWith("half") ? 2 : s === "leave" ? 1 : 0);
+      if (priority(sNew) > priority(sOld)) {
+        dateMap.set(rec.date, rec);
+      }
+    }
+  });
+
+  const monthAtt = Array.from(dateMap.values());
+
+  const daysPresent = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "present").length;
+  const daysHalf = monthAtt.filter((a) => {
+    const s = (a.status || "").toLowerCase().trim();
+    return s === "half-day" || s === "half_day" || s === "halfday";
+  }).length;
+  const daysLeave = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "leave").length;
+  const daysAbsent = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "absent").length;
+  const rawPresentDays = daysPresent + daysHalf * 0.5;
+  const basePresentDays = rawPresentDays + daysLeave;
+
+  return {
+    monthAtt,
+    daysPresent,
+    daysHalf,
+    daysLeave,
+    daysAbsent,
+    rawPresentDays,
+    basePresentDays,
+  };
+}
+

@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Company, Employee, AttendanceRecord } from "./store";
-import { computePayroll } from "./payroll";
+import { computePayroll, computeMonthlyAttendanceSummary } from "./payroll";
 
 function autoFitColumns(rows: any[][]): { wch: number }[] {
   if (!rows || rows.length === 0) return [];
@@ -185,17 +185,9 @@ export function downloadWageRegisterExcel({
     const permanentAddress = emp.addressLine2 || emp.addressLine1 || emp.address || emp.city || "—";
 
     // Attendance computation for employee in selectedMonth
-    const empAtt = attendance.filter(
-      (a) =>
-        (a.employeeId === emp.id || a.employeeName === emp.name || (emp.empCode && a.empCode === emp.empCode)) &&
-        a.date &&
-        a.date.startsWith(selectedMonth)
-    );
-
-    const daysPresent = empAtt.filter((a) => a.status === "present").length;
-    const daysHalf = empAtt.filter((a) => a.status === "half-day" || a.status === "halfday").length;
-    const daysLeave = empAtt.filter((a) => a.status === "leave").length;
-    const workedDays = daysPresent + daysHalf * 0.5;
+    const attSummary = computeMonthlyAttendanceSummary(attendance, emp, selectedMonth);
+    const empAtt = attSummary.monthAtt;
+    const { daysPresent, daysHalf, daysLeave, rawPresentDays: workedDays } = attSummary;
 
     // Check for late punch hours
     const latePunchMinutes = empAtt.reduce((sum, a) => sum + (Number(a.lateBy) || 0), 0);
@@ -229,9 +221,9 @@ export function downloadWageRegisterExcel({
     const ncpDays = absentDays;
 
     // Salary & Pay Slab
-    const fixedSalary = ov.customBasic ? ov.customBasic : (emp.fixedSalary ?? emp.basic ?? 25000);
-    const paySlab = Math.round(fixedSalary / workingDaysBase);
-    const perHrAmt = Math.round(paySlab / stdWorkingHours);
+    const fixedSalary = ov.customBasic !== undefined ? ov.customBasic : (emp.fixedSalary ?? emp.basic ?? 0);
+    const paySlab = workingDaysBase > 0 ? Math.round(fixedSalary / workingDaysBase) : 0;
+    const perHrAmt = stdWorkingHours > 0 ? Math.round(paySlab / stdWorkingHours) : 0;
     const latePunchingAmt = Math.round(latePunchHours * perHrAmt);
 
     // Compute Payroll using company rules and overrides
@@ -343,7 +335,9 @@ export function downloadWageRegisterExcel({
     const effectiveVariablePay = ov.variablePay !== undefined ? ov.variablePay : 0;
     const effectiveOtherEarnings = ov.otherEarnings !== undefined ? ov.otherEarnings : 0;
 
-    const effectiveEmp = ov.customBasic ? { ...emp, basic: ov.customBasic } : { ...emp, basic: fixedSalary };
+    const effectiveEmp = ov.customBasic !== undefined
+      ? { ...emp, basic: ov.customBasic, fixedSalary: ov.customBasic }
+      : { ...emp, basic: fixedSalary, fixedSalary: fixedSalary };
 
     const comp = computePayroll({
       company: effectiveCompany,

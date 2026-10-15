@@ -653,10 +653,9 @@ function RolesAndResponsibilitiesPage() {
 
               {/* Tabs Navigation */}
               <Tabs value={activeModalTab} onValueChange={setActiveModalTab} className="pt-3">
-                <TabsList className="grid grid-cols-3 w-full max-w-md">
+                <TabsList className="grid grid-cols-2 w-full max-w-sm">
                   <TabsTrigger value="profile">Profile & Scope</TabsTrigger>
                   <TabsTrigger value="permissions">Side Panel & CRUD</TabsTrigger>
-                  <TabsTrigger value="documents">Doc Approvals</TabsTrigger>
                 </TabsList>
               </Tabs>
             </DialogHeader>
@@ -876,49 +875,6 @@ function RolesAndResponsibilitiesPage() {
                 </div>
               )}
 
-              {/* TAB 3: Document Approvals */}
-              {activeModalTab === "documents" && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-card border border-border">
-                    <h4 className="font-semibold text-sm mb-1">Employment Document Generation Rights</h4>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      Select which official company letters and certificates this position is authorized to draft and approve.
-                    </p>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {Object.keys(defaultDocPermissions).map((docKey) => {
-                        const key = docKey as keyof DocumentPermissionTypes;
-                        const isEnabled = !!permissions.documentTypes?.[key];
-
-                        return (
-                          <div
-                            key={key}
-                            onClick={() => {
-                              setPermissions((prev) => ({
-                                ...prev,
-                                documentTypes: {
-                                  ...prev.documentTypes,
-                                  [key]: !prev.documentTypes[key],
-                                },
-                              }));
-                            }}
-                            className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                              isEnabled
-                                ? "bg-primary/5 border-primary/40 text-foreground"
-                                : "bg-card border-border text-muted-foreground opacity-70"
-                            }`}
-                          >
-                            <span className="text-sm font-medium capitalize">
-                              {key.replace(/([A-Z])/g, " $1")}
-                            </span>
-                            <Checkbox checked={isEnabled} />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             <DialogFooter className="p-4 border-t border-border shrink-0 flex items-center justify-between">
@@ -929,11 +885,6 @@ function RolesAndResponsibilitiesPage() {
                 {activeModalTab === "profile" && (
                   <Button type="button" onClick={() => setActiveModalTab("permissions")}>
                     Next: Set Permissions <ArrowRight className="h-4 w-4 ml-1" />
-                  </Button>
-                )}
-                {activeModalTab === "permissions" && (
-                  <Button type="button" onClick={() => setActiveModalTab("documents")}>
-                    Next: Document Rights <ArrowRight className="h-4 w-4 ml-1" />
                   </Button>
                 )}
                 <Button type="submit" className="bg-gradient-brand text-white shadow-soft">
