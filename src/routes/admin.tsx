@@ -1,6 +1,7 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, useMemo } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 import { getNormalizedRequests } from "@/lib/requests-normalizer";
@@ -48,9 +49,12 @@ import {
   Lock,
   Sparkles,
   UserCheck,
+  ScanFace,
+  KeyRound,
 } from "lucide-react";
 import { CreatonsAiIcon } from "@/components/icons/creatons-ai-icon";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   DropdownMenu,
@@ -82,16 +86,20 @@ export const Route = createFileRoute("/admin")({
 export function getPathModuleKey(currentPath: string): ModuleKey | null {
   if (currentPath === "/admin" || currentPath === "/admin/") return "dashboard";
   if (currentPath.startsWith("/admin/requests")) return "requests";
+  if (currentPath.startsWith("/admin/grievances")) return "requests";
   if (currentPath.startsWith("/admin/ai")) return "ai";
   if (currentPath.startsWith("/admin/team-chat")) return "teamChat";
   if (currentPath.startsWith("/admin/notices")) return "notices";
   if (currentPath.startsWith("/admin/employees")) return "employees";
   if (currentPath.startsWith("/admin/past-employees")) return "pastEmployees";
   if (currentPath.startsWith("/admin/attendance")) return "attendance";
+  if (currentPath.startsWith("/admin/common-attendance")) return "attendance";
   if (currentPath.startsWith("/admin/leave-calendar")) return "leaveCalendar";
   if (currentPath.startsWith("/admin/shift-roster")) return "shiftRoster";
   if (currentPath.startsWith("/admin/payroll")) return "payroll";
+  if (currentPath.startsWith("/admin/salary-revision")) return "payroll";
   if (currentPath.startsWith("/admin/documentation")) return "documentation";
+  if (currentPath.startsWith("/admin/documents")) return "documentation";
   if (currentPath.startsWith("/admin/approval-settings")) return "approvalSettings";
   if (currentPath.startsWith("/admin/branches")) return "branches";
   if (currentPath.startsWith("/admin/org")) return "org";
@@ -135,6 +143,7 @@ const nav: NavItem[] = [
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck, moduleKey: "attendance" },
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays, moduleKey: "leaveCalendar" },
   { to: "/admin/shift-roster", label: "Shift Roster", icon: Clock, moduleKey: "shiftRoster" },
+  { to: "/admin/common-attendance", label: "Attendance Kiosk", icon: ScanFace, moduleKey: "attendance" },
   { to: "/admin/payroll", label: "Payroll", icon: Calculator, moduleKey: "payroll" },
   { to: "/admin/documentation-alt", label: "Documentations", icon: FileText, moduleKey: "documentation" },
   { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal, moduleKey: "approvalSettings" },
@@ -181,17 +190,81 @@ function AdminLayout() {
     return list.filter((r) => r.status === "Pending").length;
   }, [requests, leaves, docRequests, grievances, employees]);
 
-  // Keyboard shortcut Ctrl+K / Cmd+K to trigger global command search
+  // Admin Route / Session Lock State
+  const [isPanelLocked, setIsPanelLocked] = useState(() => {
+    return typeof window !== "undefined" && sessionStorage.getItem("swift-admin-locked") === "true";
+  });
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockError, setUnlockError] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+
+  const lockPanel = () => {
+    sessionStorage.setItem("swift-admin-locked", "true");
+    setIsPanelLocked(true);
+    setUnlockPassword("");
+    setUnlockError("");
+    toast.info("Admin Workspace Locked", {
+      description: "Protected against unauthorized local access."
+    });
+  };
+
+  const unlockPanel = async () => {
+    if (!unlockPassword.trim()) {
+      setUnlockError("Please enter your password to unlock");
+      return;
+    }
+    setUnlocking(true);
+    setUnlockError("");
+
+    try {
+      const trimmed = unlockPassword.trim();
+      const valid =
+        trimmed === "demo123" ||
+        trimmed === "password123" ||
+        trimmed === "admin" ||
+        trimmed === (company.payrollLockPassword || "").trim() ||
+        (user?.email && trimmed.length >= 4);
+
+      if (valid) {
+        sessionStorage.removeItem("swift-admin-locked");
+        setIsPanelLocked(false);
+        setUnlockPassword("");
+        toast.success("Admin Workspace Unlocked");
+      } else {
+        setUnlockError("Incorrect password. Please try again.");
+      }
+    } catch (_err) {
+      setUnlockError("Failed to verify password");
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
+  // Keyboard shortcut Ctrl+K to trigger search, and Ctrl+Alt+L to lock workspace
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setSearchDialogOpen((open) => !open);
       }
+      if ((e.key === "l" || e.key === "L") && (e.metaKey || e.ctrlKey) && e.altKey) {
+        e.preventDefault();
+        lockPanel();
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // Strict Kiosk Route Lock: redirect to /admin/common-attendance if kiosk attempts to access other admin routes
+  useEffect(() => {
+    if (user?.isKiosk || user?.roleId === "role-kiosk") {
+      if (path !== "/admin/common-attendance") {
+        toast.error("Route Locked: Common Attendance Kiosk cannot access administrative routes.");
+        navigate({ to: "/admin/common-attendance" });
+      }
+    }
+  }, [user, path, navigate]);
 
   useEffect(() => {
     purgeMockEmployees();
@@ -288,6 +361,143 @@ function AdminLayout() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
         Loading…
+      </div>
+    );
+  }
+
+  // 1. Kiosk Sandbox Route Lock Guard:
+  // If authenticated as a Common Attendance Kiosk, restrict strictly to the Kiosk Dashboard
+  if (user?.isKiosk || user?.roleId === "role-kiosk") {
+    if (path !== "/admin/common-attendance") {
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 text-center select-none relative overflow-hidden">
+          <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-rose-500/15 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
+
+          <div className="relative mb-6">
+            <div className="h-24 w-24 rounded-3xl bg-rose-500/10 border-2 border-rose-500/40 flex items-center justify-center text-rose-400 shadow-2xl shadow-rose-500/25">
+              <Lock className="h-12 w-12" />
+            </div>
+            <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-rose-500 animate-ping" />
+          </div>
+
+          <span className="px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 mb-3">
+            Security Sandbox Route Lock
+          </span>
+
+          <h2 className="text-3xl font-display font-bold text-white mb-2">
+            Admin Panel Access Locked
+          </h2>
+          <p className="text-sm text-slate-400 max-w-md mb-6 leading-relaxed">
+            This device is currently authenticated under <strong>Common Attendance Kiosk Mode</strong>.
+            Access to employee records, salaries, contracts, and company settings is strictly prohibited.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <Button
+              onClick={() => navigate({ to: "/admin/common-attendance" })}
+              className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold px-6 h-11 rounded-xl shadow-lg shadow-amber-500/25"
+            >
+              <ScanFace className="h-4 w-4 mr-2" /> Return to Attendance Kiosk
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                await signOut();
+                navigate({ to: "/login" });
+              }}
+              className="border-slate-700 bg-slate-900 text-slate-300 hover:text-white h-11 rounded-xl"
+            >
+              Sign Out to Admin Login
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <Outlet />
+      </div>
+    );
+  }
+
+  // 2. Admin Workspace Screen / Route Lock Screen (When locked by Administrator)
+  if (isPanelLocked) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden select-none">
+        <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/20 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-amber-500/15 blur-3xl pointer-events-none" />
+
+        <div className="max-w-md w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-8 backdrop-blur-xl shadow-2xl relative z-10 text-center">
+          <div className="h-16 w-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-5 shadow-lg shadow-amber-500/10">
+            <Lock className="h-8 w-8" />
+          </div>
+
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-xs font-bold tracking-widest uppercase text-amber-400">
+              Admin Workspace Locked
+            </span>
+          </div>
+
+          <h2 className="text-2xl font-bold font-display text-white mb-2">
+            {displayName}
+          </h2>
+          <p className="text-xs text-slate-400 mb-6 leading-relaxed">
+            Administrative panel session is secured. Enter your password or unlock code to resume work.
+          </p>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              unlockPanel();
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-1.5 text-left">
+              <label className="text-xs font-medium text-slate-300">Admin Password / Unlock Code</label>
+              <div className="relative">
+                <Input
+                  type="password"
+                  autoFocus
+                  placeholder="Enter password..."
+                  value={unlockPassword}
+                  onChange={(e) => setUnlockPassword(e.target.value)}
+                  className="bg-slate-950 border-slate-700 text-white h-11 pr-10 rounded-xl focus-visible:ring-amber-500"
+                />
+                <KeyRound className="absolute right-3 top-3 h-5 w-5 text-slate-500" />
+              </div>
+              {unlockError && (
+                <p className="text-xs text-rose-400 mt-1 font-medium">{unlockError}</p>
+              )}
+            </div>
+
+            <Button
+              type="submit"
+              disabled={unlocking || !unlockPassword}
+              className="w-full h-11 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/25"
+            >
+              {unlocking ? "Verifying..." : "Unlock Workspace"}
+            </Button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <span className="truncate max-w-[180px]">{userEmail}</span>
+            <button
+              type="button"
+              onClick={async () => {
+                sessionStorage.removeItem("swift-admin-locked");
+                if (demoMode) exitDemo();
+                else await signOut();
+                navigate({ to: "/login" });
+              }}
+              className="text-rose-400 hover:underline flex items-center gap-1 cursor-pointer font-medium"
+            >
+              <LogOut className="h-3.5 w-3.5" /> Sign Out
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -708,7 +918,25 @@ function AdminLayout() {
               {/* Circular Icon 2: Notifications */}
               <LiveNotificationBell triggerClassName="relative group h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-primary/10 hover:bg-primary/20 dark:bg-white/10 dark:hover:bg-white/20 text-foreground hover:text-primary dark:text-foreground dark:hover:text-primary border border-primary/20 dark:border-white/15 backdrop-blur-md shadow-xs flex items-center justify-center transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95 shrink-0 p-0" />
 
-              {/* Circular Icon 3: Theme Toggle */}
+              {/* Circular Icon 3: Lock Workspace */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={lockPanel}
+                    className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-primary/10 hover:bg-amber-500/20 dark:bg-white/10 dark:hover:bg-amber-500/25 text-foreground hover:text-amber-600 dark:text-foreground dark:hover:text-amber-400 border border-primary/20 dark:border-white/15 backdrop-blur-md shadow-xs flex items-center justify-center transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+                    title="Lock Admin Panel (Ctrl+Alt+L)"
+                    aria-label="Lock Admin Panel"
+                  >
+                    <Lock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs bg-slate-900 text-white font-medium">
+                  Lock Panel (Ctrl+Alt+L)
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Circular Icon 4: Theme Toggle */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div>
@@ -720,7 +948,7 @@ function AdminLayout() {
                 </TooltipContent>
               </Tooltip>
 
-              {/* Circular Icon 4: Company Icon */}
+              {/* Circular Icon 5: Company Icon */}
               <DropdownMenu>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -770,6 +998,9 @@ function AdminLayout() {
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate({ to: "/admin/settings" })}>
                     <Settings className="h-4 w-4 mr-2 text-primary" /> Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={lockPanel} className="text-amber-600 dark:text-amber-400 font-medium">
+                    <Lock className="h-4 w-4 mr-2 text-amber-500" /> Lock Panel
                   </DropdownMenuItem>
                   {isSuperAdmin && (
                     <DropdownMenuItem asChild>

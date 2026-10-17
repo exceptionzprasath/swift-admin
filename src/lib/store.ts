@@ -506,6 +506,16 @@ export type Company = {
   documentTypes?: DocumentTypeItem[];
   approvalWorkflows?: any;
   dashboardBanners?: DashboardBannerConfig;
+  commonPortal?: {
+    enabled: boolean;
+    username?: string;
+    password?: string;
+    portalTitle?: string;
+    requireFaceMatch?: boolean;
+  };
+  commonPortalEnabled?: boolean;
+  commonPortalUsername?: string;
+  commonPortalPassword?: string;
 };
 
 export type DashboardBannerItem = {
@@ -1588,6 +1598,16 @@ HR Department
       },
     ],
   },
+  commonPortal: {
+    enabled: true,
+    username: "kiosk@creatonshr.com",
+    password: "kiosk123",
+    portalTitle: "CreatonsHR Attendance Kiosk",
+    requireFaceMatch: true,
+  },
+  commonPortalEnabled: true,
+  commonPortalUsername: "kiosk@creatonshr.com",
+  commonPortalPassword: "kiosk123",
 };
 
 function buildDemoData() {
@@ -2834,6 +2854,16 @@ export const useStore = create<State>()(
       setTheme: (t) => {
         applyThemePalette(get().company?.themePalette || "copper-wave", t === "dark");
         set({ theme: t });
+        if (typeof window !== "undefined") {
+          try {
+            const bc = new BroadcastChannel("swift-theme-sync");
+            bc.postMessage({ theme: t, paletteId: get().company?.themePalette });
+            bc.close();
+          } catch (_e) {}
+          try {
+            localStorage.setItem("swift-theme-broadcast", `${Date.now()}_${t}`);
+          } catch (_e) {}
+        }
       },
       setThemePalette: (paletteId) => {
         const isDark = get().theme === "dark";
@@ -2846,6 +2876,16 @@ export const useStore = create<State>()(
           }
           return { company: nextCompany };
         });
+        if (typeof window !== "undefined") {
+          try {
+            const bc = new BroadcastChannel("swift-theme-sync");
+            bc.postMessage({ theme: get().theme, paletteId });
+            bc.close();
+          } catch (_e) {}
+          try {
+            localStorage.setItem("swift-theme-broadcast", `${Date.now()}_${paletteId}`);
+          } catch (_e) {}
+        }
       },
       setCompany: (c) =>
         set((s) => {

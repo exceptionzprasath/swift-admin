@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { Loader2, Sparkles, ShieldCheck, User as UserIcon, Crown } from "lucide-react";
+import { Loader2, Sparkles, ShieldCheck, User as UserIcon, Crown, ScanFace } from "lucide-react";
 
 
 type SearchParams = {
@@ -81,6 +81,10 @@ function LoginPage() {
   useEffect(() => {
     if (loading || impersonateTenantId) return;
     if (user) {
+      if (user.isKiosk || user.roleId === "role-kiosk") {
+        nav({ to: "/admin/common-attendance" });
+        return;
+      }
       if (isSuperAdmin) {
         toast.error("Super Admins belong on the Super Admin Console. Redirecting...");
         setTimeout(() => {
@@ -109,9 +113,15 @@ function LoginPage() {
     setBusy(true);
     try {
       await authSignIn(email, "admin", password);
-      toast.success("Welcome back");
-      await refresh();
-      nav({ to: "/admin" });
+      const currentUser = useAuth.getState().user;
+      if (currentUser?.isKiosk || currentUser?.roleId === "role-kiosk" || email.toLowerCase().includes("kiosk")) {
+        toast.success("Signed in to Common Attendance Kiosk");
+        nav({ to: "/admin/common-attendance" });
+      } else {
+        toast.success("Welcome back");
+        await refresh();
+        nav({ to: "/admin" });
+      }
     } catch (e: any) {
       toast.error(e.message ?? "Sign-in failed");
     } finally {
@@ -175,12 +185,40 @@ function LoginPage() {
               />
             </div>
             <Button
-              className="w-full h-11 bg-gradient-brand text-white shadow-glow hover:opacity-95"
+              className="w-full h-11 bg-gradient-brand text-white shadow-glow hover:opacity-95 font-semibold"
               onClick={handleSignIn}
               disabled={busy}
             >
               {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Sign in to Workspace
+            </Button>
+
+            <div className="relative my-3 flex items-center justify-center">
+              <div className="border-t border-border w-full absolute" />
+              <span className="bg-background px-3 text-[11px] text-muted-foreground uppercase font-semibold relative z-10">
+                Or Biometric Punch
+              </span>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-11 border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold flex items-center justify-center gap-2 rounded-xl transition-all shadow-xs"
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await authSignIn("kiosk@creatonshr.com", "employee", "kiosk123");
+                  toast.success("Opening Common Face Attendance Kiosk...");
+                  nav({ to: "/admin/common-attendance" });
+                } catch {
+                  nav({ to: "/admin/common-attendance" });
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <ScanFace className="h-4 w-4 text-amber-500 shrink-0" />
+              <span>Face Attendance Kiosk (Check-In / Out)</span>
             </Button>
           </div>
 
@@ -252,6 +290,21 @@ function LoginPage() {
                 }}
               >
                 <ShieldCheck className="h-3.5 w-3.5 mr-1.5 text-purple-500" /> Full Admin Demo
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 text-xs border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/5 hover:bg-amber-500/10 justify-start col-span-2"
+                onClick={() => {
+                  setEmail("kiosk@creatonshr.com");
+                  setPassword("kiosk123");
+                  authSignIn("kiosk@creatonshr.com", "employee", "kiosk123").then(() => {
+                    toast.success("Signed in to Common Attendance Kiosk");
+                    nav({ to: "/admin/common-attendance" });
+                  });
+                }}
+              >
+                <ScanFace className="h-3.5 w-3.5 mr-1.5 text-amber-500" /> Common Kiosk Portal (kiosk@creatonshr.com)
               </Button>
             </div>
           </div>
