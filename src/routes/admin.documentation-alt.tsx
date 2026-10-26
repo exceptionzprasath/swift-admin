@@ -96,6 +96,8 @@ import {
   Zap,
   Network,
   Info,
+  GripVertical,
+  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -240,11 +242,14 @@ export default function DigitalDocumentationPage() {
   );
 
   function handleAddApproverStep() {
+    const defaultEmp = employees[0];
     const newStep: ApprovalStepItem = {
       id: `s-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      category: "role",
-      roleType: "HR Manager",
-      approverRoleOrName: "HR Manager",
+      category: "employee",
+      roleType: defaultEmp?.designation || "Employee",
+      approverEmployeeId: defaultEmp?.id,
+      employeeSelectionMode: "single",
+      approverRoleOrName: defaultEmp ? `Employee: ${defaultEmp.name}` : "Employee",
       order: approvers.length + 1,
       status: "pending",
       requireSignature: true,
@@ -419,6 +424,69 @@ export default function DigitalDocumentationPage() {
     if (!hierarchyTargetEmployee) return [];
     return getUpwardHierarchyChain(hierarchyTargetEmployee, employees, true);
   }, [hierarchyTargetEmployee, employees]);
+
+  // Multi-Stage Approval Hierarchy Options: "auto" | "manual"
+  const [approvalHierarchyType, setApprovalHierarchyType] = useState<"auto" | "manual">("manual");
+  const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
+  const [dragOverStepIndex, setDragOverStepIndex] = useState<number | null>(null);
+  const [draggedEmployeeId, setDraggedEmployeeId] = useState<string | null>(null);
+  const [isBottomDropActive, setIsBottomDropActive] = useState(false);
+  const [empPaletteSearch, setEmpPaletteSearch] = useState("");
+  const [empPaletteDept, setEmpPaletteDept] = useState("ALL");
+
+  const employeeDepartments = useMemo(() => {
+    const set = new Set<string>();
+    employees.forEach((e) => {
+      if (e.department) set.add(e.department);
+    });
+    return Array.from(set);
+  }, [employees]);
+
+  const paletteFilteredEmployees = useMemo(() => {
+    const q = empPaletteSearch.toLowerCase().trim();
+    return employees.filter((e) => {
+      const matchDept = empPaletteDept === "ALL" || e.department === empPaletteDept;
+      const matchSearch =
+        !q ||
+        e.name.toLowerCase().includes(q) ||
+        e.empCode.toLowerCase().includes(q) ||
+        (e.designation && e.designation.toLowerCase().includes(q)) ||
+        (e.department && e.department.toLowerCase().includes(q));
+      return matchDept && matchSearch;
+    });
+  }, [employees, empPaletteSearch, empPaletteDept]);
+
+  function handleAddEmployeeAsStep(emp: Employee, targetIndex?: number) {
+    const newStep: ApprovalStepItem = {
+      id: `emp-step-${emp.id}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      category: "employee",
+      roleType: emp.designation || "Employee Approver",
+      approverEmployeeId: emp.id,
+      employeeSelectionMode: "single",
+      approverRoleOrName: `${emp.name} (${emp.designation || "Approver"})`,
+      order: (targetIndex !== undefined ? targetIndex : approvers.length) + 1,
+      status: "pending",
+      requireSignature: true,
+    };
+
+    const updated = [...approvers];
+    if (targetIndex !== undefined && targetIndex >= 0 && targetIndex <= updated.length) {
+      updated.splice(targetIndex, 0, newStep);
+    } else {
+      updated.push(newStep);
+    }
+    setApprovers(updated.map((s, i) => ({ ...s, order: i + 1 })));
+    toast.success(`🎯 Added ${emp.name} to approval hierarchy in real-time!`);
+  }
+
+  function handleReorderSteps(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex || toIndex < 0 || toIndex >= approvers.length) return;
+    const updated = [...approvers];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    setApprovers(updated.map((s, i) => ({ ...s, order: i + 1 })));
+    toast.success(`Reordered approval step to Stage ${toIndex + 1}`);
+  }
 
   // Preloaded Signatures from Settings / docAssets
   const PRELOADED_SIGNATURES = useMemo(
@@ -1755,7 +1823,7 @@ export default function DigitalDocumentationPage() {
                 {escalationEnabled ? (
                   <div className="space-y-3 text-xs">
                     <div className="space-y-1.5">
-                      <Label className="text-[11px] text-muted-foreground font-semibold">Level 1 Escalation Trigger</Label>
+                      <Label className="text-[11px] text-muted-foreground font-semibold">Escalation Trigger</Label>
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">Escalate after</span>
                         <Input
@@ -1766,47 +1834,8 @@ export default function DigitalDocumentationPage() {
                           onChange={(e) => setEscalationDelay(Number(e.target.value))}
                           className="h-8 w-16 text-center text-xs"
                         />
-                        <span className="text-muted-foreground">days without action to:</span>
+                        <span className="text-muted-foreground">days without action</span>
                       </div>
-                    </div>
-
-                    <Select value={escalationTarget} onValueChange={setEscalationTarget}>
-                      <SelectTrigger className="text-xs h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="text-xs">
-                        <SelectItem value="HR Head">HR Head (Priya Kumar)</SelectItem>
-                        <SelectItem value="Director">Director / Board Signatory</SelectItem>
-                        <SelectItem value="CEO / Super Admin">CEO / Super Admin</SelectItem>
-                        {roles?.map((r) => (
-                          <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <div className="pt-2 border-t border-border">
-                      <label className="flex items-center gap-2 cursor-pointer text-[11px] text-muted-foreground">
-                        <Checkbox
-                          checked={secondEscalationEnabled}
-                          onCheckedChange={(c) => setSecondEscalationEnabled(!!c)}
-                        />
-                        <span>Enable Level 2 Escalation Chain</span>
-                      </label>
-
-                      {secondEscalationEnabled && (
-                        <div className="mt-2 space-y-2 pl-4 border-l-2 border-primary/30 animate-in fade-in-50">
-                          <div className="flex items-center gap-2 text-[11px]">
-                            <span>After additional +</span>
-                            <Input
-                              type="number"
-                              value={secondEscalationDelay}
-                              onChange={(e) => setSecondEscalationDelay(Number(e.target.value))}
-                              className="h-7 w-12 text-center text-xs"
-                            />
-                            <span>days → Escalate to Director / Board</span>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 ) : (
@@ -1845,24 +1874,37 @@ export default function DigitalDocumentationPage() {
                   </div>
 
                   {approvalRequired && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 p-1 bg-muted/70 border border-border rounded-xl shadow-xs">
                       <Button
                         type="button"
                         size="sm"
-                        variant="outline"
-                        onClick={handleOpenAutoHierarchyModal}
-                        className="border-primary/40 text-primary bg-primary/5 hover:bg-primary hover:text-white text-xs font-semibold rounded-xl shadow-xs gap-1.5 h-9"
-                        title="Automatically generate approval pipeline from Organization Tree Structure"
+                        variant={approvalHierarchyType === "auto" ? "default" : "ghost"}
+                        onClick={() => {
+                          setApprovalHierarchyType("auto");
+                          handleApplyAutoHierarchy(hierarchyTargetEmployee);
+                        }}
+                        className={`text-xs font-bold rounded-lg h-8 gap-1.5 transition-all ${
+                          approvalHierarchyType === "auto"
+                            ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        title="Automatically calculate approval hierarchy from Organization Tree Structure"
                       >
                         <Network className="h-3.5 w-3.5" /> Auto Hierarchy
                       </Button>
                       <Button
                         type="button"
                         size="sm"
-                        onClick={handleAddApproverStep}
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-xl shadow-xs gap-1.5 h-9"
+                        variant={approvalHierarchyType === "manual" ? "default" : "ghost"}
+                        onClick={() => setApprovalHierarchyType("manual")}
+                        className={`text-xs font-bold rounded-lg h-8 gap-1.5 transition-all ${
+                          approvalHierarchyType === "manual"
+                            ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        title="Manually configure approvers with real-time drag and drop employees"
                       >
-                        <Plus className="h-3.5 w-3.5" /> Add Approver
+                        <GripVertical className="h-3.5 w-3.5" /> Manual Hierarchy
                       </Button>
                     </div>
                   )}
@@ -1871,6 +1913,164 @@ export default function DigitalDocumentationPage() {
 
               {approvalRequired ? (
                 <div className="space-y-4">
+                  {/* Option 1: Auto Hierarchy Active Dynamic Org Tree Banner */}
+                  {approvalHierarchyType === "auto" && (
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-background border border-primary/25 space-y-3 animate-in fade-in-50">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-primary text-primary-foreground font-bold text-[11px] px-2.5 py-0.5 shadow-xs">
+                            <Network className="h-3 w-3 mr-1" /> Auto Hierarchy Active
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            Approval pipeline is computed automatically in real-time from the company Organization Tree Structure.
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={handleOpenAutoHierarchyModal}
+                          className="h-8 text-xs font-semibold rounded-xl border-primary/30 text-primary hover:bg-primary/10 gap-1.5 shadow-xs"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" /> Tree Visualizer Modal
+                        </Button>
+                      </div>
+
+                      {/* Target Employee Selector for Auto Hierarchy */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2.5 border-t border-primary/15">
+                        <div className="text-xs font-semibold text-foreground whitespace-nowrap">
+                          Originating Member (Tree Origin):
+                        </div>
+                        <div className="w-full sm:w-80">
+                          <Select
+                            value={hierarchyTargetEmployee?.id || ""}
+                            onValueChange={(val) => {
+                              setSelectedHierarchyTargetEmpId(val);
+                              const found = employees.find((e) => e.id === val);
+                              if (found) {
+                                handleApplyAutoHierarchy(found);
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-xs bg-background">
+                              <SelectValue placeholder="Choose employee..." />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60 text-xs">
+                              {employees.map((e) => {
+                                const mgr = employees.find((m) => m.id === e.managerId);
+                                return (
+                                  <SelectItem key={e.id} value={e.id}>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold">{e.name}</span>
+                                      <span className="text-[11px] text-muted-foreground">({e.empCode})</span>
+                                      {mgr ? (
+                                        <span className="text-[10px] text-primary/70">↳ {mgr.name}</span>
+                                      ) : (
+                                        <span className="text-[10px] text-emerald-600">★ Top Level</span>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {hierarchyTargetEmployee && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground truncate">
+                            <span>Reporting chain:</span>
+                            <span className="font-medium text-foreground">
+                              {hierarchyTargetEmployee.name}
+                              {targetUpwardChain.map((mgr) => ` → ${mgr.name}`).join("")}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Option 2: Manual Hierarchy Draggable Employee Tray */}
+                  {approvalHierarchyType === "manual" && (
+                    <div className="p-4 rounded-2xl bg-muted/30 border border-border space-y-3 animate-in fade-in-50">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-primary border-primary/30 bg-primary/5 font-bold text-[11px] px-2.5 py-0.5">
+                            <GripVertical className="h-3 w-3 mr-1" /> Realtime Employee Drag & Drop
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            Drag any employee card below into the pipeline to insert at that stage, or reorder stages by dragging.
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+                            <Input
+                              placeholder="Search employees to drag..."
+                              value={empPaletteSearch}
+                              onChange={(e) => setEmpPaletteSearch(e.target.value)}
+                              className="h-8 text-xs pl-8 w-52 bg-background"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleAddApproverStep}
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-xl h-8 gap-1.5 shadow-xs"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> + Add Approver
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Draggable Employee Cards Tray */}
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-1 scrollbar-thin">
+                        {paletteFilteredEmployees.slice(0, 20).map((emp) => (
+                          <div
+                            key={emp.id}
+                            draggable={true}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("application/json", JSON.stringify({ type: "employee", id: emp.id }));
+                              e.dataTransfer.effectAllowed = "copy";
+                              setDraggedEmployeeId(emp.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedEmployeeId(null);
+                              setDragOverStepIndex(null);
+                            }}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-background hover:border-primary/60 hover:shadow-xs transition-all cursor-grab active:cursor-grabbing select-none shrink-0 group hover:scale-[1.02]"
+                            title={`Drag ${emp.name} into approval pipeline`}
+                          >
+                            <GripVertical className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                            <div className="h-6 w-6 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">
+                              {emp.name.charAt(0)}
+                            </div>
+                            <div className="text-left">
+                              <div className="text-xs font-bold text-foreground leading-tight flex items-center gap-1">
+                                <span>{emp.name}</span>
+                                <span className="text-[10px] font-mono text-muted-foreground font-normal">({emp.empCode})</span>
+                              </div>
+                              <div className="text-[10px] text-muted-foreground leading-tight truncate max-w-[130px]">
+                                {emp.designation || emp.department || "Staff Member"}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAddEmployeeAsStep(emp)}
+                              className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors opacity-60 group-hover:opacity-100"
+                              title="Click to add to pipeline"
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {paletteFilteredEmployees.length === 0 && (
+                          <div className="text-xs text-muted-foreground py-2 italic">
+                            No employees match "{empPaletteSearch}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Approval Mode Selector */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-muted/30 border border-border">
                     <div>
@@ -1950,12 +2150,67 @@ export default function DigitalDocumentationPage() {
                                 step.approverRoleOrName.toLowerCase().includes("managing director"))));
 
                         return (
-                          <div key={step.id} className="space-y-2">
+                          <div
+                            key={step.id}
+                            draggable={approvalHierarchyType === "manual"}
+                            onDragStart={(e) => {
+                              if (approvalHierarchyType !== "manual") return;
+                              e.dataTransfer.setData("application/json", JSON.stringify({ type: "step", index: idx }));
+                              e.dataTransfer.effectAllowed = "move";
+                              setDraggedStepIndex(idx);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedStepIndex(null);
+                              setDragOverStepIndex(null);
+                            }}
+                            onDragOver={(e) => {
+                              if (approvalHierarchyType !== "manual") return;
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              if (dragOverStepIndex !== idx) {
+                                setDragOverStepIndex(idx);
+                              }
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverStepIndex === idx) setDragOverStepIndex(null);
+                            }}
+                            onDrop={(e) => {
+                              if (approvalHierarchyType !== "manual") return;
+                              e.preventDefault();
+                              setDragOverStepIndex(null);
+                              try {
+                                const raw = e.dataTransfer.getData("application/json");
+                                if (!raw) return;
+                                const data = JSON.parse(raw);
+                                if (data.type === "employee" && data.id) {
+                                  const emp = employees.find((x) => x.id === data.id);
+                                  if (emp) handleAddEmployeeAsStep(emp, idx);
+                                } else if (data.type === "step" && typeof data.index === "number") {
+                                  handleReorderSteps(data.index, idx);
+                                }
+                              } catch (err) {
+                                console.error("Drop error", err);
+                              }
+                            }}
+                            className={`space-y-2 transition-all ${
+                              dragOverStepIndex === idx
+                                ? "ring-2 ring-primary border-primary rounded-2xl p-1 bg-primary/5"
+                                : ""
+                            }`}
+                          >
                             {/* Step Card */}
                             <div className="p-4 rounded-xl border border-border bg-background hover:border-primary/40 transition-all shadow-xs space-y-3">
                               {/* Step Card Header */}
                               <div className="flex items-center justify-between pb-2 border-b border-border/60">
                                 <div className="flex flex-wrap items-center gap-2">
+                                  {approvalHierarchyType === "manual" && (
+                                    <div
+                                      className="cursor-grab active:cursor-grabbing p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-muted"
+                                      title="Drag to reorder this approver step in real-time"
+                                    >
+                                      <GripVertical className="h-4 w-4" />
+                                    </div>
+                                  )}
                                   <Badge className="bg-primary/15 text-primary border-primary/30 text-[11px] font-bold px-2 py-0.5">
                                     Step {idx + 1}
                                   </Badge>
@@ -2040,251 +2295,189 @@ export default function DigitalDocumentationPage() {
 
                               {/* Step Card Body: Grid */}
                               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                                {/* Column A: Position / Approver Designation */}
-                                <div className="md:col-span-4 space-y-1.5">
-                                  <Label className="text-[11px] text-muted-foreground font-semibold">
-                                    Select Approver Role / Position
-                                  </Label>
-                                  <Select
-                                    value={
-                                      step.category === "employee"
-                                        ? "Employee"
-                                        : APPROVER_POSITION_OPTIONS.some(
-                                            (opt) => opt.value === (step.roleType || step.approverRoleOrName)
-                                          )
-                                        ? step.roleType || step.approverRoleOrName
-                                        : "custom"
-                                    }
-                                    onValueChange={(val) => handlePositionChange(idx, val)}
-                                  >
-                                    <SelectTrigger className="text-xs h-9 bg-card">
-                                      <SelectValue placeholder="Choose Position / Role" />
-                                    </SelectTrigger>
-                                    <SelectContent className="text-xs max-h-60">
-                                      {APPROVER_POSITION_OPTIONS.map((opt) => (
-                                        <SelectItem key={opt.value} value={opt.value}>
-                                          {opt.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-
-                                  {/* Custom Position Name Input */}
-                                  {(step.roleType === "custom" ||
-                                    (!isEmployeeCategory &&
-                                      !APPROVER_POSITION_OPTIONS.some(
-                                        (opt) => opt.value === (step.roleType || step.approverRoleOrName)
-                                      ))) && (
-                                    <div className="pt-1 animate-in fade-in-50">
-                                      <Input
-                                        placeholder="Enter custom designation / title..."
-                                        value={step.approverRoleOrName}
-                                        onChange={(e) => {
-                                          const updated = [...approvers];
-                                          updated[idx].approverRoleOrName = e.target.value;
-                                          setApprovers(updated);
-                                        }}
-                                        className="h-8 text-xs bg-card"
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Column B: Employee Selector (Single / Multiple / All) OR Role Details */}
-                                <div className="md:col-span-5 space-y-1.5">
-                                  {isEmployeeCategory ? (
-                                    <div className="space-y-2 p-3 rounded-xl bg-muted/30 border border-border">
-                                      <div className="flex items-center justify-between gap-1">
-                                        <Label className="text-[11px] font-semibold text-foreground">
-                                          Employee Selection Target
-                                        </Label>
-                                        {/* Selection Mode Pills */}
-                                        <div className="inline-flex rounded-lg bg-background border border-border p-0.5 text-[10px]">
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleEmployeeSelectionModeChange(idx, "single")
-                                            }
-                                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                                              step.employeeSelectionMode !== "multiple" &&
-                                              step.employeeSelectionMode !== "all"
-                                                ? "bg-primary text-primary-foreground font-semibold"
-                                                : "text-muted-foreground hover:text-foreground"
-                                            }`}
-                                          >
-                                            Single
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleEmployeeSelectionModeChange(idx, "multiple")
-                                            }
-                                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                                              step.employeeSelectionMode === "multiple"
-                                                ? "bg-primary text-primary-foreground font-semibold"
-                                                : "text-muted-foreground hover:text-foreground"
-                                            }`}
-                                          >
-                                            Multiple
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleEmployeeSelectionModeChange(idx, "all")
-                                            }
-                                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                                              step.employeeSelectionMode === "all"
-                                                ? "bg-primary text-primary-foreground font-semibold"
-                                                : "text-muted-foreground hover:text-foreground"
-                                            }`}
-                                          >
-                                            All
-                                          </button>
-                                        </div>
+                                {/* Employee Selector (Single / Multiple / All) */}
+                                <div className="md:col-span-8 space-y-1.5">
+                                  <div className="space-y-2 p-3 rounded-xl bg-muted/30 border border-border">
+                                    <div className="flex items-center justify-between gap-1">
+                                      <Label className="text-[11px] font-semibold text-foreground">
+                                        Employee Selection Target
+                                      </Label>
+                                      {/* Selection Mode Pills */}
+                                      <div className="inline-flex rounded-lg bg-background border border-border p-0.5 text-[10px]">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleEmployeeSelectionModeChange(idx, "single")
+                                          }
+                                          className={`px-2.5 py-0.5 rounded-md font-medium transition-all ${
+                                            step.employeeSelectionMode !== "multiple" &&
+                                            step.employeeSelectionMode !== "all"
+                                              ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                                              : "text-muted-foreground hover:text-foreground"
+                                          }`}
+                                        >
+                                          Single
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleEmployeeSelectionModeChange(idx, "multiple")
+                                          }
+                                          className={`px-2.5 py-0.5 rounded-md font-medium transition-all ${
+                                            step.employeeSelectionMode === "multiple"
+                                              ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                                              : "text-muted-foreground hover:text-foreground"
+                                          }`}
+                                        >
+                                          Multiple
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleEmployeeSelectionModeChange(idx, "all")
+                                          }
+                                          className={`px-2.5 py-0.5 rounded-md font-medium transition-all ${
+                                            step.employeeSelectionMode === "all"
+                                              ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                                              : "text-muted-foreground hover:text-foreground"
+                                          }`}
+                                        >
+                                          All
+                                        </button>
                                       </div>
+                                    </div>
 
-                                      {/* Mode 1: Single Employee Select */}
-                                      {step.employeeSelectionMode !== "multiple" &&
-                                        step.employeeSelectionMode !== "all" && (
-                                          <div className="space-y-1">
-                                            <Select
-                                              value={
-                                                step.approverEmployeeId ||
-                                                employees[0]?.id ||
-                                                ""
+                                    {/* Mode 1: Single Employee Select */}
+                                    {step.employeeSelectionMode !== "multiple" &&
+                                      step.employeeSelectionMode !== "all" && (
+                                        <div className="space-y-1">
+                                          <Select
+                                            value={
+                                              step.approverEmployeeId ||
+                                              employees[0]?.id ||
+                                              ""
+                                            }
+                                            onValueChange={(empId) =>
+                                              handleSingleEmployeeChange(idx, empId)
+                                            }
+                                          >
+                                            <SelectTrigger className="text-xs h-9 bg-background">
+                                              <SelectValue placeholder="Select specific employee..." />
+                                            </SelectTrigger>
+                                            <SelectContent className="text-xs max-h-60">
+                                              {employees.map((e) => (
+                                                <SelectItem key={e.id} value={e.id}>
+                                                  <span className="font-semibold">{e.name}</span>
+                                                  <span className="text-muted-foreground ml-1.5 font-mono text-[10px]">
+                                                    ({e.empCode} · {e.designation})
+                                                  </span>
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                      )}
+
+                                    {/* Mode 2: Multi-Employee Select Checkable Box */}
+                                    {step.employeeSelectionMode === "multiple" && (
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="relative flex-1">
+                                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                                            <Input
+                                              placeholder="Search employees..."
+                                              value={empSearch}
+                                              onChange={(e) =>
+                                                setApproverEmpSearchText({
+                                                  ...approverEmpSearchText,
+                                                  [step.id]: e.target.value,
+                                                })
                                               }
-                                              onValueChange={(empId) =>
-                                                handleSingleEmployeeChange(idx, empId)
+                                              className="h-7 text-[11px] pl-7 bg-background"
+                                            />
+                                          </div>
+                                          <div className="flex items-center gap-1 shrink-0 text-[10px]">
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleSelectAllMultiEmployees(idx, true)
                                               }
+                                              className="text-primary hover:underline font-semibold"
                                             >
-                                              <SelectTrigger className="text-xs h-8 bg-background">
-                                                <SelectValue placeholder="Select specific employee..." />
-                                              </SelectTrigger>
-                                              <SelectContent className="text-xs max-h-60">
-                                                {employees.map((e) => (
-                                                  <SelectItem key={e.id} value={e.id}>
-                                                    <span className="font-semibold">{e.name}</span>
-                                                    <span className="text-muted-foreground ml-1.5 font-mono text-[10px]">
-                                                      ({e.empCode} · {e.designation})
-                                                    </span>
-                                                  </SelectItem>
-                                                ))}
-                                              </SelectContent>
-                                            </Select>
-                                          </div>
-                                        )}
-
-                                      {/* Mode 2: Multi-Employee Select Checkable Box */}
-                                      {step.employeeSelectionMode === "multiple" && (
-                                        <div className="space-y-2">
-                                          <div className="flex items-center justify-between gap-2">
-                                            <div className="relative flex-1">
-                                              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                                              <Input
-                                                placeholder="Search employees..."
-                                                value={empSearch}
-                                                onChange={(e) =>
-                                                  setApproverEmpSearchText({
-                                                    ...approverEmpSearchText,
-                                                    [step.id]: e.target.value,
-                                                  })
-                                                }
-                                                className="h-7 text-[11px] pl-7 bg-background"
-                                              />
-                                            </div>
-                                            <div className="flex items-center gap-1 shrink-0 text-[10px]">
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleSelectAllMultiEmployees(idx, true)
-                                                }
-                                                className="text-primary hover:underline font-semibold"
-                                              >
-                                                Select All
-                                              </button>
-                                              <span className="text-muted-foreground">/</span>
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleSelectAllMultiEmployees(idx, false)
-                                                }
-                                                className="text-muted-foreground hover:underline"
-                                              >
-                                                Clear
-                                              </button>
-                                            </div>
-                                          </div>
-
-                                          <div className="max-h-32 overflow-y-auto space-y-1 p-1 rounded-lg border border-border bg-background">
-                                            {filteredEmps.map((emp) => {
-                                              const isChecked = (
-                                                step.approverEmployeeIds || []
-                                              ).includes(emp.id);
-                                              return (
-                                                <label
-                                                  key={emp.id}
-                                                  className={`flex items-center gap-2 p-1.5 rounded text-[11px] cursor-pointer transition-colors ${
-                                                    isChecked
-                                                      ? "bg-primary/10 text-primary font-medium"
-                                                      : "hover:bg-muted text-foreground"
-                                                  }`}
-                                                >
-                                                  <Checkbox
-                                                    checked={isChecked}
-                                                    onCheckedChange={() =>
-                                                      handleToggleMultiEmployee(idx, emp.id)
-                                                    }
-                                                    className="h-3.5 w-3.5"
-                                                  />
-                                                  <div className="truncate flex-1">
-                                                    <span>{emp.name}</span>
-                                                    <span className="text-[10px] text-muted-foreground ml-1 font-mono">
-                                                      ({emp.empCode})
-                                                    </span>
-                                                  </div>
-                                                </label>
-                                              );
-                                            })}
-                                          </div>
-                                          <div className="text-[10px] text-muted-foreground flex items-center justify-between">
-                                            <span>
-                                              {(step.approverEmployeeIds || []).length} of{" "}
-                                              {employees.length} employees selected
-                                            </span>
+                                              Select All
+                                            </button>
+                                            <span className="text-muted-foreground">/</span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleSelectAllMultiEmployees(idx, false)
+                                              }
+                                              className="text-muted-foreground hover:underline"
+                                            >
+                                              Clear
+                                            </button>
                                           </div>
                                         </div>
-                                      )}
 
-                                      {/* Mode 3: All Employees */}
-                                      {step.employeeSelectionMode === "all" && (
-                                        <div className="p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-xs text-primary flex items-center gap-2">
-                                          <Users className="h-4 w-4 shrink-0" />
-                                          <div>
-                                            <div className="font-bold text-[11px]">
-                                              All {employees.length} Organisation Employees
-                                            </div>
-                                            <div className="text-[10px] opacity-80">
-                                              All active employees must review/sign off in parallel.
-                                            </div>
-                                          </div>
+                                        <div className="max-h-32 overflow-y-auto space-y-1 p-1 rounded-lg border border-border bg-background">
+                                          {filteredEmps.map((emp) => {
+                                            const isChecked = (
+                                              step.approverEmployeeIds || []
+                                            ).includes(emp.id);
+                                            return (
+                                              <label
+                                                key={emp.id}
+                                                className={`flex items-center gap-2 p-1.5 rounded text-[11px] cursor-pointer transition-colors ${
+                                                  isChecked
+                                                    ? "bg-primary/10 text-primary font-medium"
+                                                    : "hover:bg-muted text-foreground"
+                                                }`}
+                                              >
+                                                <Checkbox
+                                                  checked={isChecked}
+                                                  onCheckedChange={() =>
+                                                    handleToggleMultiEmployee(idx, emp.id)
+                                                  }
+                                                  className="h-3.5 w-3.5"
+                                                />
+                                                <div className="truncate flex-1">
+                                                  <span>{emp.name}</span>
+                                                  <span className="text-[10px] text-muted-foreground ml-1 font-mono">
+                                                    ({emp.empCode})
+                                                  </span>
+                                                </div>
+                                              </label>
+                                            );
+                                          })}
                                         </div>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <div className="p-3 rounded-xl bg-muted/20 border border-border text-xs space-y-1">
-                                      <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                                        <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                                        <span>Role-based Assignment</span>
+                                        <div className="text-[10px] text-muted-foreground flex items-center justify-between">
+                                          <span>
+                                            {(step.approverEmployeeIds || []).length} of{" "}
+                                            {employees.length} employees selected
+                                          </span>
+                                        </div>
                                       </div>
-                                      <p className="text-[11px] text-muted-foreground">
-                                        Any active user assigned to <strong>{step.approverRoleOrName || step.roleType}</strong> authority will be eligible to review and approve.
-                                      </p>
-                                    </div>
-                                  )}
+                                    )}
+
+                                    {/* Mode 3: All Employees */}
+                                    {step.employeeSelectionMode === "all" && (
+                                      <div className="p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-xs text-primary flex items-center gap-2">
+                                        <Users className="h-4 w-4 shrink-0" />
+                                        <div>
+                                          <div className="font-bold text-[11px]">
+                                            All {employees.length} Organisation Employees
+                                          </div>
+                                          <div className="text-[10px] opacity-80">
+                                            All active employees must review/sign off in parallel.
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {/* Column C: Signature Needed Checkbox & Toggle */}
-                                <div className="md:col-span-3 space-y-1.5">
+                                <div className="md:col-span-4 space-y-1.5">
                                   <Label className="text-[11px] text-muted-foreground font-semibold">
                                     Verification Requirement
                                   </Label>
@@ -2437,15 +2630,52 @@ export default function DigitalDocumentationPage() {
                     </div>
                   </div>
 
-                  {/* Add Approver Button (Dashed) */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleAddApproverStep}
-                    className="w-full py-2.5 border-dashed border-2 hover:border-primary text-xs font-semibold text-primary hover:bg-primary/5 rounded-xl gap-2"
+                  {/* Add Approver / Realtime Drop Zone Container */}
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "copy";
+                      setIsBottomDropActive(true);
+                    }}
+                    onDragLeave={() => setIsBottomDropActive(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsBottomDropActive(false);
+                      try {
+                        const raw = e.dataTransfer.getData("application/json");
+                        if (!raw) return;
+                        const data = JSON.parse(raw);
+                        if (data.type === "employee" && data.id) {
+                          const emp = employees.find((x) => x.id === data.id);
+                          if (emp) handleAddEmployeeAsStep(emp);
+                        } else if (data.type === "step" && typeof data.index === "number") {
+                          handleReorderSteps(data.index, approvers.length - 1);
+                        }
+                      } catch (err) {
+                        console.error("Drop error", err);
+                      }
+                    }}
+                    className={`w-full py-3.5 px-4 rounded-xl border-2 border-dashed transition-all flex flex-col sm:flex-row items-center justify-center gap-3 text-xs ${
+                      isBottomDropActive
+                        ? "border-primary bg-primary/10 text-primary scale-[1.01]"
+                        : "border-border hover:border-primary/50 bg-muted/20 text-muted-foreground"
+                    }`}
                   >
-                    <Plus className="h-4 w-4" /> Add Another Approver Step
-                  </Button>
+                    <div className="flex items-center gap-2 font-semibold">
+                      <GripVertical className="h-4 w-4 text-primary" />
+                      <span>Drag & drop employees here to append to hierarchy in real-time</span>
+                    </div>
+                    <span className="hidden sm:inline text-border">·</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddApproverStep}
+                      className="h-8 text-xs font-semibold text-primary border-primary/30 hover:bg-primary/10 rounded-xl gap-1.5"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> + Add Approver Step
+                    </Button>
+                  </div>
 
                   {/* Company Seal Checkbox Card at bottom of Approval Matrix */}
                   <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-gradient-to-r from-indigo-50/60 via-purple-50/30 to-background dark:from-indigo-950/20 dark:via-purple-950/10 dark:to-card space-y-2 shadow-xs">

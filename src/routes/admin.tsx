@@ -218,7 +218,10 @@ function AdminLayout() {
   }, [path]);
 
   const activeTenant = memberships.find((m) => m.tenant_id === activeTenantId)?.tenant;
-  const displayName = demoMode ? `${company.name} · DEMO` : (activeTenant?.name ?? company.name);
+  const rawTenantName = activeTenant?.name && activeTenant.name !== "Impersonated Workspace" ? activeTenant.name : null;
+  const rawCompanyName = company?.name && company.name !== "SWIFT Company" && company.name !== "Swift Demo" && company.name !== "Impersonated Workspace" ? company.name : null;
+  const resolvedName = rawTenantName || rawCompanyName || company?.name || activeTenant?.name || "Company Workspace";
+  const displayName = demoMode ? `${company.name} · DEMO` : resolvedName;
   const userEmail = demoMode ? "admin@demo.creatonshr.com" : user?.email;
 
   const effectiveCompanyLogo =

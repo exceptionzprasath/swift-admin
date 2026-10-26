@@ -18,6 +18,8 @@ import { Loader2, Sparkles, ShieldCheck, User as UserIcon, Crown } from "lucide-
 type SearchParams = {
   impersonateTenantId?: string;
   impersonateRole?: string;
+  impersonateTenantName?: string;
+  impersonateTenantSlug?: string;
 };
 
 export const Route = createFileRoute("/login")({
@@ -27,6 +29,8 @@ export const Route = createFileRoute("/login")({
     return {
       impersonateTenantId: search.impersonateTenantId as string | undefined,
       impersonateRole: search.impersonateRole as string | undefined,
+      impersonateTenantName: search.impersonateTenantName as string | undefined,
+      impersonateTenantSlug: search.impersonateTenantSlug as string | undefined,
     };
   },
 });
@@ -45,7 +49,64 @@ function LoginPage() {
   useEffect(() => {
     if (impersonateTenantId) {
       const runImpersonate = async () => {
-        const tenantName = "Impersonated Workspace";
+        let tenantName = search.impersonateTenantName || "";
+        let tenantSlug = search.impersonateTenantSlug || "";
+        let tenantLegalName = tenantName;
+        let tenantPlan = "growth";
+        let tenantStatus = "active";
+        let tenantAddress = "123 Workspace Ave, India";
+        let tenantGstin = "29ABCDE1234F1Z5";
+        let tenantLogoUrl = "";
+
+        // Attempt to fetch fresh tenant info from backend
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+          const res = await fetch(`${apiUrl}/api/tenants/${encodeURIComponent(impersonateTenantId)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.name) {
+              tenantName = data.name;
+              tenantSlug = data.slug || tenantSlug;
+              tenantLegalName = data.legalName || data.name;
+              tenantPlan = data.plan || tenantPlan;
+              tenantStatus = data.status || tenantStatus;
+              tenantAddress = data.address || tenantAddress;
+              tenantGstin = data.gstin || tenantGstin;
+              tenantLogoUrl = data.logoUrl || data.logo || "";
+            }
+          } else {
+            const listRes = await fetch(`${apiUrl}/api/tenants`);
+            if (listRes.ok) {
+              const list = await listRes.json();
+              if (Array.isArray(list)) {
+                const found = list.find((t: any) => t.id === impersonateTenantId || t.slug === impersonateTenantId);
+                if (found && found.name) {
+                  tenantName = found.name;
+                  tenantSlug = found.slug || tenantSlug;
+                  tenantLegalName = found.legalName || found.name;
+                  tenantPlan = found.plan || tenantPlan;
+                  tenantStatus = found.status || tenantStatus;
+                  tenantAddress = found.address || tenantAddress;
+                  tenantGstin = found.gstin || tenantGstin;
+                  tenantLogoUrl = found.logoUrl || found.logo || "";
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("Could not fetch tenant details from backend during impersonation:", err);
+        }
+
+        if (!tenantName) {
+          tenantName = "Company Workspace";
+        }
+        if (!tenantSlug) {
+          tenantSlug = tenantName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        }
+        if (!tenantLegalName) {
+          tenantLegalName = tenantName;
+        }
+
         const customMemberships = [
           {
             tenant_id: impersonateTenantId,
@@ -53,30 +114,35 @@ function LoginPage() {
             tenant: {
               id: impersonateTenantId,
               name: tenantName,
-              slug: "demo-impersonated",
-              legal_name: tenantName,
-              address: "123 Workspace Ave, India",
-              gstin: "29ABCDE1234F1Z5",
-              plan: "growth",
-              status: "active",
+              slug: tenantSlug,
+              legal_name: tenantLegalName,
+              address: tenantAddress,
+              gstin: tenantGstin,
+              plan: tenantPlan,
+              status: tenantStatus,
+              logo_url: tenantLogoUrl,
               created_at: new Date().toISOString()
             }
           }
         ];
         
-        localStorage.setItem("swift-auth-user", JSON.stringify({ id: crypto.randomUUID(), email: "impersonated-admin@demo.creatonshr.com" }));
+        localStorage.setItem("swift-auth-user", JSON.stringify({
+          id: crypto.randomUUID(),
+          email: "super-admin@swift.app",
+          name: `${tenantName} Admin (Super Admin)`
+        }));
         localStorage.setItem("swift-auth-role", "user");
         localStorage.setItem("swift-auth-memberships", JSON.stringify(customMemberships));
         localStorage.setItem("swift-active-tenant", impersonateTenantId);
         
         await refresh();
-        seedDemo("admin");
-        toast.success("Impersonated workspace admin successfully.");
+        await useStore.getState().loadCompanyState(impersonateTenantId);
+        toast.success(`Entering ${tenantName}...`);
         nav({ to: "/admin" });
       };
       void runImpersonate();
     }
-  }, [impersonateTenantId]);
+  }, [impersonateTenantId, search.impersonateTenantName, search.impersonateTenantSlug]);
 
   useEffect(() => {
     if (loading || impersonateTenantId) return;
