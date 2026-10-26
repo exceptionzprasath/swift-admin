@@ -23,8 +23,13 @@ import {
   Sliders,
   Radio,
   Eye,
+  EyeOff,
   ChevronDown,
+  ScanFace,
+  ShieldCheck,
+  Lock,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useState } from "react";
 
@@ -44,6 +49,7 @@ function SettingsPage() {
   const { theme, setTheme, setThemePalette } = useStore();
   const [saving, setSaving] = useState(false);
   const [paletteDropdownOpen, setPaletteDropdownOpen] = useState(false);
+  const [showKioskPassword, setShowKioskPassword] = useState(false);
 
   const activePaletteId = company.themePalette || "swift-teal";
   const activePalette = getPalette(activePaletteId);
@@ -1006,6 +1012,154 @@ function SettingsPage() {
           >
             Add Shift
           </Button>
+        </div>
+      </Card>
+
+      {/* Common Logins Portal / Attendance Kiosk */}
+      <Card title="Common Logins Portal (Attendance Kiosk)">
+        <div className="col-span-3 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-primary/20 bg-primary/5">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <ScanFace className="h-4 w-4 text-primary" />
+                <span className="font-semibold text-sm text-foreground">Common Attendance Kiosk Portal</span>
+                <span
+                  className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${
+                    company.commonPortal?.enabled || company.commonPortalEnabled
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                      : "bg-muted text-muted-foreground border border-border"
+                  }`}
+                >
+                  {company.commonPortal?.enabled || company.commonPortalEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground max-w-2xl">
+                Enable a shared kiosk portal for employees and staff who do not have personal mobile phones.
+                When enabled, configure dedicated login credentials below. Signing in with these credentials on the Workspace Admin login page opens a dedicated full-screen Facial Authentication & Employee Code Attendance Dashboard.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-xs font-medium text-muted-foreground">
+                {company.commonPortal?.enabled || company.commonPortalEnabled ? "Enabled" : "Disabled"}
+              </span>
+              <Switch
+                checked={Boolean(company.commonPortal?.enabled || company.commonPortalEnabled)}
+                onCheckedChange={(checked) => {
+                  setCompany({
+                    commonPortalEnabled: checked,
+                    commonPortal: {
+                      enabled: checked,
+                      username: company.commonPortal?.username || company.commonPortalUsername || "kiosk@creatonshr.com",
+                      password: company.commonPortal?.password || company.commonPortalPassword || "kiosk123",
+                      portalTitle: company.commonPortal?.portalTitle || "Common Attendance Kiosk",
+                      requireFaceMatch: company.commonPortal?.requireFaceMatch ?? true,
+                    },
+                    commonPortalUsername: company.commonPortal?.username || company.commonPortalUsername || "kiosk@creatonshr.com",
+                    commonPortalPassword: company.commonPortal?.password || company.commonPortalPassword || "kiosk123",
+                  });
+                  toast.success(checked ? "Common Logins Portal Enabled" : "Common Logins Portal Disabled");
+                }}
+              />
+            </div>
+          </div>
+
+          {(company.commonPortal?.enabled || company.commonPortalEnabled) && (
+            <div className="space-y-4 p-4 rounded-xl border border-border bg-card/60">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Kiosk Login Username / ID (Used in Admin Login Page)">
+                  <Input
+                    placeholder="e.g. kiosk@creatonshr.com or KIOSK01"
+                    value={company.commonPortal?.username || company.commonPortalUsername || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCompany({
+                        commonPortalUsername: val,
+                        commonPortal: {
+                          ...(company.commonPortal || { enabled: true }),
+                          username: val,
+                        },
+                      });
+                    }}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Enter this ID or username on the Admin Panel login page.
+                  </p>
+                </Field>
+
+                <Field label="Kiosk Login Password">
+                  <div className="relative">
+                    <Input
+                      type={showKioskPassword ? "text" : "password"}
+                      placeholder="Enter a secure password for this kiosk terminal"
+                      value={company.commonPortal?.password || company.commonPortalPassword || ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCompany({
+                          commonPortalPassword: val,
+                          commonPortal: {
+                            ...(company.commonPortal || { enabled: true }),
+                            password: val,
+                          },
+                        });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKioskPassword(!showKioskPassword)}
+                      className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                      title={showKioskPassword ? "Hide password" : "Show password"}
+                    >
+                      {showKioskPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Password used to authenticate this common attendance terminal.
+                  </p>
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1 items-end">
+                <Field label="Kiosk Terminal Name / Gate Location (Optional)">
+                  <Input
+                    placeholder="e.g. Main Factory Gate 1 Kiosk / Reception Terminal"
+                    value={company.commonPortal?.portalTitle || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCompany({
+                        commonPortal: {
+                          ...(company.commonPortal || { enabled: true }),
+                          portalTitle: val,
+                        },
+                      });
+                    }}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Custom banner title displayed on the attendance screen.
+                  </p>
+                </Field>
+
+                <div>
+                  <Link to="/admin/common-attendance">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full h-10 border-primary/30 text-primary hover:bg-primary/10 flex items-center justify-center gap-2 font-medium"
+                    >
+                      <ScanFace className="h-4 w-4" /> Open Common Attendance Dashboard
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-amber-500/10 border border-amber-500/25 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                <div className="leading-relaxed">
+                  <strong>Workflow Guide:</strong> On any PC, tablet, or gate terminal device, navigate to the Workspace Admin Login page and sign in with the <strong>Username</strong> and <strong>Password</strong> configured above. It will directly launch the dedicated <strong>Common Attendance Dashboard</strong> with Employee Code search and live face recognition! Click <strong>Save All Settings</strong> to save these credentials to the cloud database.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 

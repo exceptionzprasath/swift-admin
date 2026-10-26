@@ -412,15 +412,21 @@ export function findDocsByQuery(q: string): ComplianceDocSpec[] {
 // "generate all monthly statutory documents", etc.
 export function parseComplianceCommand(text: string): ComplianceDocSpec[] {
   const t = text.toLowerCase().trim();
-  if (!/generate|create|produce|prepare|download/.test(t) &&
-      !/register|form|return|notice|licence/.test(t)) return [];
+  // Do not intercept wage register, payslip, attendance, or EPFO queries
+  if (/\b(wage\s+register|salary\s+register|payslip|salary\s*slip|attendance\s+report|epfo|ecr)\b/i.test(t)) {
+    return [];
+  }
+
+  const isComplianceQuery =
+    /\b(statutory|compliance|form\s+[0-9]+[a-z]?|muster|accident\s+register|annual\s+return|half[-\s]?yearly\s+return)\b/i.test(t);
+
+  if (!isComplianceQuery) return [];
 
   if (/all\s+pending|all\s+monthly|all\s+statutory/.test(t)) {
     return COMPLIANCE_DOC_CATALOG.filter((d) => d.frequency === "monthly");
   }
   if (/annual\s+return/.test(t)) return COMPLIANCE_DOC_CATALOG.filter((d) => d.kind === "return" && d.frequency === "annual");
   if (/half[-\s]?yearly/.test(t)) return COMPLIANCE_DOC_CATALOG.filter((d) => d.frequency === "half_yearly");
-  if (/wage\s+register/.test(t)) return findDocsByQuery("wage");
   if (/muster/.test(t)) return findDocsByQuery("muster");
   if (/accident/.test(t)) return findDocsByQuery("accident");
 

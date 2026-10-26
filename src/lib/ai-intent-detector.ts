@@ -117,17 +117,67 @@ export class AIIntentDetector {
    */
   static detect(
     queryText: string,
-    activeEntities: ExtractedEntities = {}
+    activeEntities: ExtractedEntities = {},
+    employees?: Array<{ id: string; name: string; empCode?: string }>
   ): IntentDetectionResult {
     const raw = queryText.trim();
     const q = normalize(raw);
     const dateResolution = resolveNaturalDate(raw);
 
+    // 1. Search if the current query explicitly mentions an employee
+    let detectedEmp: { id: string; name: string; empCode?: string } | undefined;
+
+    if (employees && employees.length > 0) {
+      // A. Match by empCode (e.g. INKD003, SW001, EMP001)
+      for (const emp of employees) {
+        if (!emp.empCode) continue;
+        const codeRegex = new RegExp(`\\b${emp.empCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        if (codeRegex.test(raw)) {
+          detectedEmp = emp;
+          break;
+        }
+      }
+
+      // B. Match by full name
+      if (!detectedEmp) {
+        for (const emp of employees) {
+          if (!emp.name || emp.name.length < 3) continue;
+          const nameRegex = new RegExp(`\\b${emp.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+          if (nameRegex.test(raw)) {
+            detectedEmp = emp;
+            break;
+          }
+        }
+      }
+
+      // C. Match by name tokens (first name or individual name words >= 3 chars)
+      if (!detectedEmp) {
+        const ignoredWords = new Set(["who", "is", "tell", "about", "show", "salary", "what", "give", "the", "details", "employee", "for", "much", "does", "earn", "view", "ctc", "pay", "attendance", "absent", "present", "info"]);
+        const queryTokens = q.split(/\s+/).filter((w) => w.length >= 3 && !ignoredWords.has(w));
+        for (const emp of employees) {
+          const empParts = (emp.name || "").toLowerCase().split(/\s+/).filter((p) => p.length >= 3 && !ignoredWords.has(p));
+          const matched = queryTokens.some((qt) => empParts.some((pt) => pt === qt || (qt.length >= 4 && pt.includes(qt))));
+          if (matched) {
+            detectedEmp = emp;
+            break;
+          }
+        }
+      }
+    }
+
     const entities: ExtractedEntities = {
       dateStr: dateResolution.dateStr,
       relativePeriod: dateResolution.period,
-      ...activeEntities,
+      department: activeEntities.department,
     };
+
+    if (detectedEmp) {
+      entities.employeeId = detectedEmp.id;
+      entities.employeeName = detectedEmp.name;
+    } else if (activeEntities.isFollowUp && activeEntities.employeeId) {
+      entities.employeeId = activeEntities.employeeId;
+      entities.employeeName = activeEntities.employeeName;
+    }
 
     // Metric type detection
     if (/\b(how\s+many|count|total|number\s+of)\b/i.test(q)) {
@@ -226,11 +276,11 @@ export class AIIntentDetector {
     if (/\b(department-?wise\s+attendance|company\s+attendance|attendance\s+by\s+department)\b/i.test(q)) {
       return { intent: "DEPARTMENT_ATTENDANCE", confidence: 0.96, entities, rawQuery: raw };
     }
-    if (/\b(who\s+is\s+absent|who\s+didn'?t\s+come|absent\s+employees|today'?s\s+absentees|absent\s+list)\b/i.test(q)) {
-      return { intent: "ABSENT_EMPLOYEES", confidence: 0.96, entities, rawQuery: raw };
+    if (/\b(who\s+(?:is|are|was|were|all\s+are)\s+(?:absent|not\s+(?:present|here|in\s+office|punched))|absent\s+employees?|today'?s\s+absentees?|absentees?|absent\s+list|list\s+(?:of\s+)?absent(?:ees?)?|who\s+didn'?t\s+come)\b/i.test(q)) {
+      return { intent: "ABSENT_EMPLOYEES", confidence: 0.98, entities, rawQuery: raw };
     }
-    if (/\b(who\s+is\s+present|present\s+employees|who\s+came\s+today)\b/i.test(q)) {
-      return { intent: "PRESENT_EMPLOYEES", confidence: 0.96, entities, rawQuery: raw };
+    if (/\b(who\s+(?:is|are|was|were|all\s+are)\s+present|present\s+employees?|today'?s\s+attendees?|attendees?|present\s+list|list\s+(?:of\s+)?present|who\s+came\s+today|who\s+checked\s*in)\b/i.test(q)) {
+      return { intent: "PRESENT_EMPLOYEES", confidence: 0.98, entities, rawQuery: raw };
     }
     if (/\b(detailed\s+attendance|detailed\s+daily\s+attendance|daily\s+attendance\s+detailed)\b/i.test(q)) {
       return { intent: "DAILY_ATTENDANCE_DETAILED", confidence: 0.96, entities, rawQuery: raw };

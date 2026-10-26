@@ -698,3 +698,86 @@ export const inr = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(
     Math.round(n)
   );
+
+export interface MonthlyAttendanceSummary {
+  monthAtt: any[];
+  daysPresent: number;
+  daysHalf: number;
+  daysLeave: number;
+  daysAbsent: number;
+  rawPresentDays: number;
+  basePresentDays: number;
+}
+
+/**
+ * Authoritative monthly attendance aggregation for payroll calculations.
+ * - Handles case-insensitive status matching ("present", "Present", "half-day", "Half-Day", "leave").
+ * - Filters out future date records when computing current ongoing month.
+ * - Deduplicates multi-punch / multiple records on the same calendar day for an employee.
+ */
+export function computeMonthlyAttendanceSummary(
+  attendance: any[],
+  emp: { id: string; name?: string; empCode?: string },
+  selectedMonth: string,
+  customRange?: { start?: string; end?: string }
+): MonthlyAttendanceSummary {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const currentMonth = todayStr.slice(0, 7);
+
+  const rawAtt = (attendance || []).filter((a) => {
+    if (!a || !a.date) return false;
+    const matchesEmp =
+      a.employeeId === emp.id ||
+      (emp.name && a.employeeName === emp.name) ||
+      (emp.empCode && a.empCode === emp.empCode);
+    if (!matchesEmp) return false;
+
+    if (customRange?.start && customRange?.end) {
+      return a.date >= customRange.start && a.date <= customRange.end;
+    }
+
+    if (!a.date.startsWith(selectedMonth)) return false;
+    // Disallow future date attendance records for current ongoing month
+    if (selectedMonth === currentMonth && a.date > todayStr) return false;
+    return true;
+  });
+
+  // Deduplicate by date for each employee (priority: present > half-day > leave > absent)
+  const dateMap = new Map<string, any>();
+  rawAtt.forEach((rec) => {
+    const existing = dateMap.get(rec.date);
+    if (!existing) {
+      dateMap.set(rec.date, rec);
+    } else {
+      const sOld = (existing.status || "").toLowerCase().trim();
+      const sNew = (rec.status || "").toLowerCase().trim();
+      const priority = (s: string) => (s === "present" ? 3 : s.startsWith("half") ? 2 : s === "leave" ? 1 : 0);
+      if (priority(sNew) > priority(sOld)) {
+        dateMap.set(rec.date, rec);
+      }
+    }
+  });
+
+  const monthAtt = Array.from(dateMap.values());
+
+  const daysPresent = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "present").length;
+  const daysHalf = monthAtt.filter((a) => {
+    const s = (a.status || "").toLowerCase().trim();
+    return s === "half-day" || s === "half_day" || s === "halfday";
+  }).length;
+  const daysLeave = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "leave").length;
+  const daysAbsent = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "absent").length;
+  const rawPresentDays = daysPresent + daysHalf * 0.5;
+  const basePresentDays = rawPresentDays + daysLeave;
+
+  return {
+    monthAtt,
+    daysPresent,
+    daysHalf,
+    daysLeave,
+    daysAbsent,
+    rawPresentDays,
+    basePresentDays,
+  };
+}
+

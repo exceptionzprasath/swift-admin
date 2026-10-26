@@ -504,14 +504,17 @@ export async function lookupPincode(pincode: string): Promise<PincodeLookupResul
       const postOffices = data[0].PostOffice;
       if (Array.isArray(postOffices) && postOffices.length > 0) {
         const first = postOffices[0];
-        const state = first.State || "";
+        const rawState = (first.State || "").trim();
+        const matchedState = INDIAN_STATES.find(
+          (s) => s.toLowerCase() === rawState.toLowerCase()
+        ) || rawState;
         const district = first.District || "";
         const city = district || first.Name || first.Division || "";
         const poNames = postOffices.map((p: any) => p.Name).filter(Boolean);
 
         return {
           city,
-          state,
+          state: matchedState,
           district,
           postOffices: poNames,
         };

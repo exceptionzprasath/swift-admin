@@ -241,3 +241,177 @@ export async function checkEmployeeDuplicatesRemote(
 
   return { hasDuplicate: false, conflicts: [], byField: {} };
 }
+
+/**
+ * Format Validators for Statutory & KYC IDs
+ * 
+ * Notice: While typing (isSubmitting === false), we do NOT show premature errors
+ * for incomplete inputs. Errors are only shown when:
+ * 1. The input exceeds the limit
+ * 2. The input has reached the required length and format is invalid
+ * 3. On final submission/Next step check (isSubmitting === true)
+ */
+
+export function validatePanFormat(pan?: string | null, isSubmitting = false): { valid: boolean; message?: string } {
+  const clean = String(pan || "").replace(/[\s-]/g, "").trim().toUpperCase();
+  if (!clean) return { valid: true };
+  if (clean.length > 10) {
+    return { valid: false, message: `PAN cannot exceed 10 characters (${clean.length}/10)` };
+  }
+  if (clean.length === 10) {
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(clean)) {
+      return { valid: false, message: "Invalid PAN format. Must be 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F)" };
+    }
+    return { valid: true };
+  }
+  if (isSubmitting) {
+    return { valid: false, message: `PAN must be exactly 10 characters (${clean.length}/10)` };
+  }
+  return { valid: true };
+}
+
+export function validateAadhaarFormat(aadhaar?: string | null, isSubmitting = false): { valid: boolean; message?: string } {
+  const clean = String(aadhaar || "").replace(/\D/g, "");
+  if (!clean) return { valid: true };
+  if (clean.length > 12) {
+    return { valid: false, message: `Aadhaar cannot exceed 12 digits (${clean.length}/12)` };
+  }
+  if (clean.length === 12) {
+    return { valid: true };
+  }
+  if (isSubmitting) {
+    return { valid: false, message: `Aadhaar must be exactly 12 digits (${clean.length}/12)` };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validates Indian Driving License number:
+ * 2 letters: State Code (e.g. TN, KL, KA, DL)
+ * 2 digits: RTO Code (e.g. 37, 01)
+ * 4 digits: Year of issue (e.g. 2021)
+ * 7 digits: Unique license number
+ * Total: 15 alphanumeric characters
+ */
+export function validateDrivingLicenseFormat(dl?: string | null, isSubmitting = false): { valid: boolean; message?: string } {
+  const clean = String(dl || "").replace(/[\s-]/g, "").trim().toUpperCase();
+  if (!clean) return { valid: true };
+
+  if (clean.length > 15) {
+    return {
+      valid: false,
+      message: `Driving License cannot exceed 15 characters (${clean.length}/15)`,
+    };
+  }
+
+  if (clean.length === 15) {
+    const regex = /^[A-Z]{2}[0-9]{2}[0-9]{4}[0-9]{7}$/;
+    if (!regex.test(clean)) {
+      return {
+        valid: false,
+        message: "Invalid DL format. Expected State(2 letters) + RTO(2 digits) + Year(4 digits) + Number(7 digits)",
+      };
+    }
+
+    const year = parseInt(clean.slice(4, 8), 10);
+    const currentYear = new Date().getFullYear();
+    if (year < 1950 || year > currentYear) {
+      return {
+        valid: false,
+        message: `Invalid year of issue (${year}). Must be between 1950 and ${currentYear}`,
+      };
+    }
+
+    return { valid: true };
+  }
+
+  if (isSubmitting) {
+    return {
+      valid: false,
+      message: `Driving License must be 15 characters (${clean.length}/15)`,
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validates Voter ID (EPIC):
+ * 3 letters (alphabetic code) + 7 digits (e.g. ABC1234567)
+ */
+export function validateVoterIdFormat(voterId?: string | null, isSubmitting = false): { valid: boolean; message?: string } {
+  const clean = String(voterId || "").replace(/[\s-]/g, "").trim().toUpperCase();
+  if (!clean) return { valid: true };
+  if (clean.length > 10) {
+    return {
+      valid: false,
+      message: `Voter ID cannot exceed 10 characters (${clean.length}/10)`,
+    };
+  }
+  if (clean.length === 10) {
+    if (!/^[A-Z]{3}[0-9]{7}$/.test(clean)) {
+      return {
+        valid: false,
+        message: "Invalid Voter ID format. Expected 3 letters + 7 digits (e.g. ABC1234567)",
+      };
+    }
+    return { valid: true };
+  }
+  if (isSubmitting) {
+    return {
+      valid: false,
+      message: `Voter ID must be 10 characters (${clean.length}/10)`,
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validates Ration Card:
+ * 8 to 20 alphanumeric characters
+ */
+export function validateRationCardFormat(rc?: string | null, isSubmitting = false): { valid: boolean; message?: string } {
+  const clean = String(rc || "").trim().toUpperCase();
+  if (!clean) return { valid: true };
+  if (clean.length > 20) {
+    return {
+      valid: false,
+      message: `Ration Card number cannot exceed 20 characters (${clean.length}/20)`,
+    };
+  }
+  if (clean.length < 8) {
+    if (isSubmitting) {
+      return {
+        valid: false,
+        message: `Ration Card number must be at least 8 characters (${clean.length}/8)`,
+      };
+    }
+    return { valid: true };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validates Indian Bank Account Number:
+ * 9 to 18 numeric digits
+ */
+export function validateBankAccountFormat(acc?: string | null, isSubmitting = false): { valid: boolean; message?: string } {
+  const clean = String(acc || "").replace(/\D/g, "");
+  if (!clean) return { valid: true };
+  if (clean.length > 18) {
+    return {
+      valid: false,
+      message: `Bank Account number cannot exceed 18 digits (${clean.length}/18)`,
+    };
+  }
+  if (clean.length < 9) {
+    if (isSubmitting) {
+      return {
+        valid: false,
+        message: `Bank Account number must be between 9 and 18 digits (${clean.length} digits)`,
+      };
+    }
+    return { valid: true };
+  }
+  return { valid: true };
+}
+

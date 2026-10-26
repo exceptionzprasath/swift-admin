@@ -101,6 +101,7 @@ export function OnboardingChecklistDialog({
       items: [
         { label: "Professional Skills", isFilled: Boolean(Array.isArray(employee.skills) && employee.skills.length > 0), value: employee.skills?.join(", ") },
         { label: "Languages Known", isFilled: Boolean(Array.isArray(employee.languagesKnown) && employee.languagesKnown.length > 0), value: employee.languagesKnown?.join(", ") },
+        { label: "Extra Curricular", isFilled: Boolean(Array.isArray(employee.extraCurricular) && employee.extraCurricular.length > 0), value: employee.extraCurricular?.join(", ") },
         { label: "Educational Qualification", isFilled: Boolean(Array.isArray(employee.education) && employee.education.length > 0), value: employee.education?.[0]?.level },
       ],
     },

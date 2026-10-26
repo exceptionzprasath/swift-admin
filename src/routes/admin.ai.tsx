@@ -10,8 +10,8 @@ import { aiOrchestrator } from "@/lib/ai-orchestrator";
 import { AIResponseRenderer } from "@/components/ai/AIResponseRenderer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CreatonsAiIcon } from "@/components/icons/creatons-ai-icon";
 import {
-  Brain,
   Send,
   Loader2,
   RotateCcw,
@@ -30,7 +30,6 @@ import {
   Layers,
   Compass,
   Smile,
-  Bell,
   MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -82,7 +81,7 @@ async function compressImageToDataUrl(file: File, maxDimension = 1200, quality =
 }
 
 export const Route = createFileRoute("/admin/ai")({
-  head: () => ({ meta: [{ title: "SWIFT AI · Intelligence Hub" }] }),
+  head: () => ({ meta: [{ title: "CREATONS AI · Intelligence Hub" }] }),
   component: SwiftAiCommandCenter,
 });
 
@@ -121,6 +120,11 @@ function SwiftAiCommandCenter() {
   } = useUnifiedAiStore();
 
   const hasConversation = messages.some((m) => m.role === "user");
+  const conversationMessages = useMemo(() => {
+    return hasConversation
+      ? messages.filter((m) => !m.id.startsWith("welcome-") && !m.content.includes("Welcome to"))
+      : messages;
+  }, [messages, hasConversation]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const latestMessageRef = useRef<HTMLDivElement>(null);
@@ -315,14 +319,14 @@ function SwiftAiCommandCenter() {
   };
 
   const exportChat = () => {
-    const text = messages
-      .map((m) => `[${m.timestamp}] ${m.role.toUpperCase()} (${m.source || "SWIFT AI"}):\n${m.content}\n`)
+    const text = conversationMessages
+      .map((m) => `[${m.timestamp}] ${m.role.toUpperCase()} (${m.source || "CREATONS AI"}):\n${m.content}\n`)
       .join("\n---\n\n");
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `SWIFT_AI_Transcript_${Date.now()}.txt`;
+    a.download = `CREATONS_AI_Transcript_${Date.now()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Transcript downloaded");
@@ -369,80 +373,71 @@ function SwiftAiCommandCenter() {
       </div>
 
       {/* ======================================================== */}
-      {/* 2. TOP FLOATING NAVIGATION BAR (LOGO, NOTIF & PROFILE)   */}
+      {/* 2. TOP ACTION BAR (ONLY WHEN IN ACTIVE CONVERSATION)     */}
       {/* ======================================================== */}
-      <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-row flex-nowrap items-center justify-between gap-4 z-20">
-        {/* Left: Brand Logo + Single Line Name */}
-        <div className="flex items-center gap-2.5 shrink-0 whitespace-nowrap">
-          <div
-            className="relative h-10 w-10 rounded-full p-[2px] flex items-center justify-center shadow-lg transition-transform hover:scale-105"
-            style={{
-              background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
-            }}
-          >
-            <div className="h-full w-full rounded-full bg-card/90 backdrop-blur-md flex items-center justify-center text-primary shadow-inner">
-              <Brain className="h-5 w-5 text-primary animate-pulse" />
-            </div>
+      {hasConversation && (
+        <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-row flex-nowrap items-center justify-between gap-4 z-20">
+          {/* Left: Model Indicator & Message Count */}
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <Badge
+              variant="outline"
+              className="border-white/50 text-primary text-xs font-semibold py-1 px-3 shadow-xs"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.4)",
+                backdropFilter: "blur(20px)",
+              }}
+            >
+              {selectedModel === "gpt-4o" ? "GPT-4o Deep Reasoning" : "GPT-4o Mini Fast"}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              {company.name} · {conversationMessages.length} messages
+            </span>
           </div>
-          <span className="font-bold text-lg sm:text-xl tracking-tight text-foreground font-display whitespace-nowrap inline-block">
-            SWIFT AI
-          </span>
-        </div>
 
-        {/* Right Tools: Notification Bell & Profile Avatar */}
-        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 whitespace-nowrap">
-          {/* Notification Bell */}
-          <button
-            type="button"
-            onClick={() => toast.info(`SWIFT AI is monitoring compliance for ${company.name}`)}
-            className="h-9 w-9 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs hover:scale-105 shrink-0"
-            style={{
-              backgroundColor: "rgba(255, 255, 255, 0.35)",
-              borderColor: "rgba(255, 255, 255, 0.6)",
-              backdropFilter: "blur(24px) saturate(180%)",
-              WebkitBackdropFilter: "blur(24px) saturate(180%)",
-            }}
-            title="Notifications"
-          >
-            <Bell className="h-4 w-4 text-foreground/80" />
-          </button>
-
-          {/* User Profile Avatar */}
-          <div
-            className="h-9 w-9 rounded-full p-[1.5px] shadow-sm cursor-pointer hover:scale-105 transition-transform shrink-0"
-            style={{
-              background: "linear-gradient(135deg, var(--primary), var(--accent, var(--primary)))",
-            }}
-            title={user?.email || "Admin"}
-          >
-            <div className="h-full w-full rounded-full bg-card flex items-center justify-center font-bold text-xs text-primary overflow-hidden">
-              {(user?.email || "A")[0].toUpperCase()}
-            </div>
+          {/* Right Tools: Clean Horizontal Actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => clearConversation(company.name)}
+              className="rounded-full text-xs gap-1.5 cursor-pointer border-white/60 hover:bg-card shadow-xs transition"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.45)",
+                backdropFilter: "blur(20px)",
+              }}
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> New Chat
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportChat}
+              className="rounded-full text-xs gap-1.5 cursor-pointer border-white/60 hover:bg-card shadow-xs transition"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.45)",
+                backdropFilter: "blur(20px)",
+              }}
+            >
+              <Download className="h-3.5 w-3.5" /> Export
+            </Button>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* ======================================================== */}
       {/* 3. MAIN HERO VIEW OR FULL CHAT VIEW                      */}
       {/* ======================================================== */}
       {!hasConversation ? (
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col justify-center items-center relative py-6 md:py-10">
-          {/* Clean Glowing Brain Icon WITHOUT Circle Wrapper */}
+          {/* Clean Creatons AI Microchip Icon */}
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.4 }}
             className="relative mb-4 flex items-center justify-center"
           >
-            {/* Soft Ambient Halo behind the icon */}
-            <div
-              className="absolute h-14 w-14 rounded-full blur-xl opacity-70 animate-pulse pointer-events-none"
-              style={{
-                background: "radial-gradient(circle, var(--primary) 0%, var(--accent, var(--primary)) 80%, transparent)",
-              }}
-            />
-            {/* Clean floating Brain icon */}
-            <Brain className="relative h-11 w-11 text-primary animate-swift-float drop-shadow-[0_4px_12px_rgba(0,0,0,0.15)]" />
+            {/* Clean floating Creatons AI chip icon */}
+            <CreatonsAiIcon className="relative h-14 w-14 text-primary animate-swift-float" />
           </motion.div>
 
           {/* Centered Heading */}
@@ -452,7 +447,7 @@ function SwiftAiCommandCenter() {
             transition={{ delay: 0.1 }}
             className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-foreground text-center font-display mb-2 drop-shadow-xs"
           >
-            Hi, I'm SWIFT AI
+            Hi, I'm CREATONS AI
           </motion.h1>
 
           <motion.p
@@ -685,56 +680,11 @@ function SwiftAiCommandCenter() {
         /* 5. ACTIVE CONVERSATION FULL VIEW (WITH DEEP GLASS)       */
         /* ======================================================== */
         <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 flex flex-col justify-between py-2 overflow-hidden z-20">
-          {/* Header Action Strip */}
-          <div className="flex items-center justify-between py-2 border-b border-white/20 mb-2">
-            <div className="flex items-center gap-2">
-              <Badge
-                variant="outline"
-                className="border-white/50 text-primary text-xs font-semibold py-1 px-3 shadow-xs"
-                style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.4)",
-                  backdropFilter: "blur(20px)",
-                }}
-              >
-                {selectedModel === "gpt-4o" ? "GPT-4o Deep Reasoning" : "GPT-4o Mini Fast"}
-              </Badge>
-              <span className="text-xs text-muted-foreground">
-                {company.name} · {messages.length} messages
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => clearConversation(company.name)}
-                className="rounded-full text-xs gap-1.5 cursor-pointer border-white/50 hover:bg-card"
-                style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.4)",
-                  backdropFilter: "blur(20px)",
-                }}
-              >
-                <RotateCcw className="h-3.5 w-3.5" /> New Chat
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportChat}
-                className="rounded-full text-xs gap-1.5 cursor-pointer border-white/50 hover:bg-card"
-                style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.4)",
-                  backdropFilter: "blur(20px)",
-                }}
-              >
-                <Download className="h-3.5 w-3.5" /> Export
-              </Button>
-            </div>
-          </div>
-
           {/* Messages Scroller */}
           <div ref={scrollerRef} className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-4 space-y-4 scroll-smooth">
-            {messages.map((msg, idx) => {
+            {conversationMessages.map((msg, idx) => {
               const isUser = msg.role === "user";
-              const isLast = idx === messages.length - 1;
+              const isLast = idx === conversationMessages.length - 1;
 
               return (
                 <motion.div
@@ -753,7 +703,7 @@ function SwiftAiCommandCenter() {
                       }}
                     >
                       <div className="h-full w-full rounded-full bg-card flex items-center justify-center text-primary">
-                        <Brain className="h-4 w-4" />
+                        <CreatonsAiIcon className="h-4 w-4" />
                       </div>
                     </div>
                   )}
@@ -783,7 +733,7 @@ function SwiftAiCommandCenter() {
                     {/* Header */}
                     <div className="flex items-center justify-between gap-4 mb-2 text-[11px] opacity-80">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold">{isUser ? "You" : "SWIFT AI"}</span>
+                        <span className="font-bold">{isUser ? "You" : "CREATONS AI"}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span>{msg.timestamp}</span>
@@ -823,13 +773,13 @@ function SwiftAiCommandCenter() {
                         </span>
                         <div className="flex items-center gap-1.5">
                           <button
-                            onClick={() => handleGeneratePdfForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content, msg.structuredData)}
+                            onClick={() => handleGeneratePdfForQuery(msg.downloadQuery || "CREATONS AI Report", msg.content, msg.structuredData)}
                             className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary transition cursor-pointer"
                           >
                             <Download className="h-3 w-3" /> PDF
                           </button>
                           <button
-                            onClick={() => handleGenerateExcelForQuery(msg.downloadQuery || "SWIFT AI Report", msg.content, msg.structuredData)}
+                            onClick={() => handleGenerateExcelForQuery(msg.downloadQuery || "CREATONS AI Report", msg.content, msg.structuredData)}
                             className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition cursor-pointer"
                           >
                             <FileSpreadsheet className="h-3 w-3" /> Excel
@@ -862,7 +812,7 @@ function SwiftAiCommandCenter() {
                   }}
                 >
                   <div className="h-full w-full rounded-full bg-card flex items-center justify-center text-primary">
-                    <Brain className="h-4 w-4 animate-pulse" />
+                    <CreatonsAiIcon className="h-4 w-4 animate-pulse" />
                   </div>
                 </div>
                 <div
@@ -874,7 +824,7 @@ function SwiftAiCommandCenter() {
                   }}
                 >
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span>SWIFT AI is reasoning with OpenAI ({selectedModel})...</span>
+                  <span>CREATONS AI is reasoning with OpenAI ({selectedModel})...</span>
                 </div>
               </motion.div>
             )}

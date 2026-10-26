@@ -29,6 +29,7 @@ export type AuthUser = {
   department?: string;
   designation?: string;
   isEmployeeLogin?: boolean;
+  isKiosk?: boolean;
 };
 
 type AuthState = {
@@ -83,7 +84,14 @@ export const useAuth = create<AuthState>((set, get) => ({
       let empCode = identifier.toUpperCase();
       let membershipRole: "owner" | "hr" | "employee" = "employee";
 
-      if (lowerId === "admin@demo" || lowerId.includes("admin")) {
+      let isKiosk = false;
+
+      if (lowerId === "kiosk@creatonshr.com" || lowerId === "kiosk@demo" || lowerId.includes("kiosk")) {
+        roleId = "role-kiosk";
+        roleName = "Common Attendance Kiosk";
+        name = "Attendance Kiosk";
+        isKiosk = true;
+      } else if (lowerId === "admin@demo" || lowerId.includes("admin")) {
         membershipRole = "owner";
         roleId = "role-hr-manager";
         roleName = "Administrator";
@@ -115,6 +123,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         roleId,
         roleName,
         isEmployeeLogin: membershipRole !== "owner",
+        isKiosk,
       };
       const memberships: TenantMembership[] = [
         {
@@ -122,9 +131,9 @@ export const useAuth = create<AuthState>((set, get) => ({
           role: membershipRole,
           tenant: {
             id: activeTenantId,
-            name: "SWIFT Demo Pvt Ltd",
+            name: "CreatonsHR Demo Pvt Ltd",
             slug: "demo",
-            legal_name: "SWIFT Demo Private Limited",
+            legal_name: "CreatonsHR Demo Private Limited",
             address: null,
             gstin: null,
             plan: "growth",
@@ -134,7 +143,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         },
       ];
       localStorage.setItem("swift-auth-user", JSON.stringify(user));
-      localStorage.setItem("swift-auth-role", membershipRole === "owner" ? "user" : "employee");
+      localStorage.setItem("swift-auth-role", isKiosk ? "kiosk" : (membershipRole === "owner" ? "user" : "employee"));
       localStorage.setItem("swift-auth-memberships", JSON.stringify(memberships));
       localStorage.setItem("swift-active-tenant", activeTenantId);
       set({ user, isSuperAdmin: false, memberships, activeTenantId, loading: false });
@@ -154,10 +163,11 @@ export const useAuth = create<AuthState>((set, get) => ({
       roleId: user.roleId || employee?.roleId,
       roleName: user.roleName || employee?.roleName,
       isEmployeeLogin: user.isEmployeeLogin ?? (memberships[0]?.role !== "owner"),
+      isKiosk: Boolean(user.isKiosk || user.roleId === "role-kiosk" || String(user.email || "").toLowerCase().includes("kiosk")),
     };
 
     localStorage.setItem("swift-auth-user", JSON.stringify(finalUser));
-    localStorage.setItem("swift-auth-role", finalUser.isEmployeeLogin ? "employee" : "user");
+    localStorage.setItem("swift-auth-role", finalUser.isKiosk ? "kiosk" : (finalUser.isEmployeeLogin ? "employee" : "user"));
     localStorage.setItem("swift-auth-memberships", JSON.stringify(memberships));
     
     const activeTenantId = memberships[0]?.tenant_id ?? null;

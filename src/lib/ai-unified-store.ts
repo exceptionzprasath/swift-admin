@@ -42,7 +42,7 @@ interface UnifiedAiState {
 const buildDefaultWelcomeMessage = (companyName = "your organization"): AIMessage => ({
   id: "welcome-1",
   role: "assistant",
-  content: `### 👋 Welcome to SWIFT AI Copilot\n\nI am your **OpenAI-powered Enterprise Copilot**, embedded directly with live visibility into **${companyName}**.\n\nHere's what I can do for you right now:\n- 📊 **Query Real-time Data**: Ask about employee details, attendance metrics, leaves, payroll calculations & branch heads.\n- 📝 **Generate HR Documents**: Draft customized offer letters, promotion orders, experience certificates, or company policies.\n- ⚖️ **Statutory Compliance**: Check PF/ESI rules, tax brackets, filing deadlines, and generate regulatory filings.\n- ⚡ **Automated Actions**: Type *"Generate compliance documents"* to instantly compile and download complete PDF statutory bundles.`,
+  content: `### 👋 Welcome to CREATONS AI Copilot\n\nI am your **OpenAI-powered Enterprise Copilot**, embedded directly with live visibility into **${companyName}**.\n\nHere's what I can do for you right now:\n- 📊 **Query Real-time Data**: Ask about employee details, attendance metrics, leaves, payroll calculations & branch heads.\n- 📝 **Generate HR Documents**: Draft customized offer letters, promotion orders, experience certificates, or company policies.\n- ⚖️ **Statutory Compliance**: Check PF/ESI rules, tax brackets, filing deadlines, and generate regulatory filings.\n- ⚡ **Automated Actions**: Type *"Generate compliance documents"* to instantly compile and download complete PDF statutory bundles.`,
   timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
   messageType: "text",
 });
@@ -121,12 +121,18 @@ export const useUnifiedAiStore = create<UnifiedAiState>()(
         set((state) => {
           // Avoid duplicate messages with same ID
           const existingIndex = state.messages.findIndex((m) => m.id === fullMessage.id);
+          let baseMessages = state.messages;
+          if (fullMessage.role === "user") {
+            baseMessages = baseMessages.filter(
+              (m) => !m.id.startsWith("welcome-") && !m.content.includes("Welcome to")
+            );
+          }
           let nextMessages: AIMessage[];
           if (existingIndex >= 0) {
-            nextMessages = [...state.messages];
+            nextMessages = [...baseMessages];
             nextMessages[existingIndex] = fullMessage;
           } else {
-            nextMessages = [...state.messages, fullMessage];
+            nextMessages = [...baseMessages, fullMessage];
           }
           return { messages: nextMessages };
         });

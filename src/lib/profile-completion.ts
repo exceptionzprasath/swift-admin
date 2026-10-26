@@ -207,6 +207,12 @@ export function calculateProfileCompletion(employee: Employee | null | undefined
       isFilled: Boolean(Array.isArray(employee.languagesKnown) && employee.languagesKnown.length > 0),
     },
     {
+      key: "extraCurricular",
+      label: "Extra Curricular Activities",
+      tab: "history",
+      isFilled: Boolean(Array.isArray(employee.extraCurricular) && employee.extraCurricular.length > 0),
+    },
+    {
       key: "education",
       label: "Educational Qualification",
       tab: "history",
