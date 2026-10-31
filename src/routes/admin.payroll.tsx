@@ -209,11 +209,13 @@ interface MonthlyOverrideData {
   pfEmployerEnabled?: boolean;
   employeePfPct?: number;
   employerPfPct?: number;
+  pfCeiling?: number;
   esiEnabled?: boolean;
   esiEmployeeEnabled?: boolean;
   esiEmployerEnabled?: boolean;
   employeeEsiPct?: number;
   employerEsiPct?: number;
+  esiThreshold?: number;
   ptEnabled?: boolean;
   ptAmountOverride?: number;
   lwfEnabled?: boolean;
@@ -269,11 +271,13 @@ interface EditingPayrollRecord extends MonthlyOverrideData {
   pfEmployerEnabled: boolean;
   employeePfPct: number;
   employerPfPct: number;
+  pfCeiling: number;
   esiEnabled: boolean;
   esiEmployeeEnabled: boolean;
   esiEmployerEnabled: boolean;
   employeeEsiPct: number;
   employerEsiPct: number;
+  esiThreshold: number;
   ptEnabled: boolean;
   ptAmountOverride: number;
   lwfEnabled: boolean;
@@ -310,6 +314,8 @@ function buildEffectiveCompany(company: Company, ov: MonthlyOverrideData = {}): 
     : ((ov.esiEmployeeEnabled === false && ov.esiEmployerEnabled === false) ? false : (company.esiRules?.enabled !== false));
 
   const lwfEnabled = ov.lwfEnabled !== undefined ? ov.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false);
+  const effectivePfCeiling = ov.pfCeiling !== undefined ? ov.pfCeiling : (company.pfRules?.ceiling ?? 15000);
+  const effectiveEsiThreshold = ov.esiThreshold !== undefined ? ov.esiThreshold : (company.esiRules?.threshold ?? company.esiThreshold ?? 21000);
 
   return {
     ...company,
@@ -335,7 +341,9 @@ function buildEffectiveCompany(company: Company, ov: MonthlyOverrideData = {}): 
       enabled: pfEnabled,
       employeePct: ov.employeePfPct !== undefined ? ov.employeePfPct : (company.employeePfPct ?? company.pfRules?.employeePct ?? 12),
       employerPct: ov.employerPfPct !== undefined ? ov.employerPfPct : (company.employerPfPct ?? company.pfRules?.employerPct ?? 13),
+      ceiling: effectivePfCeiling,
     },
+    esiThreshold: effectiveEsiThreshold,
     employeeEsiEnabled: esiEmployeeEnabled,
     employerEsiEnabled: esiEmployerEnabled,
     employeeEsiPct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75),
@@ -345,6 +353,7 @@ function buildEffectiveCompany(company: Company, ov: MonthlyOverrideData = {}): 
       enabled: esiEnabled,
       employeePct: ov.employeeEsiPct !== undefined ? ov.employeeEsiPct : (company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75),
       employerPct: ov.employerEsiPct !== undefined ? ov.employerEsiPct : (company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25),
+      threshold: effectiveEsiThreshold,
     },
     lwfEnabled,
     lwfRules: {
@@ -707,11 +716,12 @@ export function PayrollPage() {
     const basicPlusDA = basic;
     let pfEmployer = 0;
     let pfEmployee = 0;
-    const pfBase = Math.min(basicPlusDA, 15000);
+    const pfCeiling = company.pfRules?.ceiling ?? 15000;
+    const pfBase = Math.min(basicPlusDA, pfCeiling);
 
     if (pfEnabled && basicPlusDA > 0) {
-      if (basicPlusDA >= 15000) {
-        pfEmployee = 1800;
+      if (basicPlusDA >= pfCeiling) {
+        pfEmployee = Math.round(pfCeiling * (employeePfPct / 100));
       } else {
         pfEmployee = Math.round(basicPlusDA * (employeePfPct / 100));
       }
@@ -720,11 +730,12 @@ export function PayrollPage() {
 
     const esiEnabled = company.esiRules?.enabled !== false;
     const esiThreshold = company.esiRules?.threshold ?? company.esiThreshold ?? 21000;
-    const esiEligible = gross <= esiThreshold || (company.esiRules as any)?.applyToAll;
+    const esiEligible = basicPlusDA <= esiThreshold || (company.esiRules as any)?.applyToAll;
     const employeeEsiPct = company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75;
     const employerEsiPct = company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25;
-    const esiEmployer = (esiEnabled && esiEligible) ? Math.round(gross * (employerEsiPct / 100)) : 0;
-    const esiEmployee = (esiEnabled && esiEligible) ? Math.round(gross * (employeeEsiPct / 100)) : 0;
+    const esiBase = Math.min(basicPlusDA, esiThreshold);
+    const esiEmployer = (esiEnabled && esiEligible) ? Math.round(esiBase * (employerEsiPct / 100)) : 0;
+    const esiEmployee = (esiEnabled && esiEligible) ? Math.round(esiBase * (employeeEsiPct / 100)) : 0;
 
     const ptEnabled = company.ptEnabled !== false;
     const pt = ptEnabled ? (company.ptAmount ?? 208) : 0;
@@ -2516,6 +2527,44 @@ export function PayrollPage() {
                     </td>
                   </tr>
 
+                  {/* PF — WAGE CEILING / BARRIER */}
+                  <tr className={`transition-colors ${benchmarkCalc.pfEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-2.5 pl-12 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+                        <span className="text-xs font-medium">PF Wage Barrier / Ceiling</span>
+                        <Badge variant="outline" className="text-[9px] bg-slate-500/10 text-slate-600 border-slate-500/20">
+                          Statutory Limit
+                        </Badge>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground font-semibold">₹</span>
+                        <Input
+                          type="number"
+                          step="500"
+                          disabled={!benchmarkCalc.pfEnabled}
+                          value={company.pfRules?.ceiling ?? 15000}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setCompany({
+                              pfRules: {
+                                ...(company.pfRules || { employeePct: 12, employerPct: 13, ceiling: 15000 }),
+                                ceiling: val,
+                              },
+                            });
+                          }}
+                          className="h-7.5 w-24 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">(Std ₹15,000 EPF ceiling)</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5 text-right font-semibold text-muted-foreground text-xs">
+                      Ceiling: ₹{(company.pfRules?.ceiling ?? 15000).toLocaleString("en-IN")}
+                    </td>
+                  </tr>
+
                   {/* ESI (State Insurance) MASTER TOGGLE */}
                   <tr className={`transition-colors ${benchmarkCalc.esiEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
                     <td className="px-5 py-3.5 font-semibold text-foreground">
@@ -2540,8 +2589,8 @@ export function PayrollPage() {
                           </div>
                           <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
                             {benchmarkCalc.esiEligible
-                              ? `Gross salary ${inr(benchmarkCalc.gross)} is eligible for ESI`
-                              : `Gross salary ${inr(benchmarkCalc.gross)} exceeds statutory ₹21k limit`}
+                              ? `Basic + DA ${inr(benchmarkCalc.basic)} is within ESI barrier (≤ ${inr(company.esiRules?.threshold || company.esiThreshold || 21000)})`
+                              : `Basic + DA ${inr(benchmarkCalc.basic)} exceeds ESI barrier (≤ ${inr(company.esiRules?.threshold || company.esiThreshold || 21000)})`}
                           </div>
                         </div>
                       </div>
@@ -2586,7 +2635,7 @@ export function PayrollPage() {
                           }}
                           className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
                         />
-                        <span className="text-xs text-muted-foreground">% of Gross</span>
+                        <span className="text-xs text-muted-foreground">% of Basic + DA</span>
                       </div>
                     </td>
                     <td className="px-5 py-2.5 text-right font-semibold text-rose-600 text-xs">
@@ -2626,13 +2675,52 @@ export function PayrollPage() {
                           }}
                           className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
                         />
-                        <span className="text-xs text-muted-foreground">% of Gross</span>
+                        <span className="text-xs text-muted-foreground">% of Basic + DA</span>
                       </div>
                     </td>
                     <td className="px-5 py-2.5 text-right font-semibold text-indigo-600 dark:text-indigo-400 text-xs">
                       {benchmarkCalc.esiEnabled && benchmarkCalc.esiEligible
                         ? `+${inr(benchmarkCalc.esiEmployer)} (CTC)`
                         : <span className="text-xs text-muted-foreground">{benchmarkCalc.esiEnabled ? "₹0 (Exceeds ₹21k)" : "Excluded"}</span>}
+                    </td>
+                  </tr>
+
+                  {/* ESI — WAGE THRESHOLD / BARRIER */}
+                  <tr className={`transition-colors ${benchmarkCalc.esiEnabled ? "hover:bg-muted/20" : "opacity-50 bg-muted/10"}`}>
+                    <td className="px-5 py-2.5 pl-12 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+                        <span className="text-xs font-medium">ESI Wage Barrier / Threshold</span>
+                        <Badge variant="outline" className="text-[9px] bg-slate-500/10 text-slate-600 border-slate-500/20">
+                          Eligibility Limit
+                        </Badge>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground font-semibold">₹</span>
+                        <Input
+                          type="number"
+                          step="500"
+                          disabled={!benchmarkCalc.esiEnabled}
+                          value={company.esiRules?.threshold || company.esiThreshold || 21000}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setCompany({
+                              esiThreshold: val,
+                              esiRules: {
+                                ...(company.esiRules || { employeePct: 0.75, employerPct: 3.25, threshold: 21000 }),
+                                threshold: val,
+                              },
+                            });
+                          }}
+                          className="h-7.5 w-24 text-xs font-semibold rounded-lg bg-background"
+                        />
+                        <span className="text-xs text-muted-foreground">(Std ₹21,000 Basic + DA threshold)</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5 text-right font-semibold text-muted-foreground text-xs">
+                      Threshold: ₹{(company.esiRules?.threshold || company.esiThreshold || 21000).toLocaleString("en-IN")}
                     </td>
                   </tr>
 
@@ -3275,11 +3363,13 @@ export function PayrollPage() {
                                 pfEmployerEnabled: overrideData.pfEmployerEnabled !== undefined ? overrideData.pfEmployerEnabled : (overrideData.pfEnabled !== undefined ? overrideData.pfEnabled : (company.employerPfEnabled ?? true)),
                                 employeePfPct: overrideData.employeePfPct !== undefined ? overrideData.employeePfPct : (company.employeePfPct ?? company.pfRules?.employeePct ?? 12),
                                 employerPfPct: overrideData.employerPfPct !== undefined ? overrideData.employerPfPct : (company.employerPfPct ?? company.pfRules?.employerPct ?? 13),
+                                pfCeiling: overrideData.pfCeiling !== undefined ? overrideData.pfCeiling : (company.pfRules?.ceiling ?? 15000),
                                 esiEnabled: overrideData.esiEnabled !== undefined ? overrideData.esiEnabled : (company.esiRules?.enabled !== false),
                                 esiEmployeeEnabled: overrideData.esiEmployeeEnabled !== undefined ? overrideData.esiEmployeeEnabled : (overrideData.esiEnabled !== undefined ? overrideData.esiEnabled : (company.employeeEsiEnabled ?? true)),
                                 esiEmployerEnabled: overrideData.esiEmployerEnabled !== undefined ? overrideData.esiEmployerEnabled : (overrideData.esiEnabled !== undefined ? overrideData.esiEnabled : (company.employerEsiEnabled ?? true)),
                                 employeeEsiPct: overrideData.employeeEsiPct !== undefined ? overrideData.employeeEsiPct : (company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75),
                                 employerEsiPct: overrideData.employerEsiPct !== undefined ? overrideData.employerEsiPct : (company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25),
+                                esiThreshold: overrideData.esiThreshold !== undefined ? overrideData.esiThreshold : (company.esiRules?.threshold ?? company.esiThreshold ?? 21000),
                                 ptEnabled: overrideData.ptEnabled !== undefined ? overrideData.ptEnabled : (company.ptEnabled !== false),
                                 ptAmountOverride: overrideData.ptAmountOverride !== undefined ? overrideData.ptAmountOverride : (comp.deductions.professionalTax || company.ptAmount || 208),
                                 lwfEnabled: overrideData.lwfEnabled !== undefined ? overrideData.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false),
@@ -4991,6 +5081,86 @@ export function PayrollPage() {
                       </div>
                     </div>
 
+                    {/* Statutory Barrier / Wage Limits (PF Wage Ceiling & ESI Gross Threshold) */}
+                    <div className="p-3.5 rounded-xl bg-card border border-border/80 shadow-sm space-y-3">
+                      <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                        <div className="flex items-center gap-2">
+                          <SlidersHorizontal className="h-4 w-4 text-primary" />
+                          <span className="text-xs font-bold text-foreground">Statutory Barrier Amounts (PF &amp; ESI)</span>
+                          <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary border-primary/20">
+                            Customizable Ceilings
+                          </Badge>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">Live recalculation on change</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* PF Wage Barrier / Ceiling */}
+                        <div className="space-y-1.5 p-2.5 rounded-lg bg-muted/20 border border-border/50">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold flex items-center gap-1.5">
+                              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                              <span>PF Barrier / Wage Ceiling (₹)</span>
+                            </Label>
+                            <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">
+                              Default: ₹15,000
+                            </Badge>
+                          </div>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step="500"
+                              value={editingRecord.pfCeiling}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setEditingRecord({
+                                  ...editingRecord,
+                                  pfCeiling: isNaN(val) ? 0 : Math.max(0, val),
+                                });
+                              }}
+                              className="h-8 text-xs font-bold text-foreground pl-7 bg-background"
+                            />
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-semibold">₹</span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground leading-tight">
+                            EPF capping barrier. When (Basic + DA) ≥ ₹{editingRecord.pfCeiling || 15000}, employee share = {inr(Math.round((editingRecord.pfCeiling || 15000) * ((editingRecord.employeePfPct || 12) / 100)))}.
+                          </div>
+                        </div>
+
+                        {/* ESI Wage Barrier / Gross Threshold */}
+                        <div className="space-y-1.5 p-2.5 rounded-lg bg-muted/20 border border-border/50">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold flex items-center gap-1.5">
+                              <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                              <span>ESI Barrier / Wage Threshold (₹)</span>
+                            </Label>
+                            <Badge variant="secondary" className="text-[9px] px-1 py-0 font-mono">
+                              Default: ₹21,000
+                            </Badge>
+                          </div>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step="500"
+                              value={editingRecord.esiThreshold}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setEditingRecord({
+                                  ...editingRecord,
+                                  esiThreshold: isNaN(val) ? 0 : Math.max(0, val),
+                                });
+                              }}
+                              className="h-8 text-xs font-bold text-foreground pl-7 bg-background"
+                            />
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-semibold">₹</span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground leading-tight">
+                            ESI eligibility barrier. ESI applies when Basic + DA ≤ ₹{editingRecord.esiThreshold?.toLocaleString("en-IN") || "21,000"} {editingComp?.esiEligible ? "(currently applicable)" : "(currently exempt)"}.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                       <div className="space-y-1">
                         <Label className="text-xs font-semibold">Advance Recovery (₹)</Label>
@@ -5222,11 +5392,13 @@ export function PayrollPage() {
                         pfEmployerEnabled: editingRecord.pfEmployerEnabled,
                         employeePfPct: editingRecord.employeePfPct,
                         employerPfPct: editingRecord.employerPfPct,
+                        pfCeiling: editingRecord.pfCeiling,
                         esiEnabled: (editingRecord.esiEmployeeEnabled || editingRecord.esiEmployerEnabled) ? (editingRecord.esiEnabled !== false) : false,
                         esiEmployeeEnabled: editingRecord.esiEmployeeEnabled,
                         esiEmployerEnabled: editingRecord.esiEmployerEnabled,
                         employeeEsiPct: editingRecord.employeeEsiPct,
                         employerEsiPct: editingRecord.employerEsiPct,
+                        esiThreshold: editingRecord.esiThreshold,
                         ptEnabled: editingRecord.ptEnabled,
                         ptAmountOverride: editingRecord.ptAmountOverride,
                         lwfEnabled: editingRecord.lwfEnabled,

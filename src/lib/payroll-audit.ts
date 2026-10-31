@@ -156,10 +156,10 @@ export function auditPayroll(opts: {
   // ---------- ESI (ESI Act 1948) ----------
   if (c.esiRules?.enabled) {
     const near = c.esiRules.threshold * 0.98;
-    if (p.gross > c.esiRules.threshold && p.deductions.employeeESI > 0) {
-      out.push({ level: "error", code: "ESI_ABOVE", title: "ESI deducted above threshold", detail: `Gross ₹${Math.round(p.gross)} > threshold ₹${c.esiRules.threshold}.`, suggestion: "Exclude employee from ESI. Note: contribution period rules — if eligible at start of period (Apr/Oct) continue till period end.", law: "ESI Act 1948 Reg 4" } as AuditIssue);
-    } else if (p.gross > near && p.gross <= c.esiRules.threshold) {
-      out.push({ level: "warn", code: "ESI_NEAR", title: "Near ESI ceiling", detail: `Gross ₹${Math.round(p.gross)} is within 2% of ₹${c.esiRules.threshold}. Recheck next cycle.`, law: "ESI Act 1948" } as AuditIssue);
+    if (p.pfBaseRaw > c.esiRules.threshold && p.deductions.employeeESI > 0) {
+      out.push({ level: "error", code: "ESI_ABOVE", title: "ESI deducted above threshold", detail: `Basic + DA ₹${Math.round(p.pfBaseRaw)} > threshold ₹${c.esiRules.threshold}.`, suggestion: "Exclude employee from ESI. Note: contribution period rules — if eligible at start of period (Apr/Oct) continue till period end.", law: "ESI Act 1948 Reg 4" } as AuditIssue);
+    } else if (p.pfBaseRaw > near && p.pfBaseRaw <= c.esiRules.threshold) {
+      out.push({ level: "warn", code: "ESI_NEAR", title: "Near ESI ceiling", detail: `Basic + DA ₹${Math.round(p.pfBaseRaw)} is within 2% of ₹${c.esiRules.threshold}. Recheck next cycle.`, law: "ESI Act 1948" } as AuditIssue);
     }
     if (Math.abs(c.esiRules.employeePct - 0.75) > 0.01 || Math.abs(c.esiRules.employerPct - 3.25) > 0.01) {
       out.push({ level: "info", code: "ESI_RATE", title: "Custom ESI rates", detail: `Configured ${c.esiRules.employeePct}% / ${c.esiRules.employerPct}%. Statutory since Jul 2019: 0.75% / 3.25%.`, law: "ESI Amendment 2019" } as AuditIssue);

@@ -391,7 +391,7 @@ export function computePayroll(opts: {
     .reduce((sum, item) => sum + item.amount, 0) || earnedBasic;
   const basicPlusDA = pfQualifyingWage;
   const pfBaseRaw = basicPlusDA;
-  const PF_CEILING = 15000;
+  const PF_CEILING = pfRules?.ceiling ?? 15000;
   const pfBase = Math.min(basicPlusDA, PF_CEILING);
 
   if (pfEnabled && basicPlusDA > 0) {
@@ -403,8 +403,8 @@ export function computePayroll(opts: {
     // Rule: If Basic Pay + DA is less than 15000, deduction is as per percentage entered in PF.
     // When Basic Pay + DA is 15000 or more, deduction amount is standard ₹1800.
     if (empEnabled) {
-      if (basicPlusDA >= 15000) {
-        employeePF = 1800;
+      if (basicPlusDA >= PF_CEILING) {
+        employeePF = Math.round(PF_CEILING * (empPct / 100));
       } else {
         employeePF = Math.round(basicPlusDA * (empPct / 100));
       }
@@ -423,16 +423,18 @@ export function computePayroll(opts: {
   }
 
   // 2. Employee State Insurance (ESI Act 1948)
-  // ESI Wage = Gross Earned (ceiling ₹21,000 monthly gross)
+  // ESI Wage barrier evaluated against Basic + DA (matching PF wage base)
   const esiRules = c.esiRules;
   const esiEnabled = esiRules?.enabled !== false;
   let employeeESI = 0;
   let employerESI = 0;
   let esiEligible = false;
+  let esiBase = 0;
 
   if (esiEnabled && gross > 0) {
     const esiThreshold = esiRules?.threshold ?? c.esiThreshold ?? 21000;
-    esiEligible = fixedGross <= esiThreshold || (esiRules as any)?.applyToAll;
+    const esiWageBasis = basicPlusDA > 0 ? basicPlusDA : (monthlyBasic || fixedGross);
+    esiEligible = esiWageBasis <= esiThreshold || (esiRules as any)?.applyToAll;
 
     if (esiEligible) {
       const empEsiEnabled = (c.esiRules as any)?.employeeEnabled !== false && c.employeeEsiEnabled !== false;
@@ -440,8 +442,9 @@ export function computePayroll(opts: {
       const empEsiPct = esiRules?.employeePct ?? c.employeeEsiPct ?? 0.75;
       const emplyrEsiPct = esiRules?.employerPct ?? c.employerEsiPct ?? 3.25;
 
-      employeeESI = empEsiEnabled ? Math.round(gross * (empEsiPct / 100)) : 0;
-      employerESI = emplyrEsiEnabled ? Math.round(gross * (emplyrEsiPct / 100)) : 0;
+      esiBase = Math.min(esiWageBasis, esiThreshold);
+      employeeESI = empEsiEnabled ? Math.round(esiBase * (empEsiPct / 100)) : 0;
+      employerESI = emplyrEsiEnabled ? Math.round(esiBase * (emplyrEsiPct / 100)) : 0;
     }
   }
 
@@ -615,7 +618,7 @@ export function computePayroll(opts: {
     pfBase,
     pfBaseRaw,
     pfCeiling: PF_CEILING,
-    esiBase: gross,
+    esiBase,
     esiEligible,
     totalDeductions,
     net,
@@ -674,8 +677,8 @@ export function explainPayroll(company: Company, employee: Employee, p: PayrollC
     out.push({
       id: "employeeESI",
       text: p.esiEligible
-        ? `Employee ESI = ${c.esiRules.employeePct}% of ESI base ₹${Math.round(p.esiBase).toLocaleString("en-IN")}. Eligible while gross ≤ ₹${c.esiRules.threshold.toLocaleString("en-IN")}/mo.`
-        : `Not eligible: gross ₹${Math.round(p.gross).toLocaleString("en-IN")} exceeds ESI threshold ₹${c.esiRules.threshold.toLocaleString("en-IN")}.`,
+        ? `Employee ESI = ${c.esiRules.employeePct}% of ESI base ₹${Math.round(p.esiBase).toLocaleString("en-IN")}. Eligible while Basic + DA ≤ ₹${c.esiRules.threshold.toLocaleString("en-IN")}/mo.`
+        : `Not eligible: Basic + DA ₹${Math.round(p.pfBaseRaw).toLocaleString("en-IN")} exceeds ESI threshold ₹${c.esiRules.threshold.toLocaleString("en-IN")}.`,
     });
   }
   if (c.ptEnabled !== false) out.push({ id: "professionalTax", text: `Professional Tax uses state slabs configured under Payroll Settings. Deducted every month; deposited to state treasury.` });
