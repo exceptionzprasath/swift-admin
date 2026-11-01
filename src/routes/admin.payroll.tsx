@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect } from "react";
-import { useStore, safeFetch, isMockEmployee, isFrozenEmployee, isMockAttendance, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
+import { useStore, safeFetch, isMockEmployee, isFrozenEmployee, isPastEmployee, isMockAttendance, type EarningComponent, type Employee, type Company, type ShiftAssignment } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { computePayroll, computeMonthlyAttendanceSummary, inr, type PayrollComputation } from "@/lib/payroll";
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
@@ -303,15 +303,15 @@ interface EditingPayrollRecord extends MonthlyOverrideData {
 function buildEffectiveCompany(company: Company, ov: MonthlyOverrideData = {}): Company {
   const pfEmployeeEnabled = ov.pfEmployeeEnabled !== undefined ? ov.pfEmployeeEnabled : (ov.pfEnabled !== undefined ? ov.pfEnabled : (company.employeePfEnabled ?? true));
   const pfEmployerEnabled = ov.pfEmployerEnabled !== undefined ? ov.pfEmployerEnabled : (ov.pfEnabled !== undefined ? ov.pfEnabled : (company.employerPfEnabled ?? true));
-  const pfEnabled = ov.pfEnabled !== undefined 
-    ? ov.pfEnabled 
-    : ((ov.pfEmployeeEnabled === false && ov.pfEmployerEnabled === false) ? false : (company.pfRules?.enabled !== false));
+  const pfEnabled = (pfEmployeeEnabled || pfEmployerEnabled)
+    ? (ov.pfEnabled !== false && company.pfRules?.enabled !== false)
+    : false;
 
   const esiEmployeeEnabled = ov.esiEmployeeEnabled !== undefined ? ov.esiEmployeeEnabled : (ov.esiEnabled !== undefined ? ov.esiEnabled : (company.employeeEsiEnabled ?? true));
   const esiEmployerEnabled = ov.esiEmployerEnabled !== undefined ? ov.esiEmployerEnabled : (ov.esiEnabled !== undefined ? ov.esiEnabled : (company.employerEsiEnabled ?? true));
-  const esiEnabled = ov.esiEnabled !== undefined 
-    ? ov.esiEnabled 
-    : ((ov.esiEmployeeEnabled === false && ov.esiEmployerEnabled === false) ? false : (company.esiRules?.enabled !== false));
+  const esiEnabled = (esiEmployeeEnabled || esiEmployerEnabled)
+    ? (ov.esiEnabled !== false && company.esiRules?.enabled !== false)
+    : false;
 
   const lwfEnabled = ov.lwfEnabled !== undefined ? ov.lwfEnabled : (company.lwfEnabled !== false && company.lwfRules?.enabled !== false);
   const effectivePfCeiling = ov.pfCeiling !== undefined ? ov.pfCeiling : (company.pfRules?.ceiling ?? 15000);
@@ -730,12 +730,12 @@ export function PayrollPage() {
 
     const esiEnabled = company.esiRules?.enabled !== false;
     const esiThreshold = company.esiRules?.threshold ?? company.esiThreshold ?? 21000;
-    const esiEligible = basicPlusDA <= esiThreshold || (company.esiRules as any)?.applyToAll;
+    const esiEligible = gross <= esiThreshold || (company.esiRules as any)?.applyToAll;
     const employeeEsiPct = company.employeeEsiPct ?? company.esiRules?.employeePct ?? 0.75;
     const employerEsiPct = company.employerEsiPct ?? company.esiRules?.employerPct ?? 3.25;
-    const esiBase = Math.min(basicPlusDA, esiThreshold);
-    const esiEmployer = (esiEnabled && esiEligible) ? Math.round(esiBase * (employerEsiPct / 100)) : 0;
-    const esiEmployee = (esiEnabled && esiEligible) ? Math.round(esiBase * (employeeEsiPct / 100)) : 0;
+
+    const esiEmployer = (esiEnabled && esiEligible) ? Math.round(gross * (employerEsiPct / 100)) : 0;
+    const esiEmployee = (esiEnabled && esiEligible) ? Math.round(gross * (employeeEsiPct / 100)) : 0;
 
     const ptEnabled = company.ptEnabled !== false;
     const pt = ptEnabled ? (company.ptAmount ?? 208) : 0;
@@ -857,6 +857,15 @@ export function PayrollPage() {
   // Filtered employees for monthly run
   const filteredEmployees = useMemo(() => {
     return (employees || []).filter((emp) => {
+      // Past / terminated / relieved employees only appear if they have attendance or overrides in the period
+      if (isPastEmployee(emp)) {
+        const overrideKey = `${emp.id}_${effectivePeriodKey}`;
+        const hasOverride = !!monthlyOverrides[overrideKey];
+        const hasAttendanceThisMonth = (attendance || []).some(
+          (a) => (a.employeeId === emp.id || a.employeeName === emp.name) && a.date && a.date.startsWith(selectedMonth)
+        );
+        if (!hasOverride && !hasAttendanceThisMonth) return false;
+      }
       if (searchEmployee.trim()) {
         const q = searchEmployee.toLowerCase();
         const matchName = (emp?.name || "").toLowerCase().includes(q);
@@ -1148,7 +1157,12 @@ export function PayrollPage() {
 
     return computePayroll({
       company: effectiveCompany,
-      employee: { ...editingRecord.emp, basic: editingRecord.customBasic },
+      employee: {
+        ...editingRecord.emp,
+        basic: editingRecord.customBasic,
+        fixedSalary: editingRecord.customBasic,
+        salary: editingRecord.customBasic,
+      },
       daysWorked: editingRecord.daysWorked,
       otHours: editingRecord.otHours,
       incentive: editingRecord.incentive,
@@ -1261,7 +1275,7 @@ export function PayrollPage() {
     };
     setMonthlyOverrides(nextOverrides);
 
-    const effectiveEmp = updatedOv.customBasic ? { ...reg.emp, basic: updatedOv.customBasic } : reg.emp;
+    const effectiveEmp = updatedOv.customBasic ? { ...reg.emp, basic: updatedOv.customBasic, fixedSalary: updatedOv.customBasic, salary: updatedOv.customBasic } : reg.emp;
     const newComp = computePayroll({
       company,
       employee: effectiveEmp,
@@ -2589,8 +2603,8 @@ export function PayrollPage() {
                           </div>
                           <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
                             {benchmarkCalc.esiEligible
-                              ? `Basic + DA ${inr(benchmarkCalc.basic)} is within ESI barrier (≤ ${inr(company.esiRules?.threshold || company.esiThreshold || 21000)})`
-                              : `Basic + DA ${inr(benchmarkCalc.basic)} exceeds ESI barrier (≤ ${inr(company.esiRules?.threshold || company.esiThreshold || 21000)})`}
+                              ? `Fixed Salary ${inr(benchmarkCalc.gross)} is within ESI barrier (≤ ${inr(company.esiRules?.threshold || company.esiThreshold || 21000)})`
+                              : `Fixed Salary ${inr(benchmarkCalc.gross)} exceeds ESI barrier (≤ ${inr(company.esiRules?.threshold || company.esiThreshold || 21000)})`}
                           </div>
                         </div>
                       </div>
@@ -2635,7 +2649,7 @@ export function PayrollPage() {
                           }}
                           className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
                         />
-                        <span className="text-xs text-muted-foreground">% of Basic + DA</span>
+                        <span className="text-xs text-muted-foreground">% of Fixed Salary</span>
                       </div>
                     </td>
                     <td className="px-5 py-2.5 text-right font-semibold text-rose-600 text-xs">
@@ -2675,7 +2689,7 @@ export function PayrollPage() {
                           }}
                           className="h-7.5 w-20 text-xs font-semibold rounded-lg bg-background"
                         />
-                        <span className="text-xs text-muted-foreground">% of Basic + DA</span>
+                        <span className="text-xs text-muted-foreground">% of Fixed Salary</span>
                       </div>
                     </td>
                     <td className="px-5 py-2.5 text-right font-semibold text-indigo-600 dark:text-indigo-400 text-xs">
@@ -2716,7 +2730,7 @@ export function PayrollPage() {
                           }}
                           className="h-7.5 w-24 text-xs font-semibold rounded-lg bg-background"
                         />
-                        <span className="text-xs text-muted-foreground">(Std ₹21,000 Basic + DA threshold)</span>
+                        <span className="text-xs text-muted-foreground">(Std ₹21,000 Fixed Salary threshold)</span>
                       </div>
                     </td>
                     <td className="px-5 py-2.5 text-right font-semibold text-muted-foreground text-xs">
@@ -4510,7 +4524,7 @@ export function PayrollPage() {
                               checked={ca.enabled}
                               onCheckedChange={(val) => {
                                 const copy = [...editingRecord.customAllowances];
-                                copy[idx].enabled = val;
+                                copy[idx] = { ...copy[idx], enabled: val };
                                 setEditingRecord({ ...editingRecord, customAllowances: copy });
                               }}
                             />
@@ -4519,7 +4533,7 @@ export function PayrollPage() {
                               value={ca.name}
                               onChange={(e) => {
                                 const copy = [...editingRecord.customAllowances];
-                                copy[idx].name = e.target.value;
+                                copy[idx] = { ...copy[idx], name: e.target.value };
                                 setEditingRecord({ ...editingRecord, customAllowances: copy });
                               }}
                               className="h-7 text-xs font-medium max-w-[140px]"
@@ -4530,7 +4544,7 @@ export function PayrollPage() {
                               value={ca.formula}
                               onValueChange={(val: any) => {
                                 const copy = [...editingRecord.customAllowances];
-                                copy[idx].formula = val;
+                                copy[idx] = { ...copy[idx], formula: val };
                                 setEditingRecord({ ...editingRecord, customAllowances: copy });
                               }}
                             >
@@ -4548,7 +4562,7 @@ export function PayrollPage() {
                               value={ca.value}
                               onChange={(e) => {
                                 const copy = [...editingRecord.customAllowances];
-                                copy[idx].value = Number(e.target.value) || 0;
+                                copy[idx] = { ...copy[idx], value: Number(e.target.value) || 0 };
                                 setEditingRecord({ ...editingRecord, customAllowances: copy });
                               }}
                               className="h-7 w-16 text-xs text-right font-semibold"
@@ -5155,7 +5169,7 @@ export function PayrollPage() {
                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-semibold">₹</span>
                           </div>
                           <div className="text-[10px] text-muted-foreground leading-tight">
-                            ESI eligibility barrier. ESI applies when Basic + DA ≤ ₹{editingRecord.esiThreshold?.toLocaleString("en-IN") || "21,000"} {editingComp?.esiEligible ? "(currently applicable)" : "(currently exempt)"}.
+                            ESI eligibility barrier. ESI applies when Fixed Salary ≤ ₹{editingRecord.esiThreshold?.toLocaleString("en-IN") || "21,000"} {editingComp?.esiEligible ? "(currently applicable)" : "(currently exempt)"}.
                           </div>
                         </div>
                       </div>

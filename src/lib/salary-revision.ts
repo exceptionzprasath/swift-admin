@@ -177,16 +177,16 @@ export function simulateRevision(
     esiEligibilityChanged: before.esiEligible !== after.esiEligible,
     ptSlabChanged: Math.round(before.deductions.professionalTax) !== Math.round(after.deductions.professionalTax),
     crossesEsiThreshold:
-      (before.pfBaseRaw <= threshold && after.pfBaseRaw > threshold) ||
-      (before.pfBaseRaw > threshold && after.pfBaseRaw <= threshold),
+      (before.fixedGross <= threshold && after.fixedGross > threshold) ||
+      (before.fixedGross > threshold && after.fixedGross <= threshold),
   };
 
   const recs: string[] = [];
   if (impacts.esiEligibilityChanged) {
     recs.push(
       after.esiEligible
-        ? `Employee will now fall UNDER ESI (Basic + DA ₹${Math.round(after.pfBaseRaw)} ≤ threshold ₹${threshold}).`
-        : `Employee will EXIT ESI (Basic + DA ₹${Math.round(after.pfBaseRaw)} > threshold ₹${threshold}). ESI deduction stops next contribution period per your configured policy.`
+        ? `Employee will now fall UNDER ESI (Fixed Salary ₹${Math.round(after.fixedGross)} ≤ threshold ₹${threshold}).`
+        : `Employee will EXIT ESI (Fixed Salary ₹${Math.round(after.fixedGross)} > threshold ₹${threshold}). ESI deduction stops next contribution period per your configured policy.`
     );
   } else if (impacts.crossesEsiThreshold) {
     recs.push(`This revision crosses the configured ESI threshold — review ESI treatment.`);

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo, useRef } from "react";
-import { useStore, CompanyHoliday, HolidayType, LeaveRequest, isMockEmployee, isFrozenEmployee } from "@/lib/store";
+import { useStore, CompanyHoliday, HolidayType, LeaveRequest, isMockEmployee, isFrozenEmployee, isActiveEmployee } from "@/lib/store";
 import {
   CalendarDays, ChevronLeft, ChevronRight, Download, Upload, Plus,
   Check, X, Trash2, Search, Filter, Sparkles, Building2, CheckCircle2,
@@ -93,7 +93,7 @@ function LeaveCalendarPage() {
     actOnLeaveApprovalStep,
   } = useStore();
 
-  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)), [rawEmployees]);
+  const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
 
   // Top-level View Tab: "requests" (Employee Leave Requests) vs "holidays" (Company Holidays)
   const [activeTab, setActiveTab] = useState<"requests" | "holidays">("requests");

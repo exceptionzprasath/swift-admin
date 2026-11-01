@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStore, isMockEmployee, isFrozenEmployee, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type EducationDocument, type PriorEmployerDoc, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
+import { useStore, isMockEmployee, isFrozenEmployee, isActiveEmployee, resolveAttendanceProfile, getEmployeeBranchIds, type Employee, type EmployeeDocument, type EducationDocument, type PriorEmployerDoc, type FamilyMember, type EducationEntry, type ExperienceEntry, type PredefinedRole, type BiometricDeviceMapping, type Device } from "@/lib/store";
 import { computePayroll, inr } from "@/lib/payroll";
 import { aiNotify } from "@/lib/ai-guide-bus";
 import { generateAppointmentPDF, generateAppointmentPDFBlob } from "@/lib/pdf";
@@ -327,7 +327,8 @@ function EmployeesPage() {
   const [onboardingFilter, setOnboardingFilter] = useState<"all" | "completed" | "incomplete">("all");
   const [inspectOnboardingEmp, setInspectOnboardingEmp] = useState<Employee | null>(null);
 
-  const overallOnboarding = useMemo(() => calculateOverallOnboarding(employees), [employees]);
+  const activeEmployeesList = useMemo(() => employees.filter(isActiveEmployee), [employees]);
+  const overallOnboarding = useMemo(() => calculateOverallOnboarding(activeEmployeesList), [activeEmployeesList]);
 
   const employeesWithCompletion = useMemo(() => {
     return employees.map((e) => ({
@@ -337,7 +338,7 @@ function EmployeesPage() {
   }, [employees]);
 
   const statusCounts = useMemo(() => {
-    const counts = { all: employees.length, active: 0, suspended: 0, relieved: 0, terminated: 0, notice_period: 0 };
+    const counts = { all: 0, active: 0, suspended: 0, relieved: 0, terminated: 0, notice_period: 0 };
     for (const e of employees) {
       const s = (e.status || "active").toLowerCase().trim();
       if (s === "suspended") counts.suspended++;
@@ -346,12 +347,17 @@ function EmployeesPage() {
       else if (s === "notice_period" || s === "notice") counts.notice_period++;
       else counts.active++;
     }
+    // Total active workforce (excludes terminated, suspended, and relieved staff)
+    counts.all = counts.active + counts.notice_period;
     return counts;
   }, [employees]);
 
   const displayedEmployees = useMemo(() => {
     let list = employeesWithCompletion;
-    if (statusFilter !== "all") {
+    if (statusFilter === "all") {
+      // Default view in Employees Directory: active workforce only (excludes terminated, suspended, relieved)
+      list = list.filter(({ employee: e }) => isActiveEmployee(e));
+    } else {
       list = list.filter(({ employee: e }) => {
         const s = (e.status || "active").toLowerCase().trim();
         if (statusFilter === "relieved") return s === "relieved" || s === "releived";
@@ -634,12 +640,12 @@ function EmployeesPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 p-1 bg-muted/50 rounded-xl border border-border">
           {[
-            { id: "all", label: "All Employees", count: statusCounts.all, color: "text-foreground" },
+            { id: "all", label: "Active Workforce", count: statusCounts.all, color: "text-foreground" },
             { id: "active", label: "Active", count: statusCounts.active, color: "text-emerald-600 dark:text-emerald-400" },
-            { id: "suspended", label: "Suspended", count: statusCounts.suspended, color: "text-amber-600 dark:text-amber-400" },
-            { id: "relieved", label: "Releived", count: statusCounts.relieved, color: "text-purple-600 dark:text-purple-400" },
-            { id: "terminated", label: "Terminated", count: statusCounts.terminated, color: "text-rose-600 dark:text-rose-400" },
             { id: "notice_period", label: "Notice Period", count: statusCounts.notice_period, color: "text-orange-600 dark:text-orange-400" },
+            { id: "suspended", label: "Suspended", count: statusCounts.suspended, color: "text-amber-600 dark:text-amber-400" },
+            { id: "relieved", label: "Relieved", count: statusCounts.relieved, color: "text-purple-600 dark:text-purple-400" },
+            { id: "terminated", label: "Terminated", count: statusCounts.terminated, color: "text-rose-600 dark:text-rose-400" },
           ].map((tab) => (
             <button
               key={tab.id}

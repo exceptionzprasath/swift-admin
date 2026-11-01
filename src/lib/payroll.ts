@@ -296,7 +296,7 @@ export function computePayroll(opts: {
     } else {
       monthlyVal = comp.value || 0;
     }
-    const earnedVal = comp.prorate ? Math.round(monthlyVal * prorateFactor) : monthlyVal;
+    const earnedVal = comp.prorate !== false ? Math.round(monthlyVal * prorateFactor) : monthlyVal;
     if (earnedVal > 0) {
       earningsList.push({
         id: comp.id,
@@ -423,7 +423,7 @@ export function computePayroll(opts: {
   }
 
   // 2. Employee State Insurance (ESI Act 1948)
-  // ESI Wage barrier evaluated against Basic + DA (matching PF wage base)
+  // ESI Wage barrier and deduction evaluated from Fixed Salary (Gross), not gross earned
   const esiRules = c.esiRules;
   const esiEnabled = esiRules?.enabled !== false;
   let employeeESI = 0;
@@ -433,8 +433,8 @@ export function computePayroll(opts: {
 
   if (esiEnabled && gross > 0) {
     const esiThreshold = esiRules?.threshold ?? c.esiThreshold ?? 21000;
-    const esiWageBasis = basicPlusDA > 0 ? basicPlusDA : (monthlyBasic || fixedGross);
-    esiEligible = esiWageBasis <= esiThreshold || (esiRules as any)?.applyToAll;
+    esiEligible = fixedGross <= esiThreshold || (esiRules as any)?.applyToAll;
+
 
     if (esiEligible) {
       const empEsiEnabled = (c.esiRules as any)?.employeeEnabled !== false && c.employeeEsiEnabled !== false;
@@ -442,7 +442,8 @@ export function computePayroll(opts: {
       const empEsiPct = esiRules?.employeePct ?? c.employeeEsiPct ?? 0.75;
       const emplyrEsiPct = esiRules?.employerPct ?? c.employerEsiPct ?? 3.25;
 
-      esiBase = Math.min(esiWageBasis, esiThreshold);
+      const earnedFixedGross = Math.round(fixedGross * prorateFactor);
+      esiBase = earnedFixedGross;
       employeeESI = empEsiEnabled ? Math.round(esiBase * (empEsiPct / 100)) : 0;
       employerESI = emplyrEsiEnabled ? Math.round(esiBase * (emplyrEsiPct / 100)) : 0;
     }
@@ -677,8 +678,8 @@ export function explainPayroll(company: Company, employee: Employee, p: PayrollC
     out.push({
       id: "employeeESI",
       text: p.esiEligible
-        ? `Employee ESI = ${c.esiRules.employeePct}% of ESI base ₹${Math.round(p.esiBase).toLocaleString("en-IN")}. Eligible while Basic + DA ≤ ₹${c.esiRules.threshold.toLocaleString("en-IN")}/mo.`
-        : `Not eligible: Basic + DA ₹${Math.round(p.pfBaseRaw).toLocaleString("en-IN")} exceeds ESI threshold ₹${c.esiRules.threshold.toLocaleString("en-IN")}.`,
+        ? `Employee ESI = ${c.esiRules.employeePct}% of attendance-prorated wage base ₹${Math.round(p.esiBase).toLocaleString("en-IN")}. Eligible while Fixed Salary ≤ ₹${c.esiRules.threshold.toLocaleString("en-IN")}/mo.`
+        : `Not eligible: Fixed Salary ₹${Math.round(p.fixedGross).toLocaleString("en-IN")} exceeds ESI threshold ₹${c.esiRules.threshold.toLocaleString("en-IN")}.`,
     });
   }
   if (c.ptEnabled !== false) out.push({ id: "professionalTax", text: `Professional Tax uses state slabs configured under Payroll Settings. Deducted every month; deposited to state treasury.` });
