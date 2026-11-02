@@ -25,8 +25,19 @@ import {
   Check,
   ExternalLink,
   BellRing,
+  FileText,
+  Mail,
+  MailCheck,
+  Download,
+  Loader2,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useStore } from "@/lib/store";
+import {
+  sendAppointmentLetterForEmployee,
+  generateAppointmentLetterPDF,
+} from "@/lib/appointment-letter-service";
 
 interface OnboardingChecklistDialogProps {
   employee: Employee | null;
@@ -43,6 +54,9 @@ export function OnboardingChecklistDialog({
 }: OnboardingChecklistDialogProps) {
   const [activeTab, setActiveTab] = useState<"all" | "personal" | "work" | "statutory" | "history" | "documents">("all");
   const [copied, setCopied] = useState(false);
+  const [sendingLetter, setSendingLetter] = useState(false);
+  const company = useStore((s) => s.company);
+
 
   if (!employee) return null;
 
@@ -143,6 +157,31 @@ export function OnboardingChecklistDialog({
     toast.success(`Onboarding reminder sent to ${employee.name}'s mobile app!`);
   };
 
+  const handleSendAppointmentLetter = async () => {
+    setSendingLetter(true);
+    try {
+      await sendAppointmentLetterForEmployee(employee, company, { manual: true, notifySuccess: true });
+    } finally {
+      setSendingLetter(false);
+    }
+  };
+
+  const handlePreviewAppointmentLetter = async () => {
+    try {
+      const { pdfBase64, fileName } = await generateAppointmentLetterPDF(employee, company);
+      // Create download link
+      const a = document.createElement("a");
+      a.href = pdfBase64;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success(`Generated appointment letter preview: ${fileName}`);
+    } catch (e: any) {
+      toast.error(`Could not generate preview: ${e.message}`);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto rounded-3xl p-6 sm:p-7">
@@ -220,6 +259,69 @@ export function OnboardingChecklistDialog({
               : `${completion.missingFields.length} mandatory or recommended onboarding fields require attention.`}
           </p>
         </div>
+
+        {/* 100% Completion & Appointment Letter Action Card */}
+        {completion.isComplete && (
+          <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-950/20 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm text-foreground">
+                      Official Appointment Letter
+                    </h4>
+                    {employee.appointmentLetterSent ? (
+                      <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px] gap-1">
+                        <MailCheck className="h-3 w-3" /> Emailed to Staff
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] gap-1">
+                        <Mail className="h-3 w-3" /> Ready to Dispatch
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {employee.appointmentLetterSent
+                      ? `Appointment letter and PDF was sent to ${employee.email || "staff email"}${employee.appointmentLetterSentAt ? ` on ${new Date(employee.appointmentLetterSentAt).toLocaleDateString()}` : ""}.`
+                      : `Employee has achieved 100% onboarding. Uses the saved Appointment Letter template from Documentations.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handlePreviewAppointmentLetter}
+                  className="text-xs h-8 gap-1.5 rounded-xl border-emerald-500/30 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Preview PDF</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  disabled={sendingLetter}
+                  onClick={handleSendAppointmentLetter}
+                  className="text-xs h-8 gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                >
+                  {sendingLetter ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : employee.appointmentLetterSent ? (
+                    <MailCheck className="h-3.5 w-3.5" />
+                  ) : (
+                    <Mail className="h-3.5 w-3.5" />
+                  )}
+                  <span>{employee.appointmentLetterSent ? "Resend Mail" : "Send Appointment Mail"}</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
 
         {/* Tab Filters */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-2">

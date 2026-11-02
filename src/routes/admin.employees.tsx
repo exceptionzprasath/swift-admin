@@ -30,8 +30,9 @@ import {
   GraduationCap, Award, ShieldCheck, ScanFace, Save, X, ArrowRightLeft, DoorOpen, Pencil,
   FileSpreadsheet, Upload, Download, AlertTriangle, FileText, MapPin, Clock, Timer, Eye,
   KeyRound, RefreshCw, Copy, Check, Fingerprint, Database, ChevronDown, ShieldAlert,
-  UserX, Snowflake, MoreHorizontal, RotateCcw, FileCheck, AlertCircle,
+  UserX, Snowflake, MoreHorizontal, RotateCcw, FileCheck, AlertCircle, Mail, MailCheck,
 } from "lucide-react";
+import { sendAppointmentLetterForEmployee } from "@/lib/appointment-letter-service";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -335,6 +336,28 @@ function EmployeesPage() {
       completion: calculateProfileCompletion(e),
     }));
   }, [employees]);
+
+  // Automated 100% Onboarding Appointment Letter Dispatch
+  // When an employee completes 100% of their onboarding journey and has not yet received their official appointment letter,
+  // automatically compile the saved Documentations appointment letter template with dynamic variables and email with PDF attachment.
+  const processedAutoLettersRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    employeesWithCompletion.forEach(({ employee: e, completion }) => {
+      if (
+        completion.isComplete &&
+        !e.appointmentLetterSent &&
+        !processedAutoLettersRef.current.has(e.id)
+      ) {
+        processedAutoLettersRef.current.add(e.id);
+        const empEmail = e.email || (e as any).workEmail || (e as any).personalEmail;
+        if (empEmail && empEmail.includes("@")) {
+          sendAppointmentLetterForEmployee(e, company, { notifySuccess: true });
+        }
+      }
+    });
+  }, [employeesWithCompletion, company]);
+
 
   const statusCounts = useMemo(() => {
     const counts = { all: employees.length, active: 0, suspended: 0, relieved: 0, terminated: 0, notice_period: 0 };
@@ -783,7 +806,9 @@ function EmployeesPage() {
                               {completion.percentage}%
                             </span>
                             <span className="text-[11px] font-medium text-muted-foreground group-hover/pb:text-foreground transition-colors">
-                              {completion.isComplete ? "100% Verified" : `${completion.missingFields.length} pending`}
+                              {completion.isComplete
+                                ? (e.appointmentLetterSent ? "100% · Letter Sent" : "100% Verified")
+                                : `${completion.missingFields.length} pending`}
                             </span>
                           </div>
                           <Eye className="h-3 w-3 text-muted-foreground opacity-60 group-hover/pb:opacity-100 transition-opacity" />
@@ -898,7 +923,15 @@ function EmployeesPage() {
                             className="gap-2 cursor-pointer"
                           >
                             <FileDown className="h-4 w-4 text-emerald-600" />
-                            <span>Appointment Letter</span>
+                            <span>Download Appointment PDF</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            onClick={() => void sendAppointmentLetterForEmployee(e, company, { manual: true, notifySuccess: true })}
+                            className="gap-2 cursor-pointer font-medium text-emerald-700 dark:text-emerald-400"
+                          >
+                            <Mail className="h-4 w-4 text-emerald-600" />
+                            <span>{e.appointmentLetterSent ? "Resend Appointment Mail" : "Send Appointment Mail"}</span>
                           </DropdownMenuItem>
 
                           <DropdownMenuSeparator />

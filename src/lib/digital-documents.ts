@@ -274,6 +274,7 @@ export interface DocCustomTable {
 
 export interface DigitalDocument {
   id: string;
+  tenantId?: string;
   docNumber: string; // e.g., "SWIFT-DOC-2026-001"
   name: string;
   documentType: string;

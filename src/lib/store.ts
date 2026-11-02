@@ -709,6 +709,8 @@ export type Employee = {
   halfDayLoginTime?: string;
   reportingManager?: string;
   approvalSettings?: EmployeeApprovalSettings;
+  appointmentLetterSent?: boolean;
+  appointmentLetterSentAt?: string;
 };
 
 export type BiometricDeviceMapping = {

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo, useRef } from "react";
+import { useAuth } from "@/lib/auth";
 import { useStore, getUpwardHierarchyChain, type Employee, type EmployeeDocument } from "@/lib/store";
 import {
   useDigitalDocStore,
@@ -145,7 +146,10 @@ export interface KycDocumentRecord {
 }
 
 export default function DigitalDocumentationPage() {
-  const { company, employees, currentUser, roles, docAssets, updateEmployee } = useStore();
+  const { activeTenantId } = useAuth();
+  const { company, employees, currentUser, roles, docAssets, updateEmployee, demoMode } = useStore();
+  const isRealTenant = !demoMode && !!activeTenantId && !activeTenantId.startsWith("demo-tenant-");
+
   const {
     documents,
     addDocument,
@@ -219,13 +223,13 @@ export default function DigitalDocumentationPage() {
     enabled: true,
     style: docAssets?.letterheadDataUrl ? "uploaded" : "modern",
     showLogo: true,
-    companyName: company?.name || "CreatonsHR Technologies Pvt. Ltd.",
-    tagline: "Enterprise Workforce & People Operations",
-    address: company?.address || "Tower B, Silicon Heights, OMR, Chennai - 600096",
-    email: company?.email || "hr@creatonshr.com",
-    phone: company?.phone || "+91 44 2876 5400",
-    website: "www.creatonshr.com",
-    cin: "U72200TN2026PTC109823",
+    companyName: company?.name || (isRealTenant ? "Company" : "CreatonsHR Technologies Pvt. Ltd."),
+    tagline: isRealTenant ? "" : "Enterprise Workforce & People Operations",
+    address: company?.address || (isRealTenant ? "" : "Tower B, Silicon Heights, OMR, Chennai - 600096"),
+    email: company?.email || (isRealTenant ? "" : "hr@creatonshr.com"),
+    phone: company?.phone || (isRealTenant ? "" : "+91 44 2876 5400"),
+    website: company?.website || (isRealTenant ? "" : "www.creatonshr.com"),
+    cin: isRealTenant ? "" : "U72200TN2026PTC109823",
   });
 
   const [docFooter, setDocFooter] = useState<DocFooterConfig>({
@@ -234,7 +238,7 @@ export default function DigitalDocumentationPage() {
     showPageNumbers: true,
     showConfidentialNotice: true,
     confidentialText: "STRICTLY CONFIDENTIAL • FOR AUTHORIZED RECIPIENT ONLY",
-    registeredOfficeText: `${company?.name || "CreatonsHR"} | Reg. Office: ${company?.address || "Tower B, Silicon Heights, OMR, Chennai"}`,
+    registeredOfficeText: `${company?.name || (isRealTenant ? "Company" : "CreatonsHR")} | Reg. Office: ${company?.address || (isRealTenant ? "" : "Tower B, Silicon Heights, OMR, Chennai")}`,
   });
 
   // Delivery
@@ -618,35 +622,59 @@ export default function DigitalDocumentationPage() {
     );
   }, [approvers, selectedEmployee?.name, docLetterhead.companyName, company?.name, docAssets]);
 
+  // Company Letters scoped to active company tenant
+  const companyDocuments = useMemo(() => {
+    if (isRealTenant) {
+      const empIds = new Set(employees.map((e) => e.id));
+      const empCodes = new Set(employees.map((e) => e.empCode));
+      return documents.filter((doc) => {
+        if (doc.tenantId) return doc.tenantId === activeTenantId;
+        // If doc has no tenantId, only include if it belongs to an employee of this company
+        return empIds.has(doc.employeeId) || empCodes.has(doc.employeeCode);
+      });
+    }
+    return documents;
+  }, [documents, isRealTenant, activeTenantId, employees]);
+
   const activeDetailDoc = useMemo(() => {
-    return documents.find((d) => d.id === selectedDocId) || documents[0] || null;
-  }, [documents, selectedDocId]);
+    return companyDocuments.find((d) => d.id === selectedDocId) || companyDocuments[0] || null;
+  }, [companyDocuments, selectedDocId]);
 
   // Branches & Departments for PayTime Filtering
   const availableBranches = useMemo(() => {
     if (company?.branches && company.branches.length > 0) {
       return company.branches;
     }
+    if (isRealTenant) {
+      return [{ id: "br-hq", name: `${company?.name || "Main"} Office (HQ)` }];
+    }
     return [
       { id: "br-chennai", name: "Chennai Main Office (HQ)" },
       { id: "br-bangalore", name: "Bangalore Tech Park" },
       { id: "br-mumbai", name: "Mumbai Regional Office" },
     ];
-  }, [company?.branches]);
+  }, [company?.branches, company?.name, isRealTenant]);
 
   const availableDepartments = useMemo(() => {
     const depts = new Set<string>();
     (company?.departments || []).forEach((d) => depts.add(d));
     employees.forEach((e) => {
-      if (e.department) depts.add(e.department);
+      if (e.department?.trim()) depts.add(e.department.trim());
     });
-    ["Sales", "Engineering", "Human Resources", "Finance", "Product Design", "Operations"].forEach((d) => depts.add(d));
+    if (!isRealTenant && depts.size === 0) {
+      ["Sales", "Engineering", "Human Resources", "Finance", "Product Design", "Operations"].forEach((d) => depts.add(d));
+    }
     return Array.from(depts);
-  }, [company?.departments, employees]);
+  }, [company?.departments, employees, isRealTenant]);
 
-  // Combined baseline employees (merges store employees + realistic mock profiles for complete KYC view)
+  // Real company employees for active tenant (falling back to mock profiles ONLY in standalone demo mode)
   const allEmployeesList = useMemo(() => {
-    const map = new Map<string, Partial<Employee>>();
+    if (isRealTenant) {
+      return employees;
+    }
+    if (employees.length > 0) {
+      return employees;
+    }
     const DEMO_EMPLOYEES: Partial<Employee>[] = [
       {
         id: "emp-1024",
@@ -724,18 +752,8 @@ export default function DigitalDocumentationPage() {
         ndaSigned: true,
       },
     ];
-
-    DEMO_EMPLOYEES.forEach((d) => {
-      map.set(d.id!, d);
-    });
-
-    // Store employees overlay
-    employees.forEach((e) => {
-      map.set(e.id, e);
-    });
-
-    return Array.from(map.values());
-  }, [employees]);
+    return DEMO_EMPLOYEES;
+  }, [employees, isRealTenant]);
 
   // Master KYC documents repository across all employees
   const allKycDocs = useMemo<KycDocumentRecord[]>(() => {
@@ -747,15 +765,20 @@ export default function DigitalDocumentationPage() {
       const empCode = emp.empCode || "EMP-000";
       const designation = emp.designation || "Staff";
       const department = emp.department || "Operations";
-      const branchId = emp.branchId || "br-chennai";
+      const branchId = emp.branchId || (company?.branches && company.branches[0]?.id) || "br-hq";
       const branchObj = availableBranches.find((b) => b.id === branchId);
-      const branchName = branchObj ? branchObj.name : "Chennai Main Office (HQ)";
+      const branchName = branchObj ? branchObj.name : (company?.branches && company.branches[0]?.name) || "Head Office";
       const empStatus = emp.status || "active";
+
+      const aadhaarRaw = emp.aadhaar || (emp as any).aadhaarNumber || "";
+      const panRaw = emp.pan || (emp as any).panNumber || "";
+      const bankRaw = emp.bankAcc || (emp as any).bankAccount || "";
 
       // 1. Aadhaar Card
       const aadhaarId = `${empId}_aadhaar`;
-      const baseAadhaarStatus: KycSubmissionStatus =
-        emp.empCode === "EMP-1024" ? "SUBMITTED" : emp.aadhaar ? "APPROVED" : "NOT_SUBMITTED";
+      const baseAadhaarStatus: KycSubmissionStatus = isRealTenant
+        ? (aadhaarRaw ? "APPROVED" : "NOT_SUBMITTED")
+        : (emp.empCode === "EMP-1024" ? "SUBMITTED" : emp.aadhaar ? "APPROVED" : "NOT_SUBMITTED");
       const aadhaarRecord: KycDocumentRecord = {
         id: aadhaarId,
         employeeId: empId,
@@ -769,19 +792,20 @@ export default function DigitalDocumentationPage() {
         docType: "aadhaar",
         docTypeName: "Aadhaar Card (UIDAI)",
         docCategory: "Govt Identity Proof",
-        identifierNumber: emp.aadhaar ? `XXXX-XXXX-${emp.aadhaar.replace(/\s+/g, "").slice(-4)}` : undefined,
-        fileName: emp.aadhaar ? `Aadhaar_${empCode}.pdf` : undefined,
+        identifierNumber: aadhaarRaw ? `XXXX-XXXX-${String(aadhaarRaw).replace(/\s+/g, "").slice(-4)}` : undefined,
+        fileName: aadhaarRaw ? `Aadhaar_${empCode}.pdf` : undefined,
         status: baseAadhaarStatus,
-        uploadedAt: emp.aadhaar ? "08/09/2026, 11:30 AM" : undefined,
-        verifiedAt: baseAadhaarStatus === "APPROVED" ? "10/09/2026, 02:45 PM" : undefined,
-        verifiedBy: baseAadhaarStatus === "APPROVED" ? "Arunachalam (HR Admin)" : undefined,
+        uploadedAt: aadhaarRaw ? ((emp as any).aadhaarUploadedAt || "Verified on Record") : undefined,
+        verifiedAt: baseAadhaarStatus === "APPROVED" ? ((emp as any).aadhaarVerifiedAt || "Verified") : undefined,
+        verifiedBy: baseAadhaarStatus === "APPROVED" ? (currentUser?.name ? `${currentUser.name} (HR Admin)` : "HR Admin") : undefined,
       };
       list.push({ ...aadhaarRecord, ...(kycDocOverrides[aadhaarId] || {}) });
 
       // 2. Bank Account Details / Passbook
       const bankId = `${empId}_bank`;
-      const baseBankStatus: KycSubmissionStatus =
-        emp.empCode === "EMP-1018" ? "SUBMITTED" : emp.bankAcc ? "APPROVED" : "NOT_SUBMITTED";
+      const baseBankStatus: KycSubmissionStatus = isRealTenant
+        ? (bankRaw ? "APPROVED" : "NOT_SUBMITTED")
+        : (emp.empCode === "EMP-1018" ? "SUBMITTED" : emp.bankAcc ? "APPROVED" : "NOT_SUBMITTED");
       const bankRecord: KycDocumentRecord = {
         id: bankId,
         employeeId: empId,
@@ -795,21 +819,24 @@ export default function DigitalDocumentationPage() {
         docType: "bank",
         docTypeName: "Bank Passbook / Cheque",
         docCategory: "Banking & Payroll",
-        identifierNumber: emp.bankAcc
-          ? `${emp.bankName || "Bank"} · A/C ...${emp.bankAcc.slice(-4)} (${emp.bankIfsc || "IFSC Verified"})`
+        identifierNumber: bankRaw
+          ? (emp.bankAcc
+              ? `${emp.bankName || "Bank"} · A/C ...${emp.bankAcc.slice(-4)} (${emp.bankIfsc || "IFSC Verified"})`
+              : String(bankRaw))
           : undefined,
-        fileName: emp.bankAcc ? `Bank_Proof_${empCode}.jpg` : undefined,
+        fileName: bankRaw ? `Bank_Proof_${empCode}.jpg` : undefined,
         status: baseBankStatus,
-        uploadedAt: emp.bankAcc ? "09/09/2026, 04:15 PM" : undefined,
-        verifiedAt: baseBankStatus === "APPROVED" ? "11/09/2026, 10:00 AM" : undefined,
-        verifiedBy: baseBankStatus === "APPROVED" ? "Finance Head (Venkatesh)" : undefined,
+        uploadedAt: bankRaw ? "Verified on Record" : undefined,
+        verifiedAt: baseBankStatus === "APPROVED" ? "Verified" : undefined,
+        verifiedBy: baseBankStatus === "APPROVED" ? (currentUser?.name ? `${currentUser.name} (Finance / HR)` : "Finance Head") : undefined,
       };
       list.push({ ...bankRecord, ...(kycDocOverrides[bankId] || {}) });
 
       // 3. PAN Card
       const panId = `${empId}_pan`;
-      const basePanStatus: KycSubmissionStatus =
-        emp.empCode === "EMP-1005" ? "SUBMITTED" : emp.pan ? "APPROVED" : "NOT_SUBMITTED";
+      const basePanStatus: KycSubmissionStatus = isRealTenant
+        ? (panRaw ? "APPROVED" : "NOT_SUBMITTED")
+        : (emp.empCode === "EMP-1005" ? "SUBMITTED" : emp.pan ? "APPROVED" : "NOT_SUBMITTED");
       const panRecord: KycDocumentRecord = {
         id: panId,
         employeeId: empId,
@@ -823,23 +850,21 @@ export default function DigitalDocumentationPage() {
         docType: "pan",
         docTypeName: "PAN Card (Income Tax)",
         docCategory: "Tax & Statutory",
-        identifierNumber: emp.pan ? emp.pan : undefined,
-        fileName: emp.pan ? `PAN_Card_${empCode}.png` : undefined,
+        identifierNumber: panRaw ? String(panRaw) : undefined,
+        fileName: panRaw ? `PAN_Card_${empCode}.png` : undefined,
         status: basePanStatus,
-        uploadedAt: emp.pan ? "07/09/2026, 01:20 PM" : undefined,
-        verifiedAt: basePanStatus === "APPROVED" ? "10/09/2026, 03:10 PM" : undefined,
-        verifiedBy: basePanStatus === "APPROVED" ? "Arunachalam (HR Admin)" : undefined,
+        uploadedAt: panRaw ? "Verified on Record" : undefined,
+        verifiedAt: basePanStatus === "APPROVED" ? "Verified" : undefined,
+        verifiedBy: basePanStatus === "APPROVED" ? (currentUser?.name ? `${currentUser.name} (HR Admin)` : "HR Admin") : undefined,
       };
       list.push({ ...panRecord, ...(kycDocOverrides[panId] || {}) });
 
       // 4. Educational Degree Certificate
       const eduId = `${empId}_education`;
-      const baseEduStatus: KycSubmissionStatus =
-        emp.empCode === "EMP-1018"
-          ? "NOT_SUBMITTED"
-          : emp.empCode === "EMP-1024"
-          ? "PENDING"
-          : "APPROVED";
+      const hasEdu = (emp.educationDocuments && emp.educationDocuments.length > 0) || !!(emp as any).qualification;
+      const baseEduStatus: KycSubmissionStatus = isRealTenant
+        ? (hasEdu ? "APPROVED" : "NOT_SUBMITTED")
+        : (emp.empCode === "EMP-1018" ? "NOT_SUBMITTED" : emp.empCode === "EMP-1024" ? "PENDING" : "APPROVED");
       const eduRecord: KycDocumentRecord = {
         id: eduId,
         employeeId: empId,
@@ -855,24 +880,22 @@ export default function DigitalDocumentationPage() {
         docCategory: "Academic Qualification",
         identifierNumber:
           baseEduStatus !== "NOT_SUBMITTED"
-            ? emp.empCode === "EMP-1024"
-              ? "MBA in International Business (Anna Univ)"
-              : emp.empCode === "EMP-1005"
-              ? "Master of Design (NID Ahmedabad)"
-              : "B.Tech Computer Science"
+            ? (emp as any).qualification || "Degree Certificate on Record"
             : undefined,
         fileName: baseEduStatus !== "NOT_SUBMITTED" ? `Degree_Cert_${empCode}.pdf` : undefined,
         status: baseEduStatus,
-        uploadedAt: baseEduStatus !== "NOT_SUBMITTED" ? "05/09/2026, 09:30 AM" : undefined,
-        verifiedAt: baseEduStatus === "APPROVED" ? "08/09/2026, 05:20 PM" : undefined,
-        verifiedBy: baseEduStatus === "APPROVED" ? "Arunachalam (HR Admin)" : undefined,
+        uploadedAt: baseEduStatus !== "NOT_SUBMITTED" ? "Submitted" : undefined,
+        verifiedAt: baseEduStatus === "APPROVED" ? "Verified" : undefined,
+        verifiedBy: baseEduStatus === "APPROVED" ? (currentUser?.name ? `${currentUser.name} (HR Admin)` : "HR Admin") : undefined,
       };
       list.push({ ...eduRecord, ...(kycDocOverrides[eduId] || {}) });
 
       // 5. Experience / Relieving Letter
       const expId = `${empId}_experience`;
-      const baseExpStatus: KycSubmissionStatus =
-        emp.empCode === "EMP-1015" ? "SUBMITTED" : "APPROVED";
+      const hasExp = (emp.experience && emp.experience.length > 0) || !!(emp as any).previousCompany;
+      const baseExpStatus: KycSubmissionStatus = isRealTenant
+        ? (hasExp ? "APPROVED" : "NOT_SUBMITTED")
+        : (emp.empCode === "EMP-1015" ? "SUBMITTED" : "APPROVED");
       const expRecord: KycDocumentRecord = {
         id: expId,
         employeeId: empId,
@@ -887,23 +910,23 @@ export default function DigitalDocumentationPage() {
         docTypeName: "Experience / Relieving Letter",
         docCategory: "Employment History",
         identifierNumber:
-          emp.empCode === "EMP-1024"
-            ? "Zenith Corp (3.5 Yrs Sr Executive)"
-            : emp.empCode === "EMP-1018"
-            ? "Tech Mahindra (4 Yrs Full Stack Lead)"
-            : "Previous Employer Relieving Letter",
-        fileName: `Relieving_Letter_${empCode}.pdf`,
+          baseExpStatus !== "NOT_SUBMITTED"
+            ? (emp as any).previousCompany ? `${(emp as any).previousCompany} Experience` : "Previous Employer Relieving Letter"
+            : undefined,
+        fileName: baseExpStatus !== "NOT_SUBMITTED" ? `Relieving_Letter_${empCode}.pdf` : undefined,
         status: baseExpStatus,
-        uploadedAt: "06/09/2026, 12:00 PM",
-        verifiedAt: baseExpStatus === "APPROVED" ? "09/09/2026, 04:00 PM" : undefined,
-        verifiedBy: baseExpStatus === "APPROVED" ? "Arunachalam (HR Admin)" : undefined,
+        uploadedAt: baseExpStatus !== "NOT_SUBMITTED" ? "Submitted" : undefined,
+        verifiedAt: baseExpStatus === "APPROVED" ? "Verified" : undefined,
+        verifiedBy: baseExpStatus === "APPROVED" ? (currentUser?.name ? `${currentUser.name} (HR Admin)` : "HR Admin") : undefined,
       };
       list.push({ ...expRecord, ...(kycDocOverrides[expId] || {}) });
 
       // 6. Signed Appointment Letter
       const apptId = `${empId}_appointment`;
-      const baseApptStatus: KycSubmissionStatus =
-        emp.empCode === "EMP-1024" ? "PENDING" : "APPROVED";
+      const hasAppt = !!(emp as any).appointmentLetterUrl || !!emp.doj || !!(emp as any).joiningDate;
+      const baseApptStatus: KycSubmissionStatus = isRealTenant
+        ? (hasAppt ? "APPROVED" : "NOT_SUBMITTED")
+        : (emp.empCode === "EMP-1024" ? "PENDING" : "APPROVED");
       const apptRecord: KycDocumentRecord = {
         id: apptId,
         employeeId: empId,
@@ -918,21 +941,23 @@ export default function DigitalDocumentationPage() {
         docTypeName: "Appointment Letter",
         docCategory: "Company Issued Letter",
         identifierNumber:
-          emp.empCode === "EMP-1024"
-            ? "CHR-DOC-2026-001 (In Approval)"
-            : `CHR-APPT-${empCode}-2026`,
-        fileName: `Appointment_Letter_${empCode}.pdf`,
+          baseApptStatus !== "NOT_SUBMITTED"
+            ? `${company?.name || "Company"}-APPT-${empCode}`
+            : undefined,
+        fileName: baseApptStatus !== "NOT_SUBMITTED" ? `Appointment_Letter_${empCode}.pdf` : undefined,
         status: baseApptStatus,
-        uploadedAt: "01/09/2026, 10:00 AM",
-        verifiedAt: baseApptStatus === "APPROVED" ? "05/09/2026, 02:00 PM" : undefined,
-        verifiedBy: baseApptStatus === "APPROVED" ? "HR Head & Director" : undefined,
+        uploadedAt: baseApptStatus !== "NOT_SUBMITTED" ? (emp.doj || (emp as any).joiningDate || "Issued on Joining") : undefined,
+        verifiedAt: baseApptStatus === "APPROVED" ? "Executed" : undefined,
+        verifiedBy: baseApptStatus === "APPROVED" ? "HR & Management" : undefined,
       };
       list.push({ ...apptRecord, ...(kycDocOverrides[apptId] || {}) });
 
       // 7. Non-Disclosure Agreement (NDA)
       const ndaId = `${empId}_nda`;
-      const baseNdaStatus: KycSubmissionStatus =
-        emp.empCode === "EMP-1018" ? "SUBMITTED" : "APPROVED";
+      const hasNda = !!(emp as any).ndaSigned;
+      const baseNdaStatus: KycSubmissionStatus = isRealTenant
+        ? (hasNda ? "APPROVED" : "NOT_SUBMITTED")
+        : (emp.empCode === "EMP-1018" ? "SUBMITTED" : "APPROVED");
       const ndaRecord: KycDocumentRecord = {
         id: ndaId,
         employeeId: empId,
@@ -947,20 +972,20 @@ export default function DigitalDocumentationPage() {
         docTypeName: "Non-Disclosure Agreement (NDA)",
         docCategory: "Legal & Confidentiality",
         identifierNumber:
-          emp.empCode === "EMP-1018"
-            ? "CHR-DOC-2026-002 (Waiting on Emp)"
-            : `NDA-EXECUTED-${empCode}`,
-        fileName: `NDA_Signed_${empCode}.pdf`,
+          baseNdaStatus !== "NOT_SUBMITTED"
+            ? `NDA-EXECUTED-${empCode}`
+            : undefined,
+        fileName: baseNdaStatus !== "NOT_SUBMITTED" ? `NDA_Signed_${empCode}.pdf` : undefined,
         status: baseNdaStatus,
-        uploadedAt: "02/09/2026, 03:30 PM",
-        verifiedAt: baseNdaStatus === "APPROVED" ? "06/09/2026, 11:15 AM" : undefined,
-        verifiedBy: baseNdaStatus === "APPROVED" ? "Legal Counsel & HR Head" : undefined,
+        uploadedAt: baseNdaStatus !== "NOT_SUBMITTED" ? "Executed" : undefined,
+        verifiedAt: baseNdaStatus === "APPROVED" ? "Verified" : undefined,
+        verifiedBy: baseNdaStatus === "APPROVED" ? "Legal & HR Head" : undefined,
       };
       list.push({ ...ndaRecord, ...(kycDocOverrides[ndaId] || {}) });
     });
 
     return list;
-  }, [allEmployeesList, availableBranches, kycDocOverrides]);
+  }, [allEmployeesList, availableBranches, kycDocOverrides, isRealTenant, company?.branches, company?.name, currentUser?.name]);
 
   // Filtered KYC Documents
   const filteredKycDocs = useMemo(() => {
@@ -1017,7 +1042,7 @@ export default function DigitalDocumentationPage() {
 
   // Filtered documents for Company Letters table
   const filteredDocuments = useMemo(() => {
-    return documents.filter((doc) => {
+    return companyDocuments.filter((doc) => {
       const q = (filterEmpQuery || searchQuery).toLowerCase().trim();
       const matchesQuery =
         !q ||
@@ -1048,17 +1073,17 @@ export default function DigitalDocumentationPage() {
 
       return matchesQuery && matchesStatus && matchesDocType && matchesDept;
     });
-  }, [documents, searchQuery, filterEmpQuery, statusFilter, filterStatus, filterDocType, filterDepartment]);
+  }, [companyDocuments, searchQuery, filterEmpQuery, statusFilter, filterStatus, filterDocType, filterDepartment]);
 
   // Quick stats for Company Letters
   const stats = useMemo(() => {
-    const total = documents.length;
-    const inApproval = documents.filter((d) => d.status === "PENDING_APPROVAL" || d.status === "PARTIALLY_APPROVED").length;
-    const waitingEmp = documents.filter((d) => d.status === "PENDING_EMPLOYEE_ACTION").length;
-    const completed = documents.filter((d) => d.status === "COMPLETED" || d.status === "ACKNOWLEDGED").length;
-    const drafts = documents.filter((d) => d.status === "DRAFT").length;
+    const total = companyDocuments.length;
+    const inApproval = companyDocuments.filter((d) => d.status === "PENDING_APPROVAL" || d.status === "PARTIALLY_APPROVED").length;
+    const waitingEmp = companyDocuments.filter((d) => d.status === "PENDING_EMPLOYEE_ACTION").length;
+    const completed = companyDocuments.filter((d) => d.status === "COMPLETED" || d.status === "ACKNOWLEDGED").length;
+    const drafts = companyDocuments.filter((d) => d.status === "DRAFT").length;
     return { total, inApproval, waitingEmp, completed, drafts };
-  }, [documents]);
+  }, [companyDocuments]);
 
   // KYC Actions
   function handleApproveKycDoc(doc: KycDocumentRecord) {
@@ -1593,6 +1618,7 @@ export default function DigitalDocumentationPage() {
       documentType: isCustomDocName ? "Custom" : docName,
       isCustomName: isCustomDocName,
       category: matchedCategory,
+      tenantId: activeTenantId || undefined,
       employeeId: sampleEmp?.id || "sample-emp",
       employeeName: sampleEmp?.name || "Sample Employee",
       employeeCode: sampleEmp?.empCode || "EMP-001",
