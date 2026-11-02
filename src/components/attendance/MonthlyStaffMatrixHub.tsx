@@ -354,19 +354,52 @@ export function MonthlyStaffMatrixHub({
   // Helper: Leave Balance calculation
   const getEmpLeaveBalance = useCallback(
     (emp: Employee): number => {
+      // 1. Approved leaves from the leaves table
       const empLeaves = (leaves || []).filter(
         (l) =>
           (l.employeeId === emp.id || (emp.empCode && (l as any).empCode === emp.empCode) || l.employeeName === emp.name) &&
           (l.status || "").toLowerCase() === "approved"
       );
+      const approvedDatesSet = new Set<string>();
       const usedDays = empLeaves.reduce((sum, l) => {
         const d = typeof l.days === "string" ? parseFloat(l.days) : (l.days ?? 1);
+        const start = l.from || (l as any).startDate;
+        const end = l.to || (l as any).endDate || start;
+        if (start && end) {
+          try {
+            const cur = new Date(start);
+            const last = new Date(end);
+            while (cur <= last) {
+              approvedDatesSet.add(cur.toISOString().slice(0, 10));
+              cur.setDate(cur.getDate() + 1);
+            }
+          } catch (_e) {
+            approvedDatesSet.add(start);
+          }
+        } else if (start) {
+          approvedDatesSet.add(start);
+        }
         return sum + (isNaN(d) ? 1 : d);
       }, 0);
+
+      // 2. Attendance records manually marked, overridden, or regularized as "leave"
+      const manualLeaveDays = (attendance || []).filter((a) => {
+        const matchesEmp =
+          a.employeeId === emp.id ||
+          (emp.empCode && a.empCode === emp.empCode) ||
+          a.employeeName === emp.name;
+        if (!matchesEmp) return false;
+        const isLeaveStatus = (a.status || "").toLowerCase() === "leave";
+        if (!isLeaveStatus) return false;
+        if (a.date && approvedDatesSet.has(a.date)) return false;
+        return true;
+      }).length;
+
+      const totalUsedDays = usedDays + manualLeaveDays;
       const totalEntitlement = (company.leaveTypes || []).reduce((acc, lt) => acc + (lt.days || 0), 0) || 18;
-      return Math.max(0, Math.round((totalEntitlement - usedDays) * 10) / 10);
+      return Math.max(0, Math.round((totalEntitlement - totalUsedDays) * 10) / 10);
     },
-    [leaves, company.leaveTypes]
+    [leaves, attendance, company.leaveTypes]
   );
 
   // Quick Preset Handlers

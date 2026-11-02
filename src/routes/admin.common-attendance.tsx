@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useStore, type Employee, type AttendanceRecord, safeFetch } from "@/lib/store";
+import { useStore, isActiveEmployee, type Employee, type AttendanceRecord, safeFetch } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -305,7 +305,7 @@ function CommonAttendancePage() {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
     return employees
-      .filter((e) => e.status !== "terminated" && e.status !== "relieved")
+      .filter(isActiveEmployee)
       .filter((e) => {
         const code = String(e.empCode || "").toLowerCase();
         const name = String(e.name || "").toLowerCase();

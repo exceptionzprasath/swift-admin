@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { useStore, isMockEmployee, isFrozenEmployee, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device } from "@/lib/store";
+import { useStore, isMockEmployee, isFrozenEmployee, isActiveEmployee, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -313,6 +313,8 @@ function AttendancePage() {
     employees: rawEmployees,
     attendance,
     upsertAttendance,
+    addLeave,
+    deleteLeave,
     company,
     leaves,
     holidays,
@@ -323,7 +325,7 @@ function AttendancePage() {
     deleteDevice,
     loadCompanyState,
   } = useStore();
-  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)), [rawEmployees]);
+  const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
   const { activeTenantId } = useAuth();
 
   // Primary Selected Date for Daily View
@@ -526,10 +528,7 @@ function AttendancePage() {
 
   // Only active and notice-period employees are tracked in the Attendance Area (Past employees: suspended, relieved, terminated are excluded)
   const activeEmployees = useMemo(() => {
-    return employees.filter((e) => {
-      const s = (e.status || "active").toLowerCase().trim();
-      return s === "active" || s === "notice_period" || s === "notice";
-    });
+    return employees.filter(isActiveEmployee);
   }, [employees]);
 
   // Departments & Branches list
@@ -928,11 +927,11 @@ function AttendancePage() {
       totalOTHours += recH.otHours;
     });
 
-    const totalEmployees = employees.length || 1;
+    const totalEmployees = activeEmployees.length || 1;
     const attendancePercentage = Math.round(((presentCount + halfDayCount * 0.5) / totalEmployees) * 100);
 
     return {
-      totalEmployees: employees.length,
+      totalEmployees: activeEmployees.length,
       presentCount,
       onTimeCount,
       graceCount,
@@ -1184,6 +1183,42 @@ function AttendancePage() {
       regularizedReason: `${reason}${note ? ": " + note : ""}`,
       updatedAt: new Date().toISOString(),
     });
+
+    // Synchronize Manual Leave override with the leaves repository
+    if (status === "leave") {
+      const matchingLeave = (leaves || []).find(
+        (l) =>
+          (l.employeeId === employeeId || (emp?.empCode && (l as any).empCode === emp.empCode) || l.employeeName === emp?.name) &&
+          (l.status || "").toLowerCase() === "approved" &&
+          date >= (l.from || (l as any).startDate || "") &&
+          date <= (l.to || (l as any).endDate || "")
+      );
+      if (!matchingLeave && addLeave) {
+        addLeave({
+          id: `leave-manual-${employeeId}-${date}`,
+          employeeId,
+          employeeName: emp?.name,
+          empCode: emp?.empCode,
+          type: "Casual Leave",
+          from: date,
+          to: date,
+          startDate: date,
+          endDate: date,
+          days: 1,
+          reason: `Manual attendance override: ${reason}${note ? " - " + note : ""}`,
+          status: "approved",
+          appliedAt: new Date().toISOString(),
+          approvedBy: "Admin",
+        } as any);
+      }
+    } else {
+      const manualLeave = (leaves || []).find(
+        (l) => l.id === `leave-manual-${employeeId}-${date}`
+      );
+      if (manualLeave && deleteLeave) {
+        deleteLeave(manualLeave.id);
+      }
+    }
 
     toast.success(`Punch & OT updated for ${emp?.name || "employee"} on ${date}`);
     setRegularizeDialog((prev) => ({ ...prev, open: false }));
@@ -2312,7 +2347,7 @@ function AttendancePage() {
                 <Users className="w-3.5 h-3.5 text-indigo-500" />
                 <span>Staff Biometric Directory</span>
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-indigo-500/10 text-indigo-600">
-                  {employees.length}
+                  {activeEmployees.length}
                 </Badge>
               </button>
 

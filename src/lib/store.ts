@@ -62,6 +62,50 @@ export function isFrozenEmployee(emp: Partial<Employee> | null | undefined): boo
   return s === "frozen" || s === "freezed";
 }
 
+/**
+ * Returns true if an employee is a past, exited, suspended, or inactive employee:
+ * - "terminated"
+ * - "suspended"
+ * - "relieved" / "releived"
+ * - "inactive"
+ * - "frozen" / "freezed"
+ */
+export function isPastEmployee(emp: Partial<Employee> | null | undefined): boolean {
+  if (!emp) return false;
+  if (isMockEmployee(emp) || isFrozenEmployee(emp)) return true;
+  const s = String(emp.status || "").trim().toLowerCase();
+  return (
+    s === "suspended" ||
+    s === "relieved" ||
+    s === "releived" ||
+    s === "terminated" ||
+    s === "inactive" ||
+    s === "frozen" ||
+    s === "freezed"
+  );
+}
+
+/**
+ * Returns true if an employee is an active working employee (or actively serving notice).
+ * Excludes past, relieved, terminated, suspended, inactive, frozen, and mock employees.
+ */
+export function isActiveEmployee(emp: Partial<Employee> | null | undefined): boolean {
+  if (!emp) return false;
+  if (isMockEmployee(emp) || isFrozenEmployee(emp)) return false;
+  const s = String(emp.status || "active").trim().toLowerCase();
+  return !(
+    s === "suspended" ||
+    s === "relieved" ||
+    s === "releived" ||
+    s === "terminated" ||
+    s === "inactive" ||
+    s === "frozen" ||
+    s === "freezed"
+  );
+}
+
+
+
 export function isMockAttendance(att: Partial<AttendanceRecord> | null | undefined): boolean {
   if (!att) return false;
   // Authentic biometric terminal or USB log imports are never mock records

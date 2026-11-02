@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useStore, isMockEmployee, isFrozenEmployee } from "@/lib/store";
+import { useStore, isMockEmployee, isFrozenEmployee, isActiveEmployee } from "@/lib/store";
 import { inr } from "@/lib/payroll";
 import {
   simulateRevision,
@@ -27,7 +27,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
 
 function SalaryRevisionPage() {
   const { employees: rawEmployees, company, salaryRevisions, applySalaryRevision, rollbackSalaryRevision } = useStore();
-  const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)), [rawEmployees]);
+  const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
   const [step, setStep] = useState<Step>(1);
   const [empId, setEmpId] = useState(employees[0]?.id || "");
   const [amount, setAmount] = useState(1000);

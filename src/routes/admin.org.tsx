@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import {
   useStore,
+  isActiveEmployee,
   getEmployeeBranchIds,
   type Employee,
 } from "@/lib/store";
@@ -35,7 +36,8 @@ function initials(name: string) {
 type ViewMode = "tree" | "grid";
 
 function OrgPage() {
-  const { employees, updateEmployee, company } = useStore();
+  const { employees: rawEmployees, updateEmployee, company } = useStore();
+  const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
   const branches = company.branches ?? [];
 
   // Edit Employee Basic Info Modal
