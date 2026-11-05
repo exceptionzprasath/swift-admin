@@ -968,6 +968,12 @@ export type AttendanceRecord = {
   regularized?: boolean;
   regularizedBy?: string;
   regularizedReason?: string;
+  isRestDayWork?: boolean;
+  restDayWorkStatus?: "pending" | "approved" | "rejected";
+  restDayApprovedHours?: number;
+  restDayApprovedBy?: string;
+  restDayApprovedAt?: string;
+  restDayRejectionReason?: string;
   updatedAt?: string;
 };
 
@@ -1330,6 +1336,8 @@ type State = {
   updateEmployee: (id: string, patch: Partial<Employee>) => void;
   deleteEmployee: (id: string) => void;
   upsertAttendance: (r: AttendanceRecord) => void;
+  approveRestDayWork: (attendanceId: string, approvedHours?: number, approvedBy?: string) => Promise<void>;
+  rejectRestDayWork: (attendanceId: string, reason?: string, rejectedBy?: string) => Promise<void>;
   addPayroll: (p: PayrollRun) => void;
   lockPayrollMonth: (month: string, locked: boolean) => void;
   verifyPayrollLockPassword: (password: string) => Promise<{ success: boolean; error?: string }>;
@@ -3446,6 +3454,78 @@ export const useStore = create<State>()(
           }
           return { attendance: next };
         }),
+      approveRestDayWork: async (attendanceId, approvedHours, approvedBy = "Admin") => {
+        const tenantId = useAuth.getState().activeTenantId;
+        const currentAtt = get().attendance.find((a) => a.id === attendanceId);
+        if (!currentAtt) return;
+        const finalHours = approvedHours !== undefined ? approvedHours : (currentAtt.hoursWorked || 0);
+        const updated: AttendanceRecord = {
+          ...currentAtt,
+          isRestDayWork: true,
+          restDayWorkStatus: "approved",
+          restDayApprovedHours: finalHours,
+          restDayApprovedBy: approvedBy,
+          restDayApprovedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        set((s) => ({
+          attendance: s.attendance.map((a) => (a.id === attendanceId ? updated : a)),
+        }));
+        if (tenantId && !get().demoMode) {
+          try {
+            await safeFetch("/api/attendance/approve-rest-day", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tenantId,
+                attendanceId,
+                action: "approve",
+                approvedHours: finalHours,
+                approvedBy,
+              }),
+            });
+          } catch (err) {
+            console.warn("[Store] Error calling approve-rest-day API:", err);
+            syncItem("attendance", { tenantId, ...updated });
+          }
+        }
+      },
+      rejectRestDayWork: async (attendanceId, reason = "Declined by Admin", rejectedBy = "Admin") => {
+        const tenantId = useAuth.getState().activeTenantId;
+        const currentAtt = get().attendance.find((a) => a.id === attendanceId);
+        if (!currentAtt) return;
+        const updated: AttendanceRecord = {
+          ...currentAtt,
+          isRestDayWork: true,
+          restDayWorkStatus: "rejected",
+          restDayApprovedHours: 0,
+          restDayRejectionReason: reason,
+          restDayApprovedBy: rejectedBy,
+          restDayApprovedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        set((s) => ({
+          attendance: s.attendance.map((a) => (a.id === attendanceId ? updated : a)),
+        }));
+        if (tenantId && !get().demoMode) {
+          try {
+            await safeFetch("/api/attendance/approve-rest-day", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tenantId,
+                attendanceId,
+                action: "reject",
+                comment: reason,
+                approvedBy: rejectedBy,
+              }),
+            });
+          } catch (err) {
+            console.warn("[Store] Error calling reject-rest-day API:", err);
+            syncItem("attendance", { tenantId, ...updated });
+          }
+        }
+      },
       addPayroll: (p) => {
         set((s) => {
           const filtered = s.payrolls.filter(

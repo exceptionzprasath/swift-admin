@@ -213,7 +213,7 @@ function getRecordHours(
   const isSynthetic22 =
     (rec.clockOut === "22:00" || rec.checkOut === "22:00") &&
     Boolean(rec.isAutoClosed || rec.isMissedCheckout);
-  const inTime = rec.checkIn || rec.clockIn;
+  const inTime = rec.checkIn || rec.clockIn || (rec as any).inTime;
   const outTime = isSynthetic22 ? undefined : (rec.checkOut || rec.clockOut);
 
   // 1. If both inTime and outTime are present, ALWAYS calculate real hours from actual punches
@@ -303,6 +303,16 @@ function getBasicPunctuality(punctuality: { status: string; label: string; color
   };
 }
 
+// Helper to match attendance record with employee across id, empCode, and name
+function matchEmpAttendance(a: any, emp: Employee, dateStr: string): boolean {
+  if (a.date !== dateStr) return false;
+  if (a.employeeId === emp.id) return true;
+  if (emp.empCode && (a.empCode === emp.empCode || a.employeeId === emp.empCode)) return true;
+  if ((emp as any).employeeId && (a.employeeId === (emp as any).employeeId || a.empCode === (emp as any).employeeId)) return true;
+  if (a.employeeName && emp.name && a.employeeName.trim().toLowerCase() === emp.name.trim().toLowerCase()) return true;
+  return false;
+}
+
 export const Route = createFileRoute("/admin/attendance")({
   head: () => ({ meta: [{ title: "Attendance & Dossier · CreatonsHR" }] }),
   component: AttendancePage,
@@ -324,6 +334,8 @@ function AttendancePage() {
     updateDevice,
     deleteDevice,
     loadCompanyState,
+    approveRestDayWork,
+    rejectRestDayWork,
   } = useStore();
   const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
   const { activeTenantId } = useAuth();
@@ -583,10 +595,18 @@ function AttendancePage() {
         };
       }
 
-      // 2. Check roster assignments
-      const rosterItem = (roster || []).find(
-        (r) => r.employeeId === emp.id && r.date === dateStr
+      // 2. Check roster assignments (match latest/most recently updated assignment)
+      const matchedRosterItems = (roster || []).filter(
+        (r) => (r.employeeId === emp.id || (emp.empCode && r.empCode === emp.empCode)) && r.date === dateStr
       );
+
+      const rosterItem = matchedRosterItems.length > 0
+        ? matchedRosterItems.reduce((latest, current) => {
+            const latestTime = latest.updatedAt ? new Date(latest.updatedAt).getTime() : 0;
+            const currentTime = current.updatedAt ? new Date(current.updatedAt).getTime() : 0;
+            return currentTime >= latestTime ? current : latest;
+          })
+        : undefined;
 
       if (rosterItem) {
         if (rosterItem.shiftId === "off") {
@@ -654,12 +674,43 @@ function AttendancePage() {
         };
       }
 
-      if (scheduled.isHoliday) {
+      const hasRestPunch = Boolean(rec?.checkIn || rec?.clockIn || (rec as any)?.inTime);
+
+      if (scheduled.isHoliday && !hasRestPunch) {
         return { status: "holiday", label: `Holiday: ${scheduled.holidayName || ""}`, color: "bg-purple-500/10 text-purple-500 border-purple-500/20" };
       }
 
-      if (scheduled.isWeeklyOff && !rec?.checkIn && !rec?.clockIn) {
+      if (scheduled.isWeeklyOff && !hasRestPunch) {
         return { status: "weekly-off", label: "Weekly Off", color: "bg-slate-500/10 text-slate-500 border-slate-500/20" };
+      }
+
+      // If employee was scheduled on Weekly Off, Sunday, or Holiday but actually worked/punched in
+      const isSun = new Date(dateStr + "T12:00:00Z").getUTCDay() === 0;
+      const isRest = scheduled.isWeeklyOff || isSun || scheduled.isHoliday || rec?.isRestDayWork;
+
+      if (isRest && hasRestPunch) {
+        const typeLabel = scheduled.isHoliday ? "Holiday Work" : "Rest Day Work";
+        const restStatus = rec?.restDayWorkStatus || "pending";
+        if (restStatus === "approved") {
+          const hrs = rec?.restDayApprovedHours ?? rec?.hoursWorked ?? 0;
+          return {
+            status: "present",
+            label: `${typeLabel} (Approved · ${hrs}h)`,
+            color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+          };
+        }
+        if (restStatus === "rejected") {
+          return {
+            status: scheduled.isHoliday ? "holiday" : "weekly-off",
+            label: `${typeLabel} (Declined)`,
+            color: "bg-slate-500/10 text-slate-500 border-slate-500/20",
+          };
+        }
+        return {
+          status: "pending",
+          label: `${typeLabel} (Pending Approval)`,
+          color: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+        };
       }
 
       const todayStr = new Date().toISOString().slice(0, 10);
@@ -694,7 +745,8 @@ function AttendancePage() {
       }
 
       const punchTime = rec.checkIn || rec.clockIn || "";
-      const shiftStart = scheduled.shift.start || "09:00";
+      const rawShiftStart = scheduled.shift.start && scheduled.shift.start !== "-" ? scheduled.shift.start : "09:00";
+      const shiftStart = rawShiftStart.includes(":") ? rawShiftStart : "09:00";
       const graceMinutes = parseInt(emp.graceTime || scheduled.shift.graceTime || "15", 10) || 0;
       const halfDayCutoff = emp.halfDayLoginTime || scheduled.shift.halfDayLoginTime || "12:00";
 
@@ -709,11 +761,11 @@ function AttendancePage() {
       const punchMinutesTotal = punchH * 60 + punchM;
 
       const [startH, startM] = shiftStart.split(":").map((v) => parseInt(v, 10) || 0);
-      const startMinutesTotal = startH * 60 + startM;
+      const startMinutesTotal = (startH || 0) * 60 + (startM || 0);
       const graceLimitTotal = startMinutesTotal + graceMinutes;
 
       const [halfH, halfM] = halfDayCutoff.split(":").map((v) => parseInt(v, 10) || 0);
-      const halfDayLimitTotal = halfH * 60 + halfM;
+      const halfDayLimitTotal = (halfH || 12) * 60 + (halfM || 0);
 
       const isLateCheckIn = punchMinutesTotal > graceLimitTotal;
       const isMissedOut = Boolean(
@@ -722,8 +774,10 @@ function AttendancePage() {
         ((!rec.checkOut && !rec.clockOut) && isPast)
       );
 
-      const [endH, endM] = (scheduled.shift.end || "18:00").split(":").map((v) => parseInt(v, 10) || 0);
-      const shiftEndMinutesTotal = endH * 60 + endM;
+      const rawShiftEnd = scheduled.shift.end && scheduled.shift.end !== "-" ? scheduled.shift.end : "18:00";
+      const shiftEnd = rawShiftEnd.includes(":") ? rawShiftEnd : "18:00";
+      const [endH, endM] = shiftEnd.split(":").map((v) => parseInt(v, 10) || 0);
+      const shiftEndMinutesTotal = (endH || 18) * 60 + (endM || 0);
 
       // 1. Post-Shift Punch: Checked in at or after scheduled shift end time (e.g., 9:26 PM for a 09:00 - 18:00 shift)
       if (punchMinutesTotal >= shiftEndMinutesTotal) {
@@ -761,7 +815,8 @@ function AttendancePage() {
         return { status: "present", label: `Grace (${diff}m)`, color: "bg-teal-500/10 text-teal-600 border-teal-500/20" };
       }
 
-      const lateBy = punchMinutesTotal - startMinutesTotal;
+      const rawLateBy = punchMinutesTotal - startMinutesTotal;
+      const lateBy = !isNaN(rawLateBy) && rawLateBy > 0 ? rawLateBy : 0;
 
       // Check for approved/pending permission on this date
       const activePerm = (leaves || []).find(
@@ -945,6 +1000,34 @@ function AttendancePage() {
     };
   }, [dailyRows, activeEmployees.length]);
 
+  // Quick Approve & Reject Rest Day / Sunday Work Handlers
+  const handleApproveRestDay = useCallback(
+    async (rec?: AttendanceRecord, emp?: Employee) => {
+      if (!rec || !emp) return;
+      try {
+        const hrs = rec.hoursWorked || 8;
+        await approveRestDayWork(rec.id, hrs, "Admin");
+        toast.success(`✨ Approved ${hrs}h Sunday work for ${emp.name}!`);
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to approve Sunday work");
+      }
+    },
+    [approveRestDayWork]
+  );
+
+  const handleRejectRestDay = useCallback(
+    async (rec?: AttendanceRecord, emp?: Employee) => {
+      if (!rec || !emp) return;
+      try {
+        await rejectRestDayWork(rec.id, "Declined by Admin", "Admin");
+        toast.info(`Declined Sunday work for ${emp.name}.`);
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to decline Sunday work");
+      }
+    },
+    [rejectRestDayWork]
+  );
+
   // Open Manual Edit Punch / Regularization Dialog for specific employee & date
   const handleOpenRegularize = useCallback(
     (emp: Employee, dateStr: string = selectedDate, existingRec?: AttendanceRecord) => {
@@ -957,8 +1040,8 @@ function AttendancePage() {
       const defaultIn = scheduled.shift.start || "09:00";
       const defaultOut = scheduled.shift.end || "18:00";
 
-      const inTime = rec?.checkIn || rec?.clockIn || defaultIn;
-      const outTime = rec?.checkOut || rec?.clockOut || defaultOut;
+      const inTime = rec?.checkIn || rec?.clockIn || (rec as any)?.inTime || defaultIn;
+      const outTime = rec?.checkOut || rec?.clockOut || (rec as any)?.outTime || defaultOut;
       const stdHours = company.workingHoursPerDay || 9;
       const autoCalc = computeWorkedHours(inTime, outTime, stdHours);
 
@@ -1164,7 +1247,12 @@ function AttendancePage() {
     const cleanCheckIn = status === "absent" || status === "leave" ? undefined : (checkIn || undefined);
     const cleanCheckOut = status === "absent" || status === "leave" ? undefined : (checkOut || undefined);
 
+    const isSunDate = new Date(date + "T12:00:00Z").getUTCDay() === 0;
+    const scheduledForDate = emp ? getScheduledShiftForDate(emp, date) : undefined;
+    const isRestWork = Boolean((isSunDate || scheduledForDate?.isHoliday || scheduledForDate?.isWeeklyOff) && cleanCheckIn);
+
     upsertAttendance({
+      ...(isRestWork ? { isRestDayWork: true, restDayWorkStatus: existing?.restDayWorkStatus || "pending" } : {}),
       id: existing?.id || `att-${employeeId}-${date}`,
       employeeId,
       employeeName: emp?.name,
@@ -2147,6 +2235,29 @@ function AttendancePage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-44 rounded-xl shadow-lg">
+                                {rec && (punctuality.label.includes("Work") || punctuality.label.includes("Pending Approval") || rec.isRestDayWork) && (
+                                  <>
+                                    {rec.restDayWorkStatus !== "approved" && (
+                                      <DropdownMenuItem
+                                        onClick={() => handleApproveRestDay(rec, emp)}
+                                        className="font-semibold text-emerald-600 focus:text-emerald-700 cursor-pointer"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-emerald-600" />
+                                        Approve {punctuality.label.includes("Holiday") ? "Holiday" : "Sunday"} Work
+                                      </DropdownMenuItem>
+                                    )}
+                                    {rec.restDayWorkStatus !== "rejected" && (
+                                      <DropdownMenuItem
+                                        onClick={() => handleRejectRestDay(rec, emp)}
+                                        className="font-semibold text-rose-600 focus:text-rose-700 cursor-pointer"
+                                      >
+                                        <XCircle className="h-3.5 w-3.5 mr-2 text-rose-600" />
+                                        Decline {punctuality.label.includes("Holiday") ? "Holiday" : "Sunday"} Work
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuSeparator />
+                                  </>
+                                )}
                                 <DropdownMenuItem
                                   onClick={() => handleOpenRegularize(emp, selectedDate, rec)}
                                   className="font-semibold text-amber-600 cursor-pointer"

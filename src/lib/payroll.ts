@@ -764,10 +764,16 @@ export function computeMonthlyAttendanceSummary(
 
   const monthAtt = Array.from(dateMap.values());
 
-  const daysPresent = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "present").length;
+  const isRestDayPendingOrRejected = (a: any) => {
+    const isSun = a.date && new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
+    const isRest = Boolean(isSun || a.isRestDayWork);
+    return isRest && a.restDayWorkStatus !== "approved";
+  };
+
+  const daysPresent = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "present" && !isRestDayPendingOrRejected(a)).length;
   const daysHalf = monthAtt.filter((a) => {
     const s = (a.status || "").toLowerCase().trim();
-    return s === "half-day" || s === "half_day" || s === "halfday";
+    return (s === "half-day" || s === "half_day" || s === "halfday") && !isRestDayPendingOrRejected(a);
   }).length;
   const daysLeave = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "leave").length;
   const daysAbsent = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "absent").length;

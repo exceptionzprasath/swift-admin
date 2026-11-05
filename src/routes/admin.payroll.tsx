@@ -969,14 +969,24 @@ export function PayrollPage() {
           } catch {}
         }
 
-        if (dayOt > 0) {
+        const isSun = a.date && new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
+        const isRest = Boolean(isSun || a.isRestDayWork);
+        const isRestDayPending = isRest && a.restDayWorkStatus !== "approved";
+
+        if (dayOt > 0 || (isRest && workedH > 0)) {
           dailyOtRecords.push({
             date: a.date,
             checkIn: inTime || "—",
             checkOut: outTime || "—",
-            status: a.status || "present",
+            status: isRest
+              ? (a.restDayWorkStatus === "approved"
+                  ? `Rest Day Work (Approved · ${a.restDayApprovedHours ?? workedH}h)`
+                  : a.restDayWorkStatus === "rejected"
+                  ? "Rest Day Work (Declined)"
+                  : "Rest Day Work (Pending Approval)")
+              : (a.status || "present"),
             workedHours: workedH,
-            otHours: dayOt,
+            otHours: isRestDayPending ? 0 : dayOt,
           });
         }
       });
@@ -1309,6 +1319,21 @@ export function PayrollPage() {
       createdAt: new Date().toISOString(),
     });
 
+    // Also approve any pending rest day / Sunday work records for this employee in selectedMonth
+    const pendingSundayRecords = (attendance || []).filter((a) => {
+      const isSun = a.date && new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
+      const isRest = Boolean(isSun || a.isRestDayWork);
+      return (
+        (a.employeeId === empId || (reg.emp.empCode && a.empCode === reg.emp.empCode)) &&
+        a.date.startsWith(selectedMonth) &&
+        isRest &&
+        a.restDayWorkStatus !== "approved"
+      );
+    });
+    for (const sRec of pendingSundayRecords) {
+      useStore.getState().approveRestDayWork(sRec.id, sRec.hoursWorked || 8, currentUser?.name || "Admin");
+    }
+
     toast.success(`Approved ${approvedHours}h overtime for ${reg.emp.name}. Added to payroll & payslip!`);
   };
 
@@ -1369,6 +1394,21 @@ export function PayrollPage() {
       overrideData: updatedOv,
       createdAt: new Date().toISOString(),
     });
+
+    // Also reject pending rest day work for this employee
+    const pendingSundayRecords = (attendance || []).filter((a) => {
+      const isSun = a.date && new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
+      const isRest = Boolean(isSun || a.isRestDayWork);
+      return (
+        (a.employeeId === empId || (reg.emp.empCode && a.empCode === reg.emp.empCode)) &&
+        a.date.startsWith(selectedMonth) &&
+        isRest &&
+        a.restDayWorkStatus === "pending"
+      );
+    });
+    for (const sRec of pendingSundayRecords) {
+      useStore.getState().rejectRestDayWork(sRec.id, remarks || "Declined in Overtime Approvals", currentUser?.name || "Admin");
+    }
 
     toast.info(`Rejected overtime for ${reg.emp.name}. Overtime pay excluded from payroll.`);
   };

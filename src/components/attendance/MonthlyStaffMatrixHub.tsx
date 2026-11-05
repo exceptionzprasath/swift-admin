@@ -492,20 +492,25 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
           const isOdd = isOddPunch(rec, d.dateStr);
           if (isOdd) empOdd++;
 
+          const isSunOrRest = Boolean(scheduled.isWeeklyOff || new Date(d.dateStr + "T12:00:00Z").getUTCDay() === 0 || rec?.isRestDayWork);
+          const isRestDayPending = isSunOrRest && hasPunch && rec?.restDayWorkStatus !== "approved";
+
           if (scheduled.isHoliday) {
             empAnnualHoliday++;
             if (hasPunch && recHours.hoursWorked > 0) empExtraDay++;
           } else if (scheduled.isWeeklyOff) {
             empWeeklyOff++;
-            if (hasPunch && recHours.hoursWorked > 0) empExtraDay++;
+            if (hasPunch && recHours.hoursWorked > 0 && rec?.restDayWorkStatus === "approved") empExtraDay++;
           }
 
-          if (punct.status === "present") empPresent += 1;
-          else if (punct.status === "half-day") empPresent += 0.5;
+          if (punct.status === "present" && !isRestDayPending) empPresent += 1;
+          else if (punct.status === "half-day" && !isRestDayPending) empPresent += 0.5;
           else if (punct.status === "leave") empLeave += 1;
           else if (punct.status === "absent" && !scheduled.isWeeklyOff && !scheduled.isHoliday) empAbsent += 1;
 
-          empTotalMins += Math.round(recHours.hoursWorked * 60);
+          if (!isRestDayPending) {
+            empTotalMins += Math.round(recHours.hoursWorked * 60);
+          }
 
           // Exception mins: late punches
           if (punct.status === "late") {
@@ -515,6 +520,15 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
 
           // Cell value determination
           if (isOdd) return "ODD";
+          if (isSunOrRest && hasPunch) {
+            if (rec?.restDayWorkStatus === "approved") {
+              return formatMinutesToHHMM(recHours.hoursWorked * 60);
+            }
+            if (rec?.restDayWorkStatus === "rejected") {
+              return "W/O (Decl)";
+            }
+            return "W/O (Pend)";
+          }
           if (recHours.hoursWorked > 0) return formatMinutesToHHMM(recHours.hoursWorked * 60);
           if (scheduled.isHoliday) return "A/H";
           if (scheduled.isWeeklyOff) return "W/O";
@@ -567,16 +581,19 @@ Employee ID,Employee Name,Branch,Total Days,Present,Approved Leave,Absent,Odd Pu
 
           if (rec?.regularized) empRegularized++;
 
+          const isSunOrRestCons = Boolean(scheduled.isWeeklyOff || new Date(d.dateStr + "T12:00:00Z").getUTCDay() === 0 || rec?.isRestDayWork);
+          const isRestDayPendingCons = isSunOrRestCons && hasPunch && rec?.restDayWorkStatus !== "approved";
+
           if (scheduled.isHoliday) {
             empAnnualHoliday++;
             if (hasPunch && recHours.hoursWorked > 0) empExtraDay++;
           } else if (scheduled.isWeeklyOff) {
             empWeeklyOff++;
-            if (hasPunch && recHours.hoursWorked > 0) empExtraDay++;
+            if (hasPunch && recHours.hoursWorked > 0 && rec?.restDayWorkStatus === "approved") empExtraDay++;
           }
 
-          if (punct.status === "present") empPresent += 1;
-          else if (punct.status === "half-day") empPresent += 0.5;
+          if (punct.status === "present" && !isRestDayPendingCons) empPresent += 1;
+          else if (punct.status === "half-day" && !isRestDayPendingCons) empPresent += 0.5;
           else if (punct.status === "leave") empLeave += 1;
           else if (punct.status === "absent" && !scheduled.isWeeklyOff && !scheduled.isHoliday) empAbsent += 1;
 
