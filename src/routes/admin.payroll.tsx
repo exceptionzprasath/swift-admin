@@ -930,9 +930,11 @@ export function PayrollPage() {
       const { monthAtt, daysPresent, daysHalf, daysLeave, daysAbsent, rawPresentDays } = attSummary;
 
       // Compute daily OT breakdown and total OT hours from actual check-in/check-out timestamps or explicit otHours for each day
+      const isOtEligible = emp.otEnabled !== false;
       const dailyOtRecords: { date: string; checkIn: string; checkOut: string; status: string; workedHours: number; otHours: number }[] = [];
 
-      monthAtt.forEach((a) => {
+      if (isOtEligible) {
+        monthAtt.forEach((a) => {
         let dayOt = 0;
         let workedH = 0;
         const inTime = a.checkIn || a.clockIn;
@@ -991,7 +993,8 @@ export function PayrollPage() {
         }
       });
 
-      const rawOtHours = dailyOtRecords.reduce((sum, d) => sum + d.otHours, 0);
+      }
+      const rawOtHours = isOtEligible ? dailyOtRecords.reduce((sum, d) => sum + d.otHours, 0) : 0;
 
       // Check for employee-specific monthly override
       const overrideKey = `${effectivePeriodKey}_${emp.id}`;
@@ -1043,10 +1046,10 @@ export function PayrollPage() {
       // Overtime (OT) Approval Workflow:
       // Overtime is only credited to payroll and payslip AFTER explicit admin approval (ov.otStatus === 'approved').
       // If unapproved (pending or rejected), effectiveOtHours is strictly 0.
-      const isOtApproved = ov.otStatus === "approved";
-      const otApprovedHours = ov.otApprovedHours !== undefined ? ov.otApprovedHours : (ov.otHours !== undefined && isOtApproved ? ov.otHours : rawOtHours);
+      const isOtApproved = isOtEligible && ov.otStatus === "approved";
+      const otApprovedHours = isOtEligible ? (ov.otApprovedHours !== undefined ? ov.otApprovedHours : (ov.otHours !== undefined && isOtApproved ? ov.otHours : rawOtHours)) : 0;
       const effectiveOtHours = isOtApproved ? otApprovedHours : 0;
-      const otStatus: "pending" | "approved" | "rejected" = ov.otStatus ? ov.otStatus : (rawOtHours > 0 ? "pending" : "pending");
+      const otStatus: "pending" | "approved" | "rejected" | "disabled" = !isOtEligible ? "disabled" : (ov.otStatus ? ov.otStatus : (rawOtHours > 0 ? "pending" : "pending"));
 
       const effectiveIncentive = ov.incentive !== undefined ? ov.incentive : 0;
       const effectiveBonus = (ov.bonus !== undefined ? ov.bonus : 0) + attBonus + yrBonus;
@@ -1205,6 +1208,7 @@ export function PayrollPage() {
   // Overtime (OT) Eligible Employees List (Employees with logged OT hours from attendance or existing OT records)
   const otEligibleRecords = useMemo(() => {
     return monthlyRegister.filter((reg) => {
+      if (reg.emp.otEnabled === false) return false;
       return (
         (reg.rawOtHours !== undefined && reg.rawOtHours > 0) ||
         (reg.otHours !== undefined && reg.otHours > 0) ||
@@ -3290,7 +3294,11 @@ export function PayrollPage() {
                           <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-semibold text-[11px] px-1.5 py-0.5 whitespace-nowrap">
                             {paidDays}/{isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)} Present
                           </Badge>
-                          {isOtApproved && otHours > 0 ? (
+                          {emp.otEnabled === false ? (
+                            <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-border text-[10px] px-1.5 py-0 whitespace-nowrap">
+                              OT Disabled
+                            </Badge>
+                          ) : isOtApproved && otHours > 0 ? (
                             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] px-1.5 py-0 whitespace-nowrap flex items-center gap-1 font-semibold">
                               <Check className="h-2.5 w-2.5" />
                               +{otHours}h OT
@@ -4374,11 +4382,19 @@ export function PayrollPage() {
 
                       {/* Overtime Hours */}
                       <div className="space-y-1">
-                        <Label className="text-xs font-semibold">Overtime Hours (OT)</Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold">Overtime Hours (OT)</Label>
+                          {editingRecord.emp.otEnabled === false && (
+                            <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30">
+                              OT Disabled for Employee
+                            </Badge>
+                          )}
+                        </div>
                         <Input
                           type="number"
                           step="0.5"
-                          value={editingRecord.otHours}
+                          disabled={editingRecord.emp.otEnabled === false}
+                          value={editingRecord.emp.otEnabled === false ? 0 : editingRecord.otHours}
                           onChange={(e) => {
                             const val = Number(e.target.value) || 0;
                             setEditingRecord({

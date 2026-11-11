@@ -266,6 +266,7 @@ export function downloadBulkEmployeesExcel(
     "Insurance for Non-ESI",
     "PT Eligible",
     "TDS Eligible",
+    "OT Eligible",
     "Biometric Enabled",
     "Biometric Terminals Mapped",
     // 5. Family & Education Summary
@@ -360,6 +361,7 @@ export function downloadBulkEmployeesExcel(
       formatBool(e.insuranceForNonEsi, !e.esiEligible && (e.fixedSalary ?? 0) > 21000),
       formatBool(e.ptEligible, true),
       formatBool(e.tdsEligible, false),
+      formatBool(e.otEnabled, true),
       formatBool(e.biometricEnabled, false),
       bioSummary || "—",
       (e.family || []).length,
@@ -548,6 +550,7 @@ export function downloadBulkEmployeesExcel(
     "ESI Eligible",
     "PT Eligible",
     "TDS Eligible",
+    "OT Eligible",
     "Biometric Enabled",
     "Biometric Mappings",
   ];
@@ -569,6 +572,7 @@ export function downloadBulkEmployeesExcel(
       formatBool(e.esiEligible, false),
       formatBool(e.ptEligible, true),
       formatBool(e.tdsEligible, false),
+      formatBool(e.otEnabled, true),
       formatBool(e.biometricEnabled, false),
       bioSummary || "—",
     ];
@@ -1265,6 +1269,7 @@ export function parseEmployeeCsvText(
     const ptNumber = getVal(["ptnumber", "ptno", "ptregno"]) || undefined;
 
     const tdsEligible = parseBoolString(getVal(["tdseligible", "tds", "tdsdeduction"]), false);
+    const otEnabled = parseBoolString(getVal(["oteligible", "otenabled", "ot", "overtime", "overtimeeligible"]), true);
 
     // 4. KYC & Banking
     const pan = getVal(["pannumber", "pan", "pancard"]).toUpperCase() || undefined;
@@ -1474,6 +1479,7 @@ export function parseEmployeeCsvText(
       eligibleDate,
       probationDate,
       leaveApplyEligible,
+      otEnabled,
       geofencingEnabled,
       biometricEnabled,
       graceTime,

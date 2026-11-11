@@ -131,6 +131,7 @@ const empty: Omit<Employee, "id"> = {
   eligibleDate: new Date().toISOString().slice(0, 10),
   probationDate: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
   leaveApplyEligible: true,
+  otEnabled: true,
   geofencingEnabled: true,
   biometricEnabled: false,
   biometricMappings: [],
@@ -2607,6 +2608,26 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
                       checked={form.leaveApplyEligible ?? true}
                       onCheckedChange={(c) => setForm({ ...form, leaveApplyEligible: !!c })}
                       className="h-5 w-5"
+                    />
+                  </div>
+
+                  {/* Overtime (OT) Calculation Option */}
+                  <div className="rounded-xl border border-border bg-card p-4 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-semibold flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-primary" />
+                        <span>Overtime (OT) Eligible</span>
+                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                          Payroll & Attendance
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Enable or disable overtime calculation for this employee. When disabled, overtime hours and OT salary/bonus will not be calculated.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={form.otEnabled ?? true}
+                      onCheckedChange={(c) => setForm({ ...form, otEnabled: c })}
                     />
                   </div>
                 </div>
@@ -6589,6 +6610,23 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                     checked={form.leaveApplyEligible ?? true}
                     onCheckedChange={(c) => setForm({ ...form, leaveApplyEligible: !!c })}
                     className="h-5 w-5"
+                  />
+                </div>
+
+                <div className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-4 mt-2">
+                  <div>
+                    <div className="text-xs font-semibold flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-primary" />
+                      <span>Overtime (OT) Eligible</span>
+                      <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">Payroll & Attendance</Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Enable or disable overtime calculation. When disabled, overtime hours and OT salary/bonus will not be calculated.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.otEnabled ?? true}
+                    onCheckedChange={(c) => setForm({ ...form, otEnabled: c })}
                   />
                 </div>
               </div>

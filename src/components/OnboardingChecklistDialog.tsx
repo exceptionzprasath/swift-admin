@@ -105,6 +105,7 @@ export function OnboardingChecklistDialog({
         { label: "PAN Card Number", isFilled: Boolean(employee.pan || (employee as any).panNumber), value: employee.pan || (employee as any).panNumber },
         { label: "Aadhaar Number", isFilled: Boolean(employee.aadhaar && employee.aadhaar !== "-"), value: employee.aadhaar ? `••••••••${employee.aadhaar.slice(-4)}` : undefined },
         { label: "PF UAN / Registration", isFilled: Boolean(employee.uan || employee.pfEligible !== undefined), value: employee.uan || "Enrolled" },
+        { label: "Overtime (OT) Calculation", isFilled: true, value: employee.otEnabled === false ? "Disabled" : "Eligible (Enabled)" },
       ],
     },
     {

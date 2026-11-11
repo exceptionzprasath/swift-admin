@@ -241,6 +241,10 @@ export function EmployeeOtCalendarModal({
         } catch {}
       }
 
+      if (employee?.otEnabled === false) {
+        dayOt = 0;
+      }
+
       if (dayOt > 0) {
         totalOt += dayOt;
         otDays += 1;
@@ -363,6 +367,17 @@ export function EmployeeOtCalendarModal({
             </div>
           </div>
 
+          {/* Overtime Disabled Banner */}
+          {employee?.otEnabled === false && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 flex items-center gap-3 text-amber-800 dark:text-amber-200 mt-2">
+              <Clock className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="text-xs">
+                <span className="font-semibold">Overtime (OT) Disabled: </span>
+                Overtime calculation is turned off for this employee in their onboarding profile. Overtime hours and OT salary/bonus will not be calculated.
+              </div>
+            </div>
+          )}
+
           {/* Quick Metrics Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3">
             <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 flex flex-col">
@@ -405,7 +420,11 @@ export function EmployeeOtCalendarModal({
                 Approval Status
               </span>
               <div className="mt-1">
-                {otStatus === "approved" ? (
+                {employee?.otEnabled === false ? (
+                  <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-[11px] font-semibold py-0.5">
+                    OT Disabled
+                  </Badge>
+                ) : otStatus === "approved" ? (
                   <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 text-[11px] font-semibold py-0.5">
                     <CheckCircle2 className="h-3 w-3 text-emerald-600" />
                     <span>Approved ({approvedOtHours} hrs)</span>
@@ -636,6 +655,7 @@ export function EmployeeOtCalendarModal({
               min="0"
               value={inputApprovedHours}
               onChange={(e) => setInputApprovedHours(Math.max(0, Number(e.target.value) || 0))}
+              disabled={employee?.otEnabled === false}
               className="w-24 h-8 text-xs font-bold text-foreground"
             />
             <span className="text-xs text-muted-foreground">hrs</span>
@@ -648,6 +668,7 @@ export function EmployeeOtCalendarModal({
                   onApproveOt(employee.id, inputApprovedHours);
                   onClose();
                 }}
+                disabled={employee?.otEnabled === false}
                 className="h-8 text-xs px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-xs"
               >
                 <Check className="h-3.5 w-3.5" />

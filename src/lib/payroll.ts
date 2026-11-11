@@ -106,7 +106,7 @@ function evalEarning(
     case "perShiftDay":
       return c.value * inputs.shiftDays;
     case "perOtHour":
-      return hourly * inputs.otHours * (c.value || company.otMultiplier);
+      return employee.otEnabled !== false ? hourly * inputs.otHours * (c.value || company.otMultiplier) : 0;
     case "perNightHour":
       return hourly * (inputs.nightHours || 0) * (c.value || 1.15);
     case "input": {
@@ -308,9 +308,10 @@ export function computePayroll(opts: {
   }
 
   // 8. Overtime Pay
-  const otHours = inputs.otHours || 0;
+  const isOtAllowed = e.otEnabled !== false;
+  const otHours = isOtAllowed ? (inputs.otHours || 0) : 0;
   const otMultiplier = c.otMultiplier || 2;
-  const otPay = otHours > 0 ? Math.round(hourly * otHours * otMultiplier) : 0;
+  const otPay = isOtAllowed && otHours > 0 ? Math.round(hourly * otHours * otMultiplier) : 0;
   if (otPay > 0) {
     earningsList.push({
       id: "overtime",

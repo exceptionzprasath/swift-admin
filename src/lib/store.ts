@@ -744,6 +744,7 @@ export type Employee = {
   eligibleDate?: string;
   probationDate?: string;
   leaveApplyEligible?: boolean;
+  otEnabled?: boolean;
   geofencingEnabled?: boolean;
   biometricEnabled?: boolean;
   biometricMappings?: BiometricDeviceMapping[];
