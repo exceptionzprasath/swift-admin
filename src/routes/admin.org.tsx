@@ -16,11 +16,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  downloadOrgTablePdf,
+} from "@/lib/org-pdf-export";
+import {
   Network, Pencil, ArrowUp, ArrowDown, Mail, Phone, Building2, MapPin,
   Search, ChevronDown, ChevronRight, Users, LayoutGrid, GitBranch, Maximize2,
   Minimize2, Zap, Sliders, CalendarDays, MessageSquareHeart, FileText,
   CheckCircle2, AlertCircle, Plus, Edit2, ShieldCheck, MoreHorizontal,
-  ExternalLink, ChevronUp, RefreshCw, SlidersHorizontal
+  ExternalLink, ChevronUp, RefreshCw, SlidersHorizontal, TableProperties, Download, Crown
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,7 +44,7 @@ function initials(name: string) {
   return (name || "").split(/\s+/).slice(0, 2).map((s) => s[0]?.toUpperCase() ?? "").join("");
 }
 
-type ViewMode = "tree" | "grid";
+type ViewMode = "tree" | "table" | "grid";
 
 function OrgPage() {
   const { employees: rawEmployees, updateEmployee, company } = useStore();
@@ -53,6 +64,7 @@ function OrgPage() {
   const [view, setView] = useState<ViewMode>("tree");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [branchFilter, setBranchFilter] = useState<string>("__all");
+  const [isExporting, setIsExporting] = useState(false);
 
   const byId = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
 
@@ -150,6 +162,32 @@ function OrgPage() {
     setCollapsed(managers);
   }
 
+  const handleExportTablePdf = () => {
+    try {
+      setIsExporting(true);
+      toast.info("Preparing Organization Table PDF...", { duration: 1500 });
+      downloadOrgTablePdf({
+        company: {
+          name: company.name || "CreatonsHR",
+          legalName: company.legalName,
+          gstin: company.gstin,
+          address: company.address,
+          phone: company.phone,
+          email: company.email,
+        },
+        employees,
+        branches,
+        branchFilter,
+      });
+      toast.success("Organization Table PDF generated & downloaded!");
+    } catch (err: any) {
+      console.error("Failed to export table PDF:", err);
+      toast.error(err?.message || "Failed to generate Table PDF");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (employees.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-border p-10 text-center">
@@ -177,6 +215,23 @@ function OrgPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Direct Download PDF Button (Table Structure) */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 gap-1.5 font-semibold text-xs border-primary/30 text-primary bg-primary/5 hover:bg-primary hover:text-white transition-all shadow-xs cursor-pointer"
+            disabled={isExporting}
+            onClick={handleExportTablePdf}
+            title="Download Organization Table Structure PDF"
+          >
+            {isExporting ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            <span>Download PDF</span>
+          </Button>
+
           <Link to="/admin/approval-settings">
             <Button size="sm" variant="outline" className="h-9 gap-1.5 font-semibold text-xs border-primary/30 text-primary bg-primary/5 hover:bg-primary hover:text-white">
               <SlidersHorizontal className="h-3.5 w-3.5" /> Centralized Approval Settings
@@ -197,14 +252,35 @@ function OrgPage() {
               <SelectItem value="__unassigned">Unassigned</SelectItem>
             </SelectContent>
           </Select>
-          <div className="inline-flex items-center rounded-lg border border-border overflow-hidden">
-            <Button variant={view === "tree" ? "default" : "ghost"} size="sm" className="rounded-none h-9" onClick={() => setView("tree")}>
-              <GitBranch className="h-3.5 w-3.5 mr-1" /> Tree
+
+          {/* View Switcher: Tree | Table | Grid */}
+          <div className="inline-flex items-center rounded-lg border border-border overflow-hidden bg-muted/30 p-0.5">
+            <Button
+              variant={view === "tree" ? "default" : "ghost"}
+              size="sm"
+              className="h-8 text-xs font-medium rounded-md gap-1"
+              onClick={() => setView("tree")}
+            >
+              <GitBranch className="h-3.5 w-3.5" /> Tree
             </Button>
-            <Button variant={view === "grid" ? "default" : "ghost"} size="sm" className="rounded-none h-9" onClick={() => setView("grid")}>
-              <LayoutGrid className="h-3.5 w-3.5 mr-1" /> Grid
+            <Button
+              variant={view === "table" ? "default" : "ghost"}
+              size="sm"
+              className="h-8 text-xs font-medium rounded-md gap-1"
+              onClick={() => setView("table")}
+            >
+              <TableProperties className="h-3.5 w-3.5" /> Table
+            </Button>
+            <Button
+              variant={view === "grid" ? "default" : "ghost"}
+              size="sm"
+              className="h-8 text-xs font-medium rounded-md gap-1"
+              onClick={() => setView("grid")}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> Grid
             </Button>
           </div>
+
           {view === "tree" && (
             <div className="inline-flex items-center rounded-lg border border-border overflow-hidden">
               <Button variant="ghost" size="sm" className="rounded-none h-9" onClick={expandAll} title="Expand all">
@@ -271,6 +347,15 @@ function OrgPage() {
                     </div>
                   </div>
                 )
+              ) : view === "table" ? (
+                <OrgTableView
+                  list={list}
+                  cmap={cmap}
+                  byId={byId}
+                  branchName={branch?.name}
+                  onEdit={openEdit}
+                  matchIds={matchIds}
+                />
               ) : (
                 <VirtualizedOrgGrid
                   list={list}
@@ -346,6 +431,227 @@ function OrgPage() {
   );
 }
 
+/**
+ * Org Table View Component
+ */
+function OrgTableView({
+  list,
+  cmap,
+  byId,
+  branchName,
+  onEdit,
+  matchIds,
+}: {
+  list: Employee[];
+  cmap: Map<string | undefined, Employee[]>;
+  byId: Map<string, Employee>;
+  branchName?: string;
+  onEdit: (e: Employee) => void;
+  matchIds: Set<string> | null;
+}) {
+  // Compute depth for hierarchy levels
+  const depthMap = useMemo(() => {
+    const depths = new Map<string, number>();
+    const roots = cmap.get(undefined) ?? [];
+    function assign(emp: Employee, d: number) {
+      depths.set(emp.id, d);
+      const directs = cmap.get(emp.id) ?? [];
+      directs.forEach((child) => assign(child, d + 1));
+    }
+    roots.forEach((r) => assign(r, 0));
+    list.forEach((e) => {
+      if (!depths.has(e.id)) depths.set(e.id, 1);
+    });
+    return depths;
+  }, [list, cmap]);
+
+  // Order by hierarchy tree (roots first, then children, etc.)
+  const orderedList = useMemo(() => {
+    const res: Employee[] = [];
+    const roots = cmap.get(undefined) ?? [];
+    function walk(emp: Employee) {
+      res.push(emp);
+      const directs = cmap.get(emp.id) ?? [];
+      directs.forEach(walk);
+    }
+    roots.forEach(walk);
+    const added = new Set(res.map((e) => e.id));
+    list.forEach((e) => {
+      if (!added.has(e.id)) res.push(e);
+    });
+    return res;
+  }, [list, cmap]);
+
+  const displayedList = useMemo(() => {
+    if (!matchIds) return orderedList;
+    return orderedList.filter((e) => matchIds.has(e.id));
+  }, [orderedList, matchIds]);
+
+  if (displayedList.length === 0) {
+    return (
+      <div className="text-center py-8 text-sm text-muted-foreground">
+        No employees found matching the search criteria in this branch.
+      </div>
+    );
+  }
+
+  function getLevelBadge(depth: number) {
+    if (depth === 0) {
+      return (
+        <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 text-[10px] font-semibold gap-1">
+          <Crown className="h-3 w-3" /> L0 · Top Level
+        </Badge>
+      );
+    }
+    if (depth === 1) {
+      return (
+        <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30 text-[10px] font-semibold">
+          L1 · Manager
+        </Badge>
+      );
+    }
+    if (depth === 2) {
+      return (
+        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-[10px] font-semibold">
+          L2 · Team Lead
+        </Badge>
+      );
+    }
+    return (
+      <Badge variant="outline" className="text-[10px] font-mono text-muted-foreground">
+        L{depth} · Associate
+      </Badge>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-border overflow-hidden bg-card shadow-xs">
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader className="bg-muted/50">
+            <TableRow>
+              <TableHead className="w-12 text-center text-xs">#</TableHead>
+              <TableHead className="text-xs font-semibold">Employee</TableHead>
+              <TableHead className="text-xs font-semibold">Role & Department</TableHead>
+              <TableHead className="text-xs font-semibold">Hierarchy Level</TableHead>
+              <TableHead className="text-xs font-semibold">Reports To (Manager)</TableHead>
+              <TableHead className="text-xs font-semibold text-center">Direct Reports</TableHead>
+              <TableHead className="text-xs font-semibold text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {displayedList.map((emp, index) => {
+              const manager = emp.managerId ? byId.get(emp.managerId) : undefined;
+              const directs = cmap.get(emp.id) ?? [];
+              const depth = depthMap.get(emp.id) ?? 0;
+
+              return (
+                <TableRow key={emp.id} className="hover:bg-muted/40 transition-colors">
+                  <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                    {index + 1}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full ring-1 ring-primary/20 bg-primary/10 text-primary grid place-items-center overflow-hidden shrink-0 text-xs font-bold">
+                        {emp.photoDataUrl ? (
+                          <img src={emp.photoDataUrl} alt={emp.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <span>{initials(emp.name)}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-xs text-foreground flex items-center gap-1.5 truncate">
+                          <span>{emp.name}</span>
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 font-mono">
+                            {emp.empCode}
+                          </Badge>
+                        </div>
+                        <div className="text-[11px] text-muted-foreground truncate">{emp.email || "No email"}</div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-xs font-medium text-foreground truncate">{emp.designation || "Staff"}</div>
+                    <Badge variant="secondary" className="text-[10px] mt-0.5 font-normal">
+                      {emp.department || "General"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{getLevelBadge(depth)}</TableCell>
+                  <TableCell>
+                    {manager ? (
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 rounded-full bg-muted text-[10px] font-bold grid place-items-center shrink-0">
+                          {initials(manager.name)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-foreground truncate">{manager.name}</div>
+                          <div className="text-[10px] text-muted-foreground font-mono">{manager.empCode}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic flex items-center gap-1">
+                        <Crown className="h-3 w-3 text-amber-500" /> Top Level (None)
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {directs.length > 0 ? (
+                      <HoverCard openDelay={150}>
+                        <HoverCardTrigger asChild>
+                          <Badge className="bg-primary/15 text-primary hover:bg-primary/25 border-primary/30 text-xs font-semibold cursor-pointer gap-1 inline-flex">
+                            <Users className="h-3 w-3" />
+                            <span>{directs.length} Directs</span>
+                          </Badge>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-64 p-3" align="center">
+                          <div className="text-xs font-semibold mb-1.5 text-foreground">
+                            Team reporting to {emp.name}:
+                          </div>
+                          <div className="space-y-1 max-h-40 overflow-y-auto">
+                            {directs.map((d) => (
+                              <div key={d.id} className="text-xs flex items-center justify-between text-muted-foreground border-b border-border/50 pb-1">
+                                <span className="font-medium text-foreground truncate">{d.name}</span>
+                                <span className="text-[10px] font-mono">{d.empCode}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs px-2 gap-1"
+                        onClick={() => onEdit(emp)}
+                      >
+                        <Pencil className="h-3 w-3" /> Edit
+                      </Button>
+                      <Link to="/admin/approval-settings">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs px-2 text-primary hover:bg-primary/10 gap-1"
+                        >
+                          <SlidersHorizontal className="h-3 w-3" /> Approvals
+                        </Button>
+                      </Link>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 function OrgNode({
   emp, childrenOf, byId, onEdit, branchName, collapsed, toggleCollapsed, matchIds,
 }: {
@@ -384,7 +690,7 @@ function OrgNode({
           <button
             type="button"
             onClick={() => toggleCollapsed(emp.id)}
-            className="absolute -bottom-3 left-1/2 -translate-x-1/2 h-6 px-2 rounded-full bg-primary text-primary-foreground border border-background shadow-xs text-[10.5px] font-bold flex items-center gap-1 hover:scale-105 transition-transform z-10"
+            className="absolute -bottom-3 left-1/2 -translate-x-1/2 h-6 px-2 rounded-full bg-primary text-primary-foreground border border-background shadow-xs text-[10.5px] font-bold flex items-center gap-1 hover:scale-105 transition-transform z-10 cursor-pointer"
             title={isCollapsed ? "Expand team" : "Collapse team"}
           >
             <span>{directs.length}</span>

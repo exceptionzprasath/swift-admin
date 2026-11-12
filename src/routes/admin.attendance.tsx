@@ -259,8 +259,41 @@ function getRecordHours(
   return { hoursWorked: 0, otHours: 0 };
 }
 
+// Helper to parse/normalize date strings to YYYY-MM-DD
+function normalizeDateToYMD(dateInput?: string): string {
+  if (!dateInput) return "";
+  const trimmed = String(dateInput).trim().replace(/\s*\(.*?\)/g, "");
+  if (!trimmed) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return trimmed;
+}
+
+function isLeaveActiveOnDate(leave: any, targetDateStr: string): boolean {
+  if (!leave || !targetDateStr) return false;
+  const startStr = normalizeDateToYMD(leave.from || leave.startDate || leave.date);
+  const endStr = normalizeDateToYMD(leave.to || leave.endDate || leave.from || leave.startDate || leave.date);
+  if (!startStr) return false;
+  if (endStr) {
+    return targetDateStr >= startStr && targetDateStr <= endStr;
+  }
+  return targetDateStr === startStr;
+}
+
 // Helper: Map granular punctuality into clean basic details (Present, Absent, Halfday)
 function getBasicPunctuality(punctuality: { status: string; label: string; color: string }) {
+  if (punctuality.status === "informed_leave") {
+    return {
+      label: "Informed Leave",
+      color: "bg-[#FB8B24]/10 text-[#d46d11] border-[#FB8B24]/30",
+    };
+  }
   if (punctuality.status === "present" || punctuality.status === "late") {
     return {
       label: "Present",
@@ -281,8 +314,8 @@ function getBasicPunctuality(punctuality: { status: string; label: string; color
   }
   if (punctuality.status === "leave") {
     return {
-      label: "Leave",
-      color: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+      label: "Paid Leave",
+      color: "bg-[#55286F]/10 text-[#55286F] border-[#55286F]/25",
     };
   }
   if (punctuality.status === "holiday") {
@@ -488,7 +521,7 @@ function AttendancePage() {
     date: string;
     checkIn: string;
     checkOut: string;
-    status: "present" | "half-day" | "absent" | "leave" | "late";
+    status: "present" | "half-day" | "absent" | "leave" | "late" | "informed_leave";
     otHours: number;
     reason: string;
     note: string;
@@ -655,6 +688,20 @@ function AttendancePage() {
       emp: Employee,
       dateStr: string
     ) => {
+      // If manual/regularized attendance record explicitly specifies informed_leave / LOP
+      if (
+        rec?.status === "informed_leave" ||
+        rec?.status === "il" ||
+        (rec?.leaveType === "LOP" && rec?.isExcused) ||
+        (rec?.status === "leave" && (rec?.leaveType === "LOP" || rec?.isExcused))
+      ) {
+        return {
+          status: "informed_leave",
+          label: "Informed Leave (LOP)",
+          color: "bg-[#FB8B24]/10 text-[#d46d11] border-[#FB8B24]/30",
+        };
+      }
+
       // If approved leave exists
       const matchingLeave = (leaves || []).find(
         (l) =>
@@ -662,15 +709,24 @@ function AttendancePage() {
           (l.status || "").toLowerCase() === "approved" &&
           !l.type?.toLowerCase().includes("permission") &&
           !l.type?.toLowerCase().includes("short") &&
-          dateStr >= (l.from || (l as any).startDate || "") &&
-          dateStr <= (l.to || (l as any).endDate || "")
+          isLeaveActiveOnDate(l, dateStr)
       );
       if (matchingLeave) {
-        const isLop = matchingLeave.type?.toLowerCase().includes("lop") || matchingLeave.type?.toLowerCase().includes("loss");
+        const isLop =
+          matchingLeave.type?.toLowerCase().includes("lop") ||
+          matchingLeave.type?.toLowerCase().includes("loss") ||
+          matchingLeave.type?.toLowerCase().includes("unpaid");
+        if (isLop) {
+          return {
+            status: "informed_leave",
+            label: "Informed Leave (LOP)",
+            color: "bg-[#FB8B24]/10 text-[#d46d11] border-[#FB8B24]/30",
+          };
+        }
         return {
-          status: isLop ? "absent" : "leave",
-          label: isLop ? "LOP Leave" : "Approved Leave",
-          color: isLop ? "bg-rose-500/10 text-rose-600 border-rose-500/20" : "bg-blue-500/10 text-blue-500 border-blue-500/20",
+          status: "leave",
+          label: matchingLeave.type || "Paid Leave",
+          color: "bg-[#55286F]/10 text-[#55286F] border-[#55286F]/25",
         };
       }
 
@@ -724,6 +780,9 @@ function AttendancePage() {
 
       // If record has no punch timestamps but has an explicitly set status (e.g. Quick Mark or manual override)
       if (!rec.checkIn && !rec.clockIn) {
+        if (rec.status === "informed_leave" || rec.status === "il" || (rec.leaveType === "LOP" && rec.isExcused)) {
+          return { status: "informed_leave", label: "Informed Leave (LOP)", color: "bg-[#FB8B24]/10 text-[#d46d11] border-[#FB8B24]/30" };
+        }
         if (rec.status === "present") {
           return { status: "present", label: "Present", color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
         }
@@ -734,7 +793,7 @@ function AttendancePage() {
           return { status: "late", label: "Late", color: "bg-orange-500/10 text-orange-600 border-orange-500/20" };
         }
         if (rec.status === "leave") {
-          return { status: "leave", label: "Approved Leave", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" };
+          return { status: "leave", label: "Paid Leave", color: "bg-[#55286F]/10 text-[#55286F] border-[#55286F]/25" };
         }
         if (rec.status === "absent") {
           return { status: "absent", label: "Absent", color: "bg-destructive/10 text-destructive border-destructive/20" };
@@ -926,6 +985,7 @@ function AttendancePage() {
         if (selectedStatus === "half-day" && punctuality.status !== "half-day") return false;
         if (selectedStatus === "absent" && punctuality.status !== "absent") return false;
         if (selectedStatus === "leave" && punctuality.status !== "leave") return false;
+        if (selectedStatus === "informed_leave" && punctuality.status !== "informed_leave") return false;
       }
 
       // Verification
@@ -957,6 +1017,7 @@ function AttendancePage() {
     let lateCount = 0;
     let halfDayCount = 0;
     let leaveCount = 0;
+    let informedLeaveCount = 0;
     let absentCount = 0;
     let totalWorkingHours = 0;
     let totalOTHours = 0;
@@ -971,6 +1032,8 @@ function AttendancePage() {
         lateCount++;
       } else if (punctuality.status === "half-day") {
         halfDayCount++;
+      } else if (punctuality.status === "informed_leave") {
+        informedLeaveCount++;
       } else if (punctuality.status === "leave") {
         leaveCount++;
       } else if (punctuality.status === "absent") {
@@ -993,6 +1056,7 @@ function AttendancePage() {
       lateCount,
       halfDayCount,
       leaveCount,
+      informedLeaveCount,
       absentCount,
       totalWorkingHours: Math.round(totalWorkingHours * 10) / 10,
       totalOTHours: Math.round(totalOTHours * 10) / 10,
@@ -1062,13 +1126,36 @@ function AttendancePage() {
         }
       }
 
+      let initialStatus: "present" | "half-day" | "absent" | "leave" | "late" | "informed_leave" =
+        (rec?.status === "informed_leave" || rec?.status === "il" || (rec?.leaveType === "LOP" && rec?.isExcused)
+          ? "informed_leave"
+          : (rec?.status as any) || "present");
+
+      if (!rec) {
+        const matchingLeave = (leaves || []).find(
+          (l) =>
+            (l.employeeId === emp.id || (emp.empCode && (l as any).empCode === emp.empCode) || l.employeeName === emp.name) &&
+            (l.status || "").toLowerCase() === "approved" &&
+            !l.type?.toLowerCase().includes("permission") &&
+            !l.type?.toLowerCase().includes("short") &&
+            isLeaveActiveOnDate(l, dateStr)
+        );
+        if (matchingLeave) {
+          const isLop =
+            matchingLeave.type?.toLowerCase().includes("lop") ||
+            matchingLeave.type?.toLowerCase().includes("loss") ||
+            matchingLeave.type?.toLowerCase().includes("unpaid");
+          initialStatus = isLop ? "informed_leave" : "leave";
+        }
+      }
+
       setRegularizeDialog({
         open: true,
         employeeId: emp.id,
         date: dateStr,
         checkIn: inTime,
         checkOut: outTime,
-        status: (rec?.status as any) || "present",
+        status: initialStatus,
         otHours: otVal,
         reason,
         note,
@@ -1234,18 +1321,19 @@ function AttendancePage() {
 
     // Calculate hours worked
     const stdHours = company.workingHoursPerDay || 9;
+    const isNoWorkStatus = status === "absent" || status === "leave" || status === "informed_leave";
     let hoursWorked = stdHours;
-    if (checkIn && checkOut && status !== "absent" && status !== "leave") {
+    if (checkIn && checkOut && !isNoWorkStatus) {
       const computed = computeWorkedHours(checkIn, checkOut, stdHours);
       hoursWorked = computed.hoursWorked > 0 ? computed.hoursWorked : stdHours;
     } else if (status === "half-day") {
       hoursWorked = stdHours / 2;
-    } else if (status === "absent" || status === "leave") {
+    } else if (isNoWorkStatus) {
       hoursWorked = 0;
     }
 
-    const cleanCheckIn = status === "absent" || status === "leave" ? undefined : (checkIn || undefined);
-    const cleanCheckOut = status === "absent" || status === "leave" ? undefined : (checkOut || undefined);
+    const cleanCheckIn = isNoWorkStatus ? undefined : (checkIn || undefined);
+    const cleanCheckOut = isNoWorkStatus ? undefined : (checkOut || undefined);
 
     const isSunDate = new Date(date + "T12:00:00Z").getUTCDay() === 0;
     const scheduledForDate = emp ? getScheduledShiftForDate(emp, date) : undefined;
@@ -1260,6 +1348,8 @@ function AttendancePage() {
       department: emp?.department,
       date,
       status: status === "late" ? "present" : status,
+      leaveType: status === "informed_leave" ? "LOP" : existing?.leaveType,
+      isExcused: status === "informed_leave" ? true : existing?.isExcused,
       checkIn: cleanCheckIn,
       checkOut: cleanCheckOut,
       clockIn: cleanCheckIn,
@@ -1746,7 +1836,8 @@ function AttendancePage() {
                 <SelectItem value="present">Present (On-Time & Grace)</SelectItem>
                 <SelectItem value="late">Late Check-Ins</SelectItem>
                 <SelectItem value="half-day">Half-Day</SelectItem>
-                <SelectItem value="leave">On Leave</SelectItem>
+                <SelectItem value="leave">Paid Leave (PL)</SelectItem>
+                <SelectItem value="informed_leave">Informed Leave (IL / LOP)</SelectItem>
                 <SelectItem value="absent">Absent / No Punch</SelectItem>
               </SelectContent>
             </Select>
@@ -1978,14 +2069,16 @@ function AttendancePage() {
                               )}
                               <span
                                 className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card ${
-                                  punctuality.status === "present"
+                                  punctuality.status === "informed_leave"
+                                    ? "bg-[#FB8B24]"
+                                    : punctuality.status === "present"
                                     ? "bg-emerald-500"
                                     : punctuality.status === "late"
                                     ? "bg-orange-500"
                                     : punctuality.status === "half-day"
                                     ? "bg-amber-500"
                                     : punctuality.status === "leave"
-                                    ? "bg-blue-500"
+                                    ? "bg-[#55286F]"
                                     : "bg-destructive"
                                 }`}
                               />
@@ -2944,7 +3037,8 @@ function AttendancePage() {
                         <SelectItem value="present">Present (Full Day)</SelectItem>
                         <SelectItem value="half-day">Half-Day Session</SelectItem>
                         <SelectItem value="late">Late Check-In</SelectItem>
-                        <SelectItem value="leave">Approved Leave</SelectItem>
+                        <SelectItem value="leave">Paid Leave (PL)</SelectItem>
+                        <SelectItem value="informed_leave">Informed Leave (IL / Loss of Pay)</SelectItem>
                         <SelectItem value="absent">Absent / No Punch</SelectItem>
                       </SelectContent>
                     </Select>
@@ -3345,6 +3439,8 @@ function EmployeeAttendanceDossierModal({
         lateDays++;
       } else if (punctuality.status === "half-day") {
         halfDays++;
+      } else if (punctuality.status === "informed_leave") {
+        // Excused Loss of Pay - separate from unexcused absence
       } else if (punctuality.status === "leave") {
         leaveDays++;
       } else if (punctuality.status === "absent") {

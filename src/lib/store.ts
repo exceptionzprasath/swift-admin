@@ -956,7 +956,9 @@ export type AttendanceRecord = {
   graceTime?: string;
   punctuality?: "on-time" | "within-grace" | "late" | "half-day" | "absent" | "flexible";
   isAfternoonHalfDay?: boolean;
-  status: "present" | "absent" | "leave" | "half-day" | "halfday" | "late" | "holiday" | "weekly-off";
+  status: "present" | "absent" | "leave" | "half-day" | "halfday" | "late" | "holiday" | "weekly-off" | "informed_leave" | string;
+  leaveType?: string;
+  isExcused?: boolean;
   isMissedCheckout?: boolean;
   isAutoClosed?: boolean;
   autoCloseReason?: string;

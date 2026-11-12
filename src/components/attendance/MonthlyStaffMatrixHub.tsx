@@ -95,6 +95,42 @@ function formatTimeWithAmPm(timeStr?: string): string {
   return t;
 }
 
+export function normalizeDateToYMD(val?: string): string | null {
+  if (!val) return null;
+  const s = String(val).trim();
+  const mYMD = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (mYMD) return mYMD[1];
+
+  const mDMY = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (mDMY) {
+    const day = mDMY[1].padStart(2, "0");
+    const month = mDMY[2].padStart(2, "0");
+    const year = mDMY[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  const cleanStr = s.replace(/\(.*?\)/g, "").trim();
+  const d = new Date(cleanStr);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  return null;
+}
+
+export function isWeekendCol(dateStr: string, dayNum: string): boolean {
+  const day = new Date(dateStr + "T12:00:00Z").getUTCDay();
+  if (day === 0) return true; // Sunday
+  if (day === 6) {
+    const dNum = parseInt(dayNum, 10);
+    const satIdx = Math.ceil(dNum / 7);
+    return satIdx === 2 || satIdx === 4; // Alternate Saturdays (2nd & 4th)
+  }
+  return false;
+}
+
 export function getExportAttendanceStatus(punct?: { status?: string; label?: string }): string {
   if (!punct) return "Absent";
   const lbl = (punct.label || "").trim().toLowerCase();
@@ -129,6 +165,14 @@ export function getExportAttendanceStatus(punct?: { status?: string; label?: str
   }
   if (st === "holiday" || lbl.startsWith("holiday")) {
     return "Holiday";
+  }
+  if (
+    st === "informed_leave" ||
+    st === "il" ||
+    lbl.includes("informed leave") ||
+    lbl.includes("lop")
+  ) {
+    return "Informed Leave (LOP)";
   }
   if (st === "leave" || lbl.includes("leave")) {
     return "Leave";
@@ -234,8 +278,11 @@ export function MonthlyStaffMatrixHub({
     const days = [];
     const curr = new Date(start);
     while (curr <= end) {
-      const dateStr = curr.toISOString().slice(0, 10);
-      const dayNum = String(curr.getDate()).padStart(2, "0");
+      const y = curr.getFullYear();
+      const m = String(curr.getMonth() + 1).padStart(2, "0");
+      const d = String(curr.getDate()).padStart(2, "0");
+      const dateStr = `${y}-${m}-${d}`;
+      const dayNum = d;
       const dayLetter = curr.toLocaleDateString("en-US", { weekday: "narrow" }); // T, F, S, S, M, T, W
       const dayShort = curr.toLocaleDateString("en-US", { weekday: "short" }); // Thu, Fri, Sat
       days.push({
@@ -354,11 +401,14 @@ export function MonthlyStaffMatrixHub({
   // Helper: Leave Balance calculation
   const getEmpLeaveBalance = useCallback(
     (emp: Employee): number => {
-      // 1. Approved leaves from the leaves table
+      // 1. Approved leaves from the leaves table (excluding LOP/Loss of Pay)
       const empLeaves = (leaves || []).filter(
         (l) =>
           (l.employeeId === emp.id || (emp.empCode && (l as any).empCode === emp.empCode) || l.employeeName === emp.name) &&
-          (l.status || "").toLowerCase() === "approved"
+          (l.status || "").toLowerCase() === "approved" &&
+          !l.type?.toLowerCase().includes("lop") &&
+          !l.type?.toLowerCase().includes("loss") &&
+          !l.type?.toLowerCase().includes("unpaid")
       );
       const approvedDatesSet = new Set<string>();
       const usedDays = empLeaves.reduce((sum, l) => {
@@ -467,10 +517,11 @@ Branch:${branchLabel},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 `;
       const dateHeaders = daysInRange.map((d) => `"${d.headerLabel}"`).join(",");
-      csvContent += `Employee ID,Employee Name,${dateHeaders},Present,Absent,Odd Punch,Approved Leave,Weekly Holidays,Annual Holidays,Extra Day,Total Days,Total Exception Hour,Total Hours Worked\n`;
+      csvContent += `Employee ID,Employee Name,${dateHeaders},Present,Absent,Odd Punch,Paid Leave,Weekly Holidays,Annual Holidays,Extra Day,Total Days,Total Exception Hour,Total Hours Worked\n`;
 
       filteredEmployees.forEach((emp) => {
         let empPresent = 0;
+        let empInformedLeave = 0;
         let empAbsent = 0;
         let empOdd = 0;
         let empLeave = 0;
@@ -503,8 +554,16 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
             if (hasPunch && recHours.hoursWorked > 0 && rec?.restDayWorkStatus === "approved") empExtraDay++;
           }
 
+          const isInformedLeave =
+            punct.status === "informed_leave" ||
+            rec?.status === "informed_leave" ||
+            rec?.status === "il" ||
+            (rec?.leaveType === "LOP" && rec?.isExcused) ||
+            (rec?.status === "leave" && (rec?.leaveType === "LOP" || rec?.isExcused));
+
           if (punct.status === "present" && !isRestDayPending) empPresent += 1;
           else if (punct.status === "half-day" && !isRestDayPending) empPresent += 0.5;
+          else if (isInformedLeave) empInformedLeave += 1;
           else if (punct.status === "leave") empLeave += 1;
           else if (punct.status === "absent" && !scheduled.isWeeklyOff && !scheduled.isHoliday) empAbsent += 1;
 
@@ -529,10 +588,14 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
             }
             return "W/O (Pend)";
           }
+          if (isOdd) return "-";
+          if (isInformedLeave) return "IL";
           if (recHours.hoursWorked > 0) return formatMinutesToHHMM(recHours.hoursWorked * 60);
           if (scheduled.isHoliday) return "A/H";
           if (scheduled.isWeeklyOff) return "W/O";
-          if (punct.status === "leave") return "LV";
+          if (punct.status === "leave") return "PL";
+          if (punct.status === "late") return "Lt";
+          if (punct.status === "half-day") return "HD";
           if (punct.status === "absent") return "A";
           return "00:00";
         });
@@ -553,7 +616,7 @@ Report Fromdate: ${fromDate},,,,,,,,,,,,,,,,,,,
 Report Todate: ${toDate},,,,,,,,,,,,,,,,,,,
 Employee Status: ${statusLabel},,,,,,,,,,,,,,,,,,,
 Branch: ${branchLabel},,,,,,,,,,,,,,,,,,,
-Employee ID,Employee Name,Branch,Total Days,Present,Approved Leave,Absent,Odd Punch,Regularized,Exception,Weekly Holidays,Annual Holidays,Extra Day,Leave Balance,OT Hours,OT Pieces\n`;
+Employee ID,Employee Name,Branch,Total Days,Present,Paid Leave,Absent,Odd Punch,Regularized,Exception,Weekly Holidays,Annual Holidays,Extra Day,Leave Balance,OT Hours,OT Pieces\n`;
 
       filteredEmployees.forEach((emp) => {
         let empPresent = 0;
@@ -624,7 +687,7 @@ Report To Date: ${toDate},,,,,,,,,,,,,
 Employee Status: ${statusLabel},,,,,,,,,,,,,
 Department: ${deptLabel},,,,,,,,,,,,,
 Branch: ${branchLabel},,,,,,,,,,,,,
-Employee ID,Employee Name,Department,Branch,Date,First-In,Last-Out,Total Hours,Approved Leave,Odd Punch,Extra Day,OT Hours,Status\n`;
+Employee ID,Employee Name,Department,Branch,Date,First-In,Last-Out,Total Hours,Paid Leave,Odd Punch,Extra Day,OT Hours,Status\n`;
 
       filteredEmployees.forEach((emp) => {
         const branchName = getBranchName(emp);
@@ -663,10 +726,11 @@ Branch:${branchLabel},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 `;
       const dateHeaders = daysInRange.map((d) => `"${d.headerLabel}"`).join(",");
-      csvContent += `Employee ID,Employee Name,Branch,${dateHeaders},Total Days,Present,Absent,Odd Punch,Approved Leave,Weekly Holidays,Annual Holidays,Extra Day\n`;
+      csvContent += `Employee ID,Employee Name,Branch,${dateHeaders},Total Days,Present,Informed Leave,Absent,Odd Punch,Paid Leave,Weekly Holidays,Annual Holidays,Extra Day\n`;
 
       filteredEmployees.forEach((emp) => {
         let empPresent = 0;
+        let empInformedLeave = 0;
         let empAbsent = 0;
         let empOdd = 0;
         let empLeave = 0;
@@ -694,24 +758,33 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
             if (hasPunch && recHours.hoursWorked > 0) empExtraDay++;
           }
 
+          const isInformedLeave =
+            punct.status === "informed_leave" ||
+            rec?.status === "informed_leave" ||
+            rec?.status === "il" ||
+            (rec?.leaveType === "LOP" && rec?.isExcused) ||
+            (rec?.status === "leave" && (rec?.leaveType === "LOP" || rec?.isExcused));
+
           if (punct.status === "present") empPresent += 1;
           else if (punct.status === "half-day") empPresent += 0.5;
+          else if (isInformedLeave) empInformedLeave += 1;
           else if (punct.status === "leave") empLeave += 1;
           else if (punct.status === "absent" && !scheduled.isWeeklyOff && !scheduled.isHoliday) empAbsent += 1;
           else if (punct.status === "late") empPresent += 1;
 
-          if (isOdd) return "ODD";
+          if (isOdd) return "-";
+          if (isInformedLeave) return "IL";
           if (punct.status === "present") return "P";
-          if (punct.status === "late") return "L";
+          if (punct.status === "late") return "Lt";
           if (punct.status === "half-day") return "HD";
-          if (punct.status === "leave") return "LV";
+          if (punct.status === "leave") return "PL";
           if (scheduled.isHoliday) return "A/H";
           if (scheduled.isWeeklyOff) return "W/O";
           return "A";
         });
 
         const branchName = getBranchName(emp);
-        csvContent += `"${emp.empCode || emp.id}","${emp.name}","${branchName}",${dayCells.join(",")},${daysInRange.length},${empPresent},${empAbsent},${empOdd},${empLeave},${empWeeklyOff},${empAnnualHoliday},${empExtraDay}\n`;
+        csvContent += `"${emp.empCode || emp.id}","${emp.name}","${branchName}",${dayCells.join(",")},${daysInRange.length},${empPresent},${empInformedLeave},${empAbsent},${empOdd},${empLeave},${empWeeklyOff},${empAnnualHoliday},${empExtraDay}\n`;
       });
     }
 
@@ -999,40 +1072,78 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
               </span>
             </div>
 
-            {/* Matrix Legend (shown for status or hours matrix) */}
-            {(reportType === "matrix_status" || reportType === "matrix_hours") && (
-              <div className="flex flex-wrap items-center gap-2.5 text-[11px]">
-                <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> P (Present)
-                </span>
-                <span className="flex items-center gap-1 font-medium text-orange-600 dark:text-orange-400">
-                  <span className="h-2 w-2 rounded-full bg-orange-500" /> L (Late)
-                </span>
-                <span className="flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400">
-                  <span className="h-2 w-2 rounded-full bg-amber-500" /> HD (Half-Day)
-                </span>
-                <span className="flex items-center gap-1 font-medium text-blue-600 dark:text-blue-400">
-                  <span className="h-2 w-2 rounded-full bg-blue-500" /> LV (Leave)
-                </span>
-                <span className="flex items-center gap-1 font-medium text-purple-600 dark:text-purple-400">
-                  <span className="h-2 w-2 rounded-full bg-purple-500" /> A/H (Holiday)
-                </span>
-                <span className="flex items-center gap-1 font-medium text-slate-500 dark:text-slate-400">
-                  <span className="h-2 w-2 rounded-full bg-slate-400" /> W/O (Weekly Off)
-                </span>
-                <span className="flex items-center gap-1 font-medium text-rose-600 dark:text-rose-400">
-                  <span className="h-2 w-2 rounded-full bg-rose-500" /> ODD (Odd Punch)
-                </span>
-                <span className="flex items-center gap-1 font-medium text-destructive">
-                  <span className="h-2 w-2 rounded-full bg-destructive" /> A (Absent)
-                </span>
-              </div>
-            )}
+{/* Badges removed from Date Range settings box as requested */}
           </div>
         </CardContent>
       </Card>
 
       {/* 2. REPORT VIEW CONTENT */}
+
+
+      {/* TOP-LEVEL STICKY LEGEND BAR WITH CUSTOM COLOR PALETTE */}
+      {(reportType === "matrix_status" || reportType === "matrix_hours") && (
+        <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 px-4 bg-card/90 backdrop-blur-md border border-border/80 rounded-2xl shadow-xs">
+          <div className="flex items-center gap-2 font-semibold text-foreground text-[11px] uppercase tracking-wider">
+            <Layers className="h-3.5 w-3.5 text-primary" />
+            <span>Attendance Status Legend:</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {/* Present (P) - #5FAD41 */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#5FAD41]/10 border border-[#5FAD41]/30">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded bg-[#5FAD41] text-white text-[10px] font-bold shadow-2xs">P</span>
+              <span className="text-[11px] text-foreground font-medium">Present</span>
+            </span>
+
+            {/* Absent (A) - #DE1A1A */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#DE1A1A]/10 border border-[#DE1A1A]/30">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded bg-[#DE1A1A] text-white text-[10px] font-bold shadow-2xs">A</span>
+              <span className="text-[11px] text-foreground font-medium">Absent</span>
+            </span>
+
+            {/* Late (Lt) - #E6AF2E */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#E6AF2E]/15 border border-[#E6AF2E]/35">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded bg-[#E6AF2E] text-slate-950 text-[10px] font-bold shadow-2xs">Lt</span>
+              <span className="text-[11px] text-foreground font-medium">Late</span>
+            </span>
+
+            {/* Paid Leave (PL) - #55286F */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#55286F]/10 border border-[#55286F]/30">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded bg-[#55286F] text-white text-[10px] font-bold shadow-2xs">PL</span>
+              <span className="text-[11px] text-foreground font-medium">Paid Leave</span>
+            </span>
+
+            {/* Half Day (HD) - #DAB785 */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#DAB785]/20 border border-[#DAB785]/40">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded bg-[#DAB785] text-slate-950 text-[10px] font-bold shadow-2xs">HD</span>
+              <span className="text-[11px] text-foreground font-medium">Half Day</span>
+            </span>
+
+            {/* Odd Punch (-) - #F1F2EE */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#F1F2EE] border border-[#d6d8ce]">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded bg-[#F1F2EE] text-slate-800 text-[10px] font-bold border border-[#d6d8ce] shadow-2xs">-</span>
+              <span className="text-[11px] text-foreground font-medium">Odd Punch</span>
+            </span>
+
+            {/* Informed Leave (IL) - #FB8B24 */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#FB8B24]/10 border border-[#FB8B24]/30">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded bg-[#FB8B24] text-white text-[10px] font-bold shadow-2xs">IL</span>
+              <span className="text-[11px] text-foreground font-medium">Informed Leave</span>
+            </span>
+
+            {/* Week Off (W/O) - #DFE0DC */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#DFE0DC]/50 dark:bg-slate-800 border border-[#c4c6c0]">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded bg-[#DFE0DC] text-slate-800 text-[10px] font-bold border border-[#c4c6c0] shadow-2xs">W/O</span>
+              <span className="text-[11px] text-foreground font-medium">Week Off</span>
+            </span>
+
+            {/* Holiday (A/H) - #06AED5 */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#06AED5]/10 border border-[#06AED5]/30">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded bg-[#06AED5] text-white text-[10px] font-bold shadow-2xs">A/H</span>
+              <span className="text-[11px] text-foreground font-medium">Holiday</span>
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* VIEW A: CONSOLIDATED REPORT */}
       {reportType === "consolidated" && (
@@ -1046,7 +1157,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                   <th className="p-3 text-left min-w-[120px]">Branch</th>
                   <th className="p-3 text-center min-w-[80px]">Total Days</th>
                   <th className="p-3 text-center min-w-[70px] text-emerald-600 font-bold">Present</th>
-                  <th className="p-3 text-center min-w-[95px] text-blue-600 font-semibold">Approved Leave</th>
+                  <th className="p-3 text-center min-w-[95px] text-[#55286F] font-semibold">Paid Leave</th>
                   <th className="p-3 text-center min-w-[70px] text-destructive font-semibold">Absent</th>
                   <th className="p-3 text-center min-w-[80px] text-rose-600 font-semibold">Odd Punch</th>
                   <th className="p-3 text-center min-w-[85px] text-indigo-600 font-semibold">Regularized</th>
@@ -1198,7 +1309,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                     <th className="p-3 text-center min-w-[80px]">First-In</th>
                     <th className="p-3 text-center min-w-[80px]">Last-Out</th>
                     <th className="p-3 text-center min-w-[85px] font-bold">Total Hours</th>
-                    <th className="p-3 text-center min-w-[100px]">Approved Leave</th>
+                    <th className="p-3 text-center min-w-[100px]">Paid Leave</th>
                     <th className="p-3 text-center min-w-[80px]">Odd Punch</th>
                     <th className="p-3 text-center min-w-[75px]">Extra Day</th>
                     <th className="p-3 text-center min-w-[75px]">OT Hours</th>
@@ -1366,25 +1477,33 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
       {/* VIEW C: ATTENDANCE MATRIX BY HOURS */}
       {reportType === "matrix_hours" && (
         <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-muted/60 border-b border-border text-[11px]">
+          <div className="overflow-x-auto max-h-[72vh] relative">
+            <table className="w-full text-xs border-collapse">
+              <thead className="bg-muted/95 backdrop-blur-md sticky top-0 z-30 border-b border-border text-[11px]">
                 <tr>
-                  <th className="p-3 text-left font-semibold sticky left-0 bg-card z-20 min-w-[95px] shadow-sm">
+                  <th className="p-3 text-left font-semibold sticky left-0 top-0 bg-card z-40 min-w-[95px] border-r border-border/40">
                     Employee ID
                   </th>
-                  <th className="p-3 text-left font-semibold sticky left-[95px] bg-card z-20 min-w-[170px] shadow-sm">
+                  <th className="p-3 text-left font-semibold sticky left-[95px] top-0 bg-card z-40 min-w-[170px] border-r border-border/40">
                     Employee Name
                   </th>
-                  <th className="p-3 text-left font-semibold sticky left-[265px] bg-card z-20 min-w-[110px] shadow-sm">
+                  <th className="p-3 text-left font-semibold sticky left-[265px] top-0 bg-card z-40 min-w-[110px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] border-r border-border/50">
                     Branch
                   </th>
-                  {daysInRange.map((d) => (
-                    <th key={d.dateStr} className="p-1.5 text-center min-w-[42px] font-medium text-[11px]">
-                      <div className="font-bold text-foreground">{d.dayNum}</div>
-                      <div className="text-[10px] text-muted-foreground">{d.dayLetter}</div>
-                    </th>
-                  ))}
+                  {daysInRange.map((d) => {
+                    const isWeekend = isWeekendCol(d.dateStr, d.dayNum);
+                    return (
+                      <th
+                        key={d.dateStr}
+                        className={`p-1.5 text-center min-w-[42px] font-medium text-[11px] border-r border-border/30 transition-colors ${
+                          isWeekend ? "bg-slate-100/90 dark:bg-slate-800/70 font-semibold text-primary" : ""
+                        }`}
+                      >
+                        <div className="font-bold text-xs tracking-tight text-foreground">{d.dayNum}</div>
+                        <div className="text-[10px] font-medium text-muted-foreground/80 uppercase">{d.dayLetter}</div>
+                      </th>
+                    );
+                  })}
                   <th className="p-3 text-center font-bold text-foreground min-w-[100px] bg-muted/40">
                     Total Hours Worked
                   </th>
@@ -1412,11 +1531,11 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
 
                     return (
                       <tr key={emp.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="p-3 sticky left-0 bg-card z-10 font-mono text-[11px] font-semibold text-muted-foreground shadow-sm">
+                        <td className="p-3 sticky left-0 bg-card z-20 font-mono text-[11px] font-semibold text-muted-foreground border-r border-border/40">
                           {emp.empCode || emp.id}
                         </td>
                         <td
-                          className="p-3 sticky left-[95px] bg-card z-10 font-medium text-foreground hover:text-primary cursor-pointer shadow-sm"
+                          className="p-3 sticky left-[95px] bg-card z-20 font-medium text-foreground hover:text-primary cursor-pointer border-r border-border/40"
                           onClick={() => onOpenDossier?.(emp)}
                         >
                           <div className="flex items-center gap-1.5">
@@ -1425,7 +1544,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                           </div>
                           <div className="text-[10px] text-muted-foreground">{emp.department || "General"}</div>
                         </td>
-                        <td className="p-3 sticky left-[265px] bg-card z-10 font-medium text-muted-foreground shadow-sm">
+                        <td className="p-3 sticky left-[265px] bg-card z-20 font-medium text-muted-foreground shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] border-r border-border/50">
                           {branchName}
                         </td>
 
@@ -1438,6 +1557,12 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                           const recHours = getRecordHours(rec, company.workingHoursPerDay || 9);
 
                           const isOdd = isOddPunch(rec, d.dateStr);
+                          const isInformedLeave =
+                            punct.status === "informed_leave" ||
+                            rec?.status === "informed_leave" ||
+                            rec?.status === "il" ||
+                            (rec?.leaveType === "LOP" && rec?.isExcused) ||
+                            (rec?.status === "leave" && (rec?.leaveType === "LOP" || rec?.isExcused));
 
                           if (punct.status === "present" || punct.status === "late") empPresent += 1;
                           else if (punct.status === "half-day") empPresent += 0.5;
@@ -1451,52 +1576,146 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                             empExceptionMins += 60; // Flagged exception
                           }
 
-                          // Cell content & styling determination
+                          // Cell content & badge styling tokens with custom color palette
                           let cellText = "00:00";
-                          let cellClass = "bg-muted/30 text-muted-foreground";
+                          let cellClass = "bg-muted/30 text-muted-foreground border-transparent";
 
                           if (isOdd) {
-                            cellText = "ODD";
-                            cellClass = "bg-rose-500/15 text-rose-700 dark:text-rose-300 font-bold border border-rose-500/30";
+                            cellText = "-";
+                            cellClass = "bg-[#F1F2EE] text-slate-800 border-[#d6d8ce] font-bold";
                           } else if (recHours.hoursWorked > 0) {
                             cellText = formatMinutesToHHMM(recHours.hoursWorked * 60);
-                            cellClass = "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-500/30";
+                            cellClass = "bg-[#5FAD41]/20 text-[#285716] dark:text-[#7ed957] border-[#5FAD41]/40 font-bold";
+                          } else if (isInformedLeave) {
+                            cellText = "IL";
+                            cellClass = "bg-[#FB8B24] text-white border-[#FB8B24] font-bold";
                           } else if (scheduled.isHoliday) {
                             cellText = "A/H";
-                            cellClass = "bg-purple-500/15 text-purple-700 dark:text-purple-300 font-medium border border-purple-500/30";
+                            cellClass = "bg-[#06AED5] text-white border-[#06AED5] font-bold";
                           } else if (scheduled.isWeeklyOff) {
                             cellText = "W/O";
-                            cellClass = "bg-slate-200 dark:bg-slate-800 text-slate-500 font-medium";
+                            cellClass = "bg-[#DFE0DC] text-slate-800 border-[#c4c6c0] font-semibold";
                           } else if (punct.status === "leave") {
-                            cellText = "LV";
-                            cellClass = "bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium border border-blue-500/30";
+                            cellText = "PL";
+                            cellClass = "bg-[#55286F] text-white border-[#55286F] font-bold";
+                          } else if (punct.status === "late") {
+                            cellText = "Lt";
+                            cellClass = "bg-[#E6AF2E] text-slate-950 border-[#E6AF2E] font-bold";
+                          } else if (punct.status === "half-day") {
+                            cellText = "HD";
+                            cellClass = "bg-[#DAB785] text-slate-950 border-[#DAB785] font-bold";
                           } else if (punct.status === "absent") {
                             cellText = "A";
-                            cellClass = "bg-destructive/10 text-destructive font-semibold border border-destructive/20";
+                            cellClass = "bg-[#DE1A1A] text-white border-[#DE1A1A] font-bold";
                           }
 
+                          const isWeekend = isWeekendCol(d.dateStr, d.dayNum);
+
                           return (
-                            <td key={d.dateStr} className="p-1 text-center font-mono">
-                              <TooltipProvider>
+                            <td
+                              key={d.dateStr}
+                              className={`p-1 text-center font-mono border-r border-border/20 transition-colors ${
+                                isWeekend ? "bg-slate-50/70 dark:bg-slate-900/40" : ""
+                              }`}
+                            >
+                              <TooltipProvider delayDuration={150}>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
-                                      onClick={() => onInspectRecord?.({ emp, rec, date: d.dateStr })}
-                                      className={`h-7 w-9 rounded text-[10px] inline-flex items-center justify-center transition-transform hover:scale-105 ${cellClass}`}
+                                      onClick={() => onRegularizePunch ? onRegularizePunch(emp, d.dateStr, rec) : onInspectRecord?.({ emp, rec, date: d.dateStr })}
+                                      className={`h-7 min-w-[34px] px-1 rounded-md text-[10px] inline-flex items-center justify-center transition-all hover:scale-105 border shadow-2xs ${cellClass}`}
                                     >
                                       {cellText}
                                     </button>
                                   </TooltipTrigger>
-                                  <TooltipContent>
-                                    <div className="text-xs space-y-0.5">
-                                      <div className="font-semibold text-foreground">{d.dateStr} ({d.dayShort})</div>
-                                      <div>Status: <span className="font-medium">{punct.label}</span></div>
-                                      {rec?.checkIn && <div>First In: {formatTimeWithAmPm(rec.checkIn)}</div>}
-                                      {rec?.checkOut && <div>Last Out: {formatTimeWithAmPm(rec.checkOut)}</div>}
-                                      {recHours.hoursWorked > 0 && <div>Hours Worked: {formatMinutesToHHMM(recHours.hoursWorked * 60)}</div>}
-                                      {recHours.otHours > 0 && <div className="text-amber-500 font-medium">OT: +{formatMinutesToHHMM(recHours.otHours * 60)}</div>}
-                                      {isOdd && <div className="text-rose-500 font-semibold">Odd Punch (Missing Punch Out)</div>}
+                                  <TooltipContent
+                                    side="top"
+                                    className="bg-slate-900/95 backdrop-blur text-white shadow-xl rounded-lg p-3 text-xs border border-slate-700/60 max-w-xs z-50 pointer-events-auto space-y-2.5"
+                                  >
+                                    <div className="flex items-center justify-between gap-3 border-b border-slate-700/60 pb-1.5">
+                                      <div className="font-semibold text-slate-100 flex items-center gap-1.5">
+                                        <CalendarCheck className="h-3.5 w-3.5 text-primary" />
+                                        <span>{d.dateStr}</span>
+                                        <span className="text-slate-400 font-normal">({d.dayShort})</span>
+                                      </div>
+                                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase shadow-2xs ${
+                                        isInformedLeave
+                                          ? "bg-[#FB8B24] text-white"
+                                          : isOdd
+                                          ? "bg-[#F1F2EE] text-slate-800 border border-[#d6d8ce]"
+                                          : punct.status === "present"
+                                          ? "bg-[#5FAD41] text-white"
+                                          : punct.status === "late"
+                                          ? "bg-[#E6AF2E] text-slate-950"
+                                          : punct.status === "leave"
+                                          ? "bg-[#55286F] text-white"
+                                          : punct.status === "half-day"
+                                          ? "bg-[#DAB785] text-slate-950"
+                                          : scheduled.isHoliday
+                                          ? "bg-[#06AED5] text-white"
+                                          : scheduled.isWeeklyOff
+                                          ? "bg-[#DFE0DC] text-slate-800"
+                                          : "bg-[#DE1A1A] text-white"
+                                      }`}>
+                                        {isInformedLeave
+                                          ? "Informed Leave (IL)"
+                                          : isOdd
+                                          ? "Odd Punch (-)"
+                                          : punct.status === "leave"
+                                          ? "Paid Leave (PL)"
+                                          : punct.status === "late"
+                                          ? "Late (Lt)"
+                                          : punct.status === "half-day"
+                                          ? "Half Day (HD)"
+                                          : scheduled.isHoliday
+                                          ? "Holiday (A/H)"
+                                          : scheduled.isWeeklyOff
+                                          ? "Week Off (W/O)"
+                                          : punct.status === "present"
+                                          ? "Present (P)"
+                                          : "Absent (A)"}
+                                      </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+                                      <div className="space-y-0.5">
+                                        <span className="text-[10px] text-slate-400 uppercase tracking-wider block">First In</span>
+                                        <span className="font-mono font-medium text-slate-200">
+                                          {formatTimeWithAmPm(rec?.checkIn || rec?.clockIn)}
+                                        </span>
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Last Out</span>
+                                        <span className="font-mono font-medium text-slate-200">
+                                          {formatTimeWithAmPm(rec?.checkOut || rec?.clockOut)}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800">
+                                      <span className="text-slate-400">Total Duration:</span>
+                                      <span className="font-mono font-bold text-emerald-400">
+                                        {recHours.hoursWorked > 0 ? formatMinutesToHHMM(recHours.hoursWorked * 60) : "00:00"}
+                                        {recHours.otHours > 0 && (
+                                          <span className="text-amber-400 ml-1 font-semibold">(+{formatMinutesToHHMM(recHours.otHours * 60)} OT)</span>
+                                        )}
+                                      </span>
+                                    </div>
+
+                                    <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px]">
+                                      <span className="text-slate-400">Admin Action:</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onRegularizePunch ? onRegularizePunch(emp, d.dateStr, rec) : onInspectRecord?.({ emp, rec, date: d.dateStr });
+                                        }}
+                                        className="text-primary-foreground font-semibold hover:underline inline-flex items-center gap-1 bg-primary/40 hover:bg-primary/60 px-2 py-0.5 rounded text-[10px] transition-colors"
+                                      >
+                                        <Edit3 className="h-2.5 w-2.5" />
+                                        <span>Quick Edit / Regularize</span>
+                                      </button>
                                     </div>
                                   </TooltipContent>
                                 </Tooltip>
@@ -1549,8 +1768,8 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                   <th className="p-3 text-center font-semibold min-w-[65px] bg-muted/40">Total Days</th>
                   <th className="p-3 text-center font-bold text-emerald-600 min-w-[65px] bg-muted/40">Present</th>
                   <th className="p-3 text-center font-semibold text-destructive min-w-[65px] bg-muted/40">Absent</th>
-                  <th className="p-3 text-center font-semibold text-rose-600 min-w-[65px] bg-muted/40">Odd Punch</th>
-                  <th className="p-3 text-center font-semibold text-blue-600 min-w-[65px] bg-muted/40">Approved Leave</th>
+                  <th className="p-3 text-center font-semibold text-muted-foreground min-w-[65px] bg-muted/40">Odd Punch (-)</th>
+                  <th className="p-3 text-center font-semibold text-[#55286F] min-w-[65px] bg-muted/40">Paid Leave</th>
                   <th className="p-3 text-center font-semibold text-slate-500 min-w-[65px] bg-muted/40">Weekly Off</th>
                   <th className="p-3 text-center font-semibold text-purple-600 min-w-[65px] bg-muted/40">Annual Holiday</th>
                   <th className="p-3 text-center font-semibold text-emerald-600 min-w-[65px] bg-muted/40">Extra Day</th>
@@ -1566,6 +1785,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                 ) : (
                   filteredEmployees.map((emp) => {
                     let empPresent = 0;
+        let empInformedLeave = 0;
                     let empAbsent = 0;
                     let empOdd = 0;
                     let empLeave = 0;
@@ -1613,36 +1833,47 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                             if (hasPunch && recHours.hoursWorked > 0) empExtraDay++;
                           }
 
+                          const isInformedLeave =
+                            punct.status === "informed_leave" ||
+                            rec?.status === "informed_leave" ||
+                            rec?.status === "il" ||
+                            (rec?.leaveType === "LOP" && rec?.isExcused) ||
+                            (rec?.status === "leave" && (rec?.leaveType === "LOP" || rec?.isExcused));
+
                           if (punct.status === "present") empPresent += 1;
                           else if (punct.status === "half-day") empPresent += 0.5;
+                          else if (isInformedLeave) empInformedLeave += 1;
                           else if (punct.status === "leave") empLeave += 1;
                           else if (punct.status === "absent" && !scheduled.isWeeklyOff && !scheduled.isHoliday) empAbsent += 1;
                           else if (punct.status === "late") empPresent += 1;
 
                           let badgeLetter = "A";
-                          let badgeClass = "bg-destructive/10 text-destructive border-destructive/20";
+                          let badgeClass = "bg-[#DE1A1A] text-white border-[#DE1A1A] font-bold";
 
                           if (isOdd) {
-                            badgeLetter = "ODD";
-                            badgeClass = "bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/30";
+                            badgeLetter = "-";
+                            badgeClass = "bg-[#F1F2EE] text-slate-800 border-[#d6d8ce] font-bold";
+                          } else if (isInformedLeave) {
+                            badgeLetter = "IL";
+                            badgeClass = "bg-[#FB8B24] text-white border-[#FB8B24] font-bold";
                           } else if (punct.status === "present") {
                             badgeLetter = "P";
-                            badgeClass = "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
+                            badgeClass = "bg-[#5FAD41] text-white border-[#5FAD41] font-bold";
                           } else if (punct.status === "late") {
-                            badgeLetter = "L";
-                            badgeClass = "bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-500/30";
+                            badgeLetter = "Lt";
+                            badgeClass = "bg-[#E6AF2E] text-slate-950 border-[#E6AF2E] font-bold";
                           } else if (punct.status === "half-day") {
                             badgeLetter = "HD";
-                            badgeClass = "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30";
+                            badgeClass = "bg-[#DAB785] text-slate-950 border-[#DAB785] font-bold";
                           } else if (punct.status === "leave") {
-                            badgeLetter = "LV";
-                            badgeClass = "bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500/30";
+                            badgeLetter = "PL";
+                            badgeClass = "bg-[#55286F] text-white border-[#55286F] font-bold";
                           } else if (scheduled.isHoliday) {
                             badgeLetter = "A/H";
-                            badgeClass = "bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/30";
+                            badgeClass = "bg-[#06AED5] text-white border-[#06AED5] font-bold";
                           } else if (scheduled.isWeeklyOff) {
                             badgeLetter = "W/O";
-                            badgeClass = "bg-slate-200 dark:bg-slate-800 text-slate-500 border-slate-300 dark:border-slate-700";
+                            badgeClass = "bg-[#DFE0DC] text-slate-800 border-[#c4c6c0] font-semibold";
                           }
 
                           return (

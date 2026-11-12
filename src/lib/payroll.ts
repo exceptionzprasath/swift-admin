@@ -710,6 +710,8 @@ export interface MonthlyAttendanceSummary {
   daysHalf: number;
   daysLeave: number;
   daysAbsent: number;
+  informedLopDays: number;
+  unexcusedAbsentDays: number;
   rawPresentDays: number;
   basePresentDays: number;
 }
@@ -747,7 +749,16 @@ export function computeMonthlyAttendanceSummary(
     return true;
   });
 
-  // Deduplicate by date for each employee (priority: present > half-day > leave > absent)
+    // Helper to recognize Informed Leave / Excused Loss of Pay (IL)
+  const isInformedLeave = (a: any) => {
+    const s = (a.status || "").toLowerCase().trim();
+    if (s === "informed_leave" || s === "il") return true;
+    if (s === "leave" && (a.leaveType === "LOP" || a.isExcused)) return true;
+    if (a.leaveType === "LOP" && a.isExcused) return true;
+    return false;
+  };
+
+  // Deduplicate by date for each employee (priority: present > half-day > leave > informed_leave > absent)
   const dateMap = new Map<string, any>();
   rawAtt.forEach((rec) => {
     const existing = dateMap.get(rec.date);
@@ -756,8 +767,14 @@ export function computeMonthlyAttendanceSummary(
     } else {
       const sOld = (existing.status || "").toLowerCase().trim();
       const sNew = (rec.status || "").toLowerCase().trim();
-      const priority = (s: string) => (s === "present" ? 3 : s.startsWith("half") ? 2 : s === "leave" ? 1 : 0);
-      if (priority(sNew) > priority(sOld)) {
+      const priority = (s: string, r: any) => {
+        if (s === "present") return 4;
+        if (s.startsWith("half")) return 3;
+        if (isInformedLeave(r)) return 1;
+        if (s === "leave") return 2;
+        return 0;
+      };
+      if (priority(sNew, rec) > priority(sOld, existing)) {
         dateMap.set(rec.date, rec);
       }
     }
@@ -776,8 +793,26 @@ export function computeMonthlyAttendanceSummary(
     const s = (a.status || "").toLowerCase().trim();
     return (s === "half-day" || s === "half_day" || s === "halfday") && !isRestDayPendingOrRejected(a);
   }).length;
-  const daysLeave = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "leave").length;
-  const daysAbsent = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "absent").length;
+  
+  // Paid leave only (deducted from balance or standard paid leave bank)
+  const daysLeave = monthAtt.filter((a) => {
+    const s = (a.status || "").toLowerCase().trim();
+    return s === "leave" && !isInformedLeave(a);
+  }).length;
+
+  // Informed Leave / Loss of Pay (approved absence with prior permission, amber, 0.0 paid days)
+  const informedLopDays = monthAtt.filter((a) => isInformedLeave(a)).length;
+
+  // Unexcused Absent (uninformed absence, red, 0.0 paid days)
+  const unexcusedAbsentDays = monthAtt.filter((a) => {
+    const s = (a.status || "").toLowerCase().trim();
+    return s === "absent" && !isInformedLeave(a);
+  }).length;
+
+  // Total absent / LOP days
+  const daysAbsent = unexcusedAbsentDays + informedLopDays;
+
+  // Raw and Base present calculations (IL and A are strictly 0.0 paid days)
   const rawPresentDays = daysPresent + daysHalf * 0.5;
   const basePresentDays = rawPresentDays + daysLeave;
 
@@ -787,6 +822,8 @@ export function computeMonthlyAttendanceSummary(
     daysHalf,
     daysLeave,
     daysAbsent,
+    informedLopDays,
+    unexcusedAbsentDays,
     rawPresentDays,
     basePresentDays,
   };
