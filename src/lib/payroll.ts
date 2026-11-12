@@ -735,8 +735,9 @@ export function computeMonthlyAttendanceSummary(
     if (!a || !a.date) return false;
     const matchesEmp =
       a.employeeId === emp.id ||
-      (emp.name && a.employeeName === emp.name) ||
-      (emp.empCode && a.empCode === emp.empCode);
+      (emp.empCode && (a.empCode === emp.empCode || a.employeeId === emp.empCode)) ||
+      (a.employeeDbId && a.employeeDbId === emp.id) ||
+      (emp.name && a.employeeName && a.employeeName.trim().toLowerCase() === emp.name.trim().toLowerCase());
     if (!matchesEmp) return false;
 
     if (customRange?.start && customRange?.end) {
@@ -749,13 +750,61 @@ export function computeMonthlyAttendanceSummary(
     return true;
   });
 
-    // Helper to recognize Informed Leave / Excused Loss of Pay (IL)
+  // Helper to recognize Informed Leave / Excused Loss of Pay (IL)
   const isInformedLeave = (a: any) => {
     const s = (a.status || "").toLowerCase().trim();
     if (s === "informed_leave" || s === "il") return true;
     if (s === "leave" && (a.leaveType === "LOP" || a.isExcused)) return true;
     if (a.leaveType === "LOP" && a.isExcused) return true;
     return false;
+  };
+
+  const isRestDayPendingOrRejected = (a: any) => {
+    const isSun = a.date && new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
+    const isRest = Boolean(isSun || a.isRestDayWork);
+    return isRest && a.restDayWorkStatus !== "approved";
+  };
+
+  // Resolve effective attendance status matching Attendance Hub's evaluatePunctuality rules
+  const resolveEffectiveStatus = (a: any): "present" | "half-day" | "leave" | "informed_leave" | "absent" | "ignore" => {
+    if (isRestDayPendingOrRejected(a)) return "ignore";
+    if (isInformedLeave(a)) return "informed_leave";
+    const s = (a.status || "").toLowerCase().trim();
+    if (s === "leave") return "leave";
+    if (s === "absent") return "absent";
+
+    const hasIn = Boolean(a.checkIn || a.clockIn || a.inTime);
+    const outVal = a.checkOut || a.clockOut || a.outTime;
+    const hasOut = Boolean(outVal && outVal !== "--:--" && outVal !== "-");
+    const isPastDate = Boolean(a.date && a.date < todayStr);
+    const isMissedOut = Boolean(
+      a.isMissedCheckout ||
+      (a.clockOut === "22:00" && (a.isAutoClosed || a.autoCloseReason)) ||
+      (hasIn && !hasOut && isPastDate && !a.regularized)
+    );
+
+    if (isMissedOut) {
+      const isLate = s === "late" || (a.punctuality || "").toLowerCase() === "late" || (Number(a.lateBy) || 0) > 0;
+      return isLate ? "absent" : "half-day";
+    }
+
+    if (s === "half-day" || s === "half_day" || s === "halfday") return "half-day";
+    if (
+      s === "present" ||
+      s === "late" ||
+      s === "on-time" ||
+      s === "on_time" ||
+      s === "grace" ||
+      s === "within-grace" ||
+      s === "within_grace"
+    ) {
+      return "present";
+    }
+
+    if ((Number(a.hoursWorked) || 0) >= 5) return "present";
+    if ((Number(a.hoursWorked) || 0) >= 3) return "half-day";
+
+    return "ignore";
   };
 
   // Deduplicate by date for each employee (priority: present > half-day > leave > informed_leave > absent)
@@ -765,16 +814,15 @@ export function computeMonthlyAttendanceSummary(
     if (!existing) {
       dateMap.set(rec.date, rec);
     } else {
-      const sOld = (existing.status || "").toLowerCase().trim();
-      const sNew = (rec.status || "").toLowerCase().trim();
-      const priority = (s: string, r: any) => {
-        if (s === "present") return 4;
-        if (s.startsWith("half")) return 3;
-        if (isInformedLeave(r)) return 1;
-        if (s === "leave") return 2;
+      const priority = (r: any) => {
+        const eff = resolveEffectiveStatus(r);
+        if (eff === "present") return 4;
+        if (eff === "half-day") return 3;
+        if (eff === "leave") return 2;
+        if (eff === "informed_leave") return 1;
         return 0;
       };
-      if (priority(sNew, rec) > priority(sOld, existing)) {
+      if (priority(rec) > priority(existing)) {
         dateMap.set(rec.date, rec);
       }
     }
@@ -782,32 +830,17 @@ export function computeMonthlyAttendanceSummary(
 
   const monthAtt = Array.from(dateMap.values());
 
-  const isRestDayPendingOrRejected = (a: any) => {
-    const isSun = a.date && new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
-    const isRest = Boolean(isSun || a.isRestDayWork);
-    return isRest && a.restDayWorkStatus !== "approved";
-  };
+  const daysPresent = monthAtt.filter((a) => resolveEffectiveStatus(a) === "present").length;
+  const daysHalf = monthAtt.filter((a) => resolveEffectiveStatus(a) === "half-day").length;
 
-  const daysPresent = monthAtt.filter((a) => (a.status || "").toLowerCase().trim() === "present" && !isRestDayPendingOrRejected(a)).length;
-  const daysHalf = monthAtt.filter((a) => {
-    const s = (a.status || "").toLowerCase().trim();
-    return (s === "half-day" || s === "half_day" || s === "halfday") && !isRestDayPendingOrRejected(a);
-  }).length;
-  
   // Paid leave only (deducted from balance or standard paid leave bank)
-  const daysLeave = monthAtt.filter((a) => {
-    const s = (a.status || "").toLowerCase().trim();
-    return s === "leave" && !isInformedLeave(a);
-  }).length;
+  const daysLeave = monthAtt.filter((a) => resolveEffectiveStatus(a) === "leave").length;
 
   // Informed Leave / Loss of Pay (approved absence with prior permission, amber, 0.0 paid days)
-  const informedLopDays = monthAtt.filter((a) => isInformedLeave(a)).length;
+  const informedLopDays = monthAtt.filter((a) => resolveEffectiveStatus(a) === "informed_leave").length;
 
   // Unexcused Absent (uninformed absence, red, 0.0 paid days)
-  const unexcusedAbsentDays = monthAtt.filter((a) => {
-    const s = (a.status || "").toLowerCase().trim();
-    return s === "absent" && !isInformedLeave(a);
-  }).length;
+  const unexcusedAbsentDays = monthAtt.filter((a) => resolveEffectiveStatus(a) === "absent").length;
 
   // Total absent / LOP days
   const daysAbsent = unexcusedAbsentDays + informedLopDays;
@@ -828,4 +861,3 @@ export function computeMonthlyAttendanceSummary(
     basePresentDays,
   };
 }
-
