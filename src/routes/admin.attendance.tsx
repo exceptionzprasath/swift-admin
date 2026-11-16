@@ -97,6 +97,9 @@ import { LiveBiometricFeed } from "@/components/biometric/LiveBiometricFeed";
 import { DeviceManagerHub } from "@/components/biometric/DeviceManagerHub";
 import { StaffBiometricDirectory } from "@/components/biometric/StaffBiometricDirectory";
 import { MonthlyStaffMatrixHub, getExportAttendanceStatus } from "@/components/attendance/MonthlyStaffMatrixHub";
+import { AwolAlertBanner } from "@/components/attendance/AwolAlertBanner";
+import { RestDayWorkApprovalHub } from "@/components/attendance/RestDayWorkApprovalHub";
+import { evaluateMonthlyLatePunches } from "@/lib/late-punch";
 import { UniversalUsbUploadModal } from "@/components/biometric/UniversalUsbUploadModal";
 
 // Utility: Parse time string in 12h, 24h, or with seconds into total minutes of the day
@@ -930,9 +933,38 @@ function AttendancePage() {
         }
       }
 
+      if (company?.latePunchControlEnabled) {
+        const lateSummary = evaluateMonthlyLatePunches(
+          emp,
+          dateStr.slice(0, 7),
+          attendance,
+          leaves,
+          company,
+          roster,
+          holidays
+        );
+        const dayEval = lateSummary.byDate[dateStr];
+        if (dayEval) {
+          if (dayEval.latePenaltyApplied === "half_day_converted") {
+            return {
+              status: "half-day",
+              label: `Half-Day (Late Limit · ${lateBy}m)`,
+              color: "bg-orange-50 text-orange-700 border-orange-200",
+            };
+          }
+          if (dayEval.latePenaltyApplied === "permission_deducted") {
+            return {
+              status: "present",
+              label: `Present (Perm -${dayEval.permissionMinutesDeducted}m)`,
+              color: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
+            };
+          }
+        }
+      }
+
       return { status: "late", label: `Late (${lateBy}m)`, color: "bg-orange-500/10 text-orange-600 border-orange-500/20" };
     },
-    [leaves, company]
+    [leaves, company, attendance, roster, holidays]
   );
 
   // Daily Rows with Real-time Resolution
@@ -1474,6 +1506,7 @@ function AttendancePage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      <AwolAlertBanner />
       {/* Top Header & Live Sync Banner */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-gradient-to-r from-card via-card to-muted/30 p-6 rounded-2xl border border-border shadow-sm">
         <div className="space-y-1">
@@ -1726,6 +1759,22 @@ function AttendancePage() {
             <TabsTrigger value="matrix" className="rounded-lg gap-1.5 text-xs font-medium">
               <CalendarIcon className="h-3.5 w-3.5" />
               Monthly Staff Matrix
+            </TabsTrigger>
+            <TabsTrigger value="rest-day" className="rounded-lg gap-1.5 text-xs font-medium">
+              <CalendarCheck className="h-3.5 w-3.5" />
+              Rest Day Work Approvals
+              {(() => {
+                const pendingRestCount = (attendance || []).filter((a) => {
+                  if (!a || !a.date || (!a.checkIn && !a.clockIn && !a.isRestDayWork)) return false;
+                  const isSun = new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
+                  return (isSun || a.isRestDayWork) && a.restDayWorkStatus !== "approved" && a.restDayWorkStatus !== "rejected";
+                }).length;
+                return pendingRestCount > 0 ? (
+                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                    {pendingRestCount}
+                  </Badge>
+                ) : null;
+              })()}
             </TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-lg gap-1.5 text-xs font-medium">
               <TrendingUp className="h-3.5 w-3.5" />
@@ -2245,20 +2294,48 @@ function AttendancePage() {
 
                         {/* Punctuality Status Badge */}
                         <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
-                          {showAdvancedPunctuality ? (
-                            <Badge variant="outline" className={`px-2.5 py-1 text-xs font-semibold rounded-lg ${punctuality.color}`}>
-                              {punctuality.label}
-                            </Badge>
-                          ) : (
-                            (() => {
-                              const basic = getBasicPunctuality(punctuality);
-                              return (
-                                <Badge variant="outline" className={`px-2.5 py-1 text-xs font-semibold rounded-lg ${basic.color}`}>
-                                  {basic.label}
-                                </Badge>
-                              );
-                            })()
-                          )}
+                          <div className="space-y-1.5">
+                            {showAdvancedPunctuality ? (
+                              <Badge variant="outline" className={`px-2.5 py-1 text-xs font-semibold rounded-lg ${punctuality.color}`}>
+                                {punctuality.label}
+                              </Badge>
+                            ) : (
+                              (() => {
+                                const basic = getBasicPunctuality(punctuality);
+                                return (
+                                  <Badge variant="outline" className={`px-2.5 py-1 text-xs font-semibold rounded-lg ${basic.color}`}>
+                                    {basic.label}
+                                  </Badge>
+                                );
+                              })()
+                            )}
+                            {rec &&
+                              (punctuality.label.includes("Rest Day Work") ||
+                                punctuality.label.includes("Holiday Work") ||
+                                rec.isRestDayWork) &&
+                              rec.restDayWorkStatus !== "approved" &&
+                              rec.restDayWorkStatus !== "rejected" && (
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleApproveRestDay(rec, emp)}
+                                    className="h-6 px-2 text-[10px] rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1"
+                                  >
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleRejectRestDay(rec, emp)}
+                                    className="h-6 px-2 text-[10px] rounded-md border-rose-500/30 text-rose-600 hover:bg-rose-500/10 font-semibold gap-1"
+                                  >
+                                    <XCircle className="h-3 w-3" />
+                                    Decline
+                                  </Button>
+                                </div>
+                              )}
+                          </div>
                         </td>
 
                         {/* Action Buttons */}
@@ -2417,6 +2494,17 @@ function AttendancePage() {
             getScheduledShiftForDate={getScheduledShiftForDate}
             evaluatePunctuality={evaluatePunctuality}
             getRecordHours={getRecordHours}
+          />
+        </TabsContent>
+
+        {/* TAB 2B: REST DAY & HOLIDAY WORK APPROVALS */}
+        <TabsContent value="rest-day" className="space-y-4 m-0">
+          <RestDayWorkApprovalHub
+            getScheduledShiftForDate={getScheduledShiftForDate}
+            onInspectRecord={(data) => {
+              setSelectedDate(data.date);
+              setInspectRecord(data);
+            }}
           />
         </TabsContent>
 

@@ -65,6 +65,7 @@ import {
 } from "@/lib/employee-validation";
 import { useAuth } from "@/lib/auth";
 import { DeleteEmployeeDialog } from "@/components/delete-employee-dialog";
+import { AwolAlertBanner, EmployeeAwolBadge, useAwolEvaluator } from "@/components/attendance/AwolAlertBanner";
 
 export const Route = createFileRoute("/admin/employees")({
   head: () => ({ meta: [{ title: "Employees · CreatonsHR" }] }),
@@ -283,6 +284,7 @@ function EmployeesPage() {
   } = useStore();
 
   const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)), [rawEmployees]);
+  const awolSummary = useAwolEvaluator();
 
   useEffect(() => {
     purgeMockEmployees();
@@ -564,6 +566,11 @@ function EmployeesPage() {
 
 
       {/* ========================================================================= */}
+      {/* AWOL TERMINATION ALERT BANNER                                             */}
+      {/* ========================================================================= */}
+      <AwolAlertBanner />
+
+      {/* ========================================================================= */}
       {/* ONBOARDING JOURNEY & COMPLIANCE OVERVIEW BAR                              */}
       {/* ========================================================================= */}
       <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-xs relative overflow-hidden">
@@ -755,9 +762,10 @@ function EmployeesPage() {
                           {e.photoDataUrl ? <img src={e.photoDataUrl} className="h-full w-full object-cover" alt={e.name} /> : e.name.split(" ").slice(0, 2).map((s) => s[0]).join("")}
                         </div>
                         <div>
-                          <div className="font-medium flex items-center gap-1.5">
+                          <div className="font-medium flex items-center gap-1.5 flex-wrap">
                             <span>{e.name}</span>
                             <EmploymentTypeBadge type={e.employmentType} />
+                            <EmployeeAwolBadge employee={e} evaluation={awolSummary.byEmployeeId[e.id]} />
                             {(e.faceRegistered || (e.photoDataUrl && e.photoDataUrl.startsWith("http"))) && (
                               <Badge
                                 variant="outline"
@@ -3493,9 +3501,10 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
                 )}
               </div>
               <div>
-                <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                <DialogTitle className="text-lg font-bold flex items-center gap-2 flex-wrap">
                   <span>{employee.name}</span>
                   <EmploymentTypeBadge type={employee.employmentType} />
+                  <EmployeeAwolBadge employee={employee} />
                   <Badge variant="outline" className="font-mono text-xs">
                     {employee.empCode}
                   </Badge>
@@ -5467,6 +5476,7 @@ function EditEmployeeDialog({ employee, open, onClose }: { employee: Employee | 
                       {employee.empCode}
                     </Badge>
                     <EmploymentTypeBadge type={employee.employmentType} size="sm" />
+                    <EmployeeAwolBadge employee={employee} />
                   </div>
                 </div>
               </DialogTitle>

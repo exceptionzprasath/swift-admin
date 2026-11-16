@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmploymentTypeBadge } from "@/components/employment-type-badge";
+import { evaluateCompanyLatePunches } from "@/lib/late-punch";
 
 // Formatting helpers
 function parseTimeMinutes(s?: string): number {
@@ -230,7 +231,7 @@ export function MonthlyStaffMatrixHub({
   evaluatePunctuality,
   getRecordHours,
 }: MonthlyStaffMatrixHubProps) {
-  const { employees, attendance, company, leaves } = useStore();
+  const { employees, attendance, company, leaves, roster, holidays } = useStore();
   const { user } = useAuth();
   const branches = useMemo(() => company.branches || [], [company.branches]);
   const shifts = useMemo(() => company.shifts || [], [company.shifts]);
@@ -367,6 +368,22 @@ export function MonthlyStaffMatrixHub({
     orderBy,
     sortDirection,
   ]);
+
+  // Monthly Late Punch Evaluation per employee
+  const lateSummariesByEmp = useMemo(
+    () =>
+      evaluateCompanyLatePunches(
+        filteredEmployees,
+        (fromDate || "").slice(0, 7),
+        attendance,
+        leaves,
+        company,
+        roster,
+        holidays,
+        fromDate && toDate ? { start: fromDate, end: toDate } : undefined
+      ),
+    [filteredEmployees, fromDate, toDate, attendance, leaves, company, roster, holidays]
+  );
 
   // Branch Name Resolver
   const getBranchName = useCallback(
@@ -1840,15 +1857,22 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                             (rec?.leaveType === "LOP" && rec?.isExcused) ||
                             (rec?.status === "leave" && (rec?.leaveType === "LOP" || rec?.isExcused));
 
-                          if (punct.status === "present") empPresent += 1;
+                          const dayLateEval = company.latePunchControlEnabled
+                            ? lateSummariesByEmp[emp.id]?.byDate?.[d.dateStr]
+                            : undefined;
+
+                          if (dayLateEval?.latePenaltyApplied === "half_day_converted") {
+                            empPresent += 0.5;
+                          } else if (punct.status === "present") empPresent += 1;
                           else if (punct.status === "half-day") empPresent += 0.5;
                           else if (isInformedLeave) empInformedLeave += 1;
                           else if (punct.status === "leave") empLeave += 1;
                           else if (punct.status === "absent" && !scheduled.isWeeklyOff && !scheduled.isHoliday) empAbsent += 1;
                           else if (punct.status === "late") empPresent += 1;
 
-                          let badgeLetter = "A";
+                          let badgeLetter: React.ReactNode = "A";
                           let badgeClass = "bg-[#DE1A1A] text-white border-[#DE1A1A] font-bold";
+                          let subBadge: React.ReactNode = null;
 
                           if (isOdd) {
                             badgeLetter = "-";
@@ -1856,6 +1880,32 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                           } else if (isInformedLeave) {
                             badgeLetter = "IL";
                             badgeClass = "bg-[#FB8B24] text-white border-[#FB8B24] font-bold";
+                          } else if (dayLateEval && company.latePunchControlEnabled) {
+                            if (dayLateEval.latePenaltyApplied === "half_day_converted") {
+                              badgeLetter = (
+                                <span className="inline-flex items-center gap-0.5">
+                                  <span>HD</span>
+                                  <Clock className="h-2.5 w-2.5 shrink-0" />
+                                </span>
+                              );
+                              badgeClass = "bg-orange-50 text-orange-700 border-orange-200 font-bold";
+                            } else if (dayLateEval.latePenaltyApplied === "permission_deducted") {
+                              badgeLetter = "P";
+                              badgeClass = "bg-[#5FAD41] text-white border-[#5FAD41] font-bold";
+                              subBadge = (
+                                <span className="block mt-0.5 px-1 rounded text-[8px] font-bold leading-tight bg-indigo-100 text-indigo-700 border border-indigo-300 whitespace-nowrap">
+                                  Perm -{dayLateEval.permissionMinutesDeducted}m
+                                </span>
+                              );
+                            } else {
+                              badgeLetter = "P";
+                              badgeClass = "bg-[#5FAD41] text-white border-[#5FAD41] font-bold";
+                              subBadge = (
+                                <span className="block mt-0.5 px-1 rounded text-[8px] font-bold leading-tight bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
+                                  Late {dayLateEval.lateMinutes}m
+                                </span>
+                              );
+                            }
                           } else if (punct.status === "present") {
                             badgeLetter = "P";
                             badgeClass = "bg-[#5FAD41] text-white border-[#5FAD41] font-bold";
@@ -1877,22 +1927,30 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                           }
 
                           return (
-                            <td key={d.dateStr} className="p-1 text-center">
+                            <td key={d.dateStr} className="p-1 text-center align-middle">
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
                                       onClick={() => onInspectRecord?.({ emp, rec, date: d.dateStr })}
-                                      className={`h-6 min-w-[24px] px-1 rounded font-semibold text-[10px] inline-flex items-center justify-center transition-transform hover:scale-110 border ${badgeClass}`}
+                                      className="inline-flex flex-col items-center justify-center transition-transform hover:scale-105"
                                     >
-                                      {badgeLetter}
+                                      <span className={`h-6 min-w-[24px] px-1 rounded font-semibold text-[10px] inline-flex items-center justify-center border ${badgeClass}`}>
+                                        {badgeLetter}
+                                      </span>
+                                      {subBadge}
                                     </button>
                                   </TooltipTrigger>
-                                  <TooltipContent>
-                                    <div className="text-xs space-y-0.5">
+                                  <TooltipContent className="max-w-xs">
+                                    <div className="text-xs space-y-1">
                                       <div className="font-semibold">{d.dateStr} ({d.dayShort})</div>
-                                      <div>Status: <span className="font-medium">{punct.label}</span></div>
+                                      <div>Status: <span className="font-medium">{dayLateEval ? dayLateEval.actionLabel : punct.label}</span></div>
+                                      {dayLateEval && (
+                                        <div className="rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                                          {dayLateEval.tooltipText}
+                                        </div>
+                                      )}
                                       {rec?.checkIn && <div>In: {formatTimeWithAmPm(rec.checkIn)}</div>}
                                       {rec?.checkOut && <div>Out: {formatTimeWithAmPm(rec.checkOut)}</div>}
                                       {recHours.hoursWorked > 0 && <div>Hours: {formatMinutesToHHMM(recHours.hoursWorked * 60)}</div>}

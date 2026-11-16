@@ -19,6 +19,7 @@ export interface PayslipTemplateViewProps {
   leaveDays?: number;
   holidayDays?: number;
   sundayWorkDays?: number;
+  restDayWorkDays?: number;
   pendingAdvance?: number;
   onDownloadPdf?: () => void;
   onPrint?: () => void;
@@ -43,6 +44,7 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
   leaveDays = 0,
   holidayDays = 0,
   sundayWorkDays = 0,
+  restDayWorkDays,
   pendingAdvance = 0,
   onDownloadPdf,
   onPrint,
@@ -241,7 +243,13 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
 
   deductionItems.push({ name: "TDS (INCOME TAX)", amount: computation.deductions.tds || 0 });
   deductionItems.push({ name: "ADVANCE/LOAN", amount: (computation.deductions.advance || 0) + (computation.deductions.loan || 0) });
-  deductionItems.push({ name: "FINE & DAMAGES", amount: computation.deductions.fineAndDamages || 0 });
+  const awolPenaltyTotal = (computation as any).awolPenaltyTotal || (computation.deductions as any)?.awolPenaltyTotal || 0;
+  const awolUnexcusedDays = (computation as any).unexcusedAbsentDays || 0;
+  const awolPenaltyRate = (computation as any).awolPenaltyAmountPerDay || company.awolPenaltyAmountPerDay || 500;
+  deductionItems.push({
+    name: awolPenaltyTotal > 0 ? "FINES / AWOL PENALTY" : "FINE & DAMAGES",
+    amount: computation.deductions.fineAndDamages || 0,
+  });
   deductionItems.push({ name: "LABOUR WELFARE (LWF)", amount: computation.deductions.lwf || 0 });
   deductionItems.push({ name: "OTHER DEDUCTIONS", amount: computation.deductions.otherDeductions || 0 });
   (computation.extraDeductions || []).forEach((ed) => {
@@ -498,8 +506,8 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
             </div>
 
             <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-700 dark:text-purple-300">
-              <span className="block text-[10px] uppercase font-bold">Sunday Work</span>
-              <span className="text-sm font-black">{sundayWorkDays}</span>
+              <span className="block text-[10px] uppercase font-bold">Rest Day Work</span>
+              <span className="text-sm font-black">{restDayWorkDays !== undefined ? restDayWorkDays : sundayWorkDays}</span>
             </div>
 
             <div className="p-2 rounded-xl bg-card border border-border/70 shadow-2xs">
@@ -624,6 +632,15 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
             </div>
 
           </div>
+
+          {/* AWOL Penalty Breakdown (when applicable) */}
+          {awolPenaltyTotal > 0 && (
+            <div className="mt-2.5 px-3 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/25 flex items-center justify-between text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+              <span>
+                AWOL Penalty: {awolUnexcusedDays} Uninformed Absent Days × ₹{formatInr(awolPenaltyRate)}/day = ₹{formatInr(awolPenaltyTotal)}
+              </span>
+            </div>
+          )}
 
           {/* Amount In Words */}
           <div className="mt-2.5 pt-2 border-t border-border/60 flex flex-wrap items-center justify-between text-[11px] text-muted-foreground">

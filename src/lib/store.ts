@@ -514,6 +514,18 @@ export type Company = {
   otherDeductionsEnabled?: boolean;
   otherDeductionsMode?: "flat" | "pctOfGross" | "pctOfBasic";
   otherDeductionsValue?: number;
+  awolControlEnabled?: boolean;
+  awolTerminationEnabled?: boolean;
+  awolDaysLimit?: number;
+  awolAutoTerminate?: boolean;
+  awolPenaltyEnabled?: boolean;
+  awolPenaltyAmountPerDay?: number;
+  latePunchControlEnabled?: boolean;
+  lateLimitType?: "days" | "hours";
+  maxLateDaysPerMonth?: number;
+  maxLateHoursPerMonth?: number;
+  latePermissionDeductionEnabled?: boolean;
+  lateHalfDayConversionEnabled?: boolean;
   geofence: { lat: number; lng: number; radiusM: number };
   leaveTypes: LeaveType[];
   permissionTypes?: PermissionType[];
@@ -649,6 +661,11 @@ export type Employee = {
   statusDate?: string;
   lastWorkingDate?: string;
   statusNote?: string;
+  terminationReason?: string;
+  terminatedAt?: string;
+  awolWarningActive?: boolean;
+  consecutiveAwolCount?: number;
+  pendingAwolTermination?: boolean;
   managerId?: string;
   about?: string;
   branchId?: string;
@@ -977,6 +994,10 @@ export type AttendanceRecord = {
   restDayApprovedBy?: string;
   restDayApprovedAt?: string;
   restDayRejectionReason?: string;
+  latePenaltyApplied?: "permission_deducted" | "half_day_converted" | "uncovered_excess";
+  permissionMinutesDeducted?: number;
+  paidDayCredit?: number;
+  originalStatus?: string;
   updatedAt?: string;
 };
 
@@ -1586,6 +1607,18 @@ HR Department
   otherDeductionsEnabled: false,
   otherDeductionsMode: "flat",
   otherDeductionsValue: 0,
+  awolControlEnabled: false,
+  awolTerminationEnabled: false,
+  awolDaysLimit: 3,
+  awolAutoTerminate: false,
+  awolPenaltyEnabled: false,
+  awolPenaltyAmountPerDay: 500,
+  latePunchControlEnabled: false,
+  lateLimitType: "days",
+  maxLateDaysPerMonth: 5,
+  maxLateHoursPerMonth: 3,
+  latePermissionDeductionEnabled: false,
+  lateHalfDayConversionEnabled: false,
   tdsSlabs: [
     { upTo: 300000, pct: 0 },
     { upTo: 700000, pct: 5 },

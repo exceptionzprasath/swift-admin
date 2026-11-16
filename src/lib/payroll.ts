@@ -1,4 +1,5 @@
 import type { Company, Employee, EarningComponent, DeductionComponent, SalaryStructure } from "./store";
+import { evaluateMonthlyLatePunches } from "./late-punch";
 
 export type DeductionCalculationMode = "flat" | "pctOfGross" | "pctOfBasic";
 
@@ -28,6 +29,7 @@ export type PayrollInputs = {
   tds?: DeductionInput;
   fineAndDamages?: DeductionInput;
   lwf?: DeductionInput;
+  unexcusedAbsentDays?: number;
 };
 
 export function evaluateDeductionValue(
@@ -491,13 +493,18 @@ export function computePayroll(opts: {
     tds = slabTds;
   }
 
-  // 6. Fine and Damages
-  let fineAndDamages = 0;
+  // 6. Fine and Damages + AWOL Penalty Deduction
+  let baseFineAndDamages = 0;
   if (inputs.fineAndDamages !== undefined) {
-    fineAndDamages = evaluateDeductionValue(inputs.fineAndDamages, gross, earnedBasic, c.fineAndDamagesEnabled !== false, c.fineAndDamagesMode || "flat", c.fineAndDamagesValue ?? 0);
+    baseFineAndDamages = evaluateDeductionValue(inputs.fineAndDamages, gross, earnedBasic, c.fineAndDamagesEnabled !== false, c.fineAndDamagesMode || "flat", c.fineAndDamagesValue ?? 0);
   } else if (c.fineAndDamagesEnabled) {
-    fineAndDamages = evaluateDeductionValue(undefined, gross, earnedBasic, true, c.fineAndDamagesMode || "flat", c.fineAndDamagesValue ?? 0);
+    baseFineAndDamages = evaluateDeductionValue(undefined, gross, earnedBasic, true, c.fineAndDamagesMode || "flat", c.fineAndDamagesValue ?? 0);
   }
+  const unexcusedAbsentDays = Math.max(0, inputs.unexcusedAbsentDays ?? 0);
+  const awolPenaltyEnabled = Boolean(c.awolControlEnabled && c.awolPenaltyEnabled);
+  const awolPenaltyAmountPerDay = c.awolPenaltyAmountPerDay ?? 500;
+  const awolPenaltyTotal = awolPenaltyEnabled && unexcusedAbsentDays > 0 ? Math.round(unexcusedAbsentDays * awolPenaltyAmountPerDay) : 0;
+  const fineAndDamages = baseFineAndDamages + awolPenaltyTotal;
 
   // 7. Loans, Advance & Other Ad-hoc Deductions
   const loan = inputs.loan || 0;
@@ -523,7 +530,7 @@ export function computePayroll(opts: {
     extraDeductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: otherDeductions });
   }
   if (fineAndDamages > 0) {
-    extraDeductionsList.push({ id: "fineAndDamages", name: "Fine & Damages", amount: fineAndDamages });
+    extraDeductionsList.push({ id: "fineAndDamages", name: awolPenaltyTotal > 0 ? "Fines / AWOL Penalty" : "Fine & Damages", amount: fineAndDamages });
   }
 
   // Configured extra deductions
@@ -542,6 +549,9 @@ export function computePayroll(opts: {
     tds,
     lwf,
     fineAndDamages,
+    fines: fineAndDamages,
+    baseFineAndDamages,
+    awolPenaltyTotal,
     loan,
     advance,
     otherDeductions,
@@ -595,7 +605,7 @@ export function computePayroll(opts: {
   deductionsList.push({ id: "pt", name: "Professional Tax (PT)", amount: professionalTax || 0 });
   deductionsList.push({ id: "tds", name: "TDS / Income Tax", amount: tds || 0 });
   deductionsList.push({ id: "advance", name: "Advance / Loan", amount: (advance || 0) + (loan || 0) });
-  deductionsList.push({ id: "fineAndDamages", name: "Fine & Damages", amount: fineAndDamages || 0 });
+  deductionsList.push({ id: "fineAndDamages", name: awolPenaltyTotal > 0 ? "Fines / AWOL Penalty" : "Fine & Damages", amount: fineAndDamages || 0 });
   deductionsList.push({ id: "lwf", name: "Labour Welfare Fund (LWF)", amount: lwf || 0 });
   deductionsList.push({ id: "otherDeductions", name: "Other Deductions", amount: otherDeductions || 0 });
   for (const ed of extraDeductionsList) {
@@ -629,6 +639,10 @@ export function computePayroll(opts: {
     annualCTC,
     daysWorked: paidDays,
     absentDays,
+    unexcusedAbsentDays,
+    awolPenaltyTotal,
+    awolPenaltyAmountPerDay,
+    baseFineAndDamages,
     lopAmount,
     prorateFactor,
     fixedGross,
@@ -688,7 +702,16 @@ export function explainPayroll(company: Company, employee: Employee, p: PayrollC
   if (p.deductions.lwf > 0 || p.employerContrib.employerLwf > 0) out.push({ id: "lwf", text: `${p.lwfSource} — state-specific Labour Welfare Fund. Employer contribution is typically 2×–3× employee.` });
   if (p.deductions.loan > 0) out.push({ id: "loan", text: `Loan EMI as per sanctioned repayment plan.` });
   if (p.deductions.advance > 0) out.push({ id: "advance", text: `Salary advance recovery this cycle.` });
-  if (p.deductions.fineAndDamages > 0) out.push({ id: "fineAndDamages", text: `Fine & Damages = ₹${Math.round(p.deductions.fineAndDamages).toLocaleString("en-IN")} penalty / property damage recovery deduction.` });
+  if (p.deductions.fineAndDamages > 0) {
+    if (p.awolPenaltyTotal > 0) {
+      out.push({
+        id: "fineAndDamages",
+        text: `AWOL Penalty: ${p.unexcusedAbsentDays} Uninformed Absent Days × ₹${(p.awolPenaltyAmountPerDay ?? 500).toLocaleString("en-IN")}/day = ₹${Math.round(p.awolPenaltyTotal).toLocaleString("en-IN")}${p.baseFineAndDamages > 0 ? ` (+ ₹${Math.round(p.baseFineAndDamages).toLocaleString("en-IN")} Fine & Damages)` : ""}.`,
+      });
+    } else {
+      out.push({ id: "fineAndDamages", text: `Fine & Damages = ₹${Math.round(p.deductions.fineAndDamages).toLocaleString("en-IN")} penalty / property damage recovery deduction.` });
+    }
+  }
   if (p.deductions.otherDeductions > 0) out.push({ id: "otherDeductions", text: `Other Deductions = ₹${Math.round(p.deductions.otherDeductions).toLocaleString("en-IN")} ad-hoc authorized deduction.` });
   if (p.absentDays && p.absentDays > 0) {
     out.push({ id: "lop", text: `Attendance Proration: ${p.daysWorked} of ${wd} working days worked (${p.absentDays} absent day(s)). Gross earnings are prorated accordingly without duplicate deduction.` });
@@ -714,6 +737,11 @@ export interface MonthlyAttendanceSummary {
   unexcusedAbsentDays: number;
   rawPresentDays: number;
   basePresentDays: number;
+  totalLateDays: number;
+  totalLateMinutes: number;
+  permissionMinutesUsedForLate: number;
+  lateConvertedHalfDays: number;
+  restDayWorkDays: number;
 }
 
 /**
@@ -724,10 +752,24 @@ export interface MonthlyAttendanceSummary {
  */
 export function computeMonthlyAttendanceSummary(
   attendance: any[],
-  emp: { id: string; name?: string; empCode?: string },
+  emp: { id: string; name?: string; empCode?: string; shiftId?: string; graceTime?: string },
   selectedMonth: string,
-  customRange?: { start?: string; end?: string }
+  customRange?: { start?: string; end?: string },
+  company?: Company,
+  leaves?: any[],
+  roster?: any[],
+  holidays?: any[]
 ): MonthlyAttendanceSummary {
+  const lateSummary = evaluateMonthlyLatePunches(
+    emp,
+    selectedMonth,
+    attendance || [],
+    leaves || [],
+    company || ({} as Company),
+    roster || [],
+    holidays || [],
+    customRange
+  );
   const todayStr = new Date().toISOString().slice(0, 10);
   const currentMonth = todayStr.slice(0, 7);
 
@@ -788,7 +830,15 @@ export function computeMonthlyAttendanceSummary(
       return isLate ? "absent" : "half-day";
     }
 
-    if (s === "half-day" || s === "half_day" || s === "halfday") return "half-day";
+    if (
+      s === "half-day" ||
+      s === "half_day" ||
+      s === "halfday" ||
+      a.latePenaltyApplied === "half_day_converted" ||
+      lateSummary.byDate[a.date]?.latePenaltyApplied === "half_day_converted"
+    ) {
+      return "half-day";
+    }
     if (
       s === "present" ||
       s === "late" ||
@@ -849,6 +899,18 @@ export function computeMonthlyAttendanceSummary(
   const rawPresentDays = daysPresent + daysHalf * 0.5;
   const basePresentDays = rawPresentDays + daysLeave;
 
+  // Rest day / Sunday / Holiday working days (approved rest day work where employee was present)
+  const restDayWorkDays = monthAtt.filter((a) => {
+    const isSun = a.date && new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
+    const isHoliday = (holidays || []).some((h: any) => h.date === a.date);
+    const isRest = Boolean(isSun || isHoliday || a.isRestDayWork);
+    const eff = resolveEffectiveStatus(a);
+    return isRest && (eff === "present" || eff === "half-day") && a.restDayWorkStatus === "approved";
+  }).reduce((sum, a) => {
+    const eff = resolveEffectiveStatus(a);
+    return sum + (eff === "half-day" ? 0.5 : 1);
+  }, 0);
+
   return {
     monthAtt,
     daysPresent,
@@ -859,5 +921,10 @@ export function computeMonthlyAttendanceSummary(
     unexcusedAbsentDays,
     rawPresentDays,
     basePresentDays,
+    totalLateDays: lateSummary.totalLateDays,
+    totalLateMinutes: lateSummary.totalLateMinutes,
+    permissionMinutesUsedForLate: lateSummary.permissionMinutesUsedForLate,
+    lateConvertedHalfDays: lateSummary.lateConvertedHalfDays,
+    restDayWorkDays,
   };
 }

@@ -149,7 +149,8 @@ export async function generateSalarySlipPDF(
   p: PayrollComputation,
   paidDays?: number,
   weekOffDaysCount?: number,
-  assetsOrLogo?: CompanyDocumentAssets | string
+  assetsOrLogo?: CompanyDocumentAssets | string,
+  restDayWorkDaysCount?: number
 ) {
   const company = c || ({} as Company);
   const employee = e || ({} as Employee);
@@ -389,7 +390,10 @@ export async function generateSalarySlipPDF(
   deductionItems.push({ name: "PROFESSIONAL TAX", amount: deductions.professionalTax || 0 });
   deductionItems.push({ name: "TDS (INCOME TAX)", amount: deductions.tds || 0 });
   deductionItems.push({ name: "ADVANCE/LOAN", amount: (deductions.advance || 0) + (deductions.loan || 0) });
-  deductionItems.push({ name: "FINE & DAMAGES", amount: deductions.fineAndDamages || 0 });
+  const awolPenTotal = (comp as any).awolPenaltyTotal || (deductions as any).awolPenaltyTotal || 0;
+  const awolUnexcusedDays = (comp as any).unexcusedAbsentDays || 0;
+  const awolPenRate = (comp as any).awolPenaltyAmountPerDay || company.awolPenaltyAmountPerDay || 500;
+  deductionItems.push({ name: awolPenTotal > 0 ? "FINES / AWOL PENALTY" : "FINE & DAMAGES", amount: deductions.fineAndDamages || 0 });
   deductionItems.push({ name: "LABOUR WELFARE (LWF)", amount: deductions.lwf || 0 });
   deductionItems.push({ name: "OTHER DEDUCTIONS", amount: deductions.otherDeductions || 0 });
 
@@ -582,8 +586,8 @@ export async function generateSalarySlipPDF(
         { content: `${totalMonthDays}`, styles: { fontStyle: "bold", halign: "center" } },
         { content: "Pay Days", styles: { fontStyle: "bold", fillColor: [248, 250, 252] } },
         { content: `: ${effectivePaidDays}`, styles: { fontStyle: "bold", halign: "left" } },
-        { content: "Sunday Work", styles: { fontStyle: "bold", fillColor: [248, 250, 252] } },
-        { content: `: 0`, styles: { halign: "left" } },
+        { content: "Rest Day Work", styles: { fontStyle: "bold", fillColor: [248, 250, 252] } },
+        { content: `: ${restDayWorkDaysCount ?? 0}`, styles: { halign: "left" } },
         { content: "Pending Advance", styles: { fontStyle: "bold", fillColor: [248, 250, 252] } },
         { content: `: Rs. ${(deductions.advance || 0).toLocaleString("en-IN")}`, styles: { halign: "left" } },
       ],
@@ -688,7 +692,7 @@ export async function generateSalarySlipPDF(
       ],
       [
         {
-          content: `Amount in Words: ${numberToWordsIndian(net)}`,
+          content: `Amount in Words: ${numberToWordsIndian(net)}${awolPenTotal > 0 ? `   |   AWOL Penalty: ${awolUnexcusedDays} Uninformed Absent Days x Rs. ${awolPenRate}/day = Rs. ${awolPenTotal.toLocaleString("en-IN")}` : ""}`,
           colSpan: 4,
           styles: {
             fontSize: 7.5,

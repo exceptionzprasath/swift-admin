@@ -6,6 +6,8 @@ import { computePayroll, computeMonthlyAttendanceSummary, inr, type PayrollCompu
 import { generateSalarySlipPDF, numberToWordsIndian } from "@/lib/pdf";
 import { PayslipTemplateView } from "@/components/payroll/PayslipTemplateView";
 import { EmployeeOtCalendarModal } from "@/components/payroll/EmployeeOtCalendarModal";
+import { evaluateCompanyAwol } from "@/lib/awol";
+import { EmployeeAwolBadge } from "@/components/attendance/AwolAlertBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -169,6 +171,7 @@ interface CustomAllowanceItem {
 
 interface MonthlyOverrideData {
   daysWorked?: number;
+  daysWorkedCustom?: boolean;
   otHours?: number;
   // Overtime (OT) Approval Workflow
   otStatus?: "pending" | "approved" | "rejected";
@@ -242,6 +245,7 @@ interface EditingPayrollRecord extends MonthlyOverrideData {
   emp: Employee;
   customBasic: number;
   daysWorked: number;
+  daysWorkedCustom?: boolean;
   otHours: number;
   weekOffEnabled: boolean;
   weekOffDays: number;
@@ -408,6 +412,7 @@ export function PayrollPage() {
     verifyPayrollLockPassword,
     docAssets,
     holidays,
+    leaves,
   } = useStore();
 
   const employees = useMemo(() => (rawEmployees || []).filter((e) => !isMockEmployee(e) && !isFrozenEmployee(e)), [rawEmployees]);
@@ -601,6 +606,9 @@ export function PayrollPage() {
     weekOffDays?: number;
     weekOffEnabled?: boolean;
     otHours: number;
+    restDayWorkDays?: number;
+    leaveDays?: number;
+    holidayDays?: number;
     comp: PayrollComputation;
   } | null>(null);
 
@@ -917,6 +925,19 @@ export function PayrollPage() {
   }, [company, sampleEmployee, benchmarkSalary, benchmarkCalc]);
 
   // Monthly Register Calculations for all employees (reflecting per-employee overrides)
+  const awolSummary = useMemo(
+    () =>
+      evaluateCompanyAwol(
+        filteredEmployees || [],
+        attendance,
+        leaves || [],
+        holidays || [],
+        roster || [],
+        company
+      ),
+    [filteredEmployees, attendance, leaves, holidays, roster, company]
+  );
+
   const monthlyRegister = useMemo(() => {
     const wd = company?.workingDaysPerMonth || 26;
 
@@ -925,9 +946,28 @@ export function PayrollPage() {
         attendance,
         emp,
         selectedMonth,
-        isCustomDateRange ? { start: customStartDate, end: customEndDate } : undefined
+        isCustomDateRange ? { start: customStartDate, end: customEndDate } : undefined,
+        company,
+        leaves,
+        roster,
+        holidays
       );
-      const { monthAtt, daysPresent, daysHalf, daysLeave, daysAbsent, rawPresentDays } = attSummary;
+      const {
+        monthAtt,
+        daysPresent,
+        daysHalf,
+        daysLeave,
+        daysAbsent,
+        informedLopDays,
+        rawPresentDays,
+        restDayWorkDays,
+        totalLateDays,
+        totalLateMinutes,
+        permissionMinutesUsedForLate,
+        lateConvertedHalfDays,
+      } = attSummary;
+      const awolEval = awolSummary.byEmployeeId[emp.id];
+      const unexcusedAbsentDays = awolEval?.exceedsLimit ? awolEval.consecutiveAwolDays : 0;
 
       // Compute daily OT breakdown and total OT hours from actual check-in/check-out timestamps or explicit otHours for each day
       const isOtEligible = emp.otEnabled !== false;
@@ -1012,8 +1052,16 @@ export function PayrollPage() {
       const weekOffDays = ov.weekOffDays !== undefined ? ov.weekOffDays : rosterWeekOffDays;
 
       // Salary is prorated strictly on present/worked days (Weekoff is purely informative metadata on payslip)
-      const basePresentDays = rawPresentDays + daysLeave;
-      const effectiveDaysWorked = ov.daysWorked !== undefined ? ov.daysWorked : basePresentDays;
+      const hasApprovedPaidLeave = (leaves || []).some(
+        (l: any) =>
+          (l.employeeId === emp.id || (emp.empCode && l.empCode === emp.empCode)) &&
+          (l.status || "").toLowerCase() === "approved" &&
+          (l.type || "").toLowerCase() !== "lop"
+      );
+      const effectiveDaysWorked = (ov.daysWorkedCustom && ov.daysWorked !== undefined)
+        ? ov.daysWorked
+        : (rawPresentDays + (hasApprovedPaidLeave ? daysLeave : 0));
+      const basePresentDays = effectiveDaysWorked;
 
       const effectiveCompany = buildEffectiveCompany(company, ov);
 
@@ -1097,7 +1145,7 @@ export function PayrollPage() {
         daysWorked: effectiveDaysWorked,
         otHours: effectiveOtHours,
         incentive: effectiveIncentive,
-        shiftDays: daysPresent + daysHalf,
+        shiftDays: effectiveDaysWorked,
         loan: effectiveLoan,
         advance: effectiveAdvance,
         bonus: effectiveBonus,
@@ -1107,6 +1155,7 @@ export function PayrollPage() {
         otherDeductions: deductionInputs.otherDeductions,
         variablePay: effectiveVariablePay,
         otherEarnings: effectiveOtherEarnings,
+        unexcusedAbsentDays,
       });
 
       return {
@@ -1114,9 +1163,17 @@ export function PayrollPage() {
         rawEmp: emp,
         paidDays: effectiveDaysWorked,
         rawPresentDays,
+        restDayWorkDays,
         daysAbsent,
+        unexcusedAbsentDays,
+        awolEval,
+        informedLopDays,
         daysHalf,
         daysLeave,
+        totalLateDays,
+        totalLateMinutes,
+        permissionMinutesUsedForLate,
+        lateConvertedHalfDays,
         expectedWorkingDays,
         is100PctAttendance,
         attBonusEligible,
@@ -1139,8 +1196,11 @@ export function PayrollPage() {
     });
   }, [
     filteredEmployees,
+    awolSummary,
     attendance,
     roster,
+    leaves,
+    holidays,
     selectedMonth,
     company,
     monthlyOverrides,
@@ -1189,6 +1249,7 @@ export function PayrollPage() {
       otherDeductions: deductionInputs.otherDeductions,
       variablePay: editingRecord.variablePay,
       otherEarnings: editingRecord.otherEarnings,
+      unexcusedAbsentDays: (editingRecord as any).unexcusedAbsentDays ?? 0,
     });
   }, [editingRecord, company, isCustomDateRange, rangeWorkingDays]);
   // Computed summaries for Tab 2 (Monthly Payroll Run)
@@ -1282,6 +1343,9 @@ export function PayrollPage() {
       otApprovedAt: new Date().toISOString(),
       otApprovedBy: currentUser?.name || "Admin",
     };
+    if (!ov.daysWorkedCustom) {
+      delete updatedOv.daysWorked;
+    }
 
     const nextOverrides = {
       ...monthlyOverrides,
@@ -1303,6 +1367,7 @@ export function PayrollPage() {
       otherDeductions: updatedOv.otherDeductions || 0,
       variablePay: updatedOv.variablePay || 0,
       otherEarnings: updatedOv.otherEarnings || 0,
+      unexcusedAbsentDays: (reg as any).unexcusedAbsentDays ?? 0,
     });
 
     addPayroll({
@@ -1358,6 +1423,9 @@ export function PayrollPage() {
       otApprovedAt: new Date().toISOString(),
       otApprovedBy: currentUser?.name || "Admin",
     };
+    if (!ov.daysWorkedCustom) {
+      delete updatedOv.daysWorked;
+    }
 
     const nextOverrides = {
       ...monthlyOverrides,
@@ -3039,6 +3107,177 @@ export function PayrollPage() {
               </table>
             </div>
           </div>
+
+          {/* Unauthorized Absence (AWOL) Control Card in Payroll Settings */}
+          <div className="rounded-2xl border border-rose-500/25 bg-card p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-bold text-foreground">
+                      Unauthorized Absence (AWOL) Control
+                    </h3>
+                    <Badge
+                      variant="outline"
+                      className={
+                        company.awolControlEnabled
+                          ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/25 text-[10px]"
+                          : "bg-muted text-muted-foreground border-border text-[10px]"
+                      }
+                    >
+                      {company.awolControlEnabled ? "Active" : "Disabled"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Configure consecutive AWOL termination rules and daily penalty deductions (Status: &apos;A&apos;, excluding Paid Leave &apos;PL&apos; and Informed Leave &apos;IL&apos;).
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 bg-muted/40 px-3 py-1.5 rounded-xl border border-border self-end sm:self-center">
+                <span className="text-xs font-semibold text-foreground">
+                  {company.awolControlEnabled ? "Enabled" : "Disabled"}
+                </span>
+                <Switch
+                  checked={Boolean(company.awolControlEnabled)}
+                  onCheckedChange={(checked) => {
+                    setCompany({
+                      awolControlEnabled: checked,
+                      awolDaysLimit: company.awolDaysLimit ?? 3,
+                      awolPenaltyAmountPerDay: company.awolPenaltyAmountPerDay ?? 500,
+                    });
+                    toast.success(
+                      checked
+                        ? "Unauthorized Absence (AWOL) Control enabled"
+                        : "Unauthorized Absence (AWOL) Control disabled"
+                    );
+                  }}
+                />
+              </div>
+            </div>
+
+            {company.awolControlEnabled && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-3 border-t border-border/60 animate-in fade-in duration-200">
+                {/* A. Termination Settings */}
+                <div className="rounded-xl border border-border bg-muted/15 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-bold text-foreground">A. Termination Settings</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Trigger AWOL warnings and auto-termination after consecutive unauthorized absent days.
+                      </div>
+                    </div>
+                    <Switch
+                      checked={Boolean(company.awolTerminationEnabled)}
+                      onCheckedChange={(checked) =>
+                        setCompany({
+                          awolTerminationEnabled: checked,
+                          awolDaysLimit: company.awolDaysLimit ?? 3,
+                        })
+                      }
+                    />
+                  </div>
+                  {company.awolTerminationEnabled && (
+                    <div className="space-y-3 pt-2 border-t border-border/50">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold">Consecutive AWOL Days Limit</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={company.awolDaysLimit ?? 3}
+                            onChange={(e) =>
+                              setCompany({ awolDaysLimit: Math.max(1, Number(e.target.value) || 1) })
+                            }
+                            className="h-8 w-24 text-xs font-bold"
+                          />
+                          <span className="text-[11px] text-muted-foreground">
+                            Days (Triggers on Day {(company.awolDaysLimit ?? 3) + 1})
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          If set to 3 days, crossing into the 4th consecutive day of unauthorized absence (Status: &apos;A&apos;) triggers termination alerts and AWOL warning badges.
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-rose-500/20 bg-rose-500/5 p-2.5">
+                        <div>
+                          <div className="text-xs font-bold text-rose-700 dark:text-rose-300">
+                            Auto-Terminate Employee
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            Automatically update employee status to &apos;Terminated (AWOL)&apos; when they reach (Limit + 1) consecutive days of unauthorized absence.
+                          </div>
+                        </div>
+                        <Switch
+                          checked={Boolean(company.awolAutoTerminate)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              if (
+                                window.confirm(
+                                  "Warning: Enabling Auto-Terminate Employee will automatically revoke employee portal access and mark them as 'Terminated (AWOL)' when they cross the consecutive AWOL days limit. Proceed?"
+                                )
+                              ) {
+                                setCompany({ awolAutoTerminate: true });
+                                toast.warning("Auto-Terminate Employee enabled");
+                              }
+                            } else {
+                              setCompany({ awolAutoTerminate: false });
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* B. Penalty Deduction Settings */}
+                <div className="rounded-xl border border-border bg-muted/15 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-bold text-foreground">B. Penalty Deduction Settings</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Deduct a flat daily penalty per uninformed absent day (&apos;A&apos;) in monthly payroll.
+                      </div>
+                    </div>
+                    <Switch
+                      checked={Boolean(company.awolPenaltyEnabled)}
+                      onCheckedChange={(checked) =>
+                        setCompany({
+                          awolPenaltyEnabled: checked,
+                          awolPenaltyAmountPerDay: company.awolPenaltyAmountPerDay ?? 500,
+                        })
+                      }
+                    />
+                  </div>
+                  {company.awolPenaltyEnabled && (
+                    <div className="space-y-2.5 pt-2 border-t border-border/50">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold">AWOL Penalty Amount (₹ per day)</Label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-muted-foreground">₹</span>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={company.awolPenaltyAmountPerDay ?? 500}
+                            onChange={(e) =>
+                              setCompany({ awolPenaltyAmountPerDay: Math.max(0, Number(e.target.value) || 0) })
+                            }
+                            className="h-8 w-28 text-xs font-bold"
+                          />
+                          <span className="text-[11px] text-muted-foreground">per uninformed absent day</span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Additional flat penalty deducted from Net Salary per unauthorized absent day (on top of standard Loss of Pay proration).
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         {/* ========================================================================= */}
@@ -3259,7 +3498,7 @@ export function PayrollPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {monthlyRegister.map(({ emp, rawEmp, paidDays, rawPresentDays, weekOffDays, weekOffEnabled, rosterWeekOffDays, rawOtHours, otStatus, isOtApproved, otApprovedHours, otHours, dailyOtRecords, comp, hasOverride, overrideData }) => (
+                  {monthlyRegister.map(({ emp, rawEmp, paidDays, rawPresentDays, restDayWorkDays, daysLeave, unexcusedAbsentDays, awolEval, totalLateDays, totalLateMinutes, permissionMinutesUsedForLate, lateConvertedHalfDays, weekOffDays, weekOffEnabled, rosterWeekOffDays, rawOtHours, otStatus, isOtApproved, otApprovedHours, otHours, dailyOtRecords, comp, hasOverride, overrideData }) => (
                     <tr key={emp.id} className="hover:bg-muted/20 transition-colors">
                       {/* Employee */}
                       <td className="px-4 py-3">
@@ -3268,9 +3507,10 @@ export function PayrollPage() {
                             {emp.name.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-semibold text-foreground text-xs">{emp.name}</span>
                               <EmploymentTypeBadge type={emp.employmentType} />
+                              <EmployeeAwolBadge employee={emp} evaluation={awolEval} />
                               {hasOverride && (
                                 <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[9px] px-1 py-0">
                                   Custom
@@ -3291,9 +3531,31 @@ export function PayrollPage() {
                       {/* Present Days / WO / OT */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-semibold text-[11px] px-1.5 py-0.5 whitespace-nowrap">
+                          <Badge
+                            variant="outline"
+                            title={`Late Days: ${totalLateDays || 0} (${totalLateMinutes || 0}m) | Short Permission Used: ${permissionMinutesUsedForLate || 0}m | Late Converted Half-Days: ${lateConvertedHalfDays || 0}`}
+                            className="bg-primary/10 text-primary border-primary/20 font-semibold text-[11px] px-1.5 py-0.5 whitespace-nowrap cursor-help"
+                          >
                             {paidDays}/{isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26)} Present
                           </Badge>
+                          {(totalLateDays > 0 || lateConvertedHalfDays > 0 || permissionMinutesUsedForLate > 0) && (
+                            <div
+                              className="group relative inline-flex items-center gap-1 rounded-md bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800 px-1.5 py-0.5 text-[10px] font-semibold cursor-help"
+                              title={`Late Days: ${totalLateDays} (${totalLateMinutes}m) | Permission Used: ${permissionMinutesUsedForLate}m | Converted HD: ${lateConvertedHalfDays}`}
+                            >
+                              <Clock className="h-2.5 w-2.5 shrink-0" />
+                              <span>
+                                {lateConvertedHalfDays > 0
+                                  ? `${lateConvertedHalfDays} HD (Late)`
+                                  : permissionMinutesUsedForLate > 0
+                                  ? `Perm -${permissionMinutesUsedForLate}m`
+                                  : `Late ${totalLateDays}d (${totalLateMinutes}m)`}
+                              </span>
+                              <div className="pointer-events-none absolute bottom-full left-0 mb-1.5 hidden group-hover:block z-50 w-max max-w-xs rounded-lg bg-slate-900 text-white px-2.5 py-1.5 text-[10px] font-semibold shadow-lg border border-orange-500/40">
+                                Late Days: {totalLateDays} ({totalLateMinutes}m) | Short Permission Used: {permissionMinutesUsedForLate}m | Late Converted Half-Days: {lateConvertedHalfDays}
+                              </div>
+                            </div>
+                          )}
                           {emp.otEnabled === false ? (
                             <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-border text-[10px] px-1.5 py-0 whitespace-nowrap">
                               OT Disabled
@@ -3342,7 +3604,19 @@ export function PayrollPage() {
                         <div className="font-semibold text-rose-600 text-xs">-{inr(comp.totalDeductions)}</div>
                         <div className="text-[10px] text-muted-foreground">
                           PF: {inr(comp.deductions.employeePF)} | PT: {inr(comp.deductions.professionalTax)}
+                          {comp.deductions.fineAndDamages > 0 && ` | Fines: ${inr(comp.deductions.fineAndDamages)}`}
                         </div>
+                        {(comp as any).awolPenaltyTotal > 0 && (
+                          <div
+                            className="group relative mt-1 inline-flex items-center gap-1 rounded-md bg-rose-500/10 border border-rose-500/25 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400 cursor-help"
+                            title={`AWOL Penalty: ${(comp as any).unexcusedAbsentDays} Uninformed Absent Days × ₹${((comp as any).awolPenaltyAmountPerDay ?? company.awolPenaltyAmountPerDay ?? 500).toLocaleString("en-IN")}/day = ₹${Math.round((comp as any).awolPenaltyTotal).toLocaleString("en-IN")}`}
+                          >
+                            <span>⚠️ AWOL Penalty: {inr((comp as any).awolPenaltyTotal)}</span>
+                            <div className="pointer-events-none absolute bottom-full left-0 mb-1.5 hidden group-hover:block z-50 w-max max-w-xs rounded-lg bg-slate-900 text-white px-2.5 py-1.5 text-[10px] font-semibold shadow-lg border border-rose-500/40">
+                              AWOL Penalty: {(comp as any).unexcusedAbsentDays} Uninformed Absent Days × ₹{((comp as any).awolPenaltyAmountPerDay ?? company.awolPenaltyAmountPerDay ?? 500).toLocaleString("en-IN")}/day = ₹{Math.round((comp as any).awolPenaltyTotal).toLocaleString("en-IN")}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* Net In Hand */}
@@ -3365,7 +3639,7 @@ export function PayrollPage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => setPreviewTarget({ emp, paidDays, rawPresentDays, weekOffDays, weekOffEnabled, otHours, comp })}
+                            onClick={() => setPreviewTarget({ emp, paidDays, rawPresentDays, weekOffDays, weekOffEnabled, otHours, comp, restDayWorkDays, leaveDays: daysLeave, holidayDays: (holidays || []).filter((h: any) => h.date?.startsWith(selectedMonth))?.length || 0 })}
                             className="h-7.5 px-2 text-xs rounded-lg gap-1 text-primary hover:bg-primary/10 font-medium"
                           >
                             <Eye className="h-3.5 w-3.5" />
@@ -3390,7 +3664,8 @@ export function PayrollPage() {
                               setEditingRecord({
                                 emp: rawEmp,
                                 customBasic: overrideData.customBasic !== undefined ? overrideData.customBasic : (emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0),
-                                daysWorked: overrideData.daysWorked !== undefined ? overrideData.daysWorked : rawPresentDays,
+                                daysWorked: (overrideData.daysWorkedCustom && overrideData.daysWorked !== undefined) ? overrideData.daysWorked : rawPresentDays,
+                                daysWorkedCustom: overrideData.daysWorkedCustom || false,
                                 otHours: overrideData.otApprovedHours !== undefined ? overrideData.otApprovedHours : (overrideData.otHours !== undefined ? overrideData.otHours : (isOtApproved ? otHours : rawOtHours)),
                                 otApprovedHours: overrideData.otApprovedHours !== undefined ? overrideData.otApprovedHours : (overrideData.otHours !== undefined ? overrideData.otHours : (isOtApproved ? otHours : rawOtHours)),
                                 otStatus: overrideData.otStatus || (otHours > 0 ? "approved" : (rawOtHours > 0 ? "pending" : "pending")),
@@ -3452,7 +3727,8 @@ export function PayrollPage() {
                                 advance: overrideData.advance !== undefined ? overrideData.advance : 0,
                                 otherDeductions: overrideData.otherDeductions !== undefined ? overrideData.otherDeductions : 0,
                                 notes: overrideData.notes || "",
-                              });
+                                unexcusedAbsentDays,
+                              } as any);
                             }}
                             disabled={isPeriodLocked}
                             title={isPeriodLocked ? "Payroll is locked for this period. Unlock to edit." : "Edit employee payroll"}
@@ -3468,7 +3744,7 @@ export function PayrollPage() {
                             variant="ghost"
                             onClick={async () => {
                               try {
-                                await generateSalarySlipPDF(company, emp, effectivePeriodLabel, comp, paidDays, weekOffEnabled ? weekOffDays : 0, docAssets);
+                                await generateSalarySlipPDF(company, emp, effectivePeriodLabel, comp, paidDays, weekOffEnabled ? weekOffDays : 0, docAssets, restDayWorkDays);
                                 toast.success(`Payslip downloaded for ${emp.name}`);
                               } catch (err) {
                                 console.error("[Payroll] PDF generation failed:", err);
@@ -4269,6 +4545,9 @@ export function PayrollPage() {
               rawPresentDays={previewTarget.rawPresentDays}
               weekOffDays={previewTarget.weekOffDays}
               weekOffEnabled={previewTarget.weekOffEnabled}
+              leaveDays={previewTarget.leaveDays}
+              holidayDays={previewTarget.holidayDays}
+              restDayWorkDays={previewTarget.restDayWorkDays}
               onDownloadPdf={async () => {
                 try {
                   await generateSalarySlipPDF(
@@ -4278,7 +4557,8 @@ export function PayrollPage() {
                     previewTarget.comp,
                     previewTarget.paidDays,
                     previewTarget.weekOffEnabled ? previewTarget.weekOffDays : 0,
-                    docAssets
+                    docAssets,
+                    previewTarget.restDayWorkDays
                   );
                   toast.success(`Payslip PDF downloaded for ${previewTarget.emp.name}`);
                 } catch (err) {
@@ -4345,12 +4625,37 @@ export function PayrollPage() {
 
                       {/* Present / Worked Days */}
                       <div className="space-y-1">
-                        <Label className="text-xs font-semibold">Present Days</Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold">Present Days</Label>
+                          {editingRecord.daysWorkedCustom && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const reg = monthlyRegister.find((r) => r.emp.id === editingRecord.emp.id);
+                                const defaultDays = reg ? reg.rawPresentDays : editingRecord.daysWorked;
+                                setEditingRecord({
+                                  ...editingRecord,
+                                  daysWorked: defaultDays,
+                                  daysWorkedCustom: false,
+                                });
+                              }}
+                              className="text-[10px] text-primary hover:underline font-semibold"
+                            >
+                              Sync Attendance
+                            </button>
+                          )}
+                        </div>
                         <Input
                           type="number"
                           step="0.5"
                           value={editingRecord.daysWorked}
-                          onChange={(e) => setEditingRecord({ ...editingRecord, daysWorked: Number(e.target.value) || 0 })}
+                          onChange={(e) =>
+                            setEditingRecord({
+                              ...editingRecord,
+                              daysWorked: Number(e.target.value) || 0,
+                              daysWorkedCustom: true,
+                            })
+                          }
                           className="h-8 text-xs font-bold text-emerald-600"
                         />
                       </div>
@@ -5430,6 +5735,7 @@ export function PayrollPage() {
                       const overrideKey = `${effectivePeriodKey}_${editingRecord.emp.id}`;
                       const overridePayload: MonthlyOverrideData = {
                         daysWorked: editingRecord.daysWorked,
+                        daysWorkedCustom: editingRecord.daysWorkedCustom || false,
                         otHours: editingRecord.otHours,
                         otApprovedHours: editingRecord.otHours,
                         otStatus: editingRecord.otHours > 0 ? "approved" : (editingRecord.otStatus || "pending"),
@@ -5593,7 +5899,8 @@ export function PayrollPage() {
                   liveBenchmarkComp,
                   isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26),
                   0,
-                  docAssets
+                  docAssets,
+                  0
                 );
                 toast.success("Benchmark Payslip PDF downloaded!");
               } catch (err) {
