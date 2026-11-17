@@ -70,7 +70,7 @@ export function EpfoEcrModal({
   const [selectedMonth, setSelectedMonth] = useState(
     defaultMonth || new Date().toISOString().slice(0, 7)
   );
-  const [includeAllStaff, setIncludeAllStaff] = useState(true);
+  const [includeAllStaff, setIncludeAllStaff] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [downloadingTxt, setDownloadingTxt] = useState(false);
   const [downloadingXlsx, setDownloadingXlsx] = useState(false);
