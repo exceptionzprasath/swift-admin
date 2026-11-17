@@ -40,6 +40,7 @@ import {
   computeEpfoEcrRecords,
   downloadEpfoEcrTxt,
   downloadEpfoEcrXlsx,
+  isEmployeeEligibleForEpfoEcr,
   type EpfoEcrRecord,
 } from "@/lib/epfo-ecr";
 
@@ -80,9 +81,44 @@ export function EpfoEcrModal({
     }
   }, [defaultMonth]);
 
+  // Active employees for the selected month who have pfEligible === false
   const ineligibleEmployees = useMemo(() => {
-    return employees.filter((e) => e.pfEligible === false);
-  }, [employees]);
+    const [yearStr, monthStr] = selectedMonth.split("-");
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const totalDaysInMonth = new Date(year, month, 0).getDate();
+
+    return (employees || []).filter((e) => {
+      const eligibleForMonth = isEmployeeEligibleForEpfoEcr({
+        employee: e,
+        selectedMonth,
+        totalDaysInMonth,
+        attendance,
+        monthlyOverrides,
+        includeAllStaff: true,
+      });
+      return eligibleForMonth && e.pfEligible === false;
+    });
+  }, [employees, selectedMonth, attendance, monthlyOverrides]);
+
+  // Relieved, terminated, suspended, or inactive employees safely excluded for this month
+  const excludedPastCount = useMemo(() => {
+    const [yearStr, monthStr] = selectedMonth.split("-");
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const totalDaysInMonth = new Date(year, month, 0).getDate();
+
+    return (employees || []).filter((e) => {
+      return !isEmployeeEligibleForEpfoEcr({
+        employee: e,
+        selectedMonth,
+        totalDaysInMonth,
+        attendance,
+        monthlyOverrides,
+        includeAllStaff: true,
+      });
+    }).length;
+  }, [employees, selectedMonth, attendance, monthlyOverrides]);
 
   // Generate 12 recent months
   const monthOptions = useMemo(() => {
@@ -250,12 +286,23 @@ export function EpfoEcrModal({
               </button>
             </div>
 
-            <Badge
-              variant="outline"
-              className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 text-xs font-semibold"
-            >
-              {stats.totalMembers} Enrolled Members
-            </Badge>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge
+                variant="outline"
+                className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 text-xs font-semibold"
+              >
+                {stats.totalMembers} Enrolled Members
+              </Badge>
+              {excludedPastCount > 0 && (
+                <Badge
+                  variant="outline"
+                  className="bg-muted text-muted-foreground border-border text-xs font-medium"
+                  title={`${excludedPastCount} relieved, terminated, or inactive employee(s) excluded from this month's return`}
+                >
+                  {excludedPastCount} Exited Excluded
+                </Badge>
+              )}
+            </div>
           </div>
           <DialogDescription className="text-xs text-muted-foreground pt-1.5 leading-relaxed">
             Generate and export the monthly EPFO Electronic Challan cum Return (ECR) in official{" "}

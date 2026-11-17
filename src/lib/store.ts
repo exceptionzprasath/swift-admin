@@ -81,7 +81,9 @@ export function isPastEmployee(emp: Partial<Employee> | null | undefined): boole
     s === "terminated" ||
     s === "inactive" ||
     s === "frozen" ||
-    s === "freezed"
+    s === "freezed" ||
+    s === "resigned" ||
+    s === "exited"
   );
 }
 
@@ -100,7 +102,9 @@ export function isActiveEmployee(emp: Partial<Employee> | null | undefined): boo
     s === "terminated" ||
     s === "inactive" ||
     s === "frozen" ||
-    s === "freezed"
+    s === "freezed" ||
+    s === "resigned" ||
+    s === "exited"
   );
 }
 

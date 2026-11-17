@@ -1,6 +1,157 @@
 import * as XLSX from "xlsx";
-import type { Company, Employee, AttendanceRecord } from "./store";
+import {
+  type Company,
+  type Employee,
+  type AttendanceRecord,
+  isPastEmployee,
+  isMockEmployee,
+  isFrozenEmployee,
+} from "./store";
 import { computePayroll, computeMonthlyAttendanceSummary } from "./payroll";
+
+export function parseDateToIso(dateStr?: string | null): string | null {
+  if (!dateStr) return null;
+  const s = String(dateStr).trim();
+  if (!s) return null;
+
+  // DD-MM-YYYY or DD/MM/YYYY
+  const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmy) {
+    const d = dmy[1].padStart(2, "0");
+    const m = dmy[2].padStart(2, "0");
+    const y = dmy[3];
+    return `${y}-${m}-${d}`;
+  }
+
+  // YYYY-MM-DD or YYYY/MM/DD
+  const ymd = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymd) {
+    const y = ymd[1];
+    const m = ymd[2].padStart(2, "0");
+    const d = ymd[3].padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  return null;
+}
+
+/**
+ * Checks whether an employee is eligible to be included in the EPFO ECR return for the given wage month.
+ *
+ * Excludes:
+ * - Mock or frozen test employees.
+ * - Employees who joined after the selected month (doj > end of selected month).
+ * - Relieved, terminated, suspended, resigned, exited, or inactive employees:
+ *     * Excluded if their exit date was before the selected month.
+ *     * Excluded if they have zero worked attendance and zero payroll override days in this month.
+ * - Employees with pfEligible === false (when includeAllStaff is false).
+ */
+export function isEmployeeEligibleForEpfoEcr({
+  employee,
+  selectedMonth,
+  totalDaysInMonth,
+  attendance = [],
+  monthlyOverrides = {},
+  includeAllStaff = false,
+}: {
+  employee: Employee;
+  selectedMonth: string;
+  totalDaysInMonth: number;
+  attendance?: AttendanceRecord[];
+  monthlyOverrides?: Record<string, any>;
+  includeAllStaff?: boolean;
+}): boolean {
+  if (!employee) return false;
+
+  // 1. Exclude mock / frozen demo profiles
+  if (isMockEmployee(employee) || isFrozenEmployee(employee)) {
+    return false;
+  }
+
+  // 2. Exclude employees who have not yet joined in or before this wage month
+  const endOfMonthStr = `${selectedMonth}-${String(totalDaysInMonth).padStart(2, "0")}`;
+  const startOfMonthStr = `${selectedMonth}-01`;
+  const isoDoj = parseDateToIso(employee.doj);
+  if (isoDoj && isoDoj > endOfMonthStr) {
+    return false;
+  }
+
+  // 3. Status check: Past, relieved, terminated, suspended, resigned, or inactive staff
+  const status = String(employee.status || "active").toLowerCase().trim();
+  const isPast =
+    isPastEmployee(employee) ||
+    status === "relieved" ||
+    status === "releived" ||
+    status === "terminated" ||
+    status === "suspended" ||
+    status === "inactive" ||
+    status === "frozen" ||
+    status === "freezed" ||
+    status === "resigned" ||
+    status === "exited";
+
+  if (isPast) {
+    const rawExitDate =
+      employee.lastWorkingDate ||
+      employee.statusDate ||
+      employee.terminatedAt ||
+      (employee as any).relievedAt ||
+      (employee as any).resignedAt ||
+      (employee as any).exitDate;
+
+    const exitDate = parseDateToIso(rawExitDate);
+
+    // If relieved or terminated BEFORE the start of this month, completely exclude
+    if (exitDate && exitDate < startOfMonthStr) {
+      return false;
+    }
+
+    // If exited during/after month or exit date is unrecorded, only include if they actually worked or have payroll override in this month
+    const hasWorkedAttendance = attendance.some((a) => {
+      if (
+        (a.employeeId === employee.id || a.employeeName === employee.name) &&
+        a.date &&
+        a.date.startsWith(selectedMonth)
+      ) {
+        const st = String(a.status || "").toLowerCase().trim();
+        const hrs = Number(a.hoursWorked || (a as any).workedHours || 0);
+        return (
+          st === "present" ||
+          st === "half_day" ||
+          st === "halfday" ||
+          st === "half-day" ||
+          st === "p" ||
+          st === "hd" ||
+          hrs > 0
+        );
+      }
+      return false;
+    });
+
+    const overrideKey1 = `${selectedMonth}_${employee.id}`;
+    const overrideKey2 = `${employee.id}_${selectedMonth}`;
+    const ov = monthlyOverrides[overrideKey1] || monthlyOverrides[overrideKey2];
+    const hasOverrideDays = ov && ov.daysWorked !== undefined && Number(ov.daysWorked) > 0;
+
+    if (!hasWorkedAttendance && !hasOverrideDays) {
+      return false;
+    }
+  }
+
+  // 4. PF Eligibility check (if includeAllStaff is false, only include pfEligible !== false)
+  if (!includeAllStaff && employee.pfEligible === false) {
+    return false;
+  }
+
+  return true;
+}
 
 function saveBlob(blob: Blob, fileName: string) {
   if (typeof window === "undefined") return;
@@ -120,21 +271,24 @@ export function computeEpfoEcrRecords({
   const workingDaysBase = company.workingDaysPerMonth || (totalDaysInMonth - sundaysInMonth) || 26;
 
   // Filter employees eligible for PF return:
-  // If includeAllStaff is true, include all active employees
-  // Otherwise, filter for active employees where pfEligible !== false
-  const eligibleStaff = employees.filter((e) => {
-    if (!includeAllStaff && e.pfEligible === false) return false;
-    if (e.status === "inactive" && e.doj && e.doj > `${selectedMonth}-31`) return false;
-    return true;
-  });
-
-  const targetList = eligibleStaff.length > 0 ? eligibleStaff : employees;
+  // Excludes relieved, terminated, suspended, resigned, exited, inactive, frozen, and mock employees
+  // (unless they actually worked / had paid days in this specific wage month before exiting).
+  // Also excludes employees who have not yet joined in this month.
+  // If includeAllStaff is false, excludes employees where pfEligible === false.
+  const targetList = employees.filter((e) =>
+    isEmployeeEligibleForEpfoEcr({
+      employee: e,
+      selectedMonth,
+      totalDaysInMonth,
+      attendance,
+      monthlyOverrides,
+      includeAllStaff,
+    })
+  );
 
   const records: EpfoEcrRecord[] = [];
 
-  targetList.forEach((emp, index) => {
-    const sNo = index + 1;
-    const empId = emp.empCode || `EMP-${1000 + sNo}`;
+  targetList.forEach((emp) => {
     const isPfEligible = emp.pfEligible !== false;
 
     // Clean 12-digit UAN
@@ -205,6 +359,27 @@ export function computeEpfoEcrRecords({
       advance: ov.advance || 0,
       bonus: ov.bonus || 0,
     });
+
+    // For past / relieved / terminated / resigned employees who exited, if calculatedPaidDays <= 0 or gross <= 0, do not include
+    const isPast =
+      isPastEmployee(emp) ||
+      [
+        "relieved",
+        "releived",
+        "terminated",
+        "suspended",
+        "inactive",
+        "frozen",
+        "freezed",
+        "resigned",
+        "exited",
+      ].includes(String(emp.status || "").toLowerCase().trim());
+    if (isPast && (calculatedPaidDays <= 0 || comp.gross <= 0)) {
+      return;
+    }
+
+    const sNo = records.length + 1;
+    const empId = emp.empCode || `EMP-${1000 + sNo}`;
 
     // Gross Wages
     const grossWages = Math.round(comp.gross);
