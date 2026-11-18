@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState, useRef } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useStore, type VaultFolder, type VaultFile } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,8 +67,17 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/vault")({
   head: () => ({ meta: [{ title: "Company Document Vault · CreatonsHR" }] }),
-  component: VaultPage,
+  component: RedirectToDocumentationVault,
 });
+
+function RedirectToDocumentationVault() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate({ to: "/admin/documentation-alt", search: (prev: any) => ({ ...prev, tab: "vault" }) as any, replace: true });
+  }, [navigate]);
+
+  return <VaultPage />;
+}
 
 const FOLDER_COLORS = [
   { label: "Indigo", value: "#4f46e5", bgClass: "bg-indigo-500/10 text-indigo-600 border-indigo-500/30" },
@@ -117,7 +126,7 @@ function getConfidentialityBadge(conf: VaultFile["confidentiality"]) {
   }
 }
 
-function VaultPage() {
+export function VaultPage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const {
     company,
     vaultFolders,

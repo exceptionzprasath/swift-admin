@@ -147,7 +147,6 @@ const nav: NavItem[] = [
   { to: "/admin/roles", label: "Roles & Responsibilities", icon: ShieldCheck, moduleKey: "roles" },
   { to: "/admin/branches", label: "Branches", icon: Building2, moduleKey: "branches" },
   { to: "/admin/org", label: "Organization", icon: Network, moduleKey: "org" },
-  { to: "/admin/vault", label: "Vault", icon: FolderLock, moduleKey: "vault" },
   { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket, comingSoon: true },
   { to: "/admin/reports", label: "Reports", icon: BarChart3, comingSoon: true },
   { to: "/admin/assets", label: "Assets", icon: Package, comingSoon: true },

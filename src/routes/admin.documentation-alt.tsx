@@ -1,7 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useStore, getUpwardHierarchyChain, type Employee, type EmployeeDocument } from "@/lib/store";
+import { VaultPage } from "./admin.vault";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
 import {
   useDigitalDocStore,
   PRESET_DOCUMENTS,
@@ -54,6 +57,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   FileText,
+  FolderLock,
   Plus,
   Search,
   CheckCircle2,
@@ -167,6 +171,43 @@ export default function DigitalDocumentationPage() {
   // Navigation State
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+
+  // Tab State: Documentation Composer / Documents vs Company Document Vault
+  const [activeSectionTab, setActiveSectionTab] = useState<"docs" | "vault">(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get("tab");
+      if (t === "vault" || t === "company-vault") return "vault";
+    }
+    return "docs";
+  });
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get("tab");
+      if (t === "vault" || t === "company-vault") {
+        setActiveSectionTab("vault");
+      } else {
+        setActiveSectionTab("docs");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const handleSectionTabChange = (tab: "docs" | "vault") => {
+    setActiveSectionTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "docs") {
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.set("tab", tab);
+      }
+      window.history.pushState({}, "", url.toString());
+    }
+  };
 
   // PayTime+ Style Document View & Filter States
   const [activeDocViewTab, setActiveDocViewTab] = useState<"kyc" | "digital">("kyc");
@@ -1895,7 +1936,80 @@ export default function DigitalDocumentationPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* VIEW 1: HUB / LIST VIEW */}
+      {/* Top Section Frosted Capsule Tab Bar (Left-aligned) */}
+      {viewMode === "list" && (
+        <div className="flex items-center justify-start gap-4 flex-wrap pb-1">
+          <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/60 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs">
+            <button
+              type="button"
+              onClick={() => handleSectionTabChange("docs")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeSectionTab === "docs"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeSectionTab === "docs" && (
+                <motion.div
+                  layoutId="documentationSectionActivePill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <FileText className="h-4 w-4 shrink-0" />
+                <span>Documentations</span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSectionTabChange("vault")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeSectionTab === "vault"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeSectionTab === "vault" && (
+                <motion.div
+                  layoutId="documentationSectionActivePill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <FolderLock className="h-4 w-4 shrink-0" />
+                <span>Vault</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <AnimatePresence mode="wait">
+        {activeSectionTab === "vault" ? (
+          <motion.div
+            key="vault-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            <VaultPage isEmbedded />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="docs-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-6"
+          >
+            {/* VIEW 1: HUB / LIST VIEW */}
       {viewMode === "list" && (
         <div className="space-y-5">
           {/* Top Header - Removed banner text per request */}
@@ -5636,6 +5750,9 @@ export default function DigitalDocumentationPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
