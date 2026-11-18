@@ -533,6 +533,8 @@ export type Company = {
   geofence: { lat: number; lng: number; radiusM: number };
   leaveTypes: LeaveType[];
   permissionTypes?: PermissionType[];
+  sidebarOrder?: string[];
+  sidebarHiddenItems?: string[];
   shifts: ShiftType[];
   appointmentTemplate: string;
   branches: Branch[];

@@ -78,6 +78,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { SwiftAiCopilot } from "@/components/swift-ai-copilot";
 import { LiveNotificationBell } from "@/components/live-notification-bell";
 import { AdminInternalChat } from "@/components/internal-chat";
+import {
+  DEFAULT_SIDEBAR_ITEMS,
+  getOrderedNavItems,
+  getSavedSidebarOrder,
+  getSavedHiddenSidebarItems,
+  type NavItemConfig,
+} from "@/lib/sidebar-config";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin · CreatonsHR" }] }),
@@ -124,7 +131,7 @@ const isNavActive = (currentPath: string, targetPath: string, exact?: boolean) =
 
 function getSelectedMenuName(currentPath: string): string {
   if (currentPath === "/admin" || currentPath === "/admin/") return "Dashboard";
-  const matched = nav
+  const matched = DEFAULT_SIDEBAR_ITEMS
     .filter((n) => isNavActive(currentPath, n.to, n.exact))
     .sort((a, b) => b.to.length - a.to.length)[0];
   if (matched) return matched.label;
@@ -134,39 +141,6 @@ function getSelectedMenuName(currentPath: string): string {
   if (currentPath.startsWith("/admin/salary-revision")) return "Salary Revision";
   return "Dashboard";
 }
-
-type NavItem = {
-  to: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  moduleKey?: ModuleKey;
-  exact?: boolean;
-  comingSoon?: boolean;
-  badge?: string | number;
-};
-
-const nav: NavItem[] = [
-  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, moduleKey: "dashboard", exact: true },
-  { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox, moduleKey: "requests" },
-  { to: "/admin/ai", label: "CREATONS AI", icon: CreatonsAiIcon, moduleKey: "ai", badge: "AI" },
-  { to: "/admin/app-hub", label: "App Hub", icon: LayoutGrid },
-  { to: "/admin/employees", label: "Employees", icon: Users, moduleKey: "employees" },
-  { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck, moduleKey: "attendance" },
-  { to: "/admin/payroll", label: "Payroll", icon: Calculator, moduleKey: "payroll" },
-  { to: "/admin/documentation-alt", label: "Documentations", icon: FileText, moduleKey: "documentation" },
-  { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal, moduleKey: "approvalSettings" },
-  { to: "/admin/roles", label: "Roles & Responsibilities", icon: ShieldCheck, moduleKey: "roles" },
-  { to: "/admin/org", label: "Organization", icon: Network, moduleKey: "org" },
-  { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket, comingSoon: true },
-  { to: "/admin/reports", label: "Reports", icon: BarChart3, comingSoon: true },
-  { to: "/admin/assets", label: "Assets", icon: Package, comingSoon: true },
-  { to: "/admin/compliance", label: "Compliance AI", icon: Scale, comingSoon: true },
-  { to: "/admin/compliance-docs", label: "Compliance Docs", icon: ShieldCheck, comingSoon: true },
-  { to: "/admin/audit", label: "Audit Log", icon: ShieldCheck, comingSoon: true },
-  { to: "/admin/subscription", label: "Subscription", icon: CreditCard, comingSoon: true },
-  { to: "/admin/renewals", label: "Renewal Scheduler", icon: BellRing, comingSoon: true },
-  { to: "/admin/settings", label: "Settings", icon: Settings, moduleKey: "settings" },
-];
 
 function AdminLayout() {
   const navigate = useNavigate();
@@ -183,6 +157,23 @@ function AdminLayout() {
   const docRequests = useStore((s) => s.docRequests || []);
   const grievances = useStore((s) => s.grievances || []);
   const selectedMenuName = getSelectedMenuName(path);
+
+  // Listen for sidebar order/visibility changes
+  const [sidebarVersion, setSidebarVersion] = useState(0);
+
+  useEffect(() => {
+    const handleOrderChange = () => {
+      setSidebarVersion((v) => v + 1);
+    };
+    window.addEventListener("creatons:sidebar-order-changed", handleOrderChange);
+    return () => window.removeEventListener("creatons:sidebar-order-changed", handleOrderChange);
+  }, []);
+
+  const orderedNav = useMemo(() => {
+    const customOrder = company.sidebarOrder || getSavedSidebarOrder();
+    const hiddenItems = company.sidebarHiddenItems || getSavedHiddenSidebarItems();
+    return getOrderedNavItems(customOrder, hiddenItems);
+  }, [company.sidebarOrder, company.sidebarHiddenItems, sidebarVersion]);
 
   // Live count of pending requests awaiting action
   const pendingRequestsCount = useMemo(() => {
@@ -337,7 +328,7 @@ function AdminLayout() {
 
   // Filter navigation items by role sidebar visibility and search query, injecting dynamic live pending badge
   const filteredNav = useMemo(() => {
-    let list = nav.map((item) => {
+    let list = orderedNav.map((item) => {
       if (item.to === "/admin/requests" || item.moduleKey === "requests") {
         return {
           ...item,
@@ -1045,7 +1036,7 @@ function AdminLayout() {
           <CommandList className="max-h-[380px] overflow-y-auto">
             <CommandEmpty>No matching results found.</CommandEmpty>
             <CommandGroup heading="Quick Navigation">
-              {nav.map((item) => (
+              {DEFAULT_SIDEBAR_ITEMS.map((item) => (
                 <CommandItem
                   key={item.to}
                   onSelect={() => {
