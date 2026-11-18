@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Megaphone, MessagesSquare, LayoutGrid } from "lucide-react";
+import { Megaphone, MessagesSquare } from "lucide-react";
 import { NoticesPage } from "./admin.notices";
 import { AdminTeamChatPage } from "./admin.team-chat";
 import { useStore } from "@/lib/store";
@@ -54,19 +54,8 @@ export function AppHubPage() {
 
   return (
     <div className="flex flex-col h-full w-full min-h-0 overflow-hidden bg-background">
-      {/* Top Section Header & Frosted Capsule Tab Bar */}
-      <div className="px-4 sm:px-8 py-3.5 border-b border-border/40 bg-background/80 dark:bg-background/50 backdrop-blur-md flex items-center justify-between gap-4 flex-wrap shrink-0 z-20">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-            <LayoutGrid className="h-4 w-4" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-foreground leading-none">App Hub</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">Centralized communications, live team chat & company notice broadcasts</p>
-          </div>
-        </div>
-
-        {/* Frosted Capsule Tab Bar */}
+      {/* Top Section Frosted Capsule Tab Bar (Left-aligned) */}
+      <div className="px-4 sm:px-8 py-3 border-b border-border/40 bg-background/80 dark:bg-background/50 backdrop-blur-md flex items-center justify-start gap-4 flex-wrap shrink-0 z-20">
         <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/60 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs">
           <button
             type="button"
