@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo, useEffect } from "react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import { useStore, getBackendUrl, getUpwardHierarchyChain, type Employee, type PredefinedRole } from "@/lib/store";
 import {
   DEFAULT_DOCUMENT_TEMPLATES,
@@ -693,7 +695,32 @@ export function CentralizedApprovalSettingsPage({
   const { company, setCompany, employees, roles } = useStore();
 
   // Active top Category Tab
-  const [activeTab, setActiveTab] = useState<MainCategoryTab>(onlyCategory || "attendance");
+  const [activeTab, setActiveTab] = useState<MainCategoryTab>(() => {
+    if (onlyCategory) return onlyCategory;
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const cat = (sp.get("tab") || sp.get("category")) as MainCategoryTab | null;
+      if (cat && ["attendance", "grievance", "loan", "compoff"].includes(cat)) {
+        return cat;
+      }
+    }
+    return "attendance";
+  });
+
+  useEffect(() => {
+    if (onlyCategory) return;
+    const handlePopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const cat = (sp.get("tab") || sp.get("category")) as MainCategoryTab | null;
+      if (cat && ["attendance", "grievance", "loan", "compoff"].includes(cat)) {
+        setActiveTab(cat);
+      } else {
+        setActiveTab("attendance");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [onlyCategory]);
 
   // Workflows state by category
   const [workflows, setWorkflows] = useState<Record<MainCategoryTab, WorkflowTypeItem[]>>(() => {
@@ -789,6 +816,17 @@ export function CentralizedApprovalSettingsPage({
     const list = (workflows[tab] && workflows[tab].length > 0) ? workflows[tab] : (INITIAL_WORKFLOWS[tab] || []);
     if (list.length > 0) {
       setSelectedTypeId(list[0].id);
+    }
+    if (!onlyCategory && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "attendance") {
+        url.searchParams.delete("tab");
+        url.searchParams.delete("category");
+      } else {
+        url.searchParams.set("tab", tab);
+        url.searchParams.delete("category");
+      }
+      window.history.pushState({}, "", url.toString());
     }
   };
 
@@ -1247,49 +1285,102 @@ export function CentralizedApprovalSettingsPage({
         </div>
       </div>
 
-      {/* Primary Category Tabs (Hidden when dedicated to onlyCategory) */}
+      {/* Top Primary Category Frosted Capsule Tab Bar (Left-aligned) */}
       {!onlyCategory && (
-        <div className="flex items-center gap-2 border-b border-border pb-2 overflow-x-auto no-scrollbar w-full min-w-0">
-          <button
-            onClick={() => handleTabChange("attendance")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
-              activeTab === "attendance"
-                ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <CalendarCheck className="h-4 w-4 shrink-0" /> Attendance
-          </button>
-          <button
-            onClick={() => handleTabChange("grievance")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
-              activeTab === "grievance"
-                ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <MessageSquareHeart className="h-4 w-4 shrink-0" /> Grievance
-          </button>
-          <button
-            onClick={() => handleTabChange("loan")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
-              activeTab === "loan"
-                ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <Banknote className="h-4 w-4 shrink-0" /> Advance Loan Request
-          </button>
-          <button
-            onClick={() => handleTabChange("compoff")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
-              activeTab === "compoff"
-                ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <Coffee className="h-4 w-4 shrink-0" /> Comp-Off
-          </button>
+        <div className="flex items-center justify-start gap-4 flex-wrap pb-1">
+          <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/60 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs">
+            <button
+              type="button"
+              onClick={() => handleTabChange("attendance")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeTab === "attendance"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeTab === "attendance" && (
+                <motion.div
+                  layoutId="approvalSettingsCategoryActivePill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <CalendarCheck className="h-4 w-4 shrink-0" />
+                <span>Attendance</span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleTabChange("grievance")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeTab === "grievance"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeTab === "grievance" && (
+                <motion.div
+                  layoutId="approvalSettingsCategoryActivePill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <MessageSquareHeart className="h-4 w-4 shrink-0" />
+                <span>Grievance</span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleTabChange("loan")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeTab === "loan"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeTab === "loan" && (
+                <motion.div
+                  layoutId="approvalSettingsCategoryActivePill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <Banknote className="h-4 w-4 shrink-0" />
+                <span>Advance Loan Request</span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleTabChange("compoff")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeTab === "compoff"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeTab === "compoff" && (
+                <motion.div
+                  layoutId="approvalSettingsCategoryActivePill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <Coffee className="h-4 w-4 shrink-0" />
+                <span>Comp-Off</span>
+              </span>
+            </button>
+          </div>
         </div>
       )}
 
