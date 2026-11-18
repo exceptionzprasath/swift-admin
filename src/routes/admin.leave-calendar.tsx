@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo, useRef } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useStore, CompanyHoliday, HolidayType, LeaveRequest, isMockEmployee, isFrozenEmployee, isActiveEmployee } from "@/lib/store";
 import {
   CalendarDays, ChevronLeft, ChevronRight, Download, Upload, Plus,
@@ -32,8 +32,17 @@ import {
 
 export const Route = createFileRoute("/admin/leave-calendar")({
   head: () => ({ meta: [{ title: "Leave & Holiday Management · CreatonsHR" }] }),
-  component: LeaveCalendarPage,
+  component: RedirectToAttendanceLeaveCalendar,
 });
+
+function RedirectToAttendanceLeaveCalendar() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate({ to: "/admin/attendance", search: (prev: any) => ({ ...prev, tab: "leave-calendar" }) as any, replace: true });
+  }, [navigate]);
+
+  return <LeaveCalendarPage />;
+}
 
 const HOLIDAY_TYPE_CONFIG: Record<
   HolidayType,
@@ -77,7 +86,7 @@ function getHolidayConfig(type: HolidayType | string) {
   return HOLIDAY_TYPE_CONFIG["Public Holiday"];
 }
 
-function LeaveCalendarPage() {
+export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const {
     holidays,
     addHoliday,

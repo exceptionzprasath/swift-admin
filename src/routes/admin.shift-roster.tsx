@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo, useRef } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useStore, ShiftType, ShiftAssignment, Employee, isMockEmployee, isFrozenEmployee, isActiveEmployee } from "@/lib/store";
 import {
   Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus,
@@ -30,8 +30,17 @@ import { aiNotify } from "@/lib/ai-guide-bus";
 
 export const Route = createFileRoute("/admin/shift-roster")({
   head: () => ({ meta: [{ title: "Shift Roster & Shifts · CreatonsHR" }] }),
-  component: ShiftRosterPage,
+  component: RedirectToAttendanceShiftRoster,
 });
+
+function RedirectToAttendanceShiftRoster() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate({ to: "/admin/attendance", search: (prev: any) => ({ ...prev, tab: "shift-roster" }) as any, replace: true });
+  }, [navigate]);
+
+  return <ShiftRosterPage />;
+}
 
 const PRESET_COLORS = [
   { label: "Indigo", value: "indigo", bg: "bg-indigo-500/10", text: "text-indigo-600 dark:text-indigo-400", border: "border-indigo-500/30", solid: "#6366f1" },
@@ -55,7 +64,7 @@ function getShiftIcon(startStr: string) {
   return Moon;
 }
 
-function ShiftRosterPage() {
+export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const {
     company,
     employees: rawEmployees,

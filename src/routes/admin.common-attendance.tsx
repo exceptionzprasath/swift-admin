@@ -35,8 +35,17 @@ import {
 
 export const Route = createFileRoute("/admin/common-attendance")({
   head: () => ({ meta: [{ title: "Common Attendance Kiosk · CreatonsHR" }] }),
-  component: CommonAttendancePage,
+  component: RedirectToAttendanceKiosk,
 });
+
+function RedirectToAttendanceKiosk() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate({ to: "/admin/attendance", search: (prev: any) => ({ ...prev, tab: "kiosk" }) as any, replace: true });
+  }, [navigate]);
+
+  return <CommonAttendancePage />;
+}
 
 /**
  * Web Audio API synthesizer for positive attendance punch audio feedback
@@ -190,7 +199,7 @@ function computePunctualityAndStatus(
   };
 }
 
-function CommonAttendancePage() {
+export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const nav = useNavigate();
   const { user, signOut } = useAuth();
   const { company, employees, attendance, upsertAttendance } = useStore();

@@ -1,5 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { LeaveCalendarPage } from "./admin.leave-calendar";
+import { ShiftRosterPage } from "./admin.shift-roster";
+import { CommonAttendancePage } from "./admin.common-attendance";
+import { cn } from "@/lib/utils";
 import { useStore, isMockEmployee, isFrozenEmployee, isActiveEmployee, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -90,6 +95,7 @@ import {
   Info,
   CheckCheck,
   UploadCloud,
+  ScanFace,
 } from "lucide-react";
 import { toast } from "sonner";
 import { HardwareBridgeModal } from "@/components/biometric/HardwareBridgeModal";
@@ -375,6 +381,48 @@ function AttendancePage() {
   } = useStore();
   const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
   const { activeTenantId } = useAuth();
+
+  const [activeNavTab, setActiveNavTab] = useState<"attendance" | "leave-calendar" | "shift-roster" | "kiosk">(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get("tab");
+      if (t === "leave-calendar" || t === "leaves") return "leave-calendar";
+      if (t === "shift-roster" || t === "roster" || t === "shifts") return "shift-roster";
+      if (t === "kiosk" || t === "common-attendance") return "kiosk";
+    }
+    return "attendance";
+  });
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get("tab");
+      if (t === "leave-calendar" || t === "leaves") {
+        setActiveNavTab("leave-calendar");
+      } else if (t === "shift-roster" || t === "roster" || t === "shifts") {
+        setActiveNavTab("shift-roster");
+      } else if (t === "kiosk" || t === "common-attendance") {
+        setActiveNavTab("kiosk");
+      } else {
+        setActiveNavTab("attendance");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const handleNavTabChange = (tab: "attendance" | "leave-calendar" | "shift-roster" | "kiosk") => {
+    setActiveNavTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "attendance") {
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.set("tab", tab);
+      }
+      window.history.pushState({}, "", url.toString());
+    }
+  };
 
   // Primary Selected Date for Daily View
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -1506,9 +1554,146 @@ function AttendancePage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <AwolAlertBanner />
-      {/* Top Header & Live Sync Banner */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-gradient-to-r from-card via-card to-muted/30 p-6 rounded-2xl border border-border shadow-sm">
+      {/* Top Section Frosted Capsule Tab Bar (Left-aligned) */}
+      <div className="flex items-center justify-start gap-4 flex-wrap pb-1">
+        <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/60 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs">
+          <button
+            type="button"
+            onClick={() => handleNavTabChange("attendance")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeNavTab === "attendance"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeNavTab === "attendance" && (
+              <motion.div
+                layoutId="attendanceSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <CalendarCheck className="h-4 w-4 shrink-0" />
+              <span>Attendance</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavTabChange("leave-calendar")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeNavTab === "leave-calendar"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeNavTab === "leave-calendar" && (
+              <motion.div
+                layoutId="attendanceSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 shrink-0" />
+              <span>Leave Calendar</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavTabChange("shift-roster")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeNavTab === "shift-roster"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeNavTab === "shift-roster" && (
+              <motion.div
+                layoutId="attendanceSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <Clock className="h-4 w-4 shrink-0" />
+              <span>Shift Roster</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavTabChange("kiosk")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeNavTab === "kiosk"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeNavTab === "kiosk" && (
+              <motion.div
+                layoutId="attendanceSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <ScanFace className="h-4 w-4 shrink-0" />
+              <span>Attendance Kiosk</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {activeNavTab === "leave-calendar" ? (
+          <motion.div
+            key="leave-calendar-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            <LeaveCalendarPage isEmbedded />
+          </motion.div>
+        ) : activeNavTab === "shift-roster" ? (
+          <motion.div
+            key="shift-roster-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            <ShiftRosterPage isEmbedded />
+          </motion.div>
+        ) : activeNavTab === "kiosk" ? (
+          <motion.div
+            key="kiosk-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            <CommonAttendancePage isEmbedded />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="attendance-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-6"
+          >
+            <AwolAlertBanner />
+            {/* Top Header & Live Sync Banner */}
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-gradient-to-r from-card via-card to-muted/30 p-6 rounded-2xl border border-border shadow-sm">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
@@ -3360,6 +3545,9 @@ function AttendancePage() {
           handleLiveSync(false);
         }}
       />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
