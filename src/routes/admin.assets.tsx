@@ -247,7 +247,7 @@ function AssetsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-20 relative">
+    <div className="space-y-6 max-w-7xl mx-auto pb-20 relative min-h-[calc(100vh-10rem)]">
       <ComingSoonOverlay delayMs={700} />
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
