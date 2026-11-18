@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStore, type Employee } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,14 +51,29 @@ import {
 import { toast } from "sonner";
 import { DeleteEmployeeDialog } from "@/components/delete-employee-dialog";
 import { EmploymentTypeBadge } from "@/components/employment-type-badge";
-import { renderEmployeeStatusBadge } from "@/routes/admin.employees";
+import { renderEmployeeStatusBadge } from "@/components/employee-status-badge";
 
 export const Route = createFileRoute("/admin/past-employees")({
   head: () => ({ meta: [{ title: "Past Employees · CreatonsHR" }] }),
-  component: PastEmployeesPage,
+  component: RedirectToEmployeesPast,
 });
 
-export function PastEmployeesPage() {
+function RedirectToEmployeesPast() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate({ to: "/admin/employees", search: (prev: any) => ({ ...prev, tab: "past" }) as any, replace: true });
+  }, [navigate]);
+
+  return <PastEmployeesPage />;
+}
+
+export function PastEmployeesPage({
+  isEmbedded = false,
+  onSwitchToActive,
+}: {
+  isEmbedded?: boolean;
+  onSwitchToActive?: () => void;
+} = {}) {
   const navigate = useNavigate();
   const { employees, company, updateEmployee, deleteEmployee } = useStore();
 
@@ -223,15 +238,17 @@ export function PastEmployeesPage() {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate({ to: "/admin/employees" })}
-            className="text-xs gap-1.5"
-          >
-            <Users className="h-3.5 w-3.5 text-primary" />
-            <span>Active Employees</span>
-          </Button>
+          {!isEmbedded && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onSwitchToActive ? onSwitchToActive() : navigate({ to: "/admin/employees" })}
+              className="text-xs gap-1.5"
+            >
+              <Users className="h-3.5 w-3.5 text-primary" />
+              <span>Active Employees</span>
+            </Button>
+          )}
 
           <Button
             variant="outline"

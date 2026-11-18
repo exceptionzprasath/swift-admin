@@ -7,6 +7,8 @@ import { generateAppointmentPDF, generateAppointmentPDFBlob } from "@/lib/pdf";
 import { DEFAULT_TEMPLATES, downloadLetter, buildGenericTemplate, renderTemplate, buildVars, prepareDocAssets, generateLetterPDF, type LetterKey, saveAs } from "@/lib/documents";
 import JSZip from "jszip";
 import { calculateProfileCompletion, calculateOverallOnboarding, type ProfileCompletionResult } from "@/lib/profile-completion";
+import { PastEmployeesPage } from "./admin.past-employees";
+import { cn } from "@/lib/utils";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
@@ -189,78 +191,8 @@ const DOC_INSERT_AFTER: Record<string, FormStepKey> = {
 
 type FlowStep = { key: FormStepKey; title: string; icon: typeof User };
 
-export function renderEmployeeStatusBadge(status?: string, lastWorkingDate?: string) {
-  const s = (status || "active").toLowerCase().trim();
-  if (s === "suspended") {
-    return (
-      <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 whitespace-nowrap gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-        <span>Suspended</span>
-      </Badge>
-    );
-  }
-  if (s === "relieved" || s === "releived") {
-    return (
-      <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30 whitespace-nowrap gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-purple-500 shrink-0" />
-        <span>Releived</span>
-      </Badge>
-    );
-  }
-  if (s === "terminated") {
-    return (
-      <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30 whitespace-nowrap gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />
-        <span>Terminated</span>
-      </Badge>
-    );
-  }
-  if (s === "notice_period" || s === "notice") {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const isFinalDay = !!lastWorkingDate && todayStr === lastWorkingDate;
-    const isLwdPassed = !!lastWorkingDate && todayStr > lastWorkingDate;
-    return (
-      <div className="flex flex-col items-start gap-0.5">
-        <Badge
-          variant="outline"
-          className={`text-[11px] px-2.5 py-0.5 font-medium whitespace-nowrap gap-1.5 ${
-            isLwdPassed
-              ? "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30"
-              : isFinalDay
-              ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40 animate-pulse"
-              : "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30"
-          }`}
-        >
-          <span
-            className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-              isLwdPassed ? "bg-rose-500" : isFinalDay ? "bg-amber-500" : "bg-orange-500"
-            }`}
-          />
-          <span>{isLwdPassed ? "Notice Ended" : isFinalDay ? "Notice (Final Day)" : "Notice Period"}</span>
-        </Badge>
-        {lastWorkingDate && (
-          <span className="text-[10px] text-muted-foreground font-mono" title={`Last Working Day: ${lastWorkingDate}`}>
-            LWD: {lastWorkingDate}
-          </span>
-        )}
-      </div>
-    );
-  }
-  if (s === "frozen" || s === "freezed") {
-    return (
-      <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/30 whitespace-nowrap gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-sky-500 shrink-0" />
-        <span>Freezed</span>
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="outline" className="text-[11px] px-2.5 py-0.5 font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 whitespace-nowrap gap-1.5">
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-      <span>Active</span>
-    </Badge>
-  );
-}
+import { renderEmployeeStatusBadge } from "@/components/employee-status-badge";
+export { renderEmployeeStatusBadge };
 
 function EmployeesPage() {
   const {
@@ -331,7 +263,45 @@ function EmployeesPage() {
   const [onboardingFilter, setOnboardingFilter] = useState<"all" | "completed" | "incomplete">("all");
   const [inspectOnboardingEmp, setInspectOnboardingEmp] = useState<Employee | null>(null);
 
+  const [activeTab, setActiveTab] = useState<"active" | "past">(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("tab") === "past") return "past";
+    }
+    return "active";
+  });
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      setActiveTab(sp.get("tab") === "past" ? "past" : "active");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const handleTabChange = (tab: "active" | "past") => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "past") {
+        url.searchParams.set("tab", "past");
+      } else {
+        url.searchParams.delete("tab");
+      }
+      window.history.pushState({}, "", url.toString());
+    }
+  };
+
   const activeEmployeesList = useMemo(() => employees.filter(isActiveEmployee), [employees]);
+
+  const pastEmployeesList = useMemo(() => {
+    return (rawEmployees || []).filter((e) => {
+      if (isMockEmployee(e)) return false;
+      const s = (e.status || "active").toLowerCase().trim();
+      return s === "suspended" || s === "relieved" || s === "releived" || s === "terminated" || s === "inactive" || s === "frozen" || s === "freezed";
+    });
+  }, [rawEmployees]);
   const overallOnboarding = useMemo(() => calculateOverallOnboarding(activeEmployeesList), [activeEmployeesList]);
 
   const employeesWithCompletion = useMemo(() => {
@@ -495,7 +465,98 @@ function EmployeesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Top Section Frosted Pill Tab Bar */}
+      <div className="flex items-center justify-between flex-wrap gap-4 pb-1">
+        <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/60 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs">
+          <button
+            type="button"
+            onClick={() => handleTabChange("active")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeTab === "active"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeTab === "active" && (
+              <motion.div
+                layoutId="employeeSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <UsersIcon className="h-4 w-4 shrink-0" />
+              <span>Active Employees</span>
+              <span
+                className={cn(
+                  "text-[11px] px-2 py-0.5 rounded-full font-mono font-medium transition-colors shrink-0",
+                  activeTab === "active"
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {activeEmployeesList.length}
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTabChange("past")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeTab === "past"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeTab === "past" && (
+              <motion.div
+                layoutId="employeeSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <UserX className="h-4 w-4 shrink-0" />
+              <span>Past Employees</span>
+              <span
+                className={cn(
+                  "text-[11px] px-2 py-0.5 rounded-full font-mono font-medium transition-colors shrink-0",
+                  activeTab === "past"
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {pastEmployeesList.length}
+              </span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {activeTab === "past" ? (
+          <motion.div
+            key="past-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            <PastEmployeesPage isEmbedded onSwitchToActive={() => handleTabChange("active")} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="active-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-6"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">Guided 20-step registration with AI validation, bulk Excel import, autosave, and audit trail.</p>
         </div>
@@ -1498,6 +1559,9 @@ function EmployeesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

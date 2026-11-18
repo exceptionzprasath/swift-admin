@@ -139,7 +139,6 @@ const nav: NavItem[] = [
   { to: "/admin/team-chat", label: "Team Chat", icon: MessagesSquare, moduleKey: "teamChat" },
   { to: "/admin/notices", label: "Notice Board", icon: Megaphone, moduleKey: "notices" },
   { to: "/admin/employees", label: "Employees", icon: Users, moduleKey: "employees" },
-  { to: "/admin/past-employees", label: "Past Employees", icon: UserX, moduleKey: "pastEmployees" },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck, moduleKey: "attendance" },
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays, moduleKey: "leaveCalendar" },
   { to: "/admin/shift-roster", label: "Shift Roster", icon: Clock, moduleKey: "shiftRoster" },
