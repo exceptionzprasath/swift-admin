@@ -683,11 +683,17 @@ const INITIAL_WORKFLOWS: Record<MainCategoryTab, WorkflowTypeItem[]> = {
   ],
 };
 
-function CentralizedApprovalSettingsPage() {
+export function CentralizedApprovalSettingsPage({
+  onlyCategory,
+  isEmbedded = false,
+}: {
+  onlyCategory?: MainCategoryTab;
+  isEmbedded?: boolean;
+} = {}) {
   const { company, setCompany, employees, roles } = useStore();
 
   // Active top Category Tab
-  const [activeTab, setActiveTab] = useState<MainCategoryTab>("documents");
+  const [activeTab, setActiveTab] = useState<MainCategoryTab>(onlyCategory || "attendance");
 
   // Workflows state by category
   const [workflows, setWorkflows] = useState<Record<MainCategoryTab, WorkflowTypeItem[]>>(() => {
@@ -703,7 +709,8 @@ function CentralizedApprovalSettingsPage() {
 
   // Selected Type inside active Category
   const [selectedTypeId, setSelectedTypeId] = useState<string>(() => {
-    const list = workflows.documents || INITIAL_WORKFLOWS.documents;
+    const activeCat = onlyCategory || "attendance";
+    const list = workflows[activeCat] || INITIAL_WORKFLOWS[activeCat];
     return list[0]?.id || "";
   });
 
@@ -1208,12 +1215,16 @@ function CentralizedApprovalSettingsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 min-w-0">
         <div className="space-y-1 min-w-0">
           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-            <span className="hover:text-foreground cursor-pointer">Configuration Workflow</span>
+            <span className="hover:text-foreground cursor-pointer">
+              {onlyCategory === "documents" ? "Document Approvals" : "Configuration Workflow"}
+            </span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-            <span className="text-foreground capitalize">{activeTab === "loan" ? "Advance Loan Request" : activeTab}</span>
+            <span className="text-foreground capitalize">{activeTab === "loan" ? "Advance Loan Request" : activeTab === "documents" ? "Official Documents" : activeTab}</span>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Configure approval workflow, escalation and final level action for {activeTab === "documents" ? "documents" : activeTab === "grievance" ? "grievance requests" : activeTab === "attendance" ? "attendance related requests" : activeTab === "loan" ? "employee advance loan requests" : "compensatory off leave credit requests"}.
+            {activeTab === "documents"
+              ? "Configure multi-level approval workflows, escalation, dynamic templates, and signatories for official company documents."
+              : `Configure approval workflow, escalation and final level action for ${activeTab === "grievance" ? "grievance requests" : activeTab === "attendance" ? "attendance related requests" : activeTab === "loan" ? "employee advance loan requests" : "compensatory off leave credit requests"}.`}
           </p>
         </div>
 
@@ -1236,59 +1247,51 @@ function CentralizedApprovalSettingsPage() {
         </div>
       </div>
 
-      {/* Top 5 Primary Category Tabs */}
-      <div className="flex items-center gap-2 border-b border-border pb-2 overflow-x-auto no-scrollbar w-full min-w-0">
-        <button
-          onClick={() => handleTabChange("attendance")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
-            activeTab === "attendance"
-              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <CalendarCheck className="h-4 w-4 shrink-0" /> Attendance
-        </button>
-        <button
-          onClick={() => handleTabChange("grievance")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
-            activeTab === "grievance"
-              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <MessageSquareHeart className="h-4 w-4 shrink-0" /> Grievance
-        </button>
-        <button
-          onClick={() => handleTabChange("documents")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
-            activeTab === "documents"
-              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <FileText className="h-4 w-4 shrink-0" /> Documents
-        </button>
-        <button
-          onClick={() => handleTabChange("loan")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
-            activeTab === "loan"
-              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <Banknote className="h-4 w-4 shrink-0" /> Advance Loan Request
-        </button>
-        <button
-          onClick={() => handleTabChange("compoff")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
-            activeTab === "compoff"
-              ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-        >
-          <Coffee className="h-4 w-4 shrink-0" /> Comp-Off
-        </button>
-      </div>
+      {/* Primary Category Tabs (Hidden when dedicated to onlyCategory) */}
+      {!onlyCategory && (
+        <div className="flex items-center gap-2 border-b border-border pb-2 overflow-x-auto no-scrollbar w-full min-w-0">
+          <button
+            onClick={() => handleTabChange("attendance")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
+              activeTab === "attendance"
+                ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <CalendarCheck className="h-4 w-4 shrink-0" /> Attendance
+          </button>
+          <button
+            onClick={() => handleTabChange("grievance")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
+              activeTab === "grievance"
+                ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <MessageSquareHeart className="h-4 w-4 shrink-0" /> Grievance
+          </button>
+          <button
+            onClick={() => handleTabChange("loan")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
+              activeTab === "loan"
+                ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Banknote className="h-4 w-4 shrink-0" /> Advance Loan Request
+          </button>
+          <button
+            onClick={() => handleTabChange("compoff")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${
+              activeTab === "compoff"
+                ? "bg-primary/10 text-primary border border-primary/30 shadow-xs"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Coffee className="h-4 w-4 shrink-0" /> Comp-Off
+          </button>
+        </div>
+      )}
 
       {/* Main 2-Panel Studio Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start w-full min-w-0">

@@ -3,6 +3,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useStore, getUpwardHierarchyChain, type Employee, type EmployeeDocument } from "@/lib/store";
 import { VaultPage } from "./admin.vault";
+import { CentralizedApprovalSettingsPage } from "./admin.approval-settings";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
@@ -58,6 +59,7 @@ import {
 import {
   FileText,
   FolderLock,
+  FileSignature,
   Plus,
   Search,
   CheckCircle2,
@@ -172,12 +174,13 @@ export default function DigitalDocumentationPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
 
-  // Tab State: Documentation Composer / Documents vs Company Document Vault
-  const [activeSectionTab, setActiveSectionTab] = useState<"docs" | "vault">(() => {
+  // Tab State: Documentation Composer / Documents vs Company Document Vault vs Document Approval Settings
+  const [activeSectionTab, setActiveSectionTab] = useState<"docs" | "vault" | "approval">(() => {
     if (typeof window !== "undefined") {
       const sp = new URLSearchParams(window.location.search);
       const t = sp.get("tab");
       if (t === "vault" || t === "company-vault") return "vault";
+      if (t === "approval" || t === "approvals" || t === "document-approval") return "approval";
     }
     return "docs";
   });
@@ -188,6 +191,8 @@ export default function DigitalDocumentationPage() {
       const t = sp.get("tab");
       if (t === "vault" || t === "company-vault") {
         setActiveSectionTab("vault");
+      } else if (t === "approval" || t === "approvals" || t === "document-approval") {
+        setActiveSectionTab("approval");
       } else {
         setActiveSectionTab("docs");
       }
@@ -196,7 +201,7 @@ export default function DigitalDocumentationPage() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const handleSectionTabChange = (tab: "docs" | "vault") => {
+  const handleSectionTabChange = (tab: "docs" | "vault" | "approval") => {
     setActiveSectionTab(tab);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -1985,6 +1990,29 @@ export default function DigitalDocumentationPage() {
                 <span>Vault</span>
               </span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => handleSectionTabChange("approval")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeSectionTab === "approval"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeSectionTab === "approval" && (
+                <motion.div
+                  layoutId="documentationSectionActivePill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <FileSignature className="h-4 w-4 shrink-0" />
+                <span>Approval</span>
+              </span>
+            </button>
           </div>
         </div>
       )}
@@ -1999,6 +2027,16 @@ export default function DigitalDocumentationPage() {
             transition={{ duration: 0.18 }}
           >
             <VaultPage isEmbedded />
+          </motion.div>
+        ) : activeSectionTab === "approval" ? (
+          <motion.div
+            key="approval-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            <CentralizedApprovalSettingsPage onlyCategory="documents" isEmbedded />
           </motion.div>
         ) : (
           <motion.div
