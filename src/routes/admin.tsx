@@ -111,10 +111,21 @@ export function getPathModuleKey(currentPath: string): ModuleKey | null {
   return null;
 }
 
+const isNavActive = (currentPath: string, targetPath: string, exact?: boolean) => {
+  if (exact || targetPath === "/admin") {
+    return currentPath === targetPath || currentPath === targetPath + "/";
+  }
+  return (
+    currentPath === targetPath ||
+    currentPath.startsWith(targetPath + "/") ||
+    currentPath.startsWith(targetPath + "?")
+  );
+};
+
 function getSelectedMenuName(currentPath: string): string {
   if (currentPath === "/admin" || currentPath === "/admin/") return "Dashboard";
   const matched = nav
-    .filter((n) => !n.exact && currentPath.startsWith(n.to))
+    .filter((n) => isNavActive(currentPath, n.to, n.exact))
     .sort((a, b) => b.to.length - a.to.length)[0];
   if (matched) return matched.label;
   if (currentPath.startsWith("/admin/roles")) return "Roles & Responsibilities";
@@ -146,14 +157,14 @@ const nav: NavItem[] = [
   { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal, moduleKey: "approvalSettings" },
   { to: "/admin/roles", label: "Roles & Responsibilities", icon: ShieldCheck, moduleKey: "roles" },
   { to: "/admin/org", label: "Organization", icon: Network, moduleKey: "org" },
-  { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket },
-  { to: "/admin/reports", label: "Reports", icon: BarChart3 },
-  { to: "/admin/assets", label: "Assets", icon: Package },
-  { to: "/admin/compliance", label: "Compliance AI", icon: Scale },
-  { to: "/admin/compliance-docs", label: "Compliance Docs", icon: ShieldCheck },
-  { to: "/admin/audit", label: "Audit Log", icon: ShieldCheck },
-  { to: "/admin/subscription", label: "Subscription", icon: CreditCard },
-  { to: "/admin/renewals", label: "Renewal Scheduler", icon: BellRing },
+  { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket, comingSoon: true },
+  { to: "/admin/reports", label: "Reports", icon: BarChart3, comingSoon: true },
+  { to: "/admin/assets", label: "Assets", icon: Package, comingSoon: true },
+  { to: "/admin/compliance", label: "Compliance AI", icon: Scale, comingSoon: true },
+  { to: "/admin/compliance-docs", label: "Compliance Docs", icon: ShieldCheck, comingSoon: true },
+  { to: "/admin/audit", label: "Audit Log", icon: ShieldCheck, comingSoon: true },
+  { to: "/admin/subscription", label: "Subscription", icon: CreditCard, comingSoon: true },
+  { to: "/admin/renewals", label: "Renewal Scheduler", icon: BellRing, comingSoon: true },
   { to: "/admin/settings", label: "Settings", icon: Settings, moduleKey: "settings" },
 ];
 
@@ -598,7 +609,7 @@ function AdminLayout() {
           {/* Continuous Navigation List (High-Contrast Theme-Adaptive Active & Inactive Styling) */}
           <nav className={`overflow-y-auto flex-1 no-scrollbar ${collapsed ? "flex flex-col items-center gap-3.5 py-3 px-2 w-full" : "space-y-1.5 p-3 pt-1.5"}`}>
             {filteredNav.map((n) => {
-              const active = n.exact ? path === n.to : path.startsWith(n.to);
+              const active = isNavActive(path, n.to, n.exact);
               const hasNumericBadge = typeof n.badge === "number" && n.badge > 0;
               return collapsed ? (
                 <Tooltip key={n.to}>

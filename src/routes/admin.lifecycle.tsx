@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useStore } from "@/lib/store";
+import { ComingSoonOverlay } from "@/components/coming-soon-overlay";
 
 export const Route = createFileRoute("/admin/lifecycle")({
   head: () => ({ meta: [{ title: "AI Employee Lifecycle · CreatonsHR" }] }),
@@ -259,7 +260,8 @@ function LifecyclePage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-20">
+    <div className="space-y-6 max-w-7xl mx-auto pb-20 relative">
+      <ComingSoonOverlay delayMs={700} />
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
