@@ -49,7 +49,7 @@ import {
   Search,
   GripVertical,
 } from "lucide-react";
-import { Reorder, useDragControls } from "framer-motion";
+import { Reorder, useDragControls, AnimatePresence, motion } from "framer-motion";
 import {
   Dialog,
   DialogContent,
@@ -1963,40 +1963,35 @@ function SidebarReorderItem({
         {/* Icon */}
         <div
           className={cn(
-            "h-9 w-9 rounded-xl flex items-center justify-center shrink-0 border",
+            "h-8 w-8 rounded-xl flex items-center justify-center shrink-0 border",
             isHidden
               ? "bg-muted text-muted-foreground border-border"
               : "bg-primary/10 text-primary border-primary/20 shadow-inner"
           )}
         >
-          <Icon className="h-4.5 w-4.5" />
+          <Icon className="h-4 w-4" />
         </div>
 
-        {/* Label & Path */}
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "font-semibold text-xs sm:text-sm text-foreground truncate",
-                isHidden && "line-through text-muted-foreground"
-              )}
-            >
-              {item.label}
-            </span>
-            {item.badge === "AI" && (
-              <Badge className="bg-primary/15 text-primary border-primary/25 text-[10px] py-0 px-1.5 font-bold">
-                AI
-              </Badge>
+        {/* Label */}
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            className={cn(
+              "font-medium text-xs sm:text-sm text-foreground truncate",
+              isHidden && "line-through text-muted-foreground"
             )}
-            {item.comingSoon && (
-              <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25 text-[10px] py-0 px-1.5 font-bold">
-                Soon
-              </Badge>
-            )}
-          </div>
-          <span className="text-[11px] font-mono text-muted-foreground/75 truncate block">
-            {item.to}
+          >
+            {item.label}
           </span>
+          {item.badge === "AI" && (
+            <Badge className="bg-primary/15 text-primary border-primary/25 text-[10px] py-0 px-1.5 font-bold">
+              AI
+            </Badge>
+          )}
+          {item.comingSoon && (
+            <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25 text-[10px] py-0 px-1.5 font-bold">
+              Soon
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -2064,38 +2059,33 @@ function SidebarFilteredItem({
         </span>
         <div
           className={cn(
-            "h-9 w-9 rounded-xl flex items-center justify-center shrink-0 border",
+            "h-8 w-8 rounded-xl flex items-center justify-center shrink-0 border",
             isHidden
               ? "bg-muted text-muted-foreground border-border"
               : "bg-primary/10 text-primary border-primary/20 shadow-inner"
           )}
         >
-          <Icon className="h-4.5 w-4.5" />
+          <Icon className="h-4 w-4" />
         </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "font-semibold text-xs sm:text-sm text-foreground truncate",
-                isHidden && "line-through text-muted-foreground"
-              )}
-            >
-              {item.label}
-            </span>
-            {item.badge === "AI" && (
-              <Badge className="bg-primary/15 text-primary border-primary/25 text-[10px] py-0 px-1.5 font-bold">
-                AI
-              </Badge>
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            className={cn(
+              "font-medium text-xs sm:text-sm text-foreground truncate",
+              isHidden && "line-through text-muted-foreground"
             )}
-            {item.comingSoon && (
-              <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25 text-[10px] py-0 px-1.5 font-bold">
-                Soon
-              </Badge>
-            )}
-          </div>
-          <span className="text-[11px] font-mono text-muted-foreground/75 truncate block">
-            {item.to}
+          >
+            {item.label}
           </span>
+          {item.badge === "AI" && (
+            <Badge className="bg-primary/15 text-primary border-primary/25 text-[10px] py-0 px-1.5 font-bold">
+              AI
+            </Badge>
+          )}
+          {item.comingSoon && (
+            <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25 text-[10px] py-0 px-1.5 font-bold">
+              Soon
+            </Badge>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
@@ -2129,11 +2119,13 @@ function SidebarFilteredItem({
 /**
  * Edit Side panel Component
  * Allows live drag-and-drop reordering, and visibility toggling of left sidebar items
+ * Collapsible by default for a minimal UI, opens downward with smooth animated transition.
  * Persisted per company / tenant in backend config.
  */
 function SidebarOrderEditor() {
   const { company, setCompany } = useStore();
   const { activeTenantId } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
 
   const [order, setOrder] = useState<string[]>(() => {
     return company.sidebarOrder && company.sidebarOrder.length > 0
@@ -2212,127 +2204,181 @@ function SidebarOrderEditor() {
       if (!item) return false;
       return (
         item.label.toLowerCase().includes(q) ||
-        item.to.toLowerCase().includes(q) ||
         (item.badge && String(item.badge).toLowerCase().includes(q))
       );
     });
   }, [order, q, itemMap]);
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-6 shadow-xs space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
-              <PanelLeft className="h-5 w-5" />
+    <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-xs transition-all duration-200">
+      {/* Clickable Header that toggles expand/collapse downward */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setIsOpen((prev) => !prev)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsOpen((prev) => !prev);
+          }
+        }}
+        className="flex items-center justify-between gap-4 cursor-pointer select-none group"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2.5 rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15 shrink-0">
+            <PanelLeft className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-display font-semibold text-base sm:text-lg text-foreground group-hover:text-primary transition-colors">
+                Edit Side panel
+              </h2>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                Drag & Drop
+              </span>
+              {hidden.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] font-medium">
+                  {hidden.length} hidden
+                </Badge>
+              )}
             </div>
-            <h2 className="font-display font-semibold text-lg text-foreground">Edit Side panel</h2>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-              Drag & Drop Reorder
-            </span>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate sm:text-clip">
+              {isOpen
+                ? "Drag and drop items to reorder; changes sync immediately for your company."
+                : "Customize order and visibility of items in your left side panel."}
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Drag and drop items to reorder the side panel for your company. Changes take effect instantly and are saved specifically for this organization.
-          </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            className="gap-1.5 rounded-xl font-medium text-xs h-9 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
-            title="Reset to original side panel order"
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground hidden sm:inline transition-colors">
+            {isOpen ? "Collapse" : "Edit order"}
+          </span>
+          <div
+            className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground group-hover:text-foreground group-hover:bg-muted transition-all duration-200",
+              isOpen && "rotate-180"
+            )}
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span>Reset Default</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Filter / Search & Quick Stats */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-foreground">
-            {order.length - hidden.length} of {order.length} items visible
-          </span>
-          {hidden.length > 0 && (
-            <Badge variant="secondary" className="text-[10px] font-medium">
-              {hidden.length} hidden
-            </Badge>
-          )}
-        </div>
-
-        <div className="relative w-full sm:w-64">
-          <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search menu items..."
-            className="h-8 pl-8 text-xs rounded-xl bg-background border-border/80"
-          />
-        </div>
-      </div>
-
-      {/* Drag & Drop Reorderable List */}
-      {q ? (
-        <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
-          <div className="text-xs text-muted-foreground bg-muted/40 p-2.5 rounded-xl border border-dashed border-border/80">
-            Filtered by "{search}". Clear search input to drag and reorder menu items.
+            <ChevronDown className="h-4 w-4" />
           </div>
-          {displayedOrder.map((id: string) => {
-            const actualIndex = order.indexOf(id);
-            const item = itemMap.get(id);
-            if (!item) return null;
-            return (
-              <SidebarFilteredItem
-                key={id}
-                id={id}
-                index={actualIndex}
-                item={item}
-                isHidden={hiddenSet.has(id)}
-                cannotHide={id === "dashboard" || id === "settings"}
-                onToggleHide={handleToggleHide}
-              />
-            );
-          })}
-        </div>
-      ) : (
-        <Reorder.Group
-          axis="y"
-          values={order}
-          onReorder={handleReorder}
-          className="space-y-2 max-h-[560px] overflow-y-auto pr-1"
-        >
-          {order.map((id: string, index: number) => {
-            const item = itemMap.get(id);
-            if (!item) return null;
-            return (
-              <SidebarReorderItem
-                key={id}
-                id={id}
-                index={index}
-                item={item}
-                isHidden={hiddenSet.has(id)}
-                cannotHide={id === "dashboard" || id === "settings"}
-                onToggleHide={handleToggleHide}
-              />
-            );
-          })}
-        </Reorder.Group>
-      )}
-
-      {/* Footer Info Callout */}
-      <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 text-xs text-muted-foreground flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary shrink-0" />
-          <span>
-            Changes to the side panel order auto-save per company and update your live sidebar immediately. Click <strong>Save Changes</strong> at the top to commit all settings to cloud storage.
-          </span>
         </div>
       </div>
+
+      {/* Downward Smooth Opening Panel */}
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            key="side-panel-editor-body"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.28, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            <div className="pt-5 border-t border-border mt-5 space-y-5">
+              {/* Filter / Search & Quick Stats & Reset Default */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-foreground">
+                    {order.length - hidden.length} of {order.length} items visible
+                  </span>
+                  {hidden.length > 0 && (
+                    <Badge variant="secondary" className="text-[10px] font-medium">
+                      {hidden.length} hidden
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search menu items..."
+                      className="h-8 pl-8 text-xs rounded-xl bg-background border-border/80"
+                    />
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleReset();
+                    }}
+                    className="gap-1.5 rounded-xl font-medium text-xs h-8 border-border text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
+                    title="Reset to original side panel order"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    <span>Reset</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Drag & Drop Reorderable List */}
+              {q ? (
+                <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                  <div className="text-xs text-muted-foreground bg-muted/40 p-2.5 rounded-xl border border-dashed border-border/80">
+                    Filtered by "{search}". Clear search input to drag and reorder menu items.
+                  </div>
+                  {displayedOrder.map((id: string) => {
+                    const actualIndex = order.indexOf(id);
+                    const item = itemMap.get(id);
+                    if (!item) return null;
+                    return (
+                      <SidebarFilteredItem
+                        key={id}
+                        id={id}
+                        index={actualIndex}
+                        item={item}
+                        isHidden={hiddenSet.has(id)}
+                        cannotHide={id === "dashboard" || id === "settings"}
+                        onToggleHide={handleToggleHide}
+                      />
+                    );
+                  })}
+                </div>
+              ) : (
+                <Reorder.Group
+                  axis="y"
+                  values={order}
+                  onReorder={handleReorder}
+                  className="space-y-2 max-h-[520px] overflow-y-auto pr-1"
+                >
+                  {order.map((id: string, index: number) => {
+                    const item = itemMap.get(id);
+                    if (!item) return null;
+                    return (
+                      <SidebarReorderItem
+                        key={id}
+                        id={id}
+                        index={index}
+                        item={item}
+                        isHidden={hiddenSet.has(id)}
+                        cannotHide={id === "dashboard" || id === "settings"}
+                        onToggleHide={handleToggleHide}
+                      />
+                    );
+                  })}
+                </Reorder.Group>
+              )}
+
+              {/* Footer Info Callout */}
+              <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 text-xs text-muted-foreground flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary shrink-0" />
+                  <span>
+                    Changes to the side panel order auto-save per company and update your live sidebar immediately. Click <strong>Save Changes</strong> at the top to commit all settings to cloud storage.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
