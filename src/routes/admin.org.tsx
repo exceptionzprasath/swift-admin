@@ -1,6 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { BranchesPage } from "./admin.branches";
 import {
   useStore,
   isActiveEmployee,
@@ -50,6 +53,43 @@ function OrgPage() {
   const { employees: rawEmployees, updateEmployee, company } = useStore();
   const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
   const branches = company.branches ?? [];
+
+  // Tab State: Organization Chart / Structure vs Branches
+  const [activeTab, setActiveTab] = useState<"org" | "branches">(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get("tab");
+      if (t === "branches" || t === "branch") return "branches";
+    }
+    return "org";
+  });
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get("tab");
+      if (t === "branches" || t === "branch") {
+        setActiveTab("branches");
+      } else {
+        setActiveTab("org");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const handleTabChange = (tab: "org" | "branches") => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "org") {
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.set("tab", tab);
+      }
+      window.history.pushState({}, "", url.toString());
+    }
+  };
 
   // Edit Employee Basic Info Modal
   const [editOpen, setEditOpen] = useState(false);
@@ -208,7 +248,78 @@ function OrgPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      {/* Top Organization Navigation Frosted Capsule Tab Bar (Left-aligned) */}
+      <div className="flex items-center justify-start gap-4 flex-wrap pb-1">
+        <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/60 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs">
+          <button
+            type="button"
+            onClick={() => handleTabChange("org")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeTab === "org"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeTab === "org" && (
+              <motion.div
+                layoutId="orgSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <Network className="h-4 w-4 shrink-0" />
+              <span>Organization</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTabChange("branches")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeTab === "branches"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeTab === "branches" && (
+              <motion.div
+                layoutId="orgSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <Building2 className="h-4 w-4 shrink-0" />
+              <span>Branches</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {activeTab === "branches" ? (
+          <motion.div
+            key="branches-view"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            <BranchesPage isEmbedded />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="org-view"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-6"
+          >
+            <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">
             Visual reporting hierarchy and team structure. Approvals are automatically orchestrated via the centralized <Link to="/admin/approval-settings" className="font-semibold text-primary underline underline-offset-4">Approval Settings</Link> studio.
@@ -369,6 +480,9 @@ function OrgPage() {
           );
         })}
       </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Edit Employee Basic Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>

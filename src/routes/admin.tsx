@@ -145,7 +145,6 @@ const nav: NavItem[] = [
   { to: "/admin/documentation-alt", label: "Documentations", icon: FileText, moduleKey: "documentation" },
   { to: "/admin/approval-settings", label: "Approval Settings", icon: SlidersHorizontal, moduleKey: "approvalSettings" },
   { to: "/admin/roles", label: "Roles & Responsibilities", icon: ShieldCheck, moduleKey: "roles" },
-  { to: "/admin/branches", label: "Branches", icon: Building2, moduleKey: "branches" },
   { to: "/admin/org", label: "Organization", icon: Network, moduleKey: "org" },
   { to: "/admin/lifecycle", label: "AI Lifecycle", icon: Rocket, comingSoon: true },
   { to: "/admin/reports", label: "Reports", icon: BarChart3, comingSoon: true },
@@ -992,10 +991,10 @@ function AdminLayout() {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => navigate({ to: "/admin/org" })}>
-                    <Building2 className="h-4 w-4 mr-2 text-primary" /> Organization
+                    <Network className="h-4 w-4 mr-2 text-primary" /> Organization
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate({ to: "/admin/branches" })}>
-                    <Network className="h-4 w-4 mr-2 text-primary" /> Branches
+                  <DropdownMenuItem onClick={() => navigate({ to: "/admin/org", search: (prev: any) => ({ ...prev, tab: "branches" }) as any })}>
+                    <Building2 className="h-4 w-4 mr-2 text-primary" /> Branches
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate({ to: "/admin/vault" })}>
                     <FolderLock className="h-4 w-4 mr-2 text-primary" /> Vault

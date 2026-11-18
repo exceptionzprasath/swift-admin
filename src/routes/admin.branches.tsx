@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { useStore, getEmployeeBranchIds, type Branch } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -37,8 +37,17 @@ import { INDIAN_STATES, STATE_CITIES, lookupPincode } from "@/lib/india-location
 
 export const Route = createFileRoute("/admin/branches")({
   head: () => ({ meta: [{ title: "Branches · CreatonsHR" }] }),
-  component: BranchesPage,
+  component: RedirectToOrgBranches,
 });
+
+function RedirectToOrgBranches() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate({ to: "/admin/org", search: (prev: any) => ({ ...prev, tab: "branches" }) as any, replace: true });
+  }, [navigate]);
+
+  return <BranchesPage />;
+}
 
 const empty: Omit<Branch, "id"> = {
   name: "",
@@ -61,7 +70,7 @@ const empty: Omit<Branch, "id"> = {
 
 const MAC_REGEX = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
 
-function BranchesPage() {
+export function BranchesPage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const { company, employees, addBranch, updateBranch, deleteBranch, updateEmployee } = useStore();
   const branches = company.branches ?? [];
   const [open, setOpen] = useState(false);
