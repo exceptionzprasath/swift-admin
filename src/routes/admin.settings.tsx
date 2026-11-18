@@ -14,6 +14,7 @@ import {
   saveSidebarOrder,
   getSavedHiddenSidebarItems,
   saveHiddenSidebarItems,
+  type NavItemConfig,
 } from "@/lib/sidebar-config";
 import {
   Calculator,
@@ -46,11 +47,9 @@ import {
   PanelLeft,
   RotateCcw,
   Search,
-  ChevronsUp,
-  ChevronsDown,
-  ArrowUp,
-  ArrowDown,
+  GripVertical,
 } from "lucide-react";
+import { Reorder, useDragControls } from "framer-motion";
 import {
   Dialog,
   DialogContent,
@@ -1908,33 +1907,268 @@ function SettingsPage() {
 }
 
 /**
+ * Draggable Reorder Item for Sidebar Items using framer-motion
+ */
+function SidebarReorderItem({
+  id,
+  index,
+  item,
+  isHidden,
+  cannotHide,
+  onToggleHide,
+}: {
+  id: string;
+  index: number;
+  item: NavItemConfig;
+  isHidden: boolean;
+  cannotHide: boolean;
+  onToggleHide: (id: string) => void;
+}) {
+  const controls = useDragControls();
+  const Icon = item.icon;
+
+  return (
+    <Reorder.Item
+      value={id}
+      dragListener={false}
+      dragControls={controls}
+      className={cn(
+        "flex items-center justify-between gap-3 p-3 rounded-2xl border transition-colors select-none",
+        isHidden
+          ? "bg-muted/30 border-dashed border-border/70 opacity-60"
+          : "bg-card border-border/90 hover:border-primary/40 shadow-2xs"
+      )}
+      whileDrag={{
+        scale: 1.02,
+        boxShadow: "0 12px 28px -4px rgba(0, 0, 0, 0.18)",
+        zIndex: 50,
+      }}
+    >
+      {/* Left Details */}
+      <div className="flex items-center gap-3 min-w-0">
+        {/* Drag Handle */}
+        <div
+          onPointerDown={(e) => controls.start(e)}
+          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/50 hover:text-foreground cursor-grab active:cursor-grabbing touch-none transition-colors shrink-0"
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+
+        {/* Position Index Badge */}
+        <span className="h-7 w-7 rounded-xl bg-muted/60 text-muted-foreground font-mono font-bold text-xs flex items-center justify-center shrink-0">
+          {index + 1}
+        </span>
+
+        {/* Icon */}
+        <div
+          className={cn(
+            "h-9 w-9 rounded-xl flex items-center justify-center shrink-0 border",
+            isHidden
+              ? "bg-muted text-muted-foreground border-border"
+              : "bg-primary/10 text-primary border-primary/20 shadow-inner"
+          )}
+        >
+          <Icon className="h-4.5 w-4.5" />
+        </div>
+
+        {/* Label & Path */}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "font-semibold text-xs sm:text-sm text-foreground truncate",
+                isHidden && "line-through text-muted-foreground"
+              )}
+            >
+              {item.label}
+            </span>
+            {item.badge === "AI" && (
+              <Badge className="bg-primary/15 text-primary border-primary/25 text-[10px] py-0 px-1.5 font-bold">
+                AI
+              </Badge>
+            )}
+            {item.comingSoon && (
+              <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25 text-[10px] py-0 px-1.5 font-bold">
+                Soon
+              </Badge>
+            )}
+          </div>
+          <span className="text-[11px] font-mono text-muted-foreground/75 truncate block">
+            {item.to}
+          </span>
+        </div>
+      </div>
+
+      {/* Right Controls: Visibility Toggle Button */}
+      <div className="flex items-center gap-1 shrink-0">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-8 w-8 rounded-lg transition-colors",
+            isHidden
+              ? "text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          )}
+          disabled={cannotHide}
+          onClick={() => onToggleHide(id)}
+          title={
+            cannotHide
+              ? "Required item cannot be hidden"
+              : isHidden
+              ? "Show in side panel"
+              : "Hide from side panel"
+          }
+        >
+          {isHidden ? <EyeOff className="h-4 w-4 text-rose-500" /> : <Eye className="h-4 w-4" />}
+        </Button>
+      </div>
+    </Reorder.Item>
+  );
+}
+
+/**
+ * Static row rendered during search filtering (drag is disabled while filtered)
+ */
+function SidebarFilteredItem({
+  id,
+  index,
+  item,
+  isHidden,
+  cannotHide,
+  onToggleHide,
+}: {
+  id: string;
+  index: number;
+  item: NavItemConfig;
+  isHidden: boolean;
+  cannotHide: boolean;
+  onToggleHide: (id: string) => void;
+}) {
+  const Icon = item.icon;
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 p-3 rounded-2xl border transition-colors",
+        isHidden
+          ? "bg-muted/30 border-dashed border-border/70 opacity-60"
+          : "bg-card border-border/90 shadow-2xs"
+      )}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="h-7 w-7 rounded-xl bg-muted/60 text-muted-foreground font-mono font-bold text-xs flex items-center justify-center shrink-0">
+          {index + 1}
+        </span>
+        <div
+          className={cn(
+            "h-9 w-9 rounded-xl flex items-center justify-center shrink-0 border",
+            isHidden
+              ? "bg-muted text-muted-foreground border-border"
+              : "bg-primary/10 text-primary border-primary/20 shadow-inner"
+          )}
+        >
+          <Icon className="h-4.5 w-4.5" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "font-semibold text-xs sm:text-sm text-foreground truncate",
+                isHidden && "line-through text-muted-foreground"
+              )}
+            >
+              {item.label}
+            </span>
+            {item.badge === "AI" && (
+              <Badge className="bg-primary/15 text-primary border-primary/25 text-[10px] py-0 px-1.5 font-bold">
+                AI
+              </Badge>
+            )}
+            {item.comingSoon && (
+              <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25 text-[10px] py-0 px-1.5 font-bold">
+                Soon
+              </Badge>
+            )}
+          </div>
+          <span className="text-[11px] font-mono text-muted-foreground/75 truncate block">
+            {item.to}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-8 w-8 rounded-lg transition-colors",
+            isHidden
+              ? "text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          )}
+          disabled={cannotHide}
+          onClick={() => onToggleHide(id)}
+          title={
+            cannotHide
+              ? "Required item cannot be hidden"
+              : isHidden
+              ? "Show in side panel"
+              : "Hide from side panel"
+          }
+        >
+          {isHidden ? <EyeOff className="h-4 w-4 text-rose-500" /> : <Eye className="h-4 w-4" />}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Edit Side panel Component
- * Allows live editing, reordering, and visibility toggling of left sidebar items
+ * Allows live drag-and-drop reordering, and visibility toggling of left sidebar items
+ * Persisted per company / tenant in backend config.
  */
 function SidebarOrderEditor() {
   const { company, setCompany } = useStore();
+  const { activeTenantId } = useAuth();
+
   const [order, setOrder] = useState<string[]>(() => {
     return company.sidebarOrder && company.sidebarOrder.length > 0
       ? company.sidebarOrder
-      : getSavedSidebarOrder();
+      : getSavedSidebarOrder(activeTenantId);
   });
   const [hidden, setHidden] = useState<string[]>(() => {
-    return company.sidebarHiddenItems ?? getSavedHiddenSidebarItems();
+    return company.sidebarHiddenItems ?? getSavedHiddenSidebarItems(activeTenantId);
   });
   const [search, setSearch] = useState("");
 
   const hiddenSet = useMemo(() => new Set(hidden), [hidden]);
   const itemMap = useMemo(() => new Map(DEFAULT_SIDEBAR_ITEMS.map((i) => [i.id, i])), []);
 
-  // Sync when company state updates
+  // Sync when company state updates (e.g. from backend or tenant switch)
   useEffect(() => {
     if (company.sidebarOrder && company.sidebarOrder.length > 0) {
       setOrder(company.sidebarOrder);
+    } else {
+      setOrder(getSavedSidebarOrder(activeTenantId));
     }
     if (company.sidebarHiddenItems) {
       setHidden(company.sidebarHiddenItems);
+    } else {
+      setHidden(getSavedHiddenSidebarItems(activeTenantId));
     }
-  }, [company.sidebarOrder, company.sidebarHiddenItems]);
+  }, [company.sidebarOrder, company.sidebarHiddenItems, activeTenantId]);
+
+  const handleReorder = (newOrder: string[]) => {
+    setOrder(newOrder);
+    setCompany({
+      sidebarOrder: newOrder,
+    });
+    saveSidebarOrder(newOrder, activeTenantId);
+  };
 
   const updateState = (newOrder: string[], newHidden: string[]) => {
     setOrder(newOrder);
@@ -1943,48 +2177,8 @@ function SidebarOrderEditor() {
       sidebarOrder: newOrder,
       sidebarHiddenItems: newHidden,
     });
-    saveSidebarOrder(newOrder);
-    saveHiddenSidebarItems(newHidden);
-  };
-
-  const handleMoveUp = (index: number) => {
-    if (index <= 0) return;
-    const next = [...order];
-    const [moved] = next.splice(index, 1);
-    next.splice(index - 1, 0, moved);
-    updateState(next, hidden);
-    const item = itemMap.get(moved);
-    toast.success(`Moved "${item?.label || moved}" up to position #${index}`);
-  };
-
-  const handleMoveDown = (index: number) => {
-    if (index >= order.length - 1) return;
-    const next = [...order];
-    const [moved] = next.splice(index, 1);
-    next.splice(index + 1, 0, moved);
-    updateState(next, hidden);
-    const item = itemMap.get(moved);
-    toast.success(`Moved "${item?.label || moved}" down to position #${index + 2}`);
-  };
-
-  const handleMoveToTop = (index: number) => {
-    if (index <= 0) return;
-    const next = [...order];
-    const [moved] = next.splice(index, 1);
-    next.unshift(moved);
-    updateState(next, hidden);
-    const item = itemMap.get(moved);
-    toast.success(`Moved "${item?.label || moved}" to the top (#1)`);
-  };
-
-  const handleMoveToBottom = (index: number) => {
-    if (index >= order.length - 1) return;
-    const next = [...order];
-    const [moved] = next.splice(index, 1);
-    next.push(moved);
-    updateState(next, hidden);
-    const item = itemMap.get(moved);
-    toast.success(`Moved "${item?.label || moved}" to the bottom`);
+    saveSidebarOrder(newOrder, activeTenantId);
+    saveHiddenSidebarItems(newHidden, activeTenantId);
   };
 
   const handleToggleHide = (id: string) => {
@@ -2035,11 +2229,11 @@ function SidebarOrderEditor() {
             </div>
             <h2 className="font-display font-semibold text-lg text-foreground">Edit Side panel</h2>
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-              Live Sidebar Order
+              Drag & Drop Reorder
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Customize the order and visibility of items in your left side panel. Reorder items to prioritize your daily workflows; changes take effect instantly.
+            Drag and drop items to reorder the side panel for your company. Changes take effect instantly and are saved specifically for this organization.
           </p>
         </div>
 
@@ -2082,153 +2276,60 @@ function SidebarOrderEditor() {
         </div>
       </div>
 
-      {/* Reorderable Items List */}
-      <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
-        {displayedOrder.map((id: string) => {
-          const actualIndex = order.indexOf(id);
-          const item = itemMap.get(id);
-          if (!item) return null;
-          const isHidden = hiddenSet.has(id);
-          const Icon = item.icon;
-          const isFirst = actualIndex === 0;
-          const isLast = actualIndex === order.length - 1;
-          const cannotHide = id === "dashboard" || id === "settings";
-
-          return (
-            <div
-              key={id}
-              className={cn(
-                "flex items-center justify-between gap-3 p-3 rounded-2xl border transition-all duration-150",
-                isHidden
-                  ? "bg-muted/30 border-dashed border-border/70 opacity-60"
-                  : "bg-card border-border/90 hover:border-primary/40 hover:shadow-xs shadow-2xs"
-              )}
-            >
-              {/* Left Details */}
-              <div className="flex items-center gap-3 min-w-0">
-                {/* Position Index Badge */}
-                <span className="h-7 w-7 rounded-xl bg-muted/60 text-muted-foreground font-mono font-bold text-xs flex items-center justify-center shrink-0">
-                  {actualIndex + 1}
-                </span>
-
-                {/* Icon */}
-                <div
-                  className={cn(
-                    "h-9 w-9 rounded-xl flex items-center justify-center shrink-0 border",
-                    isHidden
-                      ? "bg-muted text-muted-foreground border-border"
-                      : "bg-primary/10 text-primary border-primary/20 shadow-inner"
-                  )}
-                >
-                  <Icon className="h-4.5 w-4.5" />
-                </div>
-
-                {/* Label & Path */}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className={cn("font-semibold text-xs sm:text-sm text-foreground truncate", isHidden && "line-through text-muted-foreground")}>
-                      {item.label}
-                    </span>
-                    {item.badge === "AI" && (
-                      <Badge className="bg-primary/15 text-primary border-primary/25 text-[10px] py-0 px-1.5 font-bold">
-                        AI
-                      </Badge>
-                    )}
-                    {item.comingSoon && (
-                      <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25 text-[10px] py-0 px-1.5 font-bold">
-                        Soon
-                      </Badge>
-                    )}
-                  </div>
-                  <span className="text-[11px] font-mono text-muted-foreground/75 truncate block">
-                    {item.to}
-                  </span>
-                </div>
-              </div>
-
-              {/* Right Controls: Move Up, Move Down, Move to Top, Visibility */}
-              <div className="flex items-center gap-1 shrink-0">
-                {/* Move to Top */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-                  disabled={isFirst}
-                  onClick={() => handleMoveToTop(actualIndex)}
-                  title="Move to top (#1)"
-                >
-                  <ChevronsUp className="h-4 w-4" />
-                </Button>
-
-                {/* Move Up */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-                  disabled={isFirst}
-                  onClick={() => handleMoveUp(actualIndex)}
-                  title="Move up"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-
-                {/* Move Down */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-                  disabled={isLast}
-                  onClick={() => handleMoveDown(actualIndex)}
-                  title="Move down"
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-
-                {/* Move to Bottom */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-                  disabled={isLast}
-                  onClick={() => handleMoveToBottom(actualIndex)}
-                  title="Move to bottom"
-                >
-                  <ChevronsDown className="h-4 w-4" />
-                </Button>
-
-                {/* Visibility Toggle Button */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-8 w-8 rounded-lg transition-colors ml-1",
-                    isHidden
-                      ? "text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  )}
-                  disabled={cannotHide}
-                  onClick={() => handleToggleHide(id)}
-                  title={cannotHide ? "Required item cannot be hidden" : isHidden ? "Show in side panel" : "Hide from side panel"}
-                >
-                  {isHidden ? <EyeOff className="h-4 w-4 text-rose-500" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Drag & Drop Reorderable List */}
+      {q ? (
+        <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
+          <div className="text-xs text-muted-foreground bg-muted/40 p-2.5 rounded-xl border border-dashed border-border/80">
+            Filtered by "{search}". Clear search input to drag and reorder menu items.
+          </div>
+          {displayedOrder.map((id: string) => {
+            const actualIndex = order.indexOf(id);
+            const item = itemMap.get(id);
+            if (!item) return null;
+            return (
+              <SidebarFilteredItem
+                key={id}
+                id={id}
+                index={actualIndex}
+                item={item}
+                isHidden={hiddenSet.has(id)}
+                cannotHide={id === "dashboard" || id === "settings"}
+                onToggleHide={handleToggleHide}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <Reorder.Group
+          axis="y"
+          values={order}
+          onReorder={handleReorder}
+          className="space-y-2 max-h-[560px] overflow-y-auto pr-1"
+        >
+          {order.map((id: string, index: number) => {
+            const item = itemMap.get(id);
+            if (!item) return null;
+            return (
+              <SidebarReorderItem
+                key={id}
+                id={id}
+                index={index}
+                item={item}
+                isHidden={hiddenSet.has(id)}
+                cannotHide={id === "dashboard" || id === "settings"}
+                onToggleHide={handleToggleHide}
+              />
+            );
+          })}
+        </Reorder.Group>
+      )}
 
       {/* Footer Info Callout */}
       <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 text-xs text-muted-foreground flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary shrink-0" />
           <span>
-            Changes to the side panel order auto-save and update your live sidebar immediately. Click <strong>Save Changes</strong> at the top to commit changes to cloud storage.
+            Changes to the side panel order auto-save per company and update your live sidebar immediately. Click <strong>Save Changes</strong> at the top to commit all settings to cloud storage.
           </span>
         </div>
       </div>

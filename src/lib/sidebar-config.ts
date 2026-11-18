@@ -57,10 +57,22 @@ export const DEFAULT_SIDEBAR_ITEMS: NavItemConfig[] = [
 export const SIDEBAR_STORAGE_KEY = "creatons_sidebar_order";
 export const SIDEBAR_HIDDEN_KEY = "creatons_sidebar_hidden";
 
-export function getSavedSidebarOrder(): string[] {
+export function getTenantStorageKey(baseKey: string, tenantId?: string | null): string {
+  const tid =
+    tenantId ||
+    (typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null) ||
+    "default";
+  return `${baseKey}_${tid}`;
+}
+
+export function getSavedSidebarOrder(tenantId?: string | null): string[] {
   if (typeof window === "undefined") return DEFAULT_SIDEBAR_ITEMS.map((i) => i.id);
   try {
-    const raw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    const key = getTenantStorageKey(SIDEBAR_STORAGE_KEY, tenantId);
+    let raw = localStorage.getItem(key);
+    if (!raw) {
+      raw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    }
     if (!raw) return DEFAULT_SIDEBAR_ITEMS.map((i) => i.id);
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
@@ -74,20 +86,26 @@ export function getSavedSidebarOrder(): string[] {
   return DEFAULT_SIDEBAR_ITEMS.map((i) => i.id);
 }
 
-export function saveSidebarOrder(order: string[]) {
+export function saveSidebarOrder(order: string[], tenantId?: string | null) {
   if (typeof window === "undefined") return;
   try {
+    const key = getTenantStorageKey(SIDEBAR_STORAGE_KEY, tenantId);
+    localStorage.setItem(key, JSON.stringify(order));
     localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(order));
-    window.dispatchEvent(new CustomEvent("creatons:sidebar-order-changed", { detail: { order } }));
+    window.dispatchEvent(new CustomEvent("creatons:sidebar-order-changed", { detail: { order, tenantId } }));
   } catch (e) {
     console.error("Failed to save sidebar order:", e);
   }
 }
 
-export function getSavedHiddenSidebarItems(): string[] {
+export function getSavedHiddenSidebarItems(tenantId?: string | null): string[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(SIDEBAR_HIDDEN_KEY);
+    const key = getTenantStorageKey(SIDEBAR_HIDDEN_KEY, tenantId);
+    let raw = localStorage.getItem(key);
+    if (!raw) {
+      raw = localStorage.getItem(SIDEBAR_HIDDEN_KEY);
+    }
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed;
@@ -97,19 +115,21 @@ export function getSavedHiddenSidebarItems(): string[] {
   return [];
 }
 
-export function saveHiddenSidebarItems(hidden: string[]) {
+export function saveHiddenSidebarItems(hidden: string[], tenantId?: string | null) {
   if (typeof window === "undefined") return;
   try {
+    const key = getTenantStorageKey(SIDEBAR_HIDDEN_KEY, tenantId);
+    localStorage.setItem(key, JSON.stringify(hidden));
     localStorage.setItem(SIDEBAR_HIDDEN_KEY, JSON.stringify(hidden));
-    window.dispatchEvent(new CustomEvent("creatons:sidebar-order-changed", { detail: { hidden } }));
+    window.dispatchEvent(new CustomEvent("creatons:sidebar-order-changed", { detail: { hidden, tenantId } }));
   } catch (e) {
     console.error("Failed to save hidden sidebar items:", e);
   }
 }
 
-export function getOrderedNavItems(customOrder?: string[], hiddenIds?: string[]): NavItemConfig[] {
-  const order = customOrder && customOrder.length > 0 ? customOrder : getSavedSidebarOrder();
-  const hidden = new Set(hiddenIds ?? getSavedHiddenSidebarItems());
+export function getOrderedNavItems(customOrder?: string[], hiddenIds?: string[], tenantId?: string | null): NavItemConfig[] {
+  const order = customOrder && customOrder.length > 0 ? customOrder : getSavedSidebarOrder(tenantId);
+  const hidden = new Set(hiddenIds ?? getSavedHiddenSidebarItems(tenantId));
 
   const byId = new Map(DEFAULT_SIDEBAR_ITEMS.map((i) => [i.id, i]));
   const ordered: NavItemConfig[] = [];
