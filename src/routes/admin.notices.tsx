@@ -198,7 +198,7 @@ export function NoticesPage({ isEmbedded = false }: { isEmbedded?: boolean } = {
             imageUrl: imageUrl.trim() || undefined,
           }),
         }).catch((err) => console.log("[FCM Push] Backend dispatch offline or pending:", err));
-      } catch {}
+      } catch { }
     }
 
     // Switch to published notices tab to see the live entry
@@ -309,9 +309,8 @@ export function NoticesPage({ isEmbedded = false }: { isEmbedded?: boolean } = {
                       Notification Title
                     </Label>
                     <span
-                      className={`text-[11px] font-mono ${
-                        title.length > 55 ? "text-amber-500 font-bold" : "text-muted-foreground"
-                      }`}
+                      className={`text-[11px] font-mono ${title.length > 55 ? "text-amber-500 font-bold" : "text-muted-foreground"
+                        }`}
                     >
                       {title.length}/60
                     </span>
@@ -333,9 +332,8 @@ export function NoticesPage({ isEmbedded = false }: { isEmbedded?: boolean } = {
                       Notification Message
                     </Label>
                     <span
-                      className={`text-[11px] font-mono ${
-                        body.length > 150 ? "text-amber-500 font-bold" : "text-muted-foreground"
-                      }`}
+                      className={`text-[11px] font-mono ${body.length > 150 ? "text-amber-500 font-bold" : "text-muted-foreground"
+                        }`}
                     >
                       {body.length}/160
                     </span>
@@ -359,9 +357,8 @@ export function NoticesPage({ isEmbedded = false }: { isEmbedded?: boolean } = {
                       Notification Image URL (Optional)
                     </Label>
                     <span
-                      className={`text-[11px] font-mono ${
-                        imageUrl.length > 240 ? "text-amber-500 font-bold" : "text-muted-foreground"
-                      }`}
+                      className={`text-[11px] font-mono ${imageUrl.length > 240 ? "text-amber-500 font-bold" : "text-muted-foreground"
+                        }`}
                     >
                       {imageUrl.length}/250
                     </span>
@@ -728,11 +725,10 @@ function NoticeAdminRow({
             {n.priority !== "info" && (
               <Badge
                 variant="outline"
-                className={`text-[9px] uppercase px-1 py-0 font-bold ${
-                  n.priority === "urgent"
+                className={`text-[9px] uppercase px-1 py-0 font-bold ${n.priority === "urgent"
                     ? "bg-red-500/10 text-red-600 border-red-500/30"
                     : "bg-amber-500/10 text-amber-600 border-amber-500/30"
-                }`}
+                  }`}
               >
                 {n.priority}
               </Badge>
