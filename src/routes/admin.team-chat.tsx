@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -48,8 +48,17 @@ import {
 
 export const Route = createFileRoute("/admin/team-chat")({
   head: () => ({ meta: [{ title: "Team Chat · SWIFT Admin" }] }),
-  component: AdminTeamChatPage,
+  component: RedirectToAppHubChat,
 });
+
+function RedirectToAppHubChat() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate({ to: "/admin/app-hub", search: (prev: any) => ({ ...prev, tab: "chat" }) as any, replace: true });
+  }, [navigate]);
+
+  return <AdminTeamChatPage />;
+}
 
 // -------------------------------------------------------------
 // Voice Message Audio Player Component (WhatsApp Style)
@@ -206,7 +215,7 @@ function VoiceMessagePlayer({
   );
 }
 
-function AdminTeamChatPage() {
+export function AdminTeamChatPage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const { user, activeTenantId } = useAuth();
   const { company, employees } = useStore();
   const effectiveTenantId = activeTenantId || (company as any)?.id || "10300b23-e442-41f0-a3fa-383e5e5a18c3";

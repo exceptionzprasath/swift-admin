@@ -51,6 +51,7 @@ import {
   UserCheck,
   ScanFace,
   KeyRound,
+  LayoutGrid,
 } from "lucide-react";
 import { CreatonsAiIcon } from "@/components/icons/creatons-ai-icon";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,7 @@ export function getPathModuleKey(currentPath: string): ModuleKey | null {
   if (currentPath.startsWith("/admin/requests")) return "requests";
   if (currentPath.startsWith("/admin/grievances")) return "requests";
   if (currentPath.startsWith("/admin/ai")) return "ai";
+  if (currentPath.startsWith("/admin/app-hub")) return null;
   if (currentPath.startsWith("/admin/team-chat")) return "teamChat";
   if (currentPath.startsWith("/admin/notices")) return "notices";
   if (currentPath.startsWith("/admin/employees")) return "employees";
@@ -136,8 +138,7 @@ const nav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, moduleKey: "dashboard", exact: true },
   { to: "/admin/requests", label: "Requests & Approvals", icon: Inbox, moduleKey: "requests" },
   { to: "/admin/ai", label: "CREATONS AI", icon: CreatonsAiIcon, moduleKey: "ai", badge: "AI" },
-  { to: "/admin/team-chat", label: "Team Chat", icon: MessagesSquare, moduleKey: "teamChat" },
-  { to: "/admin/notices", label: "Notice Board", icon: Megaphone, moduleKey: "notices" },
+  { to: "/admin/app-hub", label: "App Hub", icon: LayoutGrid },
   { to: "/admin/employees", label: "Employees", icon: Users, moduleKey: "employees" },
   { to: "/admin/attendance", label: "Attendance", icon: CalendarCheck, moduleKey: "attendance" },
   { to: "/admin/leave-calendar", label: "Leave Calendar", icon: CalendarDays, moduleKey: "leaveCalendar" },
@@ -341,6 +342,11 @@ function AdminLayout() {
     });
     if (activePermissions) {
       list = list.filter((item) => {
+        if (item.to === "/admin/app-hub") {
+          const chatPerm = activePermissions?.teamChat?.enabledInSidebar ?? true;
+          const noticePerm = activePermissions?.notices?.enabledInSidebar ?? true;
+          return chatPerm || noticePerm;
+        }
         if (!item.moduleKey) return true;
         const perm = activePermissions[item.moduleKey];
         return perm ? perm.enabledInSidebar : true;
@@ -787,7 +793,7 @@ function AdminLayout() {
     </TooltipProvider>
   );
 
-  const isFullBleed = path === "/admin/team-chat" || path.startsWith("/admin/team-chat");
+  const isFullBleed = path === "/admin/team-chat" || path.startsWith("/admin/team-chat") || path === "/admin/app-hub" || path.startsWith("/admin/app-hub");
 
   return (
     <div className={`flex bg-background text-foreground transition-colors duration-200 ${isFullBleed ? "h-screen max-h-screen overflow-hidden" : "min-h-screen"}`}>

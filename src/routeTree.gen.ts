@@ -43,6 +43,7 @@ import { Route as AdminAuditRouteImport } from './routes/admin.audit'
 import { Route as AdminAttendanceRouteImport } from './routes/admin.attendance'
 import { Route as AdminAssetsRouteImport } from './routes/admin.assets'
 import { Route as AdminApprovalSettingsRouteImport } from './routes/admin.approval-settings'
+import { Route as AdminAppHubRouteImport } from './routes/admin.app-hub'
 import { Route as AdminAiRouteImport } from './routes/admin.ai'
 
 const SuperAdminRoute = SuperAdminRouteImport.update({
@@ -215,6 +216,11 @@ const AdminApprovalSettingsRoute = AdminApprovalSettingsRouteImport.update({
   path: '/approval-settings',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminAppHubRoute = AdminAppHubRouteImport.update({
+  id: '/app-hub',
+  path: '/app-hub',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAiRoute = AdminAiRouteImport.update({
   id: '/ai',
   path: '/ai',
@@ -228,6 +234,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/super-admin': typeof SuperAdminRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/app-hub': typeof AdminAppHubRoute
   '/admin/approval-settings': typeof AdminApprovalSettingsRoute
   '/admin/assets': typeof AdminAssetsRoute
   '/admin/attendance': typeof AdminAttendanceRoute
@@ -264,6 +271,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/super-admin': typeof SuperAdminRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/app-hub': typeof AdminAppHubRoute
   '/admin/approval-settings': typeof AdminApprovalSettingsRoute
   '/admin/assets': typeof AdminAssetsRoute
   '/admin/attendance': typeof AdminAttendanceRoute
@@ -302,6 +310,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/super-admin': typeof SuperAdminRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/app-hub': typeof AdminAppHubRoute
   '/admin/approval-settings': typeof AdminApprovalSettingsRoute
   '/admin/assets': typeof AdminAssetsRoute
   '/admin/attendance': typeof AdminAttendanceRoute
@@ -341,6 +350,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/super-admin'
     | '/admin/ai'
+    | '/admin/app-hub'
     | '/admin/approval-settings'
     | '/admin/assets'
     | '/admin/attendance'
@@ -377,6 +387,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/super-admin'
     | '/admin/ai'
+    | '/admin/app-hub'
     | '/admin/approval-settings'
     | '/admin/assets'
     | '/admin/attendance'
@@ -414,6 +425,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/super-admin'
     | '/admin/ai'
+    | '/admin/app-hub'
     | '/admin/approval-settings'
     | '/admin/assets'
     | '/admin/attendance'
@@ -693,6 +705,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminApprovalSettingsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/app-hub': {
+      id: '/admin/app-hub'
+      path: '/app-hub'
+      fullPath: '/admin/app-hub'
+      preLoaderRoute: typeof AdminAppHubRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/ai': {
       id: '/admin/ai'
       path: '/ai'
@@ -705,6 +724,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminAiRoute: typeof AdminAiRoute
+  AdminAppHubRoute: typeof AdminAppHubRoute
   AdminApprovalSettingsRoute: typeof AdminApprovalSettingsRoute
   AdminAssetsRoute: typeof AdminAssetsRoute
   AdminAttendanceRoute: typeof AdminAttendanceRoute
@@ -738,6 +758,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAiRoute: AdminAiRoute,
+  AdminAppHubRoute: AdminAppHubRoute,
   AdminApprovalSettingsRoute: AdminApprovalSettingsRoute,
   AdminAssetsRoute: AdminAssetsRoute,
   AdminAttendanceRoute: AdminAttendanceRoute,

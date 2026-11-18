@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState, useMemo, useEffect } from "react";
 import { useStore, getBackendUrl, type Notice, type NoticePriority, type NoticeAudienceScope } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,8 +39,17 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export const Route = createFileRoute("/admin/notices")({
   head: () => ({ meta: [{ title: "Notice Board & Push Broadcast · CreatonsHR" }] }),
-  component: NoticesPage,
+  component: RedirectToAppHubNotices,
 });
+
+function RedirectToAppHubNotices() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate({ to: "/admin/app-hub", search: (prev: any) => ({ ...prev, tab: "notices" }) as any, replace: true });
+  }, [navigate]);
+
+  return <NoticesPage />;
+}
 
 // Sound chime simulator for push notification test
 function playPreviewChime() {
@@ -94,7 +103,7 @@ const PRESET_TEMPLATES = [
   },
 ];
 
-function NoticesPage() {
+export function NoticesPage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const { notices, addNotice, deleteNotice, updateNotice, company, employees, currentUser } = useStore();
 
   // Active view tab
