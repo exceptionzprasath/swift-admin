@@ -14,16 +14,14 @@ export function ComingSoonOverlay({
   description,
 }: ComingSoonOverlayProps) {
   const [isLocked, setIsLocked] = useState(false);
-  const [bounds, setBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(() => {
+  const [bounds, setBounds] = useState<{ top: number; left: number } | null>(() => {
     if (typeof window !== "undefined") {
       const mainEl = document.querySelector("main");
       if (mainEl) {
         const rect = mainEl.getBoundingClientRect();
         return {
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
+          top: Math.max(0, rect.top),
+          left: Math.max(0, rect.left),
         };
       }
     }
@@ -46,10 +44,8 @@ export function ComingSoonOverlay({
       if (mainEl) {
         const rect = mainEl.getBoundingClientRect();
         setBounds({
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
+          top: Math.max(0, rect.top),
+          left: Math.max(0, rect.left),
         });
       }
     };
@@ -117,8 +113,8 @@ export function ComingSoonOverlay({
                   position: "fixed",
                   top: `${bounds.top}px`,
                   left: `${bounds.left}px`,
-                  width: `${bounds.width}px`,
-                  height: `${bounds.height}px`,
+                  right: 0,
+                  bottom: 0,
                 }
               : undefined
           }
