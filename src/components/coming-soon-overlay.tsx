@@ -14,7 +14,23 @@ export function ComingSoonOverlay({
   description,
 }: ComingSoonOverlayProps) {
   const [isLocked, setIsLocked] = useState(false);
+  const [bounds, setBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(() => {
+    if (typeof window !== "undefined") {
+      const mainEl = document.querySelector("main");
+      if (mainEl) {
+        const rect = mainEl.getBoundingClientRect();
+        return {
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        };
+      }
+    }
+    return null;
+  });
 
+  // Trigger lock timer
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLocked(true);
@@ -23,6 +39,70 @@ export function ComingSoonOverlay({
     return () => clearTimeout(timer);
   }, [delayMs]);
 
+  // Keep bounds in sync with <main> element geometry
+  useEffect(() => {
+    const updateBounds = () => {
+      const mainEl = document.querySelector("main");
+      if (mainEl) {
+        const rect = mainEl.getBoundingClientRect();
+        setBounds({
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        });
+      }
+    };
+
+    updateBounds();
+
+    window.addEventListener("resize", updateBounds);
+    window.addEventListener("scroll", updateBounds, { passive: true });
+
+    const mainEl = document.querySelector("main");
+    let observer: ResizeObserver | null = null;
+    if (mainEl && typeof window.ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(updateBounds);
+      observer.observe(mainEl);
+    }
+
+    return () => {
+      window.removeEventListener("resize", updateBounds);
+      window.removeEventListener("scroll", updateBounds);
+      observer?.disconnect();
+    };
+  }, []);
+
+  // When locked, freeze scrolling on body and main so the page cannot scroll
+  useEffect(() => {
+    if (!isLocked) return;
+
+    // Reset scroll to top
+    window.scrollTo({ top: 0, behavior: "instant" });
+    const mainEl = document.querySelector("main");
+    if (mainEl) {
+      mainEl.scrollTop = 0;
+    }
+
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevMainOverflow = mainEl ? mainEl.style.overflow : "";
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    if (mainEl) {
+      mainEl.style.overflow = "hidden";
+    }
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      if (mainEl) {
+        mainEl.style.overflow = prevMainOverflow;
+      }
+    };
+  }, [isLocked]);
+
   return (
     <AnimatePresence>
       {isLocked && (
@@ -30,8 +110,25 @@ export function ComingSoonOverlay({
           initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
           animate={{ opacity: 1, backdropFilter: "blur(14px)" }}
           exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-          className="absolute inset-0 z-30 rounded-3xl flex items-center justify-center p-6 bg-background/60 dark:bg-background/70 select-none"
+          transition={{ duration: 0.35, ease: "easeOut" }}
+          style={
+            bounds
+              ? {
+                  position: "fixed",
+                  top: `${bounds.top}px`,
+                  left: `${bounds.left}px`,
+                  width: `${bounds.width}px`,
+                  height: `${bounds.height}px`,
+                }
+              : undefined
+          }
+          className="fixed top-16 sm:top-20 right-0 bottom-0 left-0 md:left-64 lg:left-72 z-30 flex items-center justify-center p-6 bg-background/60 dark:bg-background/70 select-none overflow-hidden"
+          onWheel={(e) => {
+            e.stopPropagation();
+          }}
+          onTouchMove={(e) => {
+            e.stopPropagation();
+          }}
         >
           <motion.div
             initial={{ scale: 0.85, opacity: 0, y: 14 }}
