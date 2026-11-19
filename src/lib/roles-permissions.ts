@@ -98,9 +98,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleMetadata> = {
   },
   leaveCalendar: {
     key: "leaveCalendar",
-    label: "Leave Calendar",
+    label: "Leave Management",
     category: "Operations",
-    description: "Holiday schedules, leave balances, and team availability",
+    description: "Holiday schedules, leave policies, and office availability",
     path: "/admin/leave-calendar",
   },
   shiftRoster: {

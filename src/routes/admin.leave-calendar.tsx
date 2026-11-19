@@ -1,12 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useStore, CompanyHoliday, HolidayType, LeaveRequest, isMockEmployee, isFrozenEmployee, isActiveEmployee } from "@/lib/store";
+import { useStore, CompanyHoliday, HolidayType } from "@/lib/store";
 import {
   CalendarDays, ChevronLeft, ChevronRight, Download, Upload, Plus,
-  Check, X, Trash2, Search, Filter, Sparkles, Building2, CheckCircle2,
-  Clock, Calendar as CalendarIcon, Info, ListFilter, LayoutGrid, Eye,
-  FileSpreadsheet, PartyPopper, ShieldCheck, Flag, Star, Tag, AlertCircle,
-  Edit2, User, CheckCircle, XCircle, MessageSquare, AlertTriangle, ShieldAlert
+  Search, Building2, CheckCircle2,
+  Calendar as CalendarIcon, ListFilter, LayoutGrid, Eye,
+  FileSpreadsheet, PartyPopper, ShieldCheck, Flag, Star, Tag,
+  Edit2, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,7 @@ import {
 } from "@/lib/bulk-holiday";
 
 export const Route = createFileRoute("/admin/leave-calendar")({
-  head: () => ({ meta: [{ title: "Leave & Holiday Management · CreatonsHR" }] }),
+  head: () => ({ meta: [{ title: "Leave Management · CreatonsHR" }] }),
   component: RedirectToAttendanceLeaveCalendar,
 });
 
@@ -94,124 +94,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
     deleteHoliday,
     bulkAddHolidays,
     company,
-    leaves,
-    updateLeave,
-    deleteLeave,
-    employees: rawEmployees,
-    currentUser,
-    actOnLeaveApprovalStep,
   } = useStore();
-
-  const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
-
-  // Top-level View Tab: "requests" (Employee Leave Requests) vs "holidays" (Company Holidays)
-  const [activeTab, setActiveTab] = useState<"requests" | "holidays">("requests");
-
-  // ==========================================
-  // EMPLOYEE LEAVE REQUESTS STATE & FILTERS
-  // ==========================================
-  const [leaveSearch, setLeaveSearch] = useState("");
-  const [leaveStatusFilter, setLeaveStatusFilter] = useState<string>("all");
-  const [leaveTypeFilter, setLeaveTypeFilter] = useState<string>("all");
-
-  // Action Dialog State (Approve / Reject)
-  const [actionModal, setActionModal] = useState<{
-    open: boolean;
-    leave: LeaveRequest | null;
-    action: "approved" | "rejected";
-    comment: string;
-  }>({
-    open: false,
-    leave: null,
-    action: "approved",
-    comment: "",
-  });
-
-  // Filtered Leave Requests
-  const filteredLeaves = useMemo(() => {
-    return (leaves || []).filter((l) => {
-      const emp = employees.find((e) => e.id === l.employeeId || e.empCode === l.employeeId);
-      const name = l.employeeName || emp?.name || "";
-      const empCode = emp?.empCode || "";
-      const query = leaveSearch.toLowerCase().trim();
-
-      const matchesSearch =
-        !query ||
-        name.toLowerCase().includes(query) ||
-        empCode.toLowerCase().includes(query) ||
-        (l.reason || "").toLowerCase().includes(query) ||
-        l.type.toLowerCase().includes(query);
-
-      const statusNormalized = (l.status || "pending").toLowerCase();
-      const matchesStatus =
-        leaveStatusFilter === "all" ||
-        (leaveStatusFilter === "pending" && statusNormalized === "pending") ||
-        (leaveStatusFilter === "approved" && statusNormalized === "approved") ||
-        (leaveStatusFilter === "rejected" && statusNormalized === "rejected");
-
-      const matchesType =
-        leaveTypeFilter === "all" ||
-        (leaveTypeFilter === "permission" && l.type.toLowerCase().includes("permission")) ||
-        (leaveTypeFilter === "casual" && l.type.toLowerCase().includes("casual")) ||
-        (leaveTypeFilter === "sick" && l.type.toLowerCase().includes("sick")) ||
-        (leaveTypeFilter === "earned" && l.type.toLowerCase().includes("earned"));
-
-      return matchesSearch && matchesStatus && matchesType;
-    });
-  }, [leaves, employees, leaveSearch, leaveStatusFilter, leaveTypeFilter]);
-
-  // Leave Request Statistics
-  const leaveStats = useMemo(() => {
-    const all = leaves || [];
-    const pending = all.filter((l) => (l.status || "pending").toLowerCase() === "pending").length;
-    const approved = all.filter((l) => (l.status || "").toLowerCase() === "approved").length;
-    const rejected = all.filter((l) => (l.status || "").toLowerCase() === "rejected").length;
-    return { total: all.length, pending, approved, rejected };
-  }, [leaves]);
-
-  const handleOpenActionModal = (leave: LeaveRequest, action: "approved" | "rejected") => {
-    const currentLvl = leave.currentLevel || 1;
-    const totalLvls = leave.totalLevels || 3;
-    const isSequential = (leave.approvalSteps?.length ?? 0) > 0;
-    const nextRoleName = leave.approvalSteps?.find((s) => s.level === currentLvl)?.roleName || "HR Admin";
-
-    setActionModal({
-      open: true,
-      leave,
-      action,
-      comment: action === "approved" ? `Approved by ${nextRoleName}` : "",
-    });
-  };
-
-  const handleConfirmAction = () => {
-    if (!actionModal.leave) return;
-    const { leave, action, comment } = actionModal;
-
-    if (action === "rejected" && !comment.trim()) {
-      toast.error("Please enter a reason for rejecting the request.");
-      return;
-    }
-
-    const actorName = currentUser?.name || "HR Admin";
-    const actorRole = currentUser?.role === "admin" ? "HR Admin" : "Reporting Manager";
-
-    if (leave.approvalSteps && leave.approvalSteps.length > 0) {
-      actOnLeaveApprovalStep(
-        leave.id,
-        action === "approved" ? "approve_close" : "reject",
-        comment.trim(),
-        actorName,
-        actorRole
-      );
-    } else {
-      updateLeave(leave.id, action === "approved" ? "Approved" : "Rejected", comment.trim());
-    }
-
-    toast.success(
-      `Leave request ${action === "approved" ? "Approved" : "Rejected"} successfully for ${leave.employeeName || "Employee"}`
-    );
-    setActionModal({ open: false, leave: null, action: "approved", comment: "" });
-  };
 
   // ==========================================
   // OFFICE HOLIDAY CALENDAR STATE
@@ -456,453 +339,54 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
   return (
     <div className="space-y-6 pb-12">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-border/80 pb-5">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="h-10 w-10 rounded-xl bg-gradient-brand text-white flex items-center justify-center shadow-soft">
               <CalendarDays className="h-5 w-5" />
             </div>
             <div>
+              <h1 className="text-xl sm:text-2xl font-bold font-display tracking-tight text-foreground">
+                Leave Management
+              </h1>
               <p className="text-xs sm:text-sm text-muted-foreground">
-                Approve employee leave applications, short permissions & configure office holidays.
+                Configure official company holidays, non-working days & office calendar schedule.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Top Tab Switcher */}
-        <div className="flex items-center p-1 bg-muted/60 rounded-xl border border-border">
+        {/* Action Buttons: Template, Bulk Upload, Add Holiday */}
+        <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant={activeTab === "requests" ? "default" : "ghost"}
+            variant="outline"
             size="sm"
-            onClick={() => setActiveTab("requests")}
-            className="rounded-lg text-xs font-bold gap-2 relative"
+            onClick={() => downloadHolidayCSVTemplate()}
+            className="text-xs h-9 gap-1.5"
           >
-            <Clock className="h-3.5 w-3.5" />
-            Employee Requests
-            {leaveStats.pending > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 bg-amber-500 text-white rounded-full text-[10px] font-black animate-pulse">
-                {leaveStats.pending}
-              </span>
-            )}
+            <Download className="h-4 w-4" /> Download CSV Template
           </Button>
 
-          <Button
-            variant={activeTab === "holidays" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("holidays")}
-            className="rounded-lg text-xs font-bold gap-2"
-          >
-            <PartyPopper className="h-3.5 w-3.5" />
-            Holiday Calendar ({holidays.length})
+          <label className="cursor-pointer">
+            <input
+              type="file"
+              accept=".csv"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <Button variant="outline" size="sm" asChild className="text-xs h-9 gap-1.5 cursor-pointer">
+              <span>
+                <Upload className="h-4 w-4" /> Bulk Upload CSV
+              </span>
+            </Button>
+          </label>
+
+          <Button onClick={handleOpenAdd} className="bg-gradient-brand text-white shadow-soft text-xs h-9 gap-1.5">
+            <Plus className="h-4 w-4" /> Add Office Holiday
           </Button>
         </div>
       </div>
-
-      {/* ========================================================================= */}
-      {/* 1. EMPLOYEE LEAVE & PERMISSION REQUESTS TAB */}
-      {/* ========================================================================= */}
-      {activeTab === "requests" && (
-        <div className="space-y-6">
-          {/* Quick Metrics */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <Card className="border-amber-500/30 bg-amber-500/5 shadow-xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                    Pending Approvals
-                  </p>
-                  <h3 className="text-2xl font-black text-amber-600 tracking-tight mt-1">{leaveStats.pending}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Requires manager action</p>
-                </div>
-                <div className="h-10 w-10 rounded-xl bg-amber-500/15 text-amber-600 flex items-center justify-center">
-                  <Clock className="h-5 w-5 animate-pulse" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-emerald-500/30 bg-emerald-500/5 shadow-xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                    Approved Leaves
-                  </p>
-                  <h3 className="text-2xl font-black text-emerald-600 tracking-tight mt-1">{leaveStats.approved}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Approved & active in payroll</p>
-                </div>
-                <div className="h-10 w-10 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center">
-                  <CheckCircle2 className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-rose-500/30 bg-rose-500/5 shadow-xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-400">
-                    Rejected Requests
-                  </p>
-                  <h3 className="text-2xl font-black text-rose-600 tracking-tight mt-1">{leaveStats.rejected}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Declined with remarks</p>
-                </div>
-                <div className="h-10 w-10 rounded-xl bg-rose-500/15 text-rose-600 flex items-center justify-center">
-                  <XCircle className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/70 shadow-xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Total Applications
-                  </p>
-                  <h3 className="text-2xl font-black text-foreground tracking-tight mt-1">{leaveStats.total}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Mobile & portal submissions</p>
-                </div>
-                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                  <CalendarIcon className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Filter & Search Bar */}
-          <Card className="border-border shadow-xs">
-            <CardContent className="p-4">
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-                {/* Search */}
-                <div className="relative flex-1 min-w-[240px]">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by employee name, code, reason, or leave type..."
-                    value={leaveSearch}
-                    onChange={(e) => setLeaveSearch(e.target.value)}
-                    className="pl-9 text-xs h-9"
-                  />
-                </div>
-
-                {/* Status Filter */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <Select value={leaveStatusFilter} onValueChange={setLeaveStatusFilter}>
-                    <SelectTrigger className="h-9 text-xs min-w-[140px]">
-                      <SelectValue placeholder="All Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="pending">⏳ Pending Approvals</SelectItem>
-                      <SelectItem value="approved">✅ Approved</SelectItem>
-                      <SelectItem value="rejected">❌ Rejected</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {/* Type Filter */}
-                  <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
-                    <SelectTrigger className="h-9 text-xs min-w-[150px]">
-                      <SelectValue placeholder="All Leave Types" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Request Types</SelectItem>
-                      <SelectItem value="casual">Casual Leave (CL)</SelectItem>
-                      <SelectItem value="sick">Sick Leave (SL)</SelectItem>
-                      <SelectItem value="earned">Earned Leave (EL)</SelectItem>
-                      <SelectItem value="permission">Short Permission</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {(leaveSearch || leaveStatusFilter !== "all" || leaveTypeFilter !== "all") && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setLeaveSearch("");
-                        setLeaveStatusFilter("all");
-                        setLeaveTypeFilter("all");
-                      }}
-                      className="text-xs text-muted-foreground h-9"
-                    >
-                      Clear
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Requests Table */}
-          <Card className="border-border shadow-sm">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base font-bold">
-                    Incoming Leave & Permission Applications ({filteredLeaves.length})
-                  </CardTitle>
-                  <CardDescription>
-                    Real-time requests received from employees via mobile and employee self-service.
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-muted/50 text-muted-foreground border-y border-border">
-                    <tr>
-                      <th className="p-3 font-semibold min-w-[180px]">Employee</th>
-                      <th className="p-3 font-semibold min-w-[150px] whitespace-nowrap">Category</th>
-                      <th className="p-3 font-semibold min-w-[150px] whitespace-nowrap">Requested Period / Timing</th>
-                      <th className="p-3 font-semibold min-w-[90px] whitespace-nowrap">Duration</th>
-                      <th className="p-3 font-semibold min-w-[180px]">Reason</th>
-                      <th className="p-3 font-semibold min-w-[130px] whitespace-nowrap">Status</th>
-                      <th className="p-3 font-semibold min-w-[160px]">Approver Notes</th>
-                      <th className="p-3 font-semibold text-right min-w-[110px] whitespace-nowrap">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filteredLeaves.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="p-10 text-center text-muted-foreground">
-                          <div className="flex flex-col items-center justify-center gap-2">
-                            <Clock className="h-8 w-8 text-muted-foreground/50" />
-                            <p className="text-sm font-semibold">No leave or permission requests found</p>
-                            <p className="text-xs text-muted-foreground">
-                              When employees apply via the mobile app, their requests will appear here instantly.
-                            </p>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredLeaves.map((l) => {
-                        const emp = employees.find((e) => e.id === l.employeeId || e.empCode === l.employeeId);
-                        const empName = l.employeeName || emp?.name || "Employee";
-                        const empCode = emp?.empCode || l.employeeId || "SW001";
-                        const dept = emp?.department || "Operations";
-                        const initial = empName.charAt(0).toUpperCase();
-
-                        const statusNorm = (l.status || "pending").toLowerCase();
-                        const isPending = statusNorm === "pending";
-                        const isApproved = statusNorm === "approved";
-                        const isRejected = statusNorm === "rejected";
-
-                        return (
-                          <tr key={l.id} className="hover:bg-muted/30 transition-colors">
-                            {/* Employee Details */}
-                            <td className="p-3">
-                              <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0 border border-primary/20">
-                                  {initial}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="font-bold text-foreground truncate">{empName}</div>
-                                  <div className="text-[10px] text-muted-foreground truncate">
-                                    {empCode} · {dept}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Category Badge */}
-                            <td className="p-3 whitespace-nowrap">
-                              <span
-                                className={`px-2.5 py-1 rounded-md border text-[10px] font-bold whitespace-nowrap inline-flex items-center gap-1 shrink-0 ${
-                                  l.type.toLowerCase().includes("permission")
-                                    ? "bg-purple-500/10 text-purple-700 border-purple-500/30"
-                                    : l.type.toLowerCase().includes("casual")
-                                    ? "bg-sky-500/10 text-sky-700 border-sky-500/30"
-                                    : l.type.toLowerCase().includes("sick")
-                                    ? "bg-amber-500/10 text-amber-700 border-amber-500/30"
-                                    : "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
-                                }`}
-                              >
-                                {l.type}
-                              </span>
-                            </td>
-
-                            {/* Period / Dates */}
-                            <td className="p-3 font-medium text-foreground whitespace-nowrap">
-                              <div className="flex items-center gap-1.5">
-                                <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                <span>{l.startDate || l.from || "Recent"}</span>
-                              </div>
-                            </td>
-
-                            {/* Duration */}
-                            <td className="p-3 whitespace-nowrap">
-                              <Badge variant="secondary" className="font-mono text-[10px] whitespace-nowrap inline-block shrink-0 px-2 py-0.5">
-                                {l.days || "1 Day"}
-                              </Badge>
-                            </td>
-
-                            {/* Reason with Hover Popup Tooltip */}
-                            <td className="p-3 max-w-[200px]">
-                              <TooltipProvider delayDuration={150}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className="truncate text-muted-foreground text-xs cursor-default" title={l.reason}>
-                                      {l.reason || "—"}
-                                    </div>
-                                  </TooltipTrigger>
-                                  {l.reason && (
-                                    <TooltipContent side="top" align="start" className="max-w-xs bg-foreground text-background text-xs font-medium p-2.5 shadow-xl z-50 break-words">
-                                      {l.reason}
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              </TooltipProvider>
-                            </td>
-
-                            {/* Status */}
-                            <td className="p-3 whitespace-nowrap">
-                              {isPending ? (
-                                <div className="space-y-1">
-                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30 whitespace-nowrap">
-                                    <Clock className="h-3.5 w-3.5 shrink-0" />
-                                    <span>
-                                      {l.approvalSteps && l.approvalSteps.length > 0
-                                        ? `Level ${l.currentLevel || 1}/${l.totalLevels || 3} Pending`
-                                        : "Pending Review"}
-                                    </span>
-                                  </span>
-                                  {l.approvalSteps && l.approvalSteps.length > 0 && (
-                                    <div className="text-[10px] text-muted-foreground truncate">
-                                      Next: {l.approvalSteps.find((s) => s.level === (l.currentLevel || 1))?.roleName || "Manager"}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : isApproved ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 whitespace-nowrap">
-                                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                                  <span>Approved</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-rose-500/15 text-rose-600 border border-rose-500/30 whitespace-nowrap">
-                                  <XCircle className="h-3.5 w-3.5 shrink-0" />
-                                  <span>Rejected</span>
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Approver Notes / Multi-Stage Steps */}
-                            <td className="p-3 max-w-[200px] text-muted-foreground text-[11px]">
-                              {l.approvalSteps && l.approvalSteps.length > 0 ? (
-                                <div className="flex items-center gap-1">
-                                  {l.approvalSteps.map((s, idx) => (
-                                    <div
-                                      key={s.level}
-                                      className={`h-5 px-1.5 rounded text-[9px] font-bold flex items-center gap-0.5 ${
-                                        s.status === "Approved"
-                                          ? "bg-emerald-500/15 text-emerald-700 border border-emerald-500/30"
-                                          : s.status === "Rejected"
-                                          ? "bg-rose-500/15 text-rose-700 border border-rose-500/30"
-                                          : s.level === (l.currentLevel || 1)
-                                          ? "bg-amber-500/20 text-amber-700 border border-amber-500/40 animate-pulse"
-                                          : "bg-muted text-muted-foreground"
-                                      }`}
-                                      title={`L${s.level} (${s.roleName}): ${s.status}${s.comment ? " - " + s.comment : ""}`}
-                                    >
-                                      L{s.level}: {s.status === "Approved" ? "✓" : s.status === "Rejected" ? "✗" : "..."}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : l.approvedBy ? (
-                                <span className="text-emerald-600 font-medium">
-                                  by {l.approvedBy}
-                                </span>
-                              ) : l.rejectedReason ? (
-                                <span className="text-rose-600 font-medium truncate block" title={l.rejectedReason}>
-                                  Reason: {l.rejectedReason}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-
-                            {/* Actions */}
-                            <td className="p-3 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {isPending ? (
-                                  <>
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleOpenActionModal(l, "approved")}
-                                      className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1"
-                                    >
-                                      <Check className="h-3.5 w-3.5" /> Approve
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleOpenActionModal(l, "rejected")}
-                                      className="h-7 px-2.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200 font-bold gap-1"
-                                    >
-                                      <X className="h-3.5 w-3.5" /> Reject
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => {
-                                      deleteLeave(l.id);
-                                      toast.success("Leave record cleared");
-                                    }}
-                                    className="h-7 w-7 text-muted-foreground hover:text-rose-600"
-                                    title="Delete leave record"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 2. OFFICE HOLIDAY CALENDAR TAB */}
-      {/* ========================================================================= */}
-      {activeTab === "holidays" && (
-        <div className="space-y-6">
-          {/* Action Buttons: Template, Bulk Upload, Add Holiday */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => downloadHolidayCSVTemplate()}
-                className="text-xs h-9 gap-1.5"
-              >
-                <Download className="h-4 w-4" /> Download CSV Template
-              </Button>
-
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  accept=".csv"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <Button variant="outline" size="sm" asChild className="text-xs h-9 gap-1.5 cursor-pointer">
-                  <span>
-                    <Upload className="h-4 w-4" /> Bulk Upload CSV
-                  </span>
-                </Button>
-              </label>
-            </div>
-
-            <Button onClick={handleOpenAdd} className="bg-gradient-brand text-white shadow-soft text-xs h-9 gap-1.5">
-              <Plus className="h-4 w-4" /> Add Office Holiday
-            </Button>
-          </div>
 
           {/* Quick Metrics */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -1226,97 +710,6 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
               </CardContent>
             </Card>
           )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 3. ACTION MODAL FOR APPROVING / REJECTING LEAVE REQUESTS */}
-      {/* ========================================================================= */}
-      <Dialog
-        open={actionModal.open}
-        onOpenChange={(open) => !open && setActionModal((prev) => ({ ...prev, open: false }))}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {actionModal.action === "approved" ? (
-                <>
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  Approve Leave Application
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-5 w-5 text-rose-600" />
-                  Reject Leave Application
-                </>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {actionModal.action === "approved"
-                ? "Confirm approval for this employee leave/permission request."
-                : "Provide a valid justification for declining this request."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {actionModal.leave && (
-            <div className="space-y-3.5 py-2 text-xs">
-              <div className="p-3 rounded-xl bg-muted/40 border border-border space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-foreground text-sm">
-                    {actionModal.leave.employeeName || "Employee"}
-                  </span>
-                  <Badge variant="outline">{actionModal.leave.type}</Badge>
-                </div>
-                <div className="text-muted-foreground">
-                  📅 {actionModal.leave.startDate || actionModal.leave.from} ({actionModal.leave.days || "1 Day"})
-                </div>
-                <div className="text-muted-foreground italic">
-                  "{actionModal.leave.reason}"
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-xs font-semibold">
-                  {actionModal.action === "approved"
-                    ? "Approval Remarks (Optional)"
-                    : "Rejection Reason (Required)"}
-                </Label>
-                <Textarea
-                  placeholder={
-                    actionModal.action === "approved"
-                      ? "e.g. Approved. Ensure handover to team lead..."
-                      : "e.g. Critical release scheduled. Please re-schedule..."
-                  }
-                  value={actionModal.comment}
-                  onChange={(e) => setActionModal((prev) => ({ ...prev, comment: e.target.value }))}
-                  className="mt-1.5 text-xs h-20"
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setActionModal((prev) => ({ ...prev, open: false }))}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleConfirmAction}
-              className={
-                actionModal.action === "approved"
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                  : "bg-rose-600 hover:bg-rose-700 text-white font-bold"
-              }
-            >
-              {actionModal.action === "approved" ? "Confirm Approval ✓" : "Confirm Rejection ✗"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ========================================================================= */}
       {/* 4. HOLIDAY DETAILS MODAL */}

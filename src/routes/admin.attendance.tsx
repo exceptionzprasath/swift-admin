@@ -1599,7 +1599,7 @@ function AttendancePage() {
             )}
             <span className="relative z-10 flex items-center gap-2">
               <CalendarDays className="h-4 w-4 shrink-0" />
-              <span>Leave Calendar</span>
+              <span>Leave Management</span>
             </span>
           </button>
 
