@@ -829,6 +829,29 @@ function AttendancePage() {
           : { status: "pending", label: "Not Punched Yet", color: "bg-muted text-muted-foreground border-border" };
       }
 
+      // If record is regularized / approved by admin, always honor the admin's approved status
+      if (rec.regularized) {
+        const approvedStatus = (rec.status || "present").toLowerCase();
+        if (approvedStatus === "informed_leave" || approvedStatus === "il" || (rec.leaveType === "LOP" && rec.isExcused)) {
+          return { status: "informed_leave", label: "Informed Leave (Approved)", color: "bg-[#FB8B24]/10 text-[#d46d11] border-[#FB8B24]/30" };
+        }
+        if (approvedStatus === "present") {
+          return { status: "present", label: "Present (Approved)", color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
+        }
+        if (approvedStatus === "half-day" || approvedStatus === "halfday") {
+          return { status: "half-day", label: "Half-Day (Approved)", color: "bg-amber-500/10 text-amber-600 border-amber-500/20" };
+        }
+        if (approvedStatus === "late") {
+          return { status: "late", label: "Late (Approved)", color: "bg-orange-500/10 text-orange-600 border-orange-500/20" };
+        }
+        if (approvedStatus === "leave") {
+          return { status: "leave", label: "Paid Leave (Approved)", color: "bg-[#55286F]/10 text-[#55286F] border-[#55286F]/25" };
+        }
+        if (approvedStatus === "absent") {
+          return { status: "absent", label: "Absent (Approved)", color: "bg-destructive/10 text-destructive border-destructive/20" };
+        }
+      }
+
       // If record has no punch timestamps but has an explicitly set status (e.g. Quick Mark or manual override)
       if (!rec.checkIn && !rec.clockIn) {
         if (rec.status === "informed_leave" || rec.status === "il" || (rec.leaveType === "LOP" && rec.isExcused)) {
@@ -872,25 +895,48 @@ function AttendancePage() {
 
       const [startH, startM] = shiftStart.split(":").map((v) => parseInt(v, 10) || 0);
       const startMinutesTotal = (startH || 0) * 60 + (startM || 0);
-      const graceLimitTotal = startMinutesTotal + graceMinutes;
-
-      const [halfH, halfM] = halfDayCutoff.split(":").map((v) => parseInt(v, 10) || 0);
-      const halfDayLimitTotal = (halfH || 12) * 60 + (halfM || 0);
-
-      const isLateCheckIn = punchMinutesTotal > graceLimitTotal;
-      const isMissedOut = Boolean(
-        rec.isMissedCheckout ||
-        (rec.clockOut === "22:00" && (rec.isAutoClosed || (rec as any).autoCloseReason)) ||
-        ((!rec.checkOut && !rec.clockOut) && isPast)
-      );
 
       const rawShiftEnd = scheduled.shift.end && scheduled.shift.end !== "-" ? scheduled.shift.end : "18:00";
       const shiftEnd = rawShiftEnd.includes(":") ? rawShiftEnd : "18:00";
       const [endH, endM] = shiftEnd.split(":").map((v) => parseInt(v, 10) || 0);
       const shiftEndMinutesTotal = (endH || 18) * 60 + (endM || 0);
 
+      // Support overnight / cross-midnight shifts (e.g. 23:00 to 01:00, or 22:00 to 06:00)
+      const isOvernight = shiftEndMinutesTotal <= startMinutesTotal;
+      const effectiveShiftStart = startMinutesTotal;
+      const effectiveShiftEnd = isOvernight ? shiftEndMinutesTotal + 1440 : shiftEndMinutesTotal;
+      const effectiveGraceLimit = effectiveShiftStart + graceMinutes;
+
+      // Normalize punch time for overnight shifts
+      let effectivePunch = punchMinutesTotal;
+      if (isOvernight && punchMinutesTotal < startMinutesTotal) {
+        effectivePunch = punchMinutesTotal + 1440;
+      }
+
+      // Normalize half-day cutoff
+      let effectiveHalfDayLimit: number;
+      const [halfH, halfM] = halfDayCutoff.split(":").map((v) => parseInt(v, 10) || 0);
+      const rawHalfDayTotal = (halfH || 12) * 60 + (halfM || 0);
+      if (isOvernight) {
+        if (emp.halfDayLoginTime || scheduled.shift.halfDayLoginTime) {
+          effectiveHalfDayLimit = rawHalfDayTotal < startMinutesTotal ? rawHalfDayTotal + 1440 : rawHalfDayTotal;
+        } else {
+          // Default to midpoint of overnight shift
+          effectiveHalfDayLimit = Math.round((effectiveShiftStart + effectiveShiftEnd) / 2);
+        }
+      } else {
+        effectiveHalfDayLimit = rawHalfDayTotal;
+      }
+
+      const isLateCheckIn = effectivePunch > effectiveGraceLimit;
+      const isMissedOut = Boolean(
+        rec.isMissedCheckout ||
+        (rec.clockOut === "22:00" && (rec.isAutoClosed || (rec as any).autoCloseReason)) ||
+        ((!rec.checkOut && !rec.clockOut) && isPast)
+      );
+
       // 1. Post-Shift Punch: Checked in at or after scheduled shift end time (e.g., 9:26 PM for a 09:00 - 18:00 shift)
-      if (punchMinutesTotal >= shiftEndMinutesTotal) {
+      if (effectivePunch >= effectiveShiftEnd) {
         return {
           status: "absent",
           label: "Invalid (Post-Shift Punch)",
@@ -908,7 +954,7 @@ function AttendancePage() {
       }
 
       // If record is marked half-day or missed checkout
-      if (rec.status === "halfday" || rec.status === "half-day" || isMissedOut || punchMinutesTotal >= halfDayLimitTotal) {
+      if (rec.status === "halfday" || rec.status === "half-day" || isMissedOut || effectivePunch >= effectiveHalfDayLimit) {
         return {
           status: "half-day",
           label: isMissedOut ? "Half-Day (Missed Out)" : "Half-Day Session",
@@ -916,16 +962,16 @@ function AttendancePage() {
         };
       }
 
-      if (punchMinutesTotal <= startMinutesTotal) {
+      if (effectivePunch <= effectiveShiftStart) {
         return { status: "present", label: "On Time", color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
       }
 
-      if (punchMinutesTotal <= graceLimitTotal) {
-        const diff = punchMinutesTotal - startMinutesTotal;
+      if (effectivePunch <= effectiveGraceLimit) {
+        const diff = effectivePunch - effectiveShiftStart;
         return { status: "present", label: `Grace (${diff}m)`, color: "bg-teal-500/10 text-teal-600 border-teal-500/20" };
       }
 
-      const rawLateBy = punchMinutesTotal - startMinutesTotal;
+      const rawLateBy = effectivePunch - effectiveShiftStart;
       const lateBy = !isNaN(rawLateBy) && rawLateBy > 0 ? rawLateBy : 0;
 
       // Check for approved/pending permission on this date
@@ -2622,9 +2668,10 @@ function AttendancePage() {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={() => handleQuickMark(emp.id, "present")}
-                                  className="cursor-pointer"
+                                  className="cursor-pointer font-medium text-emerald-600 focus:text-emerald-700"
                                 >
-                                  Mark Present
+                                  <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-emerald-600" />
+                                  Approve / Mark Present
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => handleQuickMark(emp.id, "late")}

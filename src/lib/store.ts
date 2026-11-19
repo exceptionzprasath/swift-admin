@@ -4391,6 +4391,48 @@ export const useStore = create<State>()(
           }));
         }
 
+        // If attendance regularization request is approved, apply updates to attendance records
+        if (newStatus === "Approved" && (targetReq.category === "attendance" || (targetReq as any).category === "att-regularization" || targetReq.workflowId?.includes("missing-punch") || targetReq.workflowId?.includes("att-"))) {
+          const attDate = targetReq.date || targetReq.metadata?.date || targetReq.metadata?.punchDate || now.slice(0, 10);
+          const attEmpId = targetReq.employeeId;
+          const targetStatus = (targetReq.metadata?.targetStatus || targetReq.metadata?.status || "present") as any;
+          const checkIn = targetReq.metadata?.checkIn || targetReq.metadata?.inTime;
+          const checkOut = targetReq.metadata?.checkOut || targetReq.metadata?.outTime;
+
+          set((s) => {
+            const existingIdx = s.attendance.findIndex((a) => (a.employeeId === attEmpId || (targetReq.empCode && a.empCode === targetReq.empCode)) && a.date === attDate);
+            const nextAtt = [...s.attendance];
+            const existingRec = existingIdx >= 0 ? nextAtt[existingIdx] : undefined;
+            const updatedRec: AttendanceRecord = {
+              ...(existingRec || {}),
+              id: existingRec?.id || `att-${attEmpId}-${attDate}`,
+              employeeId: attEmpId,
+              employeeName: targetReq.employeeName || existingRec?.employeeName,
+              empCode: targetReq.empCode || existingRec?.empCode,
+              department: targetReq.department || existingRec?.department,
+              date: attDate,
+              status: targetStatus === "late" ? "present" : targetStatus,
+              checkIn: checkIn || existingRec?.checkIn,
+              checkOut: checkOut || existingRec?.checkOut,
+              clockIn: checkIn || existingRec?.clockIn,
+              clockOut: checkOut || existingRec?.clockOut,
+              regularized: true,
+              regularizedBy: actorName || "Admin",
+              regularizedReason: `Approved Request: ${targetReq.workflowName || targetReq.type || "Attendance Regularization"}${comment ? ": " + comment : ""}`,
+              updatedAt: now,
+            };
+            if (existingIdx >= 0) {
+              nextAtt[existingIdx] = updatedRec;
+            } else {
+              nextAtt.push(updatedRec);
+            }
+            if (tenantId && !s.demoMode) {
+              syncItem("attendance", { tenantId, ...updatedRec });
+            }
+            return { attendance: nextAtt };
+          });
+        }
+
         set((s) => ({
           requests: s.requests.map((r) => (r.id === id ? updatedReq : r)),
         }));

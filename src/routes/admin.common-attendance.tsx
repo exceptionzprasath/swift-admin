@@ -136,32 +136,51 @@ function computePunctualityAndStatus(
 
   const currentMins = now.getHours() * 60 + now.getMinutes();
 
+  // Support overnight / cross-midnight shifts (e.g., 23:00 to 01:00)
+  const isOvernight = shiftEndMins <= shiftStartMins;
+  const effectiveShiftEndMins = isOvernight ? shiftEndMins + 1440 : shiftEndMins;
+  let effectivePunchMins = currentMins;
+  if (isOvernight && currentMins < shiftStartMins) {
+    effectivePunchMins = currentMins + 1440;
+  }
+
+  let effectiveHalfDayMins: number;
+  if (isOvernight) {
+    if (shift?.halfDayLoginTime) {
+      effectiveHalfDayMins = halfDayMins < shiftStartMins ? halfDayMins + 1440 : halfDayMins;
+    } else {
+      effectiveHalfDayMins = Math.round((shiftStartMins + effectiveShiftEndMins) / 2);
+    }
+  } else {
+    effectiveHalfDayMins = halfDayMins;
+  }
+
   let computedStatus: "present" | "absent" | "late" | "halfday" = "present";
   let punctualityTag: "on-time" | "within-grace" | "late" | "half-day" | "absent" = "on-time";
   let lateByMinutes: number | undefined = undefined;
   let statusBadge = "On Time";
 
   if (isCheckIn) {
-    if (currentMins >= shiftEndMins) {
+    if (effectivePunchMins >= effectiveShiftEndMins) {
       computedStatus = "absent";
       punctualityTag = "absent";
-      lateByMinutes = currentMins - shiftStartMins;
+      lateByMinutes = effectivePunchMins - shiftStartMins;
       statusBadge = "Invalid Punch (Past Shift)";
-    } else if (currentMins < halfDayMins) {
-      if (currentMins <= morningCutoffMins) {
+    } else if (effectivePunchMins < effectiveHalfDayMins) {
+      if (effectivePunchMins <= morningCutoffMins) {
         computedStatus = "present";
-        punctualityTag = currentMins <= shiftStartMins ? "on-time" : "within-grace";
-        statusBadge = currentMins <= shiftStartMins ? "On-Time Check-In" : "Grace Period Check-In";
+        punctualityTag = effectivePunchMins <= shiftStartMins ? "on-time" : "within-grace";
+        statusBadge = effectivePunchMins <= shiftStartMins ? "On-Time Check-In" : "Grace Period Check-In";
       } else {
         computedStatus = "late";
         punctualityTag = "late";
-        lateByMinutes = currentMins - shiftStartMins;
+        lateByMinutes = effectivePunchMins - shiftStartMins;
         statusBadge = `Late Check-In (${lateByMinutes}m)`;
       }
     } else {
       computedStatus = "halfday";
       punctualityTag = "half-day";
-      lateByMinutes = Math.max(0, currentMins - halfDayMins);
+      lateByMinutes = Math.max(0, effectivePunchMins - effectiveHalfDayMins);
       statusBadge = "Half-Day Session";
     }
   }
