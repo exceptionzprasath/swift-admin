@@ -153,7 +153,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
   const jumpToday = () => setCurrentDate(new Date());
 
   const calendarDays = useMemo(() => {
-    const firstDayIndex = new Date(year, month, 1).getDay();
+    const firstDayIndex = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first (0=Mon...6=Sun)
     const totalDaysInMonth = new Date(year, month + 1, 0).getDate();
     const prevMonthDays = new Date(year, month, 0).getDate();
 
@@ -631,68 +631,107 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
 
           {/* Main Calendar Grid */}
           {viewMode === "calendar" && (
-            <Card className="border-border shadow-sm overflow-hidden">
-              <div className="grid grid-cols-7 border-b border-border bg-muted/40 text-center text-xs font-bold text-muted-foreground py-2.5">
-                <div className="text-rose-500">SUN</div>
-                <div>MON</div>
-                <div>TUE</div>
-                <div>WED</div>
-                <div>THU</div>
-                <div>FRI</div>
-                <div className="text-indigo-500">SAT</div>
+            <Card className="border-border/60 shadow-lg rounded-3xl overflow-hidden bg-card p-5 sm:p-7 transition-all">
+              {/* Header Navigation with Squircles matching reference */}
+              <div className="flex items-center justify-between pb-4 border-b border-border/40">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={prevMonth}
+                  className="h-10 w-10 rounded-2xl bg-card border border-border/50 shadow-sm hover:shadow hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+                  title="Previous month"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                <h2 className="text-base sm:text-lg font-semibold tracking-tight text-foreground select-none">
+                  {monthName} {year}
+                </h2>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={nextMonth}
+                  className="h-10 w-10 rounded-2xl bg-card border border-border/50 shadow-sm hover:shadow hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+                  title="Next month"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
 
-              <div className="grid grid-cols-7 divide-x divide-y divide-border/60">
+              {/* Weekday Names (Mo, Tu, We, Th, Fr, Sa, Su) matching reference */}
+              <div className="grid grid-cols-7 gap-2 my-4 text-center select-none">
+                {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((day, idx) => (
+                  <div
+                    key={day}
+                    className={`text-xs sm:text-sm font-semibold ${
+                      idx >= 5 ? "text-muted-foreground/50" : "text-muted-foreground/75"
+                    }`}
+                  >
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Calendar Days Grid */}
+              <div className="grid grid-cols-7 gap-2 sm:gap-3">
                 {calendarDays.map((cd, index) => {
                   const dayHolidays = holidaysByDate.get(cd.dateStr) || [];
-                  const isWeekend = index % 7 === 0 || index % 7 === 6;
+                  const hasHoliday = dayHolidays.length > 0;
+                  const isWeekend = index % 7 === 5 || index % 7 === 6;
 
                   return (
                     <div
                       key={cd.dateStr}
-                      className={`min-h-[105px] p-2 transition-colors flex flex-col justify-between ${
+                      className={`min-h-[92px] sm:min-h-[110px] p-2 rounded-2xl transition-all flex flex-col items-center justify-between group ${
                         !cd.isCurrentMonth
-                          ? "bg-muted/15 text-muted-foreground/40"
+                          ? "opacity-35 bg-transparent"
+                          : hasHoliday
+                          ? "bg-primary/5 border border-primary/25 shadow-2xs"
                           : isWeekend
-                          ? "bg-muted/5"
-                          : "bg-card"
-                      } ${cd.isToday ? "ring-2 ring-inset ring-primary bg-primary/5" : ""}`}
+                          ? "bg-muted/20 hover:bg-muted/40 border border-transparent hover:border-border/40"
+                          : "bg-muted/30 hover:bg-muted/60 border border-transparent hover:border-border/50"
+                      }`}
                     >
-                      <div className="flex items-center justify-between mb-1">
+                      {/* Date Number Squircle (Ref: Today=outlined squircle 7, Holiday=filled squircle 10) */}
+                      <div className="w-full flex items-center justify-center pt-0.5">
                         <span
-                          className={`text-xs font-bold ${
-                            cd.isToday
-                              ? "h-6 w-6 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-xs"
+                          className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl flex items-center justify-center text-sm font-semibold transition-all select-none ${
+                            hasHoliday
+                              ? "bg-primary text-primary-foreground font-bold shadow-md shadow-primary/30 ring-2 ring-primary/20"
+                              : cd.isToday
+                              ? "border-2 border-primary bg-primary/10 text-primary font-bold shadow-xs"
                               : !cd.isCurrentMonth
-                              ? "text-muted-foreground/40"
+                              ? "text-muted-foreground/40 font-normal"
                               : isWeekend
-                              ? "text-rose-500 font-semibold"
-                              : "text-foreground"
+                              ? "text-muted-foreground/80 font-medium"
+                              : "text-foreground font-semibold"
                           }`}
                         >
                           {cd.dayNumber}
                         </span>
-
-                        {cd.isToday && (
-                          <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Today</span>
-                        )}
                       </div>
 
-                      <div className="space-y-1.5 flex-1">
+                      {/* Holiday Badge Pills inside Cell */}
+                      <div className="w-full space-y-1 mt-1.5 flex-1 flex flex-col justify-end">
                         {dayHolidays.map((h) => {
                           const cfg = getHolidayConfig(h.type);
                           return (
                             <div
                               key={h.id}
-                              onClick={() => setSelectedHoliday(h)}
-                              className={`cursor-pointer px-2 py-1.5 rounded-lg border text-[11px] font-bold truncate flex items-center justify-between gap-1 shadow-2xs transition-transform hover:scale-[1.02] ${cfg.color}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedHoliday(h);
+                              }}
+                              className={`cursor-pointer px-2 py-1 rounded-lg border text-[11px] font-semibold truncate flex items-center justify-between gap-1 shadow-2xs hover:scale-[1.02] transition-transform ${cfg.color}`}
+                              title={`${h.name} (${cfg.label})`}
                             >
                               <div className="flex items-center gap-1.5 truncate min-w-0">
-                                <span className={`h-2 w-2 shrink-0 rounded-full ${cfg.dot}`} />
+                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${cfg.dot}`} />
                                 <span className="truncate">{h.name}</span>
                               </div>
                               {h.isMandatory === false && (
-                                <span className="text-[9px] px-1 bg-sky-500/20 text-sky-800 rounded font-normal">
+                                <span className="text-[9px] px-1 bg-sky-500/20 text-sky-800 dark:text-sky-300 rounded font-normal shrink-0">
                                   Opt
                                 </span>
                               )}
@@ -707,7 +746,6 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
             </Card>
           )}
 
-          {/* List View */}
           {viewMode === "list" && (
             <Card className="border-border shadow-sm">
               <CardHeader className="pb-3">
