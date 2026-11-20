@@ -1852,90 +1852,103 @@ function AttendancePage() {
         </div>
       </div>
 
-      {/* KPI Cards Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-        <Card className="rounded-xl border-border bg-card/60 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-xs font-medium">Total Staff</span>
-              <User className="h-4 w-4 text-primary" />
-            </div>
-            <div className="font-display text-2xl font-bold text-foreground">
+      {/* KPI Cards Row (Minimal Framework) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Total Staff */}
+        <div className="flex items-center gap-3 p-3 rounded-xl border border-border/70 bg-card hover:bg-card/80 transition-all shadow-2xs">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <User className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium text-muted-foreground truncate leading-tight">Total Staff</p>
+            <p className="text-xl font-bold font-display tracking-tight text-foreground leading-tight mt-0.5">
               {dailyKPIs.totalEmployees}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Active Headcount</p>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-emerald-500/20 bg-emerald-500/5 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1">
-              <span className="text-xs font-medium">Present Today</span>
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-            <div className="font-display text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              {dailyKPIs.presentCount}
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-0.5">
-              <span>{dailyKPIs.attendancePercentage}% Rate</span>
-              <span className="text-teal-600 font-medium">{dailyKPIs.onTimeCount} On-Time</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-orange-500/20 bg-orange-500/5 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-orange-600 dark:text-orange-400 mb-1">
-              <span className="text-xs font-medium">Late Marks</span>
-              <Timer className="h-4 w-4" />
-            </div>
-            <div className="font-display text-2xl font-bold text-orange-600 dark:text-orange-400">
-              {dailyKPIs.lateCount}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              {dailyKPIs.graceCount} used grace window
             </p>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="h-7 w-7 rounded-md bg-muted/60 text-muted-foreground flex items-center justify-center shrink-0" title="Active Headcount">
+            <Users className="h-3.5 w-3.5" />
+          </div>
+        </div>
 
-        <Card className="rounded-xl border-amber-500/20 bg-amber-500/5 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
-              <span className="text-xs font-medium">Half-Day</span>
-              <Clock className="h-4 w-4" />
-            </div>
-            <div className="font-display text-2xl font-bold text-amber-600 dark:text-amber-400">
+        {/* Present Today */}
+        <div className="flex items-center gap-3 p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 transition-all shadow-2xs">
+          <div className="h-10 w-10 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 truncate leading-tight">Present Today</p>
+            <p className="text-xl font-bold font-display tracking-tight text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5">
+              {dailyKPIs.presentCount}
+            </p>
+          </div>
+          <div className="h-7 min-w-7 px-1.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold shrink-0" title={`${dailyKPIs.onTimeCount} On-Time`}>
+            {dailyKPIs.attendancePercentage}%
+          </div>
+        </div>
+
+        {/* Late Marks */}
+        <div className="flex items-center gap-3 p-3 rounded-xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 transition-all shadow-2xs">
+          <div className="h-10 w-10 rounded-lg bg-orange-500/15 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
+            <Timer className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium text-orange-600 dark:text-orange-400 truncate leading-tight">Late Marks</p>
+            <p className="text-xl font-bold font-display tracking-tight text-orange-600 dark:text-orange-400 leading-tight mt-0.5">
+              {dailyKPIs.lateCount}
+            </p>
+          </div>
+          <div className="h-7 min-w-7 px-1.5 rounded-md bg-orange-500/15 text-orange-700 dark:text-orange-300 flex items-center justify-center text-[10px] font-bold shrink-0" title={`${dailyKPIs.graceCount} used grace window`}>
+            {dailyKPIs.graceCount}g
+          </div>
+        </div>
+
+        {/* Half-Day */}
+        <div className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-all shadow-2xs">
+          <div className="h-10 w-10 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <Clock className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 truncate leading-tight">Half-Day</p>
+            <p className="text-xl font-bold font-display tracking-tight text-amber-600 dark:text-amber-400 leading-tight mt-0.5">
               {dailyKPIs.halfDayCount}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Afternoon sessions</p>
-          </CardContent>
-        </Card>
+            </p>
+          </div>
+          <div className="h-7 min-w-7 px-1.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center text-[10px] font-bold shrink-0" title="Afternoon sessions">
+            ½
+          </div>
+        </div>
 
-        <Card className="rounded-xl border-blue-500/20 bg-blue-500/5 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1">
-              <span className="text-xs font-medium">On Leave</span>
-              <CalendarCheck className="h-4 w-4" />
-            </div>
-            <div className="font-display text-2xl font-bold text-blue-600 dark:text-blue-400">
+        {/* On Leave */}
+        <div className="flex items-center gap-3 p-3 rounded-xl border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 transition-all shadow-2xs">
+          <div className="h-10 w-10 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+            <CalendarCheck className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400 truncate leading-tight">On Leave</p>
+            <p className="text-xl font-bold font-display tracking-tight text-blue-600 dark:text-blue-400 leading-tight mt-0.5">
               {dailyKPIs.leaveCount}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Approved leaves</p>
-          </CardContent>
-        </Card>
+            </p>
+          </div>
+          <div className="h-7 min-w-7 px-1.5 rounded-md bg-blue-500/15 text-blue-700 dark:text-blue-300 flex items-center justify-center text-[10px] font-bold shrink-0" title="Approved leaves">
+            LV
+          </div>
+        </div>
 
-        <Card className="rounded-xl border-destructive/20 bg-destructive/5 shadow-xs">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-destructive mb-1">
-              <span className="text-xs font-medium">Absent / Pending</span>
-              <XCircle className="h-4 w-4" />
-            </div>
-            <div className="font-display text-2xl font-bold text-destructive">
+        {/* Absent / Pending */}
+        <div className="flex items-center gap-3 p-3 rounded-xl border border-destructive/20 bg-destructive/5 hover:bg-destructive/10 transition-all shadow-2xs">
+          <div className="h-10 w-10 rounded-lg bg-destructive/15 text-destructive flex items-center justify-center shrink-0">
+            <XCircle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium text-destructive truncate leading-tight">Absent / Pending</p>
+            <p className="text-xl font-bold font-display tracking-tight text-destructive leading-tight mt-0.5">
               {dailyKPIs.absentCount}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">No punch recorded</p>
-          </CardContent>
-        </Card>
+            </p>
+          </div>
+          <div className="h-7 min-w-7 px-1.5 rounded-md bg-destructive/15 text-destructive flex items-center justify-center text-[10px] font-bold shrink-0" title="No punch recorded">
+            AB
+          </div>
+        </div>
       </div>
 
       {/* Main Tabs (Daily Roster, Monthly Matrix, Analytics) */}
