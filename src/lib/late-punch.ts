@@ -264,13 +264,21 @@ export function evaluateMonthlyLatePunches(
 
     let lateMinutes = 0;
     if (hasIn) {
-      const punchMins = parseTimeMinutes(checkIn);
+      let punchMins = parseTimeMinutes(checkIn);
       const startMins = parseTimeMinutes(shiftStart);
       const endMins = parseTimeMinutes(rec.shiftEnd || shiftObj.end || "18:00");
+      const hasExplicitMeridiem = /am|pm/i.test(checkIn);
+      if (!hasExplicitMeridiem && punchMins >= 720 && punchMins < 780 && startMins >= 0) {
+        if (startMins < 360 || startMins >= 1260) {
+          punchMins -= 720;
+        }
+      }
       const isOvernight = endMins >= 0 && startMins >= 0 && endMins <= startMins;
       let effectivePunch = punchMins;
       if (isOvernight && punchMins >= 0 && punchMins < startMins) {
         effectivePunch = punchMins + 1440;
+      } else if (!isOvernight && startMins >= 0 && startMins < 360 && punchMins >= 1200) {
+        effectivePunch = punchMins - 1440;
       }
       if (effectivePunch >= 0 && startMins >= 0) {
         if (effectivePunch > startMins + graceMinutes) {

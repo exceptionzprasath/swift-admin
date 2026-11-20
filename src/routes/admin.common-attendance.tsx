@@ -109,6 +109,26 @@ function playPunchErrorSound() {
   } catch (_err) {}
 }
 
+function parseTimeMinutes(s?: string): number {
+  if (!s) return -1;
+  let cleaned = String(s).trim().toLowerCase();
+  if (cleaned.includes("t")) {
+    const timePart = cleaned.split("t")[1];
+    if (timePart) cleaned = timePart.split(".")[0].replace("z", "").trim();
+  } else if (cleaned.includes(" ") && cleaned.includes("-")) {
+    const parts = cleaned.split(" ");
+    cleaned = parts.slice(1).join(" ").trim();
+  }
+  const match = cleaned.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!match) return -1;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const meridiem = match[4]?.toLowerCase();
+  if (meridiem === "pm" && h < 12) h += 12;
+  if (meridiem === "am" && h === 12) h = 0;
+  return h * 60 + m;
+}
+
 /**
  * Calculate shift punctuality, grace periods, and status matching mobile app logic
  */
@@ -123,16 +143,16 @@ function computePunctualityAndStatus(
   const halfDayLoginTimeStr = shift?.halfDayLoginTime || "12:00";
   const shiftEndStr = shift?.end || "18:00";
 
-  const [startH, startM] = shiftStartStr.split(":").map((x: string) => parseInt(x, 10) || 0);
-  const shiftStartMins = startH * 60 + startM;
+  const parsedStart = parseTimeMinutes(shiftStartStr);
+  const shiftStartMins = parsedStart >= 0 ? parsedStart : 540;
   const morningGraceMins = graceSetting === "always" ? 9999 : (parseInt(graceSetting, 10) || 15);
   const morningCutoffMins = shiftStartMins + morningGraceMins;
 
-  const [halfH, halfM] = halfDayLoginTimeStr.split(":").map((x: string) => parseInt(x, 10) || 0);
-  const halfDayMins = halfH * 60 + halfM;
+  const parsedHalf = parseTimeMinutes(halfDayLoginTimeStr);
+  const halfDayMins = parsedHalf >= 0 ? parsedHalf : 720;
 
-  const [endH, endM] = shiftEndStr.split(":").map((x: string) => parseInt(x, 10) || 0);
-  const shiftEndMins = endH * 60 + endM;
+  const parsedEnd = parseTimeMinutes(shiftEndStr);
+  const shiftEndMins = parsedEnd >= 0 ? parsedEnd : 1080;
 
   const currentMins = now.getHours() * 60 + now.getMinutes();
 
@@ -142,17 +162,26 @@ function computePunctualityAndStatus(
   let effectivePunchMins = currentMins;
   if (isOvernight && currentMins < shiftStartMins) {
     effectivePunchMins = currentMins + 1440;
+  } else if (!isOvernight && shiftStartMins < 360 && currentMins >= 1200) {
+    // Early punch before midnight for post-midnight shift (e.g. 11:55 PM for 00:28 shift)
+    effectivePunchMins = currentMins - 1440;
   }
 
   let effectiveHalfDayMins: number;
   if (isOvernight) {
-    if (shift?.halfDayLoginTime) {
-      effectiveHalfDayMins = halfDayMins < shiftStartMins ? halfDayMins + 1440 : halfDayMins;
+    if (halfDayMins > shiftStartMins && halfDayMins < effectiveShiftEndMins) {
+      effectiveHalfDayMins = halfDayMins;
+    } else if (halfDayMins + 1440 > shiftStartMins && halfDayMins + 1440 < effectiveShiftEndMins) {
+      effectiveHalfDayMins = halfDayMins + 1440;
     } else {
       effectiveHalfDayMins = Math.round((shiftStartMins + effectiveShiftEndMins) / 2);
     }
   } else {
-    effectiveHalfDayMins = halfDayMins;
+    if (halfDayMins > shiftStartMins && halfDayMins < effectiveShiftEndMins) {
+      effectiveHalfDayMins = halfDayMins;
+    } else {
+      effectiveHalfDayMins = Math.round((shiftStartMins + effectiveShiftEndMins) / 2);
+    }
   }
 
   let computedStatus: "present" | "absent" | "late" | "halfday" = "present";

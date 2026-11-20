@@ -129,6 +129,24 @@ function parseTimeMinutes(s?: string): number {
   return h * 60 + m;
 }
 
+// Utility: Resolves punch minutes with shift context (handles 12:xx AM midnight vs 12:xx PM noon)
+export function resolvePunchMinutes(punchTimeStr?: string, shiftStartMins?: number): number {
+  if (!punchTimeStr) return -1;
+  let mins = parseTimeMinutes(punchTimeStr);
+  if (mins < 0) return -1;
+
+  // If punch was entered as 12:xx with NO explicit am/pm (i.e. parsed to 720..779),
+  // but the shift starts near midnight / early morning (e.g. shiftStart < 360, between 00:00 and 06:00, or shiftStart >= 1260),
+  // then "12:xx" was intended as 12:xx AM (midnight, 00:xx)!
+  const hasExplicitMeridiem = /am|pm/i.test(punchTimeStr);
+  if (!hasExplicitMeridiem && mins >= 720 && mins < 780 && shiftStartMins !== undefined) {
+    if (shiftStartMins < 360 || shiftStartMins >= 1260) {
+      mins -= 720;
+    }
+  }
+  return mins;
+}
+
 // Utility: Format raw punch time string (e.g. "09:30", "18:45:00", "9:30 am") to clean "hh:mm AM/PM"
 function formatTimeWithAmPm(timeStr?: string): string {
   if (!timeStr) return "—";
@@ -883,23 +901,21 @@ function AttendancePage() {
       const graceMinutes = parseInt(emp.graceTime || scheduled.shift.graceTime || "15", 10) || 0;
       const halfDayCutoff = emp.halfDayLoginTime || scheduled.shift.halfDayLoginTime || "12:00";
 
-      // Parse punch hours & minutes
-      let punchH = 0;
-      let punchM = 0;
-      if (punchTime.includes(":")) {
-        const parts = punchTime.split(":");
-        punchH = parseInt(parts[0], 10) || 0;
-        punchM = parseInt(parts[1], 10) || 0;
-      }
-      const punchMinutesTotal = punchH * 60 + punchM;
-
-      const [startH, startM] = shiftStart.split(":").map((v) => parseInt(v, 10) || 0);
-      const startMinutesTotal = (startH || 0) * 60 + (startM || 0);
+      const parsedShiftStart = parseTimeMinutes(shiftStart);
+      const startMinutesTotal = parsedShiftStart >= 0 ? parsedShiftStart : 540;
 
       const rawShiftEnd = scheduled.shift.end && scheduled.shift.end !== "-" ? scheduled.shift.end : "18:00";
       const shiftEnd = rawShiftEnd.includes(":") ? rawShiftEnd : "18:00";
-      const [endH, endM] = shiftEnd.split(":").map((v) => parseInt(v, 10) || 0);
-      const shiftEndMinutesTotal = (endH || 18) * 60 + (endM || 0);
+      const parsedShiftEnd = parseTimeMinutes(shiftEnd);
+      const shiftEndMinutesTotal = parsedShiftEnd >= 0 ? parsedShiftEnd : 1080;
+
+      // Parse punch hours & minutes using robust parseTimeMinutes with 12h/24h and AM/PM support
+      let parsedPunch = resolvePunchMinutes(punchTime, startMinutesTotal);
+      if (parsedPunch < 0 && punchTime.includes(":")) {
+        const parts = punchTime.split(":");
+        parsedPunch = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+      }
+      const punchMinutesTotal = parsedPunch >= 0 ? parsedPunch : 0;
 
       // Support overnight / cross-midnight shifts (e.g. 23:00 to 01:00, or 22:00 to 06:00)
       const isOvernight = shiftEndMinutesTotal <= startMinutesTotal;
@@ -907,25 +923,35 @@ function AttendancePage() {
       const effectiveShiftEnd = isOvernight ? shiftEndMinutesTotal + 1440 : shiftEndMinutesTotal;
       const effectiveGraceLimit = effectiveShiftStart + graceMinutes;
 
-      // Normalize punch time for overnight shifts
+      // Normalize punch time for overnight shifts and early check-ins on post-midnight shifts
       let effectivePunch = punchMinutesTotal;
       if (isOvernight && punchMinutesTotal < startMinutesTotal) {
         effectivePunch = punchMinutesTotal + 1440;
+      } else if (!isOvernight && startMinutesTotal < 360 && punchMinutesTotal >= 1200) {
+        // Early check-in before midnight for a shift starting shortly after midnight (e.g. 11:55 PM for a 00:28 shift)
+        effectivePunch = punchMinutesTotal - 1440;
       }
 
       // Normalize half-day cutoff
       let effectiveHalfDayLimit: number;
-      const [halfH, halfM] = halfDayCutoff.split(":").map((v) => parseInt(v, 10) || 0);
-      const rawHalfDayTotal = (halfH || 12) * 60 + (halfM || 0);
+      const parsedHalfDay = parseTimeMinutes(halfDayCutoff);
+      const rawHalfDayTotal = parsedHalfDay >= 0 ? parsedHalfDay : 720;
       if (isOvernight) {
-        if (emp.halfDayLoginTime || scheduled.shift.halfDayLoginTime) {
-          effectiveHalfDayLimit = rawHalfDayTotal < startMinutesTotal ? rawHalfDayTotal + 1440 : rawHalfDayTotal;
+        if (rawHalfDayTotal > startMinutesTotal && rawHalfDayTotal < effectiveShiftEnd) {
+          effectiveHalfDayLimit = rawHalfDayTotal;
+        } else if (rawHalfDayTotal + 1440 > startMinutesTotal && rawHalfDayTotal + 1440 < effectiveShiftEnd) {
+          effectiveHalfDayLimit = rawHalfDayTotal + 1440;
         } else {
           // Default to midpoint of overnight shift
           effectiveHalfDayLimit = Math.round((effectiveShiftStart + effectiveShiftEnd) / 2);
         }
       } else {
-        effectiveHalfDayLimit = rawHalfDayTotal;
+        if (rawHalfDayTotal > effectiveShiftStart && rawHalfDayTotal < effectiveShiftEnd) {
+          effectiveHalfDayLimit = rawHalfDayTotal;
+        } else {
+          // If default 12:00 falls outside the shift range (e.g. 00:28 - 03:00 shift), use shift midpoint
+          effectiveHalfDayLimit = Math.round((effectiveShiftStart + effectiveShiftEnd) / 2);
+        }
       }
 
       const isLateCheckIn = effectivePunch > effectiveGraceLimit;
