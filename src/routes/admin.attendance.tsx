@@ -1780,15 +1780,13 @@ function AttendancePage() {
             <ChevronLeft className="h-4 w-4" />
           </Button>
 
-          <div className="flex items-center bg-muted/40 px-3 py-1.5 rounded-lg border border-border">
-            <Input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              onClick={(e) => e.currentTarget.showPicker?.()}
-              className="h-7 border-0 bg-transparent p-0 font-semibold focus-visible:ring-0 w-auto cursor-pointer"
-            />
-          </div>
+          <Input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            onClick={(e) => e.currentTarget.showPicker?.()}
+            className="h-8 border-0 bg-transparent p-0 px-1 font-semibold text-sm focus-visible:ring-0 w-auto cursor-pointer shadow-none"
+          />
 
           <Button
             size="icon"
