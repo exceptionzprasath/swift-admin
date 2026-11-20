@@ -558,9 +558,9 @@ function AttendancePage() {
     toast.success(`Unregistered terminal ${dev.name || dev.serialNumber}`);
   };
 
-  // Live Polling & Sync State
+  // Live Polling & Sync State (Auto-syncs every 10s by default)
   const [isSyncing, setIsSyncing] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState<number>(30); // seconds (0 = off)
+  const [pollingInterval] = useState<number>(10); // seconds
   const [lastSyncedTime, setLastSyncedTime] = useState<string>(
     new Date().toLocaleTimeString()
   );
@@ -1764,97 +1764,8 @@ function AttendancePage() {
             className="space-y-6"
           >
             <AwolAlertBanner />
-            {/* Top Header & Live Sync Banner */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-gradient-to-r from-card via-card to-muted/30 p-6 rounded-2xl border border-border shadow-sm">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
-              <Activity className="h-6 w-6 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs px-2 py-0.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5 animate-ping" />
-                  Live Sync
-                </Badge>
-              </div>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Live biometric face logs, GPS geofence tracking, punctuality intelligence, and employee dossiers.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Live Controls & Date Navigator */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Polling Interval Selector */}
-          <div className="flex items-center gap-1.5 bg-muted/60 px-3 py-1.5 rounded-xl border border-border text-xs">
-            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-muted-foreground">Auto-Sync:</span>
-            <select
-              value={pollingInterval}
-              onChange={(e) => setPollingInterval(Number(e.target.value))}
-              className="bg-transparent font-medium text-foreground focus:outline-none cursor-pointer"
-            >
-              <option value={10}>10s</option>
-              <option value={30}>30s</option>
-              <option value={60}>1m</option>
-              <option value={0}>Off</option>
-            </select>
-          </div>
-
-          {/* Sync Now Button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => handleLiveSync(false)}
-            disabled={isSyncing}
-            className="gap-1.5 h-9 rounded-xl shadow-xs"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin text-primary" : ""}`} />
-            <span>{isSyncing ? "Syncing..." : "Sync Now"}</span>
-          </Button>
-
-          {/* Regularize Manual Punch */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              if (employees[0]) {
-                handleOpenRegularize(employees[0], selectedDate);
-              }
-            }}
-            className="gap-1.5 h-9 rounded-xl shadow-xs"
-          >
-            <Edit3 className="h-3.5 w-3.5 text-primary" />
-            <span>Regularize Punch</span>
-          </Button>
-
-          {/* Upload USB Biometric Logs */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setIsUsbUploadModalOpen(true)}
-            className="gap-1.5 h-9 rounded-xl shadow-xs border-primary/40 hover:bg-primary/5 text-primary font-medium"
-          >
-            <UploadCloud className="h-3.5 w-3.5 text-primary" />
-            <span>Upload USB Logs</span>
-          </Button>
-
-          {/* Export Report */}
-          <Button
-            size="sm"
-            onClick={handleExportCSV}
-            className="gap-1.5 h-9 rounded-xl shadow-xs bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span>Export CSV</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Date Navigator & Quick Stats Banner */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-card p-4 rounded-xl border border-border">
+      {/* Date Navigator & Actions Banner */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-card p-4 rounded-xl border border-border shadow-xs">
         {/* Date Selector Navigation */}
         <div className="flex items-center gap-2">
           <Button
@@ -1912,10 +1823,47 @@ function AttendancePage() {
           </span>
         </div>
 
-        {/* Sync Timestamp indicator */}
-        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          <span>Last sync at {lastSyncedTime}</span>
+        {/* Live Controls & Actions */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* 10s Live Sync Indicator */}
+          <div className="text-xs text-muted-foreground flex items-center gap-1.5 mr-1 bg-muted/40 px-2.5 py-1.5 rounded-lg border border-border">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-medium text-foreground">Synced</span>
+            <span className="text-muted-foreground">· {lastSyncedTime}</span>
+          </div>
+
+          {/* Sync Now Button */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleLiveSync(false)}
+            disabled={isSyncing}
+            className="gap-1.5 h-8 rounded-lg shadow-xs text-xs"
+          >
+            <RefreshCw className={`h-3 w-3 ${isSyncing ? "animate-spin text-primary" : ""}`} />
+            <span>{isSyncing ? "Syncing..." : "Sync Now"}</span>
+          </Button>
+
+          {/* Upload USB Biometric Logs */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsUsbUploadModalOpen(true)}
+            className="gap-1.5 h-8 rounded-lg shadow-xs border-primary/40 hover:bg-primary/5 text-primary font-medium text-xs"
+          >
+            <UploadCloud className="h-3 w-3 text-primary" />
+            <span>Upload USB Logs</span>
+          </Button>
+
+          {/* Export Report */}
+          <Button
+            size="sm"
+            onClick={handleExportCSV}
+            className="gap-1.5 h-8 rounded-lg shadow-xs bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs"
+          >
+            <Download className="h-3 w-3" />
+            <span>Export CSV</span>
+          </Button>
         </div>
       </div>
 
