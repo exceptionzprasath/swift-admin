@@ -6,8 +6,15 @@ import {
   Search, Building2, CheckCircle2,
   Calendar as CalendarIcon, ListFilter, LayoutGrid, Eye,
   FileSpreadsheet, PartyPopper, ShieldCheck, Flag, Star, Tag,
-  Edit2, Trash2, Clock, ShieldAlert, AlertTriangle, IndianRupee, RefreshCw, Check
+  Edit2, Trash2, Clock, ShieldAlert, AlertTriangle, IndianRupee, RefreshCw, Check,
+  MoreVertical
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -363,38 +370,14 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
           </div>
         </div>
 
-        {/* Action Buttons: Template, Bulk Upload, Add Holiday */}
-        {activeTab === "holidays" && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => downloadHolidayCSVTemplate()}
-              className="text-xs h-9 gap-1.5"
-            >
-              <Download className="h-4 w-4" /> Download CSV Template
-            </Button>
-
-            <label className="cursor-pointer">
-              <input
-                type="file"
-                accept=".csv"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-              <Button variant="outline" size="sm" asChild className="text-xs h-9 gap-1.5 cursor-pointer">
-                <span>
-                  <Upload className="h-4 w-4" /> Bulk Upload CSV
-                </span>
-              </Button>
-            </label>
-
-            <Button onClick={handleOpenAdd} className="bg-gradient-brand text-white shadow-soft text-xs h-9 gap-1.5">
-              <Plus className="h-4 w-4" /> Add Office Holiday
-            </Button>
-          </div>
-        )}
+        {/* Hidden file input for CSV upload */}
+        <input
+          type="file"
+          accept=".csv"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          className="hidden"
+        />
       </div>
 
       {/* Navigation Tabs Bar */}
@@ -504,88 +487,147 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
             </Card>
           </div>
 
-          {/* Control & Filter Bar */}
-          <Card className="border-border/80 shadow-xs">
-            <CardContent className="p-4">
-              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-                {/* Month Navigation */}
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={prevMonth} className="h-9 w-9">
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <h2 className="text-lg font-bold min-w-[170px] text-center">
-                    {monthName} {year}
-                  </h2>
-                  <Button variant="outline" size="icon" onClick={nextMonth} className="h-9 w-9">
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={jumpToday} className="text-xs font-medium ml-1">
-                    Today
-                  </Button>
-                </div>
-
-                {/* Filter Dropdowns & View Toggle */}
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <div className="relative min-w-[180px]">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search holiday name..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-8 h-9 text-xs"
-                    />
-                  </div>
-
-                  <Select value={typeFilter} onValueChange={setTypeFilter}>
-                    <SelectTrigger className="h-9 text-xs min-w-[150px]">
-                      <Tag className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                      <SelectValue placeholder="Holiday Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Holiday Types</SelectItem>
-                      {Object.entries(HOLIDAY_TYPE_CONFIG).map(([typeKey, cfg]) => (
-                        <SelectItem key={typeKey} value={typeKey}>{cfg.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={branchFilter} onValueChange={setBranchFilter}>
-                    <SelectTrigger className="h-9 text-xs min-w-[140px]">
-                      <Building2 className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                      <SelectValue placeholder="Branch" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Branches</SelectItem>
-                      {branches.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <div className="flex items-center border border-border rounded-lg p-0.5 bg-muted/30">
-                    <Button
-                      variant={viewMode === "calendar" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setViewMode("calendar")}
-                      className="h-8 px-2.5 text-xs gap-1"
-                    >
-                      <LayoutGrid className="h-3.5 w-3.5" />
-                      Calendar
-                    </Button>
-                    <Button
-                      variant={viewMode === "list" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setViewMode("list")}
-                      className="h-8 px-2.5 text-xs gap-1"
-                    >
-                      <ListFilter className="h-3.5 w-3.5" />
-                      Holiday List
-                    </Button>
-                  </div>
-                </div>
+          {/* Horizontally Aligned Calendar Control & Filter Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 bg-card p-3 rounded-xl border border-border shadow-xs">
+            {/* Left/Main Horizontal Group */}
+            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+              {/* 1. Month Navigation (e.g. November 2026) */}
+              <div className="flex items-center gap-1 bg-muted/40 p-0.5 rounded-lg border border-border/70">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={prevMonth}
+                  className="h-8 w-8 rounded-md"
+                  title="Previous month"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="font-display font-bold text-xs sm:text-sm px-2 text-foreground whitespace-nowrap min-w-[130px] text-center">
+                  {monthName} {year}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={nextMonth}
+                  className="h-8 w-8 rounded-md"
+                  title="Next month"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
-            </CardContent>
-          </Card>
+
+              {/* 2. Today Button */}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={jumpToday}
+                className="h-8 px-3 text-xs font-semibold rounded-lg"
+              >
+                Today
+              </Button>
+
+              {/* 3. Search holiday name... */}
+              <div className="relative min-w-[160px] max-w-[220px] flex-1">
+                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search holiday name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 text-xs rounded-lg bg-background"
+                />
+              </div>
+
+              {/* 4. All Holiday Types Dropdown */}
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="h-8 text-xs min-w-[145px] w-auto rounded-lg bg-background">
+                  <Tag className="h-3.5 w-3.5 mr-1 text-muted-foreground shrink-0" />
+                  <SelectValue placeholder="All Holiday Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Holiday Types</SelectItem>
+                  {Object.entries(HOLIDAY_TYPE_CONFIG).map(([typeKey, cfg]) => (
+                    <SelectItem key={typeKey} value={typeKey}>{cfg.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* 5. All Branches Dropdown */}
+              <Select value={branchFilter} onValueChange={setBranchFilter}>
+                <SelectTrigger className="h-8 text-xs min-w-[130px] w-auto rounded-lg bg-background">
+                  <Building2 className="h-3.5 w-3.5 mr-1 text-muted-foreground shrink-0" />
+                  <SelectValue placeholder="All Branches" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Branches</SelectItem>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Right Horizontal Group: View Toggle & Three-Dot Menu */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* 6. Calendar & Holiday List Toggle */}
+              <div className="flex items-center border border-border rounded-lg p-0.5 bg-muted/40">
+                <Button
+                  variant={viewMode === "calendar" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("calendar")}
+                  className="h-7 px-2.5 text-xs gap-1 rounded-md"
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  <span>Calendar</span>
+                </Button>
+                <Button
+                  variant={viewMode === "list" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("list")}
+                  className="h-7 px-2.5 text-xs gap-1 rounded-md"
+                >
+                  <ListFilter className="h-3.5 w-3.5" />
+                  <span>Holiday List</span>
+                </Button>
+              </div>
+
+              {/* 7. Three-Dot Action Menu Icon */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-border bg-background hover:bg-muted text-foreground transition-colors shadow-2xs"
+                    title="Holiday Actions & Export"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-xl shadow-lg border-border">
+                  <DropdownMenuItem
+                    onClick={handleOpenAdd}
+                    className="gap-2.5 cursor-pointer text-xs font-semibold py-2 rounded-lg text-primary focus:text-primary focus:bg-primary/10"
+                  >
+                    <Plus className="h-4 w-4 text-primary" />
+                    <span>Add Office Holiday</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => fileInputRef.current?.click()}
+                    className="gap-2.5 cursor-pointer text-xs font-medium py-2 rounded-lg"
+                  >
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                    <span>Bulk Upload CSV</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => downloadHolidayCSVTemplate()}
+                    className="gap-2.5 cursor-pointer text-xs font-medium py-2 rounded-lg"
+                  >
+                    <Download className="h-4 w-4 text-muted-foreground" />
+                    <span>Download CSV Template</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
 
           {/* Main Calendar Grid */}
           {viewMode === "calendar" && (
@@ -614,7 +656,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                           : isWeekend
                           ? "bg-muted/5"
                           : "bg-card"
-                      } ${cd.isToday ? "ring-2 ring-inset ring-purple-500/80 bg-purple-500/5" : ""}`}
+                      } ${cd.isToday ? "ring-2 ring-inset ring-primary bg-primary/5" : ""}`}
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span
@@ -632,7 +674,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                         </span>
 
                         {cd.isToday && (
-                          <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">Today</span>
+                          <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Today</span>
                         )}
                       </div>
 
