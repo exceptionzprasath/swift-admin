@@ -426,65 +426,49 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
       {activeTab === "holidays" && (
         <div className="space-y-6">
 
-          {/* Quick Metrics */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <Card className="border-border/70 shadow-xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Holidays</p>
-                  <h3 className="text-2xl font-black tracking-tight mt-1">{stats.totalCount} Days</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Official company off-days</p>
-                </div>
-                <div className="h-10 w-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
-                  <CalendarIcon className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
+          {/* Quick Metrics Row (Minimal Grey Flat matching attendance design) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Total Holidays */}
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
+              <span className="text-sm font-normal text-foreground/80 truncate">
+                total holidays
+              </span>
+              <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+                {stats.totalCount}
+              </span>
+            </div>
 
-            <Card className="border-border/70 shadow-xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mandatory / Public</p>
-                  <h3 className="text-2xl font-black text-emerald-600 tracking-tight mt-1">{stats.mandatoryCount}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Compulsory paid holidays</p>
-                </div>
-                <div className="h-10 w-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
+            {/* Mandatory / Public */}
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
+              <span className="text-sm font-normal text-foreground/80 truncate">
+                mandatory
+              </span>
+              <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+                {stats.mandatoryCount}
+              </span>
+            </div>
 
-            <Card className="border-border/70 shadow-xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Optional / Floating</p>
-                  <h3 className="text-2xl font-black text-sky-600 tracking-tight mt-1">{stats.optionalCount}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Restricted holidays</p>
-                </div>
-                <div className="h-10 w-10 rounded-xl bg-sky-500/10 text-sky-600 flex items-center justify-center">
-                  <Star className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
+            {/* Optional / Floating */}
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
+              <span className="text-sm font-normal text-foreground/80 truncate">
+                optional
+              </span>
+              <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+                {stats.optionalCount}
+              </span>
+            </div>
 
-            <Card className="border-border/70 shadow-xs">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="min-w-0 pr-2">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Next Upcoming</p>
-                  <h3 className="text-base font-bold text-foreground tracking-tight mt-1 truncate">
-                    {stats.upcoming ? stats.upcoming.name : "None scheduled"}
-                  </h3>
-                  <p className="text-xs text-purple-600 font-semibold mt-0.5">
-                    {stats.upcoming
-                      ? `${stats.daysRemaining === 0 ? "Today" : `${stats.daysRemaining} days left`} (${new Date(stats.upcoming.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})`
-                      : "All holidays completed"}
-                  </p>
-                </div>
-                <div className="h-10 w-10 shrink-0 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                  <PartyPopper className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
+            {/* Next Upcoming */}
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
+              <span className="text-sm font-normal text-foreground/80 truncate">
+                next upcoming
+              </span>
+              <span className="text-sm sm:text-base font-medium text-foreground shrink-0 ml-2 truncate max-w-[55%] text-right" title={stats.upcoming?.name}>
+                {stats.upcoming
+                  ? `${stats.upcoming.name} (${stats.daysRemaining === 0 ? "today" : `${stats.daysRemaining}d`})`
+                  : "none"}
+              </span>
+            </div>
           </div>
 
           {/* Horizontally Aligned Calendar Control & Filter Bar */}
