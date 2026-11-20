@@ -88,6 +88,39 @@ const HOLIDAY_TYPE_CONFIG: Record<
   },
 };
 
+function getHolidayTheme(type: HolidayType | string) {
+  switch (type) {
+    case "Public Holiday":
+      return {
+        cellBg: "bg-emerald-500/15 dark:bg-emerald-500/25 border border-emerald-500/40 hover:border-emerald-500/70",
+        dateBadge: "bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/30 ring-2 ring-emerald-500/30",
+        pill: "bg-emerald-600 text-white font-semibold shadow-xs hover:bg-emerald-700",
+        label: "Public / Gazetted",
+      };
+    case "Optional Holiday":
+      return {
+        cellBg: "bg-sky-500/15 dark:bg-sky-500/25 border border-sky-500/40 hover:border-sky-500/70",
+        dateBadge: "bg-sky-600 text-white font-bold shadow-md shadow-sky-600/30 ring-2 ring-sky-500/30",
+        pill: "bg-sky-600 text-white font-semibold shadow-xs hover:bg-sky-700",
+        label: "Optional / Floating",
+      };
+    case "Company Off":
+      return {
+        cellBg: "bg-indigo-500/15 dark:bg-indigo-500/25 border border-indigo-500/40 hover:border-indigo-500/70",
+        dateBadge: "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30 ring-2 ring-indigo-500/30",
+        pill: "bg-indigo-600 text-white font-semibold shadow-xs hover:bg-indigo-700",
+        label: "Company Special Off",
+      };
+    default:
+      return {
+        cellBg: "bg-purple-500/15 dark:bg-purple-500/25 border border-purple-500/40 hover:border-purple-500/70",
+        dateBadge: "bg-purple-600 text-white font-bold shadow-md shadow-purple-600/30 ring-2 ring-purple-500/30",
+        pill: "bg-purple-600 text-white font-semibold shadow-xs hover:bg-purple-700",
+        label: type,
+      };
+  }
+}
+
 function getHolidayConfig(type: HolidayType | string) {
   const matched = HOLIDAY_TYPE_CONFIG[type as HolidayType];
   if (matched) return matched;
@@ -491,18 +524,44 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
           <div className="flex flex-wrap items-center justify-between gap-2.5 bg-card p-3 rounded-xl border border-border shadow-xs">
             {/* Left/Main Horizontal Group */}
             <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
-              {/* Calendar View: Today Button (single month selector is on the calendar card) */}
+              {/* Calendar View: Month Navigation (< Month Year >) and Today Shortcut */}
               {viewMode === "calendar" && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={jumpToday}
-                  className="h-8 px-3 text-xs font-semibold rounded-lg gap-1.5 shadow-2xs"
-                  title="Jump to today's month"
-                >
-                  <CalendarDays className="h-3.5 w-3.5 text-primary" />
-                  <span>Today</span>
-                </Button>
+                <>
+                  <div className="flex items-center gap-1 bg-muted/50 p-0.5 rounded-lg border border-border">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={prevMonth}
+                      className="h-8 w-8 rounded-md hover:bg-background text-foreground transition-colors"
+                      title="Previous month"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="font-display font-bold text-xs sm:text-sm px-2.5 text-foreground whitespace-nowrap min-w-[130px] text-center select-none">
+                      {monthName} {year}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={nextMonth}
+                      className="h-8 w-8 rounded-md hover:bg-background text-foreground transition-colors"
+                      title="Next month"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={jumpToday}
+                    className="h-8 px-3 text-xs font-semibold rounded-lg gap-1.5 shadow-2xs"
+                    title="Jump to today's month"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                    <span>Today</span>
+                  </Button>
+                </>
               )}
 
               {/* Holiday List View: Search Input & Year Selection Dropdown */}
@@ -638,35 +697,8 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
           {/* Main Calendar Grid */}
           {viewMode === "calendar" && (
             <Card className="border-border/60 shadow-lg rounded-3xl overflow-hidden bg-card p-5 sm:p-7 transition-all">
-              {/* Header Navigation with Squircles matching reference */}
-              <div className="flex items-center justify-between pb-4 border-b border-border/40">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={prevMonth}
-                  className="h-10 w-10 rounded-2xl bg-card border border-border/50 shadow-sm hover:shadow hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
-                  title="Previous month"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-
-                <h2 className="text-base sm:text-lg font-semibold tracking-tight text-foreground select-none">
-                  {monthName} {year}
-                </h2>
-
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={nextMonth}
-                  className="h-10 w-10 rounded-2xl bg-card border border-border/50 shadow-sm hover:shadow hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
-                  title="Next month"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-
               {/* Weekday Names (Mo, Tu, We, Th, Fr, Sa, Su) matching reference */}
-              <div className="grid grid-cols-7 gap-2 my-4 text-center select-none">
+              <div className="grid grid-cols-7 gap-2 mb-4 text-center select-none">
                 {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((day, idx) => (
                   <div
                     key={day}
@@ -679,32 +711,34 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                 ))}
               </div>
 
-              {/* Calendar Days Grid */}
+              {/* Calendar Days Grid with Rich Fill Look for Holidays */}
               <div className="grid grid-cols-7 gap-2 sm:gap-3">
                 {calendarDays.map((cd, index) => {
                   const dayHolidays = holidaysByDate.get(cd.dateStr) || [];
                   const hasHoliday = dayHolidays.length > 0;
+                  const primaryHoliday = dayHolidays[0];
+                  const holidayTheme = primaryHoliday ? getHolidayTheme(primaryHoliday.type) : null;
                   const isWeekend = index % 7 === 5 || index % 7 === 6;
 
                   return (
                     <div
                       key={cd.dateStr}
-                      className={`min-h-[92px] sm:min-h-[110px] p-2 rounded-2xl transition-all flex flex-col items-center justify-between group ${
+                      className={`min-h-[96px] sm:min-h-[114px] p-2 rounded-2xl transition-all flex flex-col items-center justify-between group ${
                         !cd.isCurrentMonth
-                          ? "opacity-35 bg-transparent"
-                          : hasHoliday
-                          ? "bg-primary/5 border border-primary/25 shadow-2xs"
+                          ? "opacity-35 bg-transparent border border-transparent"
+                          : hasHoliday && holidayTheme
+                          ? `${holidayTheme.cellBg} shadow-2xs`
                           : isWeekend
                           ? "bg-muted/20 hover:bg-muted/40 border border-transparent hover:border-border/40"
                           : "bg-muted/30 hover:bg-muted/60 border border-transparent hover:border-border/50"
                       }`}
                     >
-                      {/* Date Number Squircle (Ref: Today=outlined squircle 7, Holiday=filled squircle 10) */}
+                      {/* Date Number Squircle (Holiday = Solid Theme Fill, Today = Outlined Squircle) */}
                       <div className="w-full flex items-center justify-center pt-0.5">
                         <span
                           className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl flex items-center justify-center text-sm font-semibold transition-all select-none ${
-                            hasHoliday
-                              ? "bg-primary text-primary-foreground font-bold shadow-md shadow-primary/30 ring-2 ring-primary/20"
+                            hasHoliday && holidayTheme
+                              ? holidayTheme.dateBadge
                               : cd.isToday
                               ? "border-2 border-primary bg-primary/10 text-primary font-bold shadow-xs"
                               : !cd.isCurrentMonth
@@ -718,10 +752,10 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                         </span>
                       </div>
 
-                      {/* Holiday Badge Pills inside Cell */}
+                      {/* Holiday Badge Pills inside Cell with Solid Fill Look (No green dot circle) */}
                       <div className="w-full space-y-1 mt-1.5 flex-1 flex flex-col justify-end">
                         {dayHolidays.map((h) => {
-                          const cfg = getHolidayConfig(h.type);
+                          const theme = getHolidayTheme(h.type);
                           return (
                             <div
                               key={h.id}
@@ -729,15 +763,12 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                                 e.stopPropagation();
                                 setSelectedHoliday(h);
                               }}
-                              className={`cursor-pointer px-2 py-1 rounded-lg border text-[11px] font-semibold truncate flex items-center justify-between gap-1 shadow-2xs hover:scale-[1.02] transition-transform ${cfg.color}`}
-                              title={`${h.name} (${cfg.label})`}
+                              className={`cursor-pointer px-2 py-1 rounded-lg text-[11px] font-semibold truncate flex items-center justify-between gap-1 shadow-xs hover:scale-[1.02] transition-transform ${theme.pill}`}
+                              title={`${h.name} (${theme.label})`}
                             >
-                              <div className="flex items-center gap-1.5 truncate min-w-0">
-                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${cfg.dot}`} />
-                                <span className="truncate">{h.name}</span>
-                              </div>
+                              <span className="truncate">{h.name}</span>
                               {h.isMandatory === false && (
-                                <span className="text-[9px] px-1 bg-sky-500/20 text-sky-800 dark:text-sky-300 rounded font-normal shrink-0">
+                                <span className="text-[9px] px-1 py-0.5 bg-black/25 text-white rounded font-normal shrink-0">
                                   Opt
                                 </span>
                               )}
