@@ -6,7 +6,8 @@ import {
   Search, Building2, CheckCircle2, Users, CalendarDays,
   Trash2, Edit2, Sparkles, Filter, Check, ArrowRight,
   Sun, Moon, Sunrise, Sunset, Layers, RefreshCw,
-  FileSpreadsheet, Upload, Download, FileDown, AlertTriangle, FileText
+  FileSpreadsheet, Upload, Download, FileDown, AlertTriangle, FileText,
+  Sliders, Timer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +68,8 @@ function getShiftIcon(startStr: string) {
 export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const {
     company,
+    setCompany,
+    saveAllCompanySettings,
     employees: rawEmployees,
     roster,
     addShift,
@@ -81,7 +84,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
   const shifts = company.shifts || [];
 
   // Main Tab State
-  const [activeTab, setActiveTab] = useState<"planner" | "shifts">("planner");
+  const [activeTab, setActiveTab] = useState<"planner" | "shifts" | "policies">("planner");
+  const [savingPolicies, setSavingPolicies] = useState(false);
 
   // Planner View Controls
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -411,6 +415,15 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
           >
             <Layers className="h-4 w-4" />
             <span>Shift Master ({shifts.length})</span>
+          </Button>
+
+          <Button
+            variant={activeTab === "policies" ? "default" : "outline"}
+            onClick={() => setActiveTab("policies")}
+            className="gap-2"
+          >
+            <Sliders className="h-4 w-4" />
+            <span>Shift &amp; Workday Policies</span>
           </Button>
 
           {activeTab === "planner" && (
@@ -849,6 +862,325 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                 </Card>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: SHIFT & WORKDAY POLICIES (Work Day Settings & Late Come Restrictions) */}
+      {activeTab === "policies" && (
+        <div className="space-y-6 max-w-5xl">
+          {/* Section 1: Work Day Settings */}
+          <Card className="rounded-2xl border-border bg-card shadow-xs">
+            <CardHeader className="pb-3 border-b border-border/60">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <CalendarDays className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-bold">Work Day &amp; Operating Hours Settings</CardTitle>
+                    <CardDescription className="text-xs">
+                      Define standard company working days per month and daily scheduled working hours used across payroll and roster.
+                    </CardDescription>
+                  </div>
+                </div>
+                <Badge variant="outline" className="text-xs font-semibold">
+                  Standard Baseline
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                    <span>Working Days / Month</span>
+                    <span className="text-[11px] text-muted-foreground font-normal">Standard: 26 or 30 days</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={company.workingDaysPerMonth ?? 26}
+                    onChange={(e) => {
+                      const val = Math.max(1, Math.min(31, Number(e.target.value) || 26));
+                      setCompany({ workingDaysPerMonth: val });
+                    }}
+                    className="font-semibold text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Used for per-day salary divisor in Loss of Pay (LOP) and daily shift allowance computations.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                    <span>Working Hours / Day</span>
+                    <span className="text-[11px] text-muted-foreground font-normal">Standard: 8 or 9 hours</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={24}
+                    step={0.5}
+                    value={company.workingHoursPerDay ?? 9}
+                    onChange={(e) => {
+                      const val = Math.max(1, Math.min(24, Number(e.target.value) || 9));
+                      setCompany({ workingHoursPerDay: val });
+                    }}
+                    className="font-semibold text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Scheduled work hours per full shift. Used to compute short permissions, OT hours, and half-day thresholds.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex items-center justify-between gap-4 text-xs">
+                <div className="flex items-center gap-3">
+                  <Clock className="h-5 w-5 text-primary shrink-0" />
+                  <div>
+                    <span className="font-semibold text-foreground">Monthly Working Baseline: </span>
+                    <span className="text-muted-foreground">
+                      {(company.workingDaysPerMonth ?? 26)} Days × {(company.workingHoursPerDay ?? 9)} Hours ={" "}
+                      <strong className="text-foreground">{(company.workingDaysPerMonth ?? 26) * (company.workingHoursPerDay ?? 9)} Scheduled Working Hours / Month</strong>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Section 2: Late Come Restriction Settings */}
+          <div className="rounded-2xl border border-amber-500/25 bg-card p-6 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="h-11 w-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                  <Timer className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="font-display text-lg font-semibold text-foreground">
+                      Late Punch Deductions &amp; Restriction Settings
+                    </h2>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                        company.latePunchControlEnabled
+                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
+                          : "bg-muted text-muted-foreground border-border"
+                      }`}
+                    >
+                      {company.latePunchControlEnabled ? "Active" : "Disabled"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Track monthly late check-ins by count or cumulative hours, deduct excess late minutes from Short Permission balances, or auto-convert excess late punches to Half-Day (HD).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 self-end sm:self-center bg-muted/40 px-3.5 py-2 rounded-xl border border-border">
+                <span className="text-xs font-semibold text-foreground">
+                  {company.latePunchControlEnabled ? "Enabled" : "Disabled"}
+                </span>
+                <Switch
+                  checked={Boolean(company.latePunchControlEnabled)}
+                  onCheckedChange={(checked) => {
+                    setCompany({
+                      latePunchControlEnabled: checked,
+                      lateLimitType: company.lateLimitType || "days",
+                      maxLateDaysPerMonth: company.maxLateDaysPerMonth ?? 5,
+                      maxLateHoursPerMonth: company.maxLateHoursPerMonth ?? 3,
+                    });
+                    toast.success(
+                      checked
+                        ? "Late Punch Deductions & Restriction Settings enabled"
+                        : "Late Punch Deductions & Restriction Settings disabled"
+                    );
+                  }}
+                />
+              </div>
+            </div>
+
+            <div
+              className={`grid transition-all duration-300 ease-in-out ${
+                company.latePunchControlEnabled
+                  ? "grid-rows-[1fr] opacity-100 pt-3 border-t border-border/60"
+                  : "grid-rows-[0fr] opacity-0 pointer-events-none"
+              }`}
+            >
+              <div className="overflow-hidden space-y-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Step 1: Late Threshold Mode Switch */}
+                  <div className="rounded-xl border border-border bg-muted/15 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                          <span className="inline-flex h-5 px-1.5 items-center justify-center rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase">
+                            Step 1
+                          </span>
+                          Late Threshold Mode
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Choose whether monthly late limits are evaluated by day count or cumulative hours.
+                        </p>
+                      </div>
+
+                      {/* Segmented Switch: By Days vs By Hours */}
+                      <div className="inline-flex items-center rounded-xl border border-border bg-background p-1 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setCompany({ lateLimitType: "days" })}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                            (company.lateLimitType || "days") === "days"
+                              ? "bg-amber-500 text-white shadow-xs"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <CalendarDays className="h-3.5 w-3.5" />
+                          By Days
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCompany({ lateLimitType: "hours" })}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                            company.lateLimitType === "hours"
+                              ? "bg-amber-500 text-white shadow-xs"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <Clock className="h-3.5 w-3.5" />
+                          By Hours
+                        </button>
+                      </div>
+                    </div>
+
+                    {(company.lateLimitType || "days") === "days" ? (
+                      <div className="space-y-2 pt-2 border-t border-border/60">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Max Allowed Late Days per Month
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            value={company.maxLateDaysPerMonth ?? 5}
+                            onChange={(e) => {
+                              const val = Math.max(0, Number(e.target.value) || 0);
+                              setCompany({ maxLateDaysPerMonth: val });
+                            }}
+                            className="w-28 font-semibold"
+                          />
+                          <span className="text-xs text-muted-foreground font-medium">
+                            Late Days / Month (Breaches on Day {(company.maxLateDaysPerMonth ?? 5) + 1})
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Employees can punch in late up to {company.maxLateDaysPerMonth ?? 5} days per month without penalty. Exceeding {company.maxLateDaysPerMonth ?? 5} days triggers the Next Step Action.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 pt-2 border-t border-border/60">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Max Cumulative Late Hours per Month
+                        </Label>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.5"
+                            value={company.maxLateHoursPerMonth ?? 3}
+                            onChange={(e) => {
+                              const val = Math.max(0, Number(e.target.value) || 0);
+                              setCompany({ maxLateHoursPerMonth: val });
+                            }}
+                            className="w-28 font-semibold"
+                          />
+                          <span className="text-xs text-muted-foreground font-medium">
+                            Hours ({Math.round((company.maxLateHoursPerMonth ?? 3) * 60)} minutes / month)
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Cumulative late minutes across the month are tracked. Once cumulative late time exceeds {company.maxLateHoursPerMonth ?? 3} hours, the Next Step Action triggers.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Step 2: Next Step Penalty Actions (When Limit is Exceeded) */}
+                  <div className="rounded-xl border border-border bg-muted/15 p-4 space-y-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <span className="inline-flex h-5 px-1.5 items-center justify-center rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 text-[10px] font-bold uppercase">
+                          Step 2
+                        </span>
+                        Next Step Penalty Actions (When Limit is Exceeded)
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Configure automatic actions once an employee breaches their monthly late threshold.
+                      </p>
+                    </div>
+
+                    {/* Option 1 Toggle: Deduct from Short Permission */}
+                    <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3.5 space-y-1.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <Label className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                          Deduct from Short Permission
+                        </Label>
+                        <Switch
+                          checked={Boolean(company.latePermissionDeductionEnabled)}
+                          onCheckedChange={(checked) =>
+                            setCompany({ latePermissionDeductionEnabled: checked })
+                          }
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Automatically deduct excess late minutes from the employee&apos;s available monthly Short Permission balance.
+                      </p>
+                    </div>
+
+                    {/* Option 2 Toggle: Convert to Half-Day (HD) */}
+                    <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-3.5 space-y-1.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <Label className="text-xs font-bold text-orange-700 dark:text-orange-300">
+                          Convert to Half-Day (HD)
+                        </Label>
+                        <Switch
+                          checked={Boolean(company.lateHalfDayConversionEnabled)}
+                          onCheckedChange={(checked) =>
+                            setCompany({ lateHalfDayConversionEnabled: checked })
+                          }
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Once the late limit is exceeded (and any available Short Permission balance is exhausted), every subsequent late punch in the month automatically converts that day&apos;s status to Half-Day (0.5 Paid Day).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Save Button for Policies */}
+          <div className="flex justify-end pt-2">
+            <Button
+              onClick={async () => {
+                setSavingPolicies(true);
+                try {
+                  await saveAllCompanySettings();
+                  toast.success("Work day & late restriction policies saved to cloud database!");
+                } catch (e: any) {
+                  toast.error("Failed to save policies: " + (e?.message || e));
+                } finally {
+                  setSavingPolicies(false);
+                }
+              }}
+              disabled={savingPolicies}
+              className="gap-2 bg-primary text-primary-foreground font-semibold px-6 h-10 rounded-xl shadow-xs"
+            >
+              {savingPolicies ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              <span>{savingPolicies ? "Saving Policies..." : "Save Shift & Workday Policies"}</span>
+            </Button>
           </div>
         </div>
       )}

@@ -6,8 +6,9 @@ import {
   Search, Building2, CheckCircle2,
   Calendar as CalendarIcon, ListFilter, LayoutGrid, Eye,
   FileSpreadsheet, PartyPopper, ShieldCheck, Flag, Star, Tag,
-  Edit2, Trash2
+  Edit2, Trash2, Clock, ShieldAlert, AlertTriangle, IndianRupee, RefreshCw, Check
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -94,7 +95,13 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
     deleteHoliday,
     bulkAddHolidays,
     company,
+    setCompany,
+    saveAllCompanySettings,
   } = useStore();
+
+  const [activeTab, setActiveTab] = useState<"holidays" | "leave-policy" | "permission-policy" | "awol-control">("holidays");
+  const [savingLeavePolicy, setSavingLeavePolicy] = useState(false);
+  const [confirmAutoTerminateOpen, setConfirmAutoTerminateOpen] = useState(false);
 
   // ==========================================
   // OFFICE HOLIDAY CALENDAR STATE
@@ -357,36 +364,84 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
         </div>
 
         {/* Action Buttons: Template, Bulk Upload, Add Holiday */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => downloadHolidayCSVTemplate()}
-            className="text-xs h-9 gap-1.5"
-          >
-            <Download className="h-4 w-4" /> Download CSV Template
-          </Button>
-
-          <label className="cursor-pointer">
-            <input
-              type="file"
-              accept=".csv"
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <Button variant="outline" size="sm" asChild className="text-xs h-9 gap-1.5 cursor-pointer">
-              <span>
-                <Upload className="h-4 w-4" /> Bulk Upload CSV
-              </span>
+        {activeTab === "holidays" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadHolidayCSVTemplate()}
+              className="text-xs h-9 gap-1.5"
+            >
+              <Download className="h-4 w-4" /> Download CSV Template
             </Button>
-          </label>
 
-          <Button onClick={handleOpenAdd} className="bg-gradient-brand text-white shadow-soft text-xs h-9 gap-1.5">
-            <Plus className="h-4 w-4" /> Add Office Holiday
-          </Button>
-        </div>
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept=".csv"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <Button variant="outline" size="sm" asChild className="text-xs h-9 gap-1.5 cursor-pointer">
+                <span>
+                  <Upload className="h-4 w-4" /> Bulk Upload CSV
+                </span>
+              </Button>
+            </label>
+
+            <Button onClick={handleOpenAdd} className="bg-gradient-brand text-white shadow-soft text-xs h-9 gap-1.5">
+              <Plus className="h-4 w-4" /> Add Office Holiday
+            </Button>
+          </div>
+        )}
       </div>
+
+      {/* Navigation Tabs Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-border/60">
+        <Button
+          variant={activeTab === "holidays" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setActiveTab("holidays")}
+          className="text-xs h-9 gap-1.5 rounded-xl font-semibold"
+        >
+          <CalendarDays className="h-4 w-4" />
+          <span>Office Holidays ({stats.totalCount})</span>
+        </Button>
+
+        <Button
+          variant={activeTab === "leave-policy" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setActiveTab("leave-policy")}
+          className="text-xs h-9 gap-1.5 rounded-xl font-semibold"
+        >
+          <Tag className="h-4 w-4" />
+          <span>Leave Policy Types ({(company.leaveTypes || []).length})</span>
+        </Button>
+
+        <Button
+          variant={activeTab === "permission-policy" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setActiveTab("permission-policy")}
+          className="text-xs h-9 gap-1.5 rounded-xl font-semibold"
+        >
+          <Clock className="h-4 w-4" />
+          <span>Permission Policy Types ({(company.permissionTypes || []).length})</span>
+        </Button>
+
+        <Button
+          variant={activeTab === "awol-control" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setActiveTab("awol-control")}
+          className="text-xs h-9 gap-1.5 rounded-xl font-semibold"
+        >
+          <ShieldAlert className="h-4 w-4 text-rose-500" />
+          <span>Absence of Work (AWOL)</span>
+        </Button>
+      </div>
+
+      {activeTab === "holidays" && (
+        <div className="space-y-6">
 
           {/* Quick Metrics */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -785,6 +840,639 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
         </DialogContent>
       </Dialog>
 
+        </div>
+      )}
+
+      {/* TAB 2: LEAVE POLICY TYPES */}
+      {activeTab === "leave-policy" && (
+        <div className="space-y-6 max-w-5xl">
+          <Card className="rounded-2xl border-border bg-card shadow-xs">
+            <CardHeader className="pb-4 border-b border-border/60">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                      <Tag className="h-4 w-4" />
+                    </div>
+                    <CardTitle className="text-base font-bold">Leave Policy Types</CardTitle>
+                    <Badge variant="outline" className="text-xs font-semibold">
+                      {(company.leaveTypes || []).length} Entitlements
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Define annual day-based leave quotas for employees. Employees apply for full-day or half-day leaves against these entitlements.
+                  </CardDescription>
+                </div>
+
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setCompany({
+                      leaveTypes: [
+                        ...(company.leaveTypes || []),
+                        { id: crypto.randomUUID(), name: "New Leave", days: 6, paid: true },
+                      ],
+                    })
+                  }
+                  className="gap-1.5 text-xs h-9 rounded-xl font-semibold bg-primary text-primary-foreground"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Add Leave Type</span>
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-6 space-y-4">
+              <div className="grid grid-cols-[1fr_140px_110px_40px] gap-3 text-xs text-muted-foreground font-semibold px-2 uppercase tracking-wider">
+                <span>Leave Type Name</span>
+                <span>Days / Year</span>
+                <span className="text-center">Paid Status</span>
+                <span />
+              </div>
+
+              {(company.leaveTypes || []).map((l, i) => (
+                <div
+                  key={l.id}
+                  className="grid grid-cols-[1fr_140px_110px_40px] gap-3 items-center p-2 rounded-xl border border-border/60 bg-muted/10 hover:bg-muted/20 transition-colors"
+                >
+                  <Input
+                    value={l.name}
+                    placeholder="e.g. Casual Leave, Medical Leave, Annual Leave"
+                    onChange={(e) => {
+                      const copy = [...(company.leaveTypes || [])];
+                      copy[i] = { ...l, name: e.target.value };
+                      setCompany({ leaveTypes: copy });
+                    }}
+                    className="font-medium text-xs h-9"
+                  />
+
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={l.days}
+                      onChange={(e) => {
+                        const copy = [...(company.leaveTypes || [])];
+                        copy[i] = { ...l, days: +e.target.value || 0 };
+                        setCompany({ leaveTypes: copy });
+                      }}
+                      className="font-semibold text-xs h-9 text-center"
+                    />
+                    <span className="text-xs text-muted-foreground font-medium">days</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const copy = [...(company.leaveTypes || [])];
+                      copy[i] = { ...l, paid: l.paid === false ? true : false };
+                      setCompany({ leaveTypes: copy });
+                    }}
+                    className={`py-1.5 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+                      l.paid !== false
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                        : "bg-muted text-muted-foreground border-border"
+                    }`}
+                  >
+                    {l.paid !== false ? "Paid" : "Unpaid"}
+                  </button>
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() =>
+                      setCompany({
+                        leaveTypes: (company.leaveTypes || []).filter((_, j) => j !== i),
+                      })
+                    }
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+
+              <div className="flex items-center justify-between pt-4 border-t border-border/60">
+                <p className="text-[11px] text-muted-foreground">
+                  Changes take effect immediately on employee leave application portals upon saving.
+                </p>
+
+                <Button
+                  onClick={async () => {
+                    setSavingLeavePolicy(true);
+                    try {
+                      await saveAllCompanySettings();
+                      toast.success("Leave policy types saved to cloud database!");
+                    } catch (e: any) {
+                      toast.error("Failed to save leave policy: " + (e?.message || e));
+                    } finally {
+                      setSavingLeavePolicy(false);
+                    }
+                  }}
+                  disabled={savingLeavePolicy}
+                  className="gap-2 bg-primary text-primary-foreground font-semibold px-6 h-9 rounded-xl shadow-xs"
+                >
+                  {savingLeavePolicy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  <span>{savingLeavePolicy ? "Saving Policy..." : "Save Leave Policy"}</span>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 3: PERMISSION POLICY TYPES */}
+      {activeTab === "permission-policy" && (
+        <div className="space-y-6 max-w-5xl">
+          <Card className="rounded-2xl border-border bg-card shadow-xs">
+            <CardHeader className="pb-4 border-b border-border/60">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                      <Clock className="h-4 w-4" />
+                    </div>
+                    <CardTitle className="text-base font-bold">Permission Policy Types</CardTitle>
+                    <Badge variant="outline" className="text-xs font-semibold">
+                      {(company.permissionTypes || []).length} Types
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Configure short-duration permission allowances (e.g. 2 hours per month). Employees apply in hours for late entry, early exit, or personal emergency. Quotas reset automatically based on selected frequency.
+                  </CardDescription>
+                </div>
+
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const currentList = company.permissionTypes ?? [
+                      { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true }
+                    ];
+                    setCompany({
+                      permissionTypes: [
+                        ...currentList,
+                        {
+                          id: crypto.randomUUID(),
+                          name: "Personal Permission",
+                          maxHours: 2,
+                          period: "month",
+                          maxRequestsPerMonth: 2,
+                          paid: true,
+                        },
+                      ],
+                    });
+                  }}
+                  className="gap-1.5 text-xs h-9 rounded-xl font-semibold bg-primary text-primary-foreground"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Add Permission Type</span>
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-6 space-y-4">
+              <div className="grid grid-cols-[1fr_130px_130px_140px_100px_40px] gap-3 text-xs text-muted-foreground font-semibold px-2 uppercase tracking-wider">
+                <span>Permission Name</span>
+                <span>Allowed Hours</span>
+                <span>Reset Cycle</span>
+                <span>Max Requests / Mo</span>
+                <span className="text-center">Paid Status</span>
+                <span />
+              </div>
+
+              {(company.permissionTypes ?? [
+                { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true }
+              ]).map((p, i) => {
+                const currentList = company.permissionTypes ?? [
+                  { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true }
+                ];
+                return (
+                  <div
+                    key={p.id}
+                    className="grid grid-cols-[1fr_130px_130px_140px_100px_40px] gap-3 items-center p-2 rounded-xl border border-border/60 bg-muted/10 hover:bg-muted/20 transition-colors"
+                  >
+                    <Input
+                      value={p.name}
+                      placeholder="e.g. Standard Permission"
+                      onChange={(e) => {
+                        const copy = [...currentList];
+                        copy[i] = { ...p, name: e.target.value };
+                        setCompany({ permissionTypes: copy });
+                      }}
+                      className="font-medium text-xs h-9"
+                    />
+
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        value={p.maxHours}
+                        min={0.5}
+                        step={0.5}
+                        onChange={(e) => {
+                          const copy = [...currentList];
+                          copy[i] = { ...p, maxHours: +e.target.value || 0 };
+                          setCompany({ permissionTypes: copy });
+                        }}
+                        className="font-semibold text-xs h-9 text-center"
+                      />
+                      <span className="text-xs text-muted-foreground font-medium">hrs</span>
+                    </div>
+
+                    <div className="flex items-center rounded-lg border border-border overflow-hidden text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const copy = [...currentList];
+                          copy[i] = { ...p, period: "month" };
+                          setCompany({ permissionTypes: copy });
+                        }}
+                        className={`flex-1 py-1.5 text-center transition-colors ${
+                          p.period === "month"
+                            ? "bg-primary text-primary-foreground font-semibold"
+                            : "text-muted-foreground hover:bg-muted/60"
+                        }`}
+                      >
+                        /Mo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const copy = [...currentList];
+                          copy[i] = { ...p, period: "year" };
+                          setCompany({ permissionTypes: copy });
+                        }}
+                        className={`flex-1 py-1.5 text-center transition-colors ${
+                          p.period === "year"
+                            ? "bg-primary text-primary-foreground font-semibold"
+                            : "text-muted-foreground hover:bg-muted/60"
+                        }`}
+                      >
+                        /Yr
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min={1}
+                        value={p.maxRequestsPerMonth ?? ""}
+                        placeholder="2"
+                        onChange={(e) => {
+                          const copy = [...currentList];
+                          const val = e.target.value === "" ? undefined : +e.target.value || 0;
+                          copy[i] = { ...p, maxRequestsPerMonth: val };
+                          setCompany({ permissionTypes: copy });
+                        }}
+                        className="font-semibold text-xs h-9 text-center"
+                      />
+                      <span className="text-xs text-muted-foreground font-medium">times</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const copy = [...currentList];
+                        copy[i] = { ...p, paid: p.paid === false ? true : false };
+                        setCompany({ permissionTypes: copy });
+                      }}
+                      className={`py-1.5 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+                        p.paid !== false
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                          : "bg-muted text-muted-foreground border-border"
+                      }`}
+                    >
+                      {p.paid !== false ? "Paid" : "Unpaid"}
+                    </button>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() =>
+                        setCompany({
+                          permissionTypes: currentList.filter((_, j) => j !== i),
+                        })
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                );
+              })}
+
+              <div className="flex items-center justify-between pt-4 border-t border-border/60">
+                <p className="text-[11px] text-muted-foreground">
+                  Short permissions deduct from monthly working hours and are cross-referenced during attendance regularization.
+                </p>
+
+                <Button
+                  onClick={async () => {
+                    setSavingLeavePolicy(true);
+                    try {
+                      await saveAllCompanySettings();
+                      toast.success("Permission policy types saved to cloud database!");
+                    } catch (e: any) {
+                      toast.error("Failed to save permission policy: " + (e?.message || e));
+                    } finally {
+                      setSavingLeavePolicy(false);
+                    }
+                  }}
+                  disabled={savingLeavePolicy}
+                  className="gap-2 bg-primary text-primary-foreground font-semibold px-6 h-9 rounded-xl shadow-xs"
+                >
+                  {savingLeavePolicy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  <span>{savingLeavePolicy ? "Saving Policy..." : "Save Permission Policy"}</span>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 4: ABSENCE OF WORK CONTROL (AWOL) */}
+      {activeTab === "awol-control" && (
+        <div className="space-y-6 max-w-5xl">
+          <div className="rounded-2xl border border-rose-500/25 bg-card p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="h-11 w-11 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0">
+                  <ShieldAlert className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="font-display text-lg font-semibold text-foreground">
+                      Unauthorized Absence (AWOL) Control
+                    </h2>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                        company.awolControlEnabled
+                          ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/25"
+                          : "bg-muted text-muted-foreground border-border"
+                      }`}
+                    >
+                      {company.awolControlEnabled ? "Active" : "Disabled"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Monitor consecutive uninformed absences (Status: 'A'), trigger automated AWOL warnings or terminations, and apply daily penalty deductions in payroll.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 self-end sm:self-center bg-muted/40 px-3.5 py-2 rounded-xl border border-border">
+                <span className="text-xs font-semibold text-foreground">
+                  {company.awolControlEnabled ? "Enabled" : "Disabled"}
+                </span>
+                <Switch
+                  checked={Boolean(company.awolControlEnabled)}
+                  onCheckedChange={(checked) => {
+                    setCompany({
+                      awolControlEnabled: checked,
+                      awolDaysLimit: company.awolDaysLimit ?? 3,
+                      awolPenaltyAmountPerDay: company.awolPenaltyAmountPerDay ?? 500,
+                    });
+                    toast.success(
+                      checked
+                        ? "Unauthorized Absence (AWOL) Control enabled"
+                        : "Unauthorized Absence (AWOL) Control disabled"
+                    );
+                  }}
+                />
+              </div>
+            </div>
+
+            <div
+              className={`grid transition-all duration-300 ease-in-out ${
+                company.awolControlEnabled
+                  ? "grid-rows-[1fr] opacity-100 pt-2 border-t border-border/60"
+                  : "grid-rows-[0fr] opacity-0 pointer-events-none"
+              }`}
+            >
+              <div className="overflow-hidden space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* A. Termination Settings */}
+                  <div className="rounded-xl border border-border bg-muted/15 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400 text-[11px] font-bold">
+                            A
+                          </span>
+                          Termination Settings
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Track consecutive unauthorized absent working days and enforce AWOL thresholds.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={Boolean(company.awolTerminationEnabled)}
+                        onCheckedChange={(checked) =>
+                          setCompany({
+                            awolTerminationEnabled: checked,
+                            awolDaysLimit: company.awolDaysLimit ?? 3,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div
+                      className={`grid transition-all duration-300 ease-in-out ${
+                        company.awolTerminationEnabled
+                          ? "grid-rows-[1fr] opacity-100 pt-3 border-t border-border/60"
+                          : "grid-rows-[0fr] opacity-0 pointer-events-none"
+                      }`}
+                    >
+                      <div className="overflow-hidden space-y-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-foreground">
+                            Consecutive AWOL Days Limit
+                          </Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min={1}
+                              value={company.awolDaysLimit ?? 3}
+                              onChange={(e) => {
+                                const val = Math.max(1, Number(e.target.value) || 1);
+                                setCompany({ awolDaysLimit: val });
+                              }}
+                              className="w-28 font-semibold"
+                            />
+                            <span className="text-xs text-muted-foreground font-medium">
+                              Consecutive Working Days (triggers on Day {(company.awolDaysLimit ?? 3) + 1})
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            If set to 3 days, crossing into the 4th consecutive day of unauthorized absence (Status: 'A') triggers termination alerts and AWOL warning badges.
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3.5 space-y-1.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <Label className="text-xs font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                              <AlertTriangle className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+                              Auto-Terminate Employee
+                            </Label>
+                            <Switch
+                              checked={Boolean(company.awolAutoTerminate)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setConfirmAutoTerminateOpen(true);
+                                } else {
+                                  setCompany({ awolAutoTerminate: false });
+                                  toast.info("Auto-Terminate Employee disabled");
+                                }
+                              }}
+                            />
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Automatically update employee status to 'Terminated (AWOL)' when they reach (Limit + 1) consecutive days of unauthorized absence.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* B. Penalty Deduction Settings */}
+                  <div className="rounded-xl border border-border bg-muted/15 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 text-[11px] font-bold">
+                            B
+                          </span>
+                          Penalty Deduction Settings
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Apply a per-day flat fine on uninformed absences during monthly payroll runs.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={Boolean(company.awolPenaltyEnabled)}
+                        onCheckedChange={(checked) =>
+                          setCompany({
+                            awolPenaltyEnabled: checked,
+                            awolPenaltyAmountPerDay: company.awolPenaltyAmountPerDay ?? 500,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div
+                      className={`grid transition-all duration-300 ease-in-out ${
+                        company.awolPenaltyEnabled
+                          ? "grid-rows-[1fr] opacity-100 pt-3 border-t border-border/60"
+                          : "grid-rows-[0fr] opacity-0 pointer-events-none"
+                      }`}
+                    >
+                      <div className="overflow-hidden space-y-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-foreground">
+                            AWOL Penalty Amount (₹ per day)
+                          </Label>
+                          <div className="relative max-w-xs">
+                            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-xs font-bold text-muted-foreground">
+                              <IndianRupee className="h-3.5 w-3.5" />
+                            </span>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={company.awolPenaltyAmountPerDay ?? 500}
+                              onChange={(e) => {
+                                const val = Math.max(0, Number(e.target.value) || 0);
+                                setCompany({ awolPenaltyAmountPerDay: val });
+                              }}
+                              className="pl-8 font-semibold"
+                            />
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Additional flat penalty deducted from Net Salary per unauthorized absent day (on top of standard Loss of Pay proration).
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 text-[11px] text-muted-foreground space-y-1">
+                          <div className="font-semibold text-blue-700 dark:text-blue-300">
+                            Payroll Impact Preview
+                          </div>
+                          <div>
+                            1 Uninformed Absent Day ('A') = Standard 1-Day LOP +{" "}
+                            <span className="font-bold text-foreground">
+                              ₹{(company.awolPenaltyAmountPerDay ?? 500).toLocaleString("en-IN")}/day
+                            </span>{" "}
+                            AWOL Penalty (excluded for Paid Leave 'PL' and Informed Leave 'IL').
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Save Button for AWOL Control */}
+                <div className="flex justify-end pt-2">
+                  <Button
+                    onClick={async () => {
+                      setSavingLeavePolicy(true);
+                      try {
+                        await saveAllCompanySettings();
+                        toast.success("Unauthorized absence (AWOL) control settings saved!");
+                      } catch (e: any) {
+                        toast.error("Failed to save absence control: " + (e?.message || e));
+                      } finally {
+                        setSavingLeavePolicy(false);
+                      }
+                    }}
+                    disabled={savingLeavePolicy}
+                    className="gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold px-6 h-9 rounded-xl shadow-xs"
+                  >
+                    {savingLeavePolicy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    <span>{savingLeavePolicy ? "Saving Settings..." : "Save Absence Control"}</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Confirmation Modal for Auto-Terminate Option */}
+          <Dialog open={confirmAutoTerminateOpen} onOpenChange={setConfirmAutoTerminateOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                  <AlertTriangle className="h-5 w-5" />
+                  Enable Auto-Terminate for AWOL?
+                </DialogTitle>
+                <DialogDescription className="pt-2 text-xs leading-relaxed text-muted-foreground">
+                  Enabling <strong>Auto-Terminate Employee</strong> will automatically mark any active employee as{" "}
+                  <span className="font-bold text-rose-600 dark:text-rose-400">Terminated (AWOL)</span> and revoke their portal access once they cross{" "}
+                  <strong>{(company.awolDaysLimit ?? 3) + 1}+ consecutive working days</strong> of unauthorized absence (Status: 'A').
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300">
+                Are you sure you want to enable automatic termination on Day {(company.awolDaysLimit ?? 3) + 1} of consecutive AWOL?
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmAutoTerminateOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-rose-600 hover:bg-rose-700 text-white"
+                  onClick={() => {
+                    setCompany({ awolAutoTerminate: true });
+                    setConfirmAutoTerminateOpen(false);
+                    toast.warning(
+                      `Auto-Terminate enabled: employees reaching ${(company.awolDaysLimit ?? 3) + 1}+ consecutive AWOL days will be automatically terminated.`
+                    );
+                  }}
+                >
+                  Yes, Enable Auto-Terminate
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      )}
       {/* ========================================================================= */}
       {/* 5. ADD / EDIT HOLIDAY MODAL */}
       {/* ========================================================================= */}

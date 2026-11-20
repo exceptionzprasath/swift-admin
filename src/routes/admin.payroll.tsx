@@ -420,6 +420,8 @@ export function PayrollPage() {
 
   // Active Main Tab
   const [mainTab, setMainTab] = useState<"structure" | "run" | "revision" | "ot-requests">("structure");
+  const [isOtSettingsOpen, setIsOtSettingsOpen] = useState(false);
+  const [savingOtSettings, setSavingOtSettings] = useState(false);
 
   // Selected Month for Payroll Run
   const [selectedMonth, setSelectedMonth] = useState<string>(
@@ -3924,6 +3926,15 @@ export function PayrollPage() {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setIsOtSettingsOpen(true)}
+                className="h-8 text-xs rounded-xl gap-1.5 border-primary/30 text-primary hover:bg-primary/5 shadow-2xs"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
+                <span>OT Multiplier Settings ({company.otMultiplier || 2}×)</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleBulkRejectPendingOt}
                 disabled={pendingOtCount === 0}
                 className="h-8 text-xs rounded-xl gap-1.5 text-destructive hover:bg-destructive/10 border-destructive/30"
@@ -4440,6 +4451,114 @@ export function PayrollPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* OT Multiplier Settings Dialog */}
+      <Dialog open={isOtSettingsOpen} onOpenChange={setIsOtSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-amber-500" />
+              <span>Overtime (OT) Multiplier Settings</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Configure company-wide overtime rate multiplier applied when calculating approved overtime pay.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                <span>OT Hourly Pay Multiplier</span>
+                <span className="text-[11px] text-muted-foreground font-normal">Default: 2.0×</span>
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={0.5}
+                  max={10}
+                  step={0.1}
+                  value={company.otMultiplier ?? 2}
+                  onChange={(e) => {
+                    const val = Math.max(0.1, Number(e.target.value) || 2);
+                    setCompany({ otMultiplier: val });
+                  }}
+                  className="font-semibold text-sm w-32"
+                />
+                <span className="text-xs font-bold text-foreground">× Hourly Rate</span>
+              </div>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-muted-foreground font-medium">Quick Multiplier Presets</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: "1.0× (1×)", val: 1 },
+                  { label: "1.5× (1.5×)", val: 1.5 },
+                  { label: "2.0× (2×)", val: 2 },
+                  { label: "2.5× (2.5×)", val: 2.5 },
+                ].map((preset) => (
+                  <button
+                    key={preset.val}
+                    type="button"
+                    onClick={() => setCompany({ otMultiplier: preset.val })}
+                    className={`py-1.5 px-2 rounded-lg border text-xs font-semibold transition-all ${
+                      (company.otMultiplier ?? 2) === preset.val
+                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40"
+                        : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-muted/20 p-3.5 space-y-2">
+              <div className="font-semibold text-foreground flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span>How OT Pay is Calculated</span>
+              </div>
+              <div className="space-y-1 text-muted-foreground text-[11px] leading-relaxed">
+                <div>
+                  1. <strong className="text-foreground">Base Hourly Rate</strong> = Monthly Gross ÷ ({(company.workingDaysPerMonth ?? 26)} Days × {(company.workingHoursPerDay ?? 9)} Hours)
+                </div>
+                <div>
+                  2. <strong className="text-foreground">OT Rate / Hour</strong> = Base Hourly Rate × <strong className="text-foreground">{company.otMultiplier ?? 2}×</strong>
+                </div>
+                <div>
+                  3. <strong className="text-foreground">Overtime Payout</strong> = Approved OT Hours × OT Rate / Hour
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsOtSettingsOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                setSavingOtSettings(true);
+                try {
+                  await saveAllCompanySettings();
+                  toast.success(`OT Multiplier updated to ${company.otMultiplier ?? 2}× & saved to cloud database!`);
+                  setIsOtSettingsOpen(false);
+                } catch (e: any) {
+                  toast.error("Failed to save OT multiplier: " + (e?.message || e));
+                } finally {
+                  setSavingOtSettings(false);
+                }
+              }}
+              disabled={savingOtSettings}
+              className="gap-1.5 bg-primary text-primary-foreground font-semibold"
+            >
+              {savingOtSettings ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              <span>{savingOtSettings ? "Saving..." : "Save OT Multiplier"}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ========================================================================= */}
       {/* MODAL: DAILY OVERTIME BREAKDOWN DIALOG                                    */}
