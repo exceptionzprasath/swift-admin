@@ -1852,10 +1852,10 @@ function AttendancePage() {
         </div>
       </div>
 
-      {/* KPI Cards Row (Minimal with Ambient Glow & Colored Border) */}
+      {/* KPI Cards Row (Minimal with Colored Border) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* Total Staff */}
-        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-border/80 hover:border-primary/50 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_-2px_rgba(var(--primary-rgb,59,130,246),0.18)] transition-all">
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-border hover:border-primary/50 transition-colors">
           <div className="flex items-center gap-2.5 min-w-0">
             <User className="h-4 w-4 text-primary shrink-0" />
             <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
@@ -1868,7 +1868,7 @@ function AttendancePage() {
         </div>
 
         {/* Present Today */}
-        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-emerald-500/35 hover:border-emerald-500/70 shadow-[0_2px_12px_-2px_rgba(16,185,129,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(16,185,129,0.25)] transition-all">
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-emerald-500/40 hover:border-emerald-500/70 transition-colors">
           <div className="flex items-center gap-2.5 min-w-0">
             <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
             <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
@@ -1881,7 +1881,7 @@ function AttendancePage() {
         </div>
 
         {/* Late Marks */}
-        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-orange-500/35 hover:border-orange-500/70 shadow-[0_2px_12px_-2px_rgba(249,115,22,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(249,115,22,0.25)] transition-all">
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-orange-500/40 hover:border-orange-500/70 transition-colors">
           <div className="flex items-center gap-2.5 min-w-0">
             <Timer className="h-4 w-4 text-orange-500 shrink-0" />
             <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
@@ -1894,7 +1894,7 @@ function AttendancePage() {
         </div>
 
         {/* Half-Day */}
-        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-amber-500/35 hover:border-amber-500/70 shadow-[0_2px_12px_-2px_rgba(245,158,11,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(245,158,11,0.25)] transition-all">
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-amber-500/40 hover:border-amber-500/70 transition-colors">
           <div className="flex items-center gap-2.5 min-w-0">
             <Clock className="h-4 w-4 text-amber-500 shrink-0" />
             <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
@@ -1907,7 +1907,7 @@ function AttendancePage() {
         </div>
 
         {/* On Leave */}
-        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-blue-500/35 hover:border-blue-500/70 shadow-[0_2px_12px_-2px_rgba(59,130,246,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(59,130,246,0.25)] transition-all">
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-blue-500/40 hover:border-blue-500/70 transition-colors">
           <div className="flex items-center gap-2.5 min-w-0">
             <CalendarCheck className="h-4 w-4 text-blue-500 shrink-0" />
             <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
@@ -1920,7 +1920,7 @@ function AttendancePage() {
         </div>
 
         {/* Absent */}
-        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-rose-500/35 hover:border-rose-500/70 shadow-[0_2px_12px_-2px_rgba(244,63,94,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(244,63,94,0.25)] transition-all">
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-rose-500/40 hover:border-rose-500/70 transition-colors">
           <div className="flex items-center gap-2.5 min-w-0">
             <XCircle className="h-4 w-4 text-rose-500 shrink-0" />
             <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
