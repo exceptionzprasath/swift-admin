@@ -118,6 +118,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedYear, setSelectedYear] = useState<string>(() => String(new Date().getFullYear()));
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -143,6 +144,18 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
   const branches = useMemo(() => {
     return (company?.branches || []).map((b) => ({ id: b.id, name: b.name, code: b.code }));
   }, [company]);
+
+    const availableYears = useMemo(() => {
+    const currentY = new Date().getFullYear();
+    const set = new Set<number>([currentY - 1, currentY, currentY + 1]);
+    (holidays || []).forEach((h) => {
+      if (h.date) {
+        const y = parseInt(h.date.slice(0, 4), 10);
+        if (!isNaN(y)) set.add(y);
+      }
+    });
+    return Array.from(set).sort((a, b) => b - a);
+  }, [holidays]);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -207,12 +220,15 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
 
   const filteredHolidays = useMemo(() => {
     return (holidays || []).filter((h) => {
+      if (viewMode === "list" && selectedYear !== "all") {
+        if (!h.date.startsWith(selectedYear)) return false;
+      }
       if (typeFilter !== "all" && h.type !== typeFilter) return false;
       if (branchFilter !== "all") {
         const hBranches = h.branchIds || ["all"];
         if (!hBranches.includes("all") && !hBranches.includes(branchFilter)) return false;
       }
-      if (searchQuery.trim()) {
+      if (viewMode === "list" && searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchesName = h.name.toLowerCase().includes(q);
         const matchesDesc = (h.description || "").toLowerCase().includes(q);
@@ -220,7 +236,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
       }
       return true;
     });
-  }, [holidays, typeFilter, branchFilter, searchQuery]);
+  }, [holidays, viewMode, selectedYear, typeFilter, branchFilter, searchQuery]);
 
   const holidaysByDate = useMemo(() => {
     const map = new Map<string, CompanyHoliday[]>();
@@ -475,53 +491,59 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
           <div className="flex flex-wrap items-center justify-between gap-2.5 bg-card p-3 rounded-xl border border-border shadow-xs">
             {/* Left/Main Horizontal Group */}
             <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
-              {/* 1. Month Navigation (e.g. November 2026) */}
-              <div className="flex items-center gap-1 bg-muted/40 p-0.5 rounded-lg border border-border/70">
+              {/* Calendar View: Today Button (single month selector is on the calendar card) */}
+              {viewMode === "calendar" && (
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={prevMonth}
-                  className="h-8 w-8 rounded-md"
-                  title="Previous month"
+                  variant="secondary"
+                  size="sm"
+                  onClick={jumpToday}
+                  className="h-8 px-3 text-xs font-semibold rounded-lg gap-1.5 shadow-2xs"
+                  title="Jump to today's month"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                  <span>Today</span>
                 </Button>
-                <span className="font-display font-bold text-xs sm:text-sm px-2 text-foreground whitespace-nowrap min-w-[130px] text-center">
-                  {monthName} {year}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={nextMonth}
-                  className="h-8 w-8 rounded-md"
-                  title="Next month"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+              )}
 
-              {/* 2. Today Button */}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={jumpToday}
-                className="h-8 px-3 text-xs font-semibold rounded-lg"
-              >
-                Today
-              </Button>
+              {/* Holiday List View: Search Input & Year Selection Dropdown */}
+              {viewMode === "list" && (
+                <>
+                  <div className="relative min-w-[180px] max-w-[260px] flex-1">
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Search holiday name..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-8 h-8 text-xs rounded-lg bg-background"
+                    />
+                  </div>
 
-              {/* 3. Search holiday name... */}
-              <div className="relative min-w-[160px] max-w-[220px] flex-1">
-                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Search holiday name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 h-8 text-xs rounded-lg bg-background"
-                />
-              </div>
+                  <Select
+                    value={selectedYear}
+                    onValueChange={(val) => {
+                      setSelectedYear(val);
+                      if (val !== "all") {
+                        setCurrentDate(new Date(parseInt(val, 10), month, 1));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs min-w-[115px] w-auto rounded-lg bg-background font-medium">
+                      <CalendarIcon className="h-3.5 w-3.5 mr-1 text-primary shrink-0" />
+                      <SelectValue placeholder="Select Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Years</SelectItem>
+                      {availableYears.map((yr) => (
+                        <SelectItem key={yr} value={String(yr)}>
+                          {yr}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
 
-              {/* 4. All Holiday Types Dropdown */}
+              {/* All Holiday Types Dropdown (visible in both Calendar and List views) */}
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger className="h-8 text-xs min-w-[145px] w-auto rounded-lg bg-background">
                   <Tag className="h-3.5 w-3.5 mr-1 text-muted-foreground shrink-0" />
@@ -535,7 +557,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                 </SelectContent>
               </Select>
 
-              {/* 5. All Branches Dropdown */}
+              {/* All Branches Dropdown (visible in both Calendar and List views) */}
               <Select value={branchFilter} onValueChange={setBranchFilter}>
                 <SelectTrigger className="h-8 text-xs min-w-[130px] w-auto rounded-lg bg-background">
                   <Building2 className="h-3.5 w-3.5 mr-1 text-muted-foreground shrink-0" />
@@ -552,7 +574,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
 
             {/* Right Horizontal Group: View Toggle & Three-Dot Menu */}
             <div className="flex items-center gap-2 shrink-0">
-              {/* 6. Calendar & Holiday List Toggle */}
+              {/* Calendar & Holiday List Toggle */}
               <div className="flex items-center border border-border rounded-lg p-0.5 bg-muted/40">
                 <Button
                   variant={viewMode === "calendar" ? "secondary" : "ghost"}
@@ -574,7 +596,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                 </Button>
               </div>
 
-              {/* 7. Three-Dot Action Menu Icon */}
+              {/* Three-Dot Action Menu Icon */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -733,7 +755,7 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
           {viewMode === "list" && (
             <Card className="border-border shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base font-bold">Annual Company Holidays ({filteredHolidays.length})</CardTitle>
+                <CardTitle className="text-base font-bold">Annual Company Holidays {selectedYear !== "all" ? `(${selectedYear})` : ""} ({filteredHolidays.length})</CardTitle>
                 <CardDescription>Official calendar of non-working days and festive leaves declared for employees.</CardDescription>
               </CardHeader>
               <CardContent className="p-0">
