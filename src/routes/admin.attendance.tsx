@@ -1852,102 +1852,84 @@ function AttendancePage() {
         </div>
       </div>
 
-      {/* KPI Cards Row (Minimal Framework) */}
+      {/* KPI Cards Row (Minimal with Ambient Glow & Colored Border) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* Total Staff */}
-        <div className="flex items-center gap-3 p-3 rounded-xl border border-border/70 bg-card hover:bg-card/80 transition-all shadow-2xs">
-          <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <User className="h-5 w-5" />
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-border/80 hover:border-primary/50 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_-2px_rgba(var(--primary-rgb,59,130,246),0.18)] transition-all">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <User className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
+              Total Staff
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-muted-foreground truncate leading-tight">Total Staff</p>
-            <p className="text-xl font-bold font-display tracking-tight text-foreground leading-tight mt-0.5">
-              {dailyKPIs.totalEmployees}
-            </p>
-          </div>
-          <div className="h-7 w-7 rounded-md bg-muted/60 text-muted-foreground flex items-center justify-center shrink-0" title="Active Headcount">
-            <Users className="h-3.5 w-3.5" />
-          </div>
+          <span className="font-display text-lg font-bold text-foreground shrink-0">
+            {dailyKPIs.totalEmployees}
+          </span>
         </div>
 
         {/* Present Today */}
-        <div className="flex items-center gap-3 p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 transition-all shadow-2xs">
-          <div className="h-10 w-10 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="h-5 w-5" />
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-emerald-500/35 hover:border-emerald-500/70 shadow-[0_2px_12px_-2px_rgba(16,185,129,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(16,185,129,0.25)] transition-all">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
+              Present
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 truncate leading-tight">Present Today</p>
-            <p className="text-xl font-bold font-display tracking-tight text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5">
-              {dailyKPIs.presentCount}
-            </p>
-          </div>
-          <div className="h-7 min-w-7 px-1.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold shrink-0" title={`${dailyKPIs.onTimeCount} On-Time`}>
-            {dailyKPIs.attendancePercentage}%
-          </div>
+          <span className="font-display text-lg font-bold text-foreground shrink-0">
+            {dailyKPIs.presentCount}
+          </span>
         </div>
 
         {/* Late Marks */}
-        <div className="flex items-center gap-3 p-3 rounded-xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 transition-all shadow-2xs">
-          <div className="h-10 w-10 rounded-lg bg-orange-500/15 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
-            <Timer className="h-5 w-5" />
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-orange-500/35 hover:border-orange-500/70 shadow-[0_2px_12px_-2px_rgba(249,115,22,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(249,115,22,0.25)] transition-all">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Timer className="h-4 w-4 text-orange-500 shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
+              Late Marks
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-orange-600 dark:text-orange-400 truncate leading-tight">Late Marks</p>
-            <p className="text-xl font-bold font-display tracking-tight text-orange-600 dark:text-orange-400 leading-tight mt-0.5">
-              {dailyKPIs.lateCount}
-            </p>
-          </div>
-          <div className="h-7 min-w-7 px-1.5 rounded-md bg-orange-500/15 text-orange-700 dark:text-orange-300 flex items-center justify-center text-[10px] font-bold shrink-0" title={`${dailyKPIs.graceCount} used grace window`}>
-            {dailyKPIs.graceCount}g
-          </div>
+          <span className="font-display text-lg font-bold text-foreground shrink-0">
+            {dailyKPIs.lateCount}
+          </span>
         </div>
 
         {/* Half-Day */}
-        <div className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-all shadow-2xs">
-          <div className="h-10 w-10 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-            <Clock className="h-5 w-5" />
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-amber-500/35 hover:border-amber-500/70 shadow-[0_2px_12px_-2px_rgba(245,158,11,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(245,158,11,0.25)] transition-all">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Clock className="h-4 w-4 text-amber-500 shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
+              Half-Day
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 truncate leading-tight">Half-Day</p>
-            <p className="text-xl font-bold font-display tracking-tight text-amber-600 dark:text-amber-400 leading-tight mt-0.5">
-              {dailyKPIs.halfDayCount}
-            </p>
-          </div>
-          <div className="h-7 min-w-7 px-1.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center text-[10px] font-bold shrink-0" title="Afternoon sessions">
-            ½
-          </div>
+          <span className="font-display text-lg font-bold text-foreground shrink-0">
+            {dailyKPIs.halfDayCount}
+          </span>
         </div>
 
         {/* On Leave */}
-        <div className="flex items-center gap-3 p-3 rounded-xl border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 transition-all shadow-2xs">
-          <div className="h-10 w-10 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-            <CalendarCheck className="h-5 w-5" />
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-blue-500/35 hover:border-blue-500/70 shadow-[0_2px_12px_-2px_rgba(59,130,246,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(59,130,246,0.25)] transition-all">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <CalendarCheck className="h-4 w-4 text-blue-500 shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
+              On Leave
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400 truncate leading-tight">On Leave</p>
-            <p className="text-xl font-bold font-display tracking-tight text-blue-600 dark:text-blue-400 leading-tight mt-0.5">
-              {dailyKPIs.leaveCount}
-            </p>
-          </div>
-          <div className="h-7 min-w-7 px-1.5 rounded-md bg-blue-500/15 text-blue-700 dark:text-blue-300 flex items-center justify-center text-[10px] font-bold shrink-0" title="Approved leaves">
-            LV
-          </div>
+          <span className="font-display text-lg font-bold text-foreground shrink-0">
+            {dailyKPIs.leaveCount}
+          </span>
         </div>
 
-        {/* Absent / Pending */}
-        <div className="flex items-center gap-3 p-3 rounded-xl border border-destructive/20 bg-destructive/5 hover:bg-destructive/10 transition-all shadow-2xs">
-          <div className="h-10 w-10 rounded-lg bg-destructive/15 text-destructive flex items-center justify-center shrink-0">
-            <XCircle className="h-5 w-5" />
+        {/* Absent */}
+        <div className="group flex items-center justify-between px-4 py-3 rounded-xl bg-card border border-rose-500/35 hover:border-rose-500/70 shadow-[0_2px_12px_-2px_rgba(244,63,94,0.15)] hover:shadow-[0_4px_18px_-2px_rgba(244,63,94,0.25)] transition-all">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <XCircle className="h-4 w-4 text-rose-500 shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
+              Absent
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-destructive truncate leading-tight">Absent / Pending</p>
-            <p className="text-xl font-bold font-display tracking-tight text-destructive leading-tight mt-0.5">
-              {dailyKPIs.absentCount}
-            </p>
-          </div>
-          <div className="h-7 min-w-7 px-1.5 rounded-md bg-destructive/15 text-destructive flex items-center justify-center text-[10px] font-bold shrink-0" title="No punch recorded">
-            AB
-          </div>
+          <span className="font-display text-lg font-bold text-foreground shrink-0">
+            {dailyKPIs.absentCount}
+          </span>
         </div>
       </div>
 
