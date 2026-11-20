@@ -1852,64 +1852,64 @@ function AttendancePage() {
         </div>
       </div>
 
-      {/* KPI Cards Row (Minimal Grey Flat matching user framework & reference) */}
+      {/* KPI Cards Row (Minimal with Colored Borders and Capitalized Titles) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* Total Staff */}
-        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-          <span className="text-sm font-normal text-foreground/80 truncate">
-            total staff
+        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-primary/40 hover:border-primary/80 transition-all">
+          <span className="text-sm font-medium text-foreground/85 truncate">
+            Total Staff
           </span>
-          <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+          <span className="text-base sm:text-lg font-semibold text-foreground shrink-0 ml-2">
             {dailyKPIs.totalEmployees}
           </span>
         </div>
 
         {/* Present Today */}
-        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-          <span className="text-sm font-normal text-foreground/80 truncate">
-            present
+        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-emerald-500/40 hover:border-emerald-500/80 transition-all">
+          <span className="text-sm font-medium text-foreground/85 truncate">
+            Present
           </span>
-          <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+          <span className="text-base sm:text-lg font-semibold text-foreground shrink-0 ml-2">
             {dailyKPIs.presentCount}
           </span>
         </div>
 
         {/* Late Marks */}
-        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-          <span className="text-sm font-normal text-foreground/80 truncate">
-            late marks
+        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-orange-500/40 hover:border-orange-500/80 transition-all">
+          <span className="text-sm font-medium text-foreground/85 truncate">
+            Late Marks
           </span>
-          <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+          <span className="text-base sm:text-lg font-semibold text-foreground shrink-0 ml-2">
             {dailyKPIs.lateCount}
           </span>
         </div>
 
         {/* Half-Day */}
-        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-          <span className="text-sm font-normal text-foreground/80 truncate">
-            half-day
+        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-amber-500/40 hover:border-amber-500/80 transition-all">
+          <span className="text-sm font-medium text-foreground/85 truncate">
+            Half-Day
           </span>
-          <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+          <span className="text-base sm:text-lg font-semibold text-foreground shrink-0 ml-2">
             {dailyKPIs.halfDayCount}
           </span>
         </div>
 
         {/* On Leave */}
-        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-          <span className="text-sm font-normal text-foreground/80 truncate">
-            on leave
+        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-blue-500/40 hover:border-blue-500/80 transition-all">
+          <span className="text-sm font-medium text-foreground/85 truncate">
+            On Leave
           </span>
-          <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+          <span className="text-base sm:text-lg font-semibold text-foreground shrink-0 ml-2">
             {dailyKPIs.leaveCount}
           </span>
         </div>
 
         {/* Absent */}
-        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-          <span className="text-sm font-normal text-foreground/80 truncate">
-            absent
+        <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-rose-500/40 hover:border-rose-500/80 transition-all">
+          <span className="text-sm font-medium text-foreground/85 truncate">
+            Absent
           </span>
-          <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+          <span className="text-base sm:text-lg font-semibold text-foreground shrink-0 ml-2">
             {dailyKPIs.absentCount}
           </span>
         </div>

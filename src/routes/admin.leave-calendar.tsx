@@ -426,47 +426,47 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
       {activeTab === "holidays" && (
         <div className="space-y-6">
 
-          {/* Quick Metrics Row (Minimal Grey Flat matching attendance design) */}
+          {/* Quick Metrics Row (Minimal with Colored Borders and Capitalized Titles) */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Total Holidays */}
-            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-              <span className="text-sm font-normal text-foreground/80 truncate">
-                total holidays
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-purple-500/40 hover:border-purple-500/80 transition-all">
+              <span className="text-sm font-medium text-foreground/85 truncate">
+                Total Holidays
               </span>
-              <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+              <span className="text-base sm:text-lg font-semibold text-foreground shrink-0 ml-2">
                 {stats.totalCount}
               </span>
             </div>
 
             {/* Mandatory / Public */}
-            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-              <span className="text-sm font-normal text-foreground/80 truncate">
-                mandatory
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-emerald-500/40 hover:border-emerald-500/80 transition-all">
+              <span className="text-sm font-medium text-foreground/85 truncate">
+                Mandatory
               </span>
-              <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+              <span className="text-base sm:text-lg font-semibold text-foreground shrink-0 ml-2">
                 {stats.mandatoryCount}
               </span>
             </div>
 
             {/* Optional / Floating */}
-            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-              <span className="text-sm font-normal text-foreground/80 truncate">
-                optional
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-sky-500/40 hover:border-sky-500/80 transition-all">
+              <span className="text-sm font-medium text-foreground/85 truncate">
+                Optional
               </span>
-              <span className="text-base sm:text-lg font-medium text-foreground shrink-0 ml-2">
+              <span className="text-base sm:text-lg font-semibold text-foreground shrink-0 ml-2">
                 {stats.optionalCount}
               </span>
             </div>
 
             {/* Next Upcoming */}
-            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 transition-colors">
-              <span className="text-sm font-normal text-foreground/80 truncate">
-                next upcoming
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-amber-500/40 hover:border-amber-500/80 transition-all">
+              <span className="text-sm font-medium text-foreground/85 truncate">
+                Next Upcoming
               </span>
-              <span className="text-sm sm:text-base font-medium text-foreground shrink-0 ml-2 truncate max-w-[55%] text-right" title={stats.upcoming?.name}>
+              <span className="text-sm sm:text-base font-semibold text-foreground shrink-0 ml-2 truncate max-w-[55%] text-right" title={stats.upcoming?.name}>
                 {stats.upcoming
-                  ? `${stats.upcoming.name} (${stats.daysRemaining === 0 ? "today" : `${stats.daysRemaining}d`})`
-                  : "none"}
+                  ? `${stats.upcoming.name} (${stats.daysRemaining === 0 ? "Today" : `${stats.daysRemaining}d`})`
+                  : "None"}
               </span>
             </div>
           </div>
