@@ -45,7 +45,6 @@ import {
   Download,
   Eye,
   Edit3,
-  RefreshCw,
   Sparkles,
   TrendingUp,
   ShieldCheck,
@@ -1825,24 +1824,10 @@ function AttendancePage() {
 
         {/* Live Controls & Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* 10s Live Sync Indicator */}
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5 mr-1 bg-muted/40 px-2.5 py-1.5 rounded-lg border border-border">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="font-medium text-foreground">Synced</span>
-            <span className="text-muted-foreground">· {lastSyncedTime}</span>
+          {/* Last Sync Indicator */}
+          <div className="text-xs text-muted-foreground bg-muted/40 px-2.5 py-1.5 rounded-lg border border-border">
+            <span>Last sync at <span className="font-medium text-foreground">{lastSyncedTime}</span></span>
           </div>
-
-          {/* Sync Now Button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => handleLiveSync(false)}
-            disabled={isSyncing}
-            className="gap-1.5 h-8 rounded-lg shadow-xs text-xs"
-          >
-            <RefreshCw className={`h-3 w-3 ${isSyncing ? "animate-spin text-primary" : ""}`} />
-            <span>{isSyncing ? "Syncing..." : "Sync Now"}</span>
-          </Button>
 
           {/* Upload USB Biometric Logs */}
           <Button
