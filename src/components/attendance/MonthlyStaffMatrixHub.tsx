@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import React, { useMemo, useState, useCallback } from "react";
 import { useStore, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type LeaveRequest } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
@@ -997,7 +998,14 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground font-medium">Department</Label>
               <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                <SelectTrigger className="h-8 text-xs rounded-lg">
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs rounded-lg transition-all",
+                    selectedDepartment !== "all"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
                   <SelectValue placeholder="Department" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1015,7 +1023,14 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground font-medium">Shift</Label>
               <Select value={selectedShift} onValueChange={setSelectedShift}>
-                <SelectTrigger className="h-8 text-xs rounded-lg">
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs rounded-lg transition-all",
+                    selectedShift !== "all"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
                   <SelectValue placeholder="Shift" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1033,7 +1048,14 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground font-medium">Branch</Label>
               <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                <SelectTrigger className="h-8 text-xs rounded-lg">
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs rounded-lg transition-all",
+                    selectedBranch !== "all"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
                   <SelectValue placeholder="Branch" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1051,7 +1073,14 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground font-medium">Employee Status</Label>
               <Select value={employeeStatus} onValueChange={(v: "active" | "all" | "inactive") => setEmployeeStatus(v)}>
-                <SelectTrigger className="h-8 text-xs rounded-lg">
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs rounded-lg transition-all",
+                    employeeStatus !== "active"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1066,13 +1095,28 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground font-medium">Employee Name / ID</Label>
               <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Search className={cn("absolute left-2.5 top-2.5 h-3.5 w-3.5 transition-colors", searchQuery.trim() ? "text-primary" : "text-muted-foreground")} />
                 <Input
                   placeholder="Search staff..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 h-8 text-xs rounded-lg"
+                  className={cn(
+                    "pl-8 pr-7 h-8 text-xs rounded-lg transition-all",
+                    searchQuery.trim()
+                      ? "bg-primary/10 border-primary/50 text-foreground font-medium ring-1 ring-primary/25 shadow-2xs"
+                      : "bg-background"
+                  )}
                 />
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1088,6 +1132,23 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                 Days in Range: <strong className="text-foreground">{daysInRange.length}</strong> ({fromDate} → {toDate})
               </span>
             </div>
+
+            {(selectedDepartment !== "all" || selectedShift !== "all" || selectedBranch !== "all" || employeeStatus !== "active" || searchQuery.trim()) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDepartment("all");
+                  setSelectedShift("all");
+                  setSelectedBranch("all");
+                  setEmployeeStatus("active");
+                  setSearchQuery("");
+                }}
+                className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-semibold cursor-pointer animate-in fade-in"
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Reset Filters</span>
+              </button>
+            )}
 
 {/* Badges removed from Date Range settings box as requested */}
           </div>

@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import React, { useMemo, useState } from "react";
 import { useStore, isActiveEmployee, type AttendanceRecord, type Employee, type ShiftType } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { EmploymentTypeBadge } from "@/components/employment-type-badge";
 import {
   CheckCircle2,
   XCircle,
+  X,
   Clock,
   Search,
   CalendarDays,
@@ -241,17 +243,39 @@ export const RestDayWorkApprovalHub: React.FC<RestDayWorkApprovalHubProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3.5 rounded-xl border border-border">
         <div className="flex flex-wrap items-center gap-2.5 flex-1">
           <div className="relative w-full sm:w-72">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className={cn("absolute left-2.5 top-2.5 h-4 w-4 transition-colors", searchQuery.trim() ? "text-primary" : "text-muted-foreground")} />
             <Input
               placeholder="Search employee, code, dept, or date..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-9 text-xs rounded-lg"
+              className={cn(
+                "pl-8 pr-8 h-9 text-xs rounded-lg transition-all",
+                searchQuery.trim()
+                  ? "bg-primary/10 border-primary/50 text-foreground font-medium ring-1 ring-primary/25 shadow-2xs"
+                  : "bg-background"
+              )}
             />
+            {searchQuery.trim() && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                title="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
           <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
-            <SelectTrigger className="h-9 w-44 text-xs rounded-lg">
+            <SelectTrigger
+              className={cn(
+                "h-9 w-44 text-xs rounded-lg transition-all",
+                statusFilter !== "all"
+                  ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                  : "bg-background"
+              )}
+            >
               <SelectValue placeholder="Filter by Status" />
             </SelectTrigger>
             <SelectContent>
@@ -261,6 +285,21 @@ export const RestDayWorkApprovalHub: React.FC<RestDayWorkApprovalHubProps> = ({
               <SelectItem value="rejected">Declined ({counts.rejected})</SelectItem>
             </SelectContent>
           </Select>
+
+          {(statusFilter !== "all" || searchQuery.trim()) && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("all");
+                setSearchQuery("");
+              }}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive font-medium px-2 py-1 rounded-md hover:bg-destructive/10 transition-colors cursor-pointer animate-in fade-in"
+              title="Reset all filters"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
 
         {counts.pending > 0 && (

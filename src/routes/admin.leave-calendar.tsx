@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useStore, CompanyHoliday, HolidayType } from "@/lib/store";
@@ -568,13 +569,28 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
               {viewMode === "list" && (
                 <>
                   <div className="relative min-w-[180px] max-w-[260px] flex-1">
-                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Search className={cn("absolute left-2.5 top-2 h-3.5 w-3.5 transition-colors", searchQuery.trim() ? "text-primary" : "text-muted-foreground")} />
                     <Input
                       placeholder="Search holiday name..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-8 h-8 text-xs rounded-lg bg-background"
+                      className={cn(
+                        "pl-8 pr-7 h-8 text-xs rounded-lg transition-all",
+                        searchQuery.trim()
+                          ? "bg-primary/10 border-primary/50 text-foreground font-medium ring-1 ring-primary/25 shadow-2xs"
+                          : "bg-background"
+                      )}
                     />
+                    {searchQuery.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-2 top-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                        title="Clear search"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
 
                   <Select
@@ -586,7 +602,14 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                       }
                     }}
                   >
-                    <SelectTrigger className="h-8 text-xs min-w-[115px] w-auto rounded-lg bg-background font-medium">
+                    <SelectTrigger
+                      className={cn(
+                        "h-8 text-xs min-w-[115px] w-auto rounded-lg transition-all font-medium",
+                        selectedYear !== "all"
+                          ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                          : "bg-background"
+                      )}
+                    >
                       <CalendarIcon className="h-3.5 w-3.5 mr-1 text-primary shrink-0" />
                       <SelectValue placeholder="Select Year" />
                     </SelectTrigger>
@@ -604,8 +627,15 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
 
               {/* All Holiday Types Dropdown (visible in both Calendar and List views) */}
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="h-8 text-xs min-w-[145px] w-auto rounded-lg bg-background">
-                  <Tag className="h-3.5 w-3.5 mr-1 text-muted-foreground shrink-0" />
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs min-w-[145px] w-auto rounded-lg transition-all",
+                    typeFilter !== "all"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
+                  <Tag className={cn("h-3.5 w-3.5 mr-1 shrink-0 transition-colors", typeFilter !== "all" ? "text-primary" : "text-muted-foreground")} />
                   <SelectValue placeholder="All Holiday Types" />
                 </SelectTrigger>
                 <SelectContent>
@@ -618,8 +648,15 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
 
               {/* All Branches Dropdown (visible in both Calendar and List views) */}
               <Select value={branchFilter} onValueChange={setBranchFilter}>
-                <SelectTrigger className="h-8 text-xs min-w-[130px] w-auto rounded-lg bg-background">
-                  <Building2 className="h-3.5 w-3.5 mr-1 text-muted-foreground shrink-0" />
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs min-w-[130px] w-auto rounded-lg transition-all",
+                    branchFilter !== "all"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
+                  <Building2 className={cn("h-3.5 w-3.5 mr-1 shrink-0 transition-colors", branchFilter !== "all" ? "text-primary" : "text-muted-foreground")} />
                   <SelectValue placeholder="All Branches" />
                 </SelectTrigger>
                 <SelectContent>

@@ -1963,18 +1963,40 @@ function AttendancePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 xl:grid-cols-7 gap-2.5 bg-card p-3 rounded-xl border border-border">
             {/* Search Input */}
             <div className="relative sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-2">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className={cn("absolute left-2.5 top-2.5 h-4 w-4 transition-colors", searchQuery.trim() ? "text-primary" : "text-muted-foreground")} />
               <Input
                 placeholder="Search name, code, dept..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-9 text-xs rounded-lg"
+                className={cn(
+                  "pl-8 pr-8 h-9 text-xs rounded-lg transition-all",
+                  searchQuery.trim()
+                    ? "bg-primary/10 border-primary/50 text-foreground font-medium ring-1 ring-primary/25 shadow-2xs"
+                    : "bg-background"
+                )}
               />
+              {searchQuery.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                  title="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
 
             {/* Employment Type Filter */}
             <Select value={selectedEmploymentType} onValueChange={setSelectedEmploymentType}>
-              <SelectTrigger className="h-9 text-xs rounded-lg">
+              <SelectTrigger
+                className={cn(
+                  "h-9 text-xs rounded-lg transition-all",
+                  selectedEmploymentType !== "all"
+                    ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                    : "bg-background"
+                )}
+              >
                 <SelectValue placeholder="Employment Type" />
               </SelectTrigger>
               <SelectContent>
@@ -1993,7 +2015,14 @@ function AttendancePage() {
 
             {/* Department Filter */}
             <Select value={selectedDept} onValueChange={setSelectedDept}>
-              <SelectTrigger className="h-9 text-xs rounded-lg">
+              <SelectTrigger
+                className={cn(
+                  "h-9 text-xs rounded-lg transition-all",
+                  selectedDept !== "all"
+                    ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                    : "bg-background"
+                )}
+              >
                 <SelectValue placeholder="Department" />
               </SelectTrigger>
               <SelectContent>
@@ -2008,7 +2037,14 @@ function AttendancePage() {
 
             {/* Branch Filter */}
             <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-              <SelectTrigger className="h-9 text-xs rounded-lg">
+              <SelectTrigger
+                className={cn(
+                  "h-9 text-xs rounded-lg transition-all",
+                  selectedBranch !== "all"
+                    ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                    : "bg-background"
+                )}
+              >
                 <SelectValue placeholder="Branch" />
               </SelectTrigger>
               <SelectContent>
@@ -2023,7 +2059,14 @@ function AttendancePage() {
 
             {/* Shift Filter */}
             <Select value={selectedShift} onValueChange={setSelectedShift}>
-              <SelectTrigger className="h-9 text-xs rounded-lg">
+              <SelectTrigger
+                className={cn(
+                  "h-9 text-xs rounded-lg transition-all",
+                  selectedShift !== "all"
+                    ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                    : "bg-background"
+                )}
+              >
                 <SelectValue placeholder="Shift" />
               </SelectTrigger>
               <SelectContent>
@@ -2038,7 +2081,14 @@ function AttendancePage() {
 
             {/* Attendance Status Filter */}
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="h-9 text-xs rounded-lg">
+              <SelectTrigger
+                className={cn(
+                  "h-9 text-xs rounded-lg transition-all",
+                  selectedStatus !== "all"
+                    ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                    : "bg-background"
+                )}
+              >
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -2052,6 +2102,42 @@ function AttendancePage() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Active Filter Clear Helper Bar */}
+          {Boolean(
+            searchQuery.trim() ||
+            selectedEmploymentType !== "all" ||
+            selectedDept !== "all" ||
+            selectedBranch !== "all" ||
+            selectedShift !== "all" ||
+            selectedStatus !== "all"
+          ) && (
+            <div className="flex items-center justify-between px-3 py-1.5 bg-primary/5 border border-primary/20 rounded-xl text-xs animate-in fade-in">
+              <div className="flex items-center gap-2 text-primary font-medium">
+                <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                <span>Filters Active</span>
+                <span className="text-muted-foreground text-[11px]">
+                  (Showing {filteredDailyRows.length} of {activeEmployees.length} employees)
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedEmploymentType("all");
+                  setSelectedDept("all");
+                  setSelectedBranch("all");
+                  setSelectedShift("all");
+                  setSelectedStatus("all");
+                }}
+                className="h-6 px-2 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1 rounded-md cursor-pointer"
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Clear All Filters</span>
+              </Button>
+            </div>
+          )}
 
           {/* Multi-Select Bulk Actions Toolbar */}
           {showBatchSelection && (
@@ -3923,7 +4009,14 @@ function EmployeeAttendanceDossierModal({
             <div>
               <Label className="text-[11px] text-muted-foreground mb-1 block">Status Filter</Label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-lg">
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs rounded-lg transition-all",
+                    statusFilter !== "all"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
@@ -3940,7 +4033,14 @@ function EmployeeAttendanceDossierModal({
             <div>
               <Label className="text-[11px] text-muted-foreground mb-1 block">Punctuality Filter</Label>
               <Select value={punctualityFilter} onValueChange={setPunctualityFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-lg">
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs rounded-lg transition-all",
+                    punctualityFilter !== "all"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
                   <SelectValue placeholder="All Punctuality" />
                 </SelectTrigger>
                 <SelectContent>
