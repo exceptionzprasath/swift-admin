@@ -210,6 +210,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
       end: defaultEnd,
       workingHours: span === 9 ? 8 : span,
       workingDaysPerMonth: company.workingDaysPerMonth ?? 26,
+      isSaturdayWorking: true,
+      isSundayWorking: false,
       allowancePerDay: 0,
       graceTime: "15",
       afternoonGraceTime: "15",
@@ -230,6 +232,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
       end: s.end,
       workingHours: s.workingHours ?? company.workingHoursPerDay ?? 8,
       workingDaysPerMonth: s.workingDaysPerMonth ?? company.workingDaysPerMonth ?? 26,
+      isSaturdayWorking: s.isSaturdayWorking !== undefined ? s.isSaturdayWorking : true,
+      isSundayWorking: s.isSundayWorking !== undefined ? s.isSundayWorking : false,
       allowancePerDay: s.allowancePerDay || 0,
       graceTime: s.graceTime || "15",
       afternoonGraceTime: s.afternoonGraceTime || "15",
@@ -260,6 +264,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
         end: shiftForm.end,
         workingHours: shiftForm.workingHours ? +shiftForm.workingHours : (company.workingHoursPerDay ?? 8),
         workingDaysPerMonth: shiftForm.workingDaysPerMonth ? +shiftForm.workingDaysPerMonth : (company.workingDaysPerMonth ?? 26),
+        isSaturdayWorking: shiftForm.isSaturdayWorking !== false,
+        isSundayWorking: Boolean(shiftForm.isSundayWorking),
         allowancePerDay: +(shiftForm.allowancePerDay || 0),
         graceTime: shiftForm.graceTime,
         afternoonGraceTime: shiftForm.afternoonGraceTime,
@@ -277,6 +283,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
         end: shiftForm.end,
         workingHours: shiftForm.workingHours ? +shiftForm.workingHours : (company.workingHoursPerDay ?? 8),
         workingDaysPerMonth: shiftForm.workingDaysPerMonth ? +shiftForm.workingDaysPerMonth : (company.workingDaysPerMonth ?? 26),
+        isSaturdayWorking: shiftForm.isSaturdayWorking !== false,
+        isSundayWorking: Boolean(shiftForm.isSundayWorking),
         allowancePerDay: +(shiftForm.allowancePerDay || 0),
         graceTime: shiftForm.graceTime,
         afternoonGraceTime: shiftForm.afternoonGraceTime,
@@ -950,6 +958,18 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                       </div>
 
                       <div className="space-y-0.5 col-span-2">
+                        <span className="text-[10px] text-muted-foreground uppercase font-semibold">Weekend Schedule</span>
+                        <div className="font-medium text-foreground flex items-center gap-2">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${s.isSaturdayWorking !== false ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : "bg-slate-500/10 text-slate-500"}`}>
+                            Sat: {s.isSaturdayWorking !== false ? "Working" : "Off"}
+                          </Badge>
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${s.isSundayWorking ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : "bg-slate-500/10 text-slate-500"}`}>
+                            Sun: {s.isSundayWorking ? "Working" : "Off"}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="space-y-0.5 col-span-2">
                         <span className="text-[10px] text-muted-foreground uppercase font-semibold">Afternoon Login Window</span>
                         <div className="font-medium text-foreground">
                           {s.allowHalfDayLogin !== false
@@ -1413,35 +1433,51 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
               </div>
             </div>
 
-            {/* Live Calculation Banner (Option A: Calculated as per Start & End time) */}
-            {(() => {
-              const span = getClockSpanHours(shiftForm.start || "09:00", shiftForm.end || "18:00");
-              const workH = shiftForm.workingHours ?? company.workingHoursPerDay ?? 8;
-              const breakH = Math.max(0, Math.round((span - workH) * 10) / 10);
-              return (
-                <div className="rounded-lg bg-primary/5 border border-primary/20 p-2.5 text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 font-medium text-foreground">
-                      <Clock className="h-3.5 w-3.5 text-primary" />
-                      <span>
-                        Shift Duration: <strong>{shiftForm.start || "09:00"} → {shiftForm.end || "18:00"} ({span} hrs)</strong>
-                      </span>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] font-semibold bg-background border-primary/30 text-primary">
-                      {workH}h Standard Work
-                    </Badge>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground flex items-center justify-between">
-                    <span>
-                      {breakH > 0
-                        ? `Standard hours set to ${workH} hrs (${breakH}h unpaid lunch deducted from ${span}h span)`
-                        : `Standard hours set to full ${workH} hrs duration`}
-                    </span>
-                    <span className="text-primary font-medium">Calculated as per Start &amp; End Time</span>
-                  </div>
+            {/* Saturday & Sunday Working Day Toggles */}
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-xl border border-border/70 bg-muted/20">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="toggle-sat-work" className="text-xs font-semibold cursor-pointer">
+                    Saturday Working Day
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    {shiftForm.isSaturdayWorking !== false ? "Working Day" : "Weekly Off"}
+                  </p>
                 </div>
-              );
-            })()}
+                <Switch
+                  id="toggle-sat-work"
+                  checked={shiftForm.isSaturdayWorking !== false}
+                  onCheckedChange={(checked) =>
+                    setShiftForm((prev) => ({
+                      ...prev,
+                      isSaturdayWorking: checked,
+                      workingDaysPerMonth: checked ? 26 : 22,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="toggle-sun-work" className="text-xs font-semibold cursor-pointer">
+                    Sunday Working Day
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    {Boolean(shiftForm.isSundayWorking) ? "Working Day" : "Weekly Off"}
+                  </p>
+                </div>
+                <Switch
+                  id="toggle-sun-work"
+                  checked={Boolean(shiftForm.isSundayWorking)}
+                  onCheckedChange={(checked) =>
+                    setShiftForm((prev) => ({
+                      ...prev,
+                      isSundayWorking: checked,
+                    }))
+                  }
+                />
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
@@ -1512,14 +1548,16 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
               </div>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">Description / Guidelines</Label>
-              <Textarea
+            {/* Description / Guidelines (Horizontal Alignment) */}
+            <div className="flex items-center gap-3">
+              <Label className="text-xs whitespace-nowrap shrink-0 w-24 font-medium">
+                Description
+              </Label>
+              <Input
                 placeholder="Optional shift notes or handover guidelines..."
                 value={shiftForm.description || ""}
                 onChange={(e) => setShiftForm({ ...shiftForm, description: e.target.value })}
-                rows={2}
-                className="text-xs"
+                className="text-xs flex-1"
               />
             </div>
 

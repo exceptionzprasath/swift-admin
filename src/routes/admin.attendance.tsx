@@ -755,9 +755,11 @@ function AttendancePage() {
         graceTime: "15",
       };
 
-      // Check weekly off from branch / Sunday
-      const dayOfWeek = new Date(dateStr).getDay(); // 0 is Sunday
-      if (dayOfWeek === 0) {
+      // Check weekly off from shift's weekend policy (Saturday/Sunday)
+      const dayOfWeek = new Date(dateStr).getDay(); // 0 is Sunday, 6 is Saturday
+      const isShiftSunOff = defaultShift.isSundayWorking === false || defaultShift.isSundayWorking === undefined;
+      const isShiftSatOff = defaultShift.isSaturdayWorking === false;
+      if ((dayOfWeek === 0 && isShiftSunOff) || (dayOfWeek === 6 && isShiftSatOff)) {
         return { shift: defaultShift, isWeeklyOff: true, isHoliday: false };
       }
 
