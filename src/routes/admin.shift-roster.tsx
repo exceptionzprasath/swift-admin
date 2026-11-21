@@ -1307,7 +1307,7 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
 
       {/* DIALOG 1: CREATE / EDIT SHIFT MASTER */}
       <Dialog open={shiftDialogOpen} onOpenChange={setShiftDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-5 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-primary" />
@@ -1318,7 +1318,7 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSaveShift} className="space-y-4 pt-2">
+          <form onSubmit={handleSaveShift} className="space-y-3.5 pt-1">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Shift Name *</Label>
@@ -1386,10 +1386,7 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">Standard Work Hours / Day</Label>
-                  <span className="text-[10px] text-primary font-medium">Auto-calculated</span>
-                </div>
+                <Label className="text-xs">Standard Work Hours / Day</Label>
                 <Input
                   type="number"
                   step="0.5"
@@ -1405,9 +1402,6 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                   }
                   className="text-xs"
                 />
-                <p className="text-[10px] text-muted-foreground">
-                  Calculated from shift times ({shiftForm.start || "09:00"} to {shiftForm.end || "18:00"})
-                </p>
               </div>
 
               <div className="space-y-1">
@@ -1427,9 +1421,6 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                   }
                   className="text-xs"
                 />
-                <p className="text-[10px] text-muted-foreground">
-                  Default: {company.workingDaysPerMonth ?? 26} days (e.g. 22 for part-time/5-day)
-                </p>
               </div>
             </div>
 
