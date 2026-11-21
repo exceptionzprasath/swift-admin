@@ -232,8 +232,9 @@ function computePunctualityAndStatus(
     const clockInMins = inH * 60 + inM;
     let diffMins = currentMins - clockInMins;
     if (diffMins < 0) diffMins += 1440;
+    const stdHours = shift?.workingHours || 8;
     hoursWorked = Number((diffMins / 60).toFixed(1));
-    otHours = hoursWorked > 9 ? Number((hoursWorked - 9).toFixed(1)) : 0;
+    otHours = hoursWorked > stdHours ? Number((hoursWorked - stdHours).toFixed(1)) : 0;
     isEarlyOut = currentMins < shiftEndMins;
     earlyOutBy = isEarlyOut ? shiftEndMins - currentMins : undefined;
     statusBadge = isEarlyOut

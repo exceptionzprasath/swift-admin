@@ -74,7 +74,8 @@ export const PayslipTemplateView: React.FC<PayslipTemplateViewProps> = ({
     // fallback
   }
 
-  const workingDays = company.workingDaysPerMonth || 26;
+  const empShift = company.shifts?.find((s) => s.id === employee.shiftId);
+  const workingDays = empShift?.workingDaysPerMonth ?? company.workingDaysPerMonth ?? 26;
   const actualPresent = rawPresentDays !== undefined ? rawPresentDays : (computation.daysWorked !== undefined ? computation.daysWorked : workingDays);
   const effectivePaidDays = paidDays !== undefined ? paidDays : (weekOffEnabled ? actualPresent + weekOffDays : actualPresent);
   

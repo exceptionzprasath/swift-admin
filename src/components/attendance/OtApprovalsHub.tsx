@@ -156,12 +156,14 @@ export const OtApprovalsHub: React.FC<OtApprovalsHubProps> = ({
   // Compute Overtime Records for selectedMonth
   const otRecords = useMemo(() => {
     const list: OtRecordItem[] = [];
-    const wd = company.workingDaysPerMonth || 26;
-    const stdH = company.workingHoursPerDay || 9;
     const otMult = company.otMultiplier || 2;
 
     employees.forEach((emp) => {
       if (emp.otEnabled === false) return;
+
+      const empShift = company.shifts?.find((s) => s.id === emp.shiftId);
+      const wd = empShift?.workingDaysPerMonth ?? company.workingDaysPerMonth ?? 26;
+      const stdH = empShift?.workingHours ?? company.workingHoursPerDay ?? 8;
 
       const fixedGross = emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0;
       const hourlyRate = fixedGross > 0 ? fixedGross / (wd * stdH) : 0;

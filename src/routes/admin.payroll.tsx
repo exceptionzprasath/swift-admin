@@ -1069,7 +1069,10 @@ export function PayrollPage() {
       const effectiveCompany = buildEffectiveCompany(company, ov);
 
       // Total expected working days for this period (full calendar month or custom date range)
-      const expectedWorkingDays = isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26);
+      const empShift = company.shifts?.find((s) => s.id === emp.shiftId);
+      const expectedWorkingDays = isCustomDateRange
+        ? rangeWorkingDays
+        : (empShift?.workingDaysPerMonth ?? company.workingDaysPerMonth ?? 26);
 
       // Strict 100% Attendance Rule:
       // Employee must have completed 100% of expected working days with zero unexcused absences and zero half-days
@@ -1220,7 +1223,12 @@ export function PayrollPage() {
     const effectiveCompany = buildEffectiveCompany(company, editingRecord);
     const deductionInputs = buildDeductionInputs(editingRecord, company);
 
-    const editingExpectedWorkingDays = isCustomDateRange ? rangeWorkingDays : (company.workingDaysPerMonth || 26);
+    const editingEmpShift = company.shifts?.find(
+      (s) => s.id === editingRecord.emp?.shiftId || s.id === (editingRecord as any)?.shiftId
+    );
+    const editingExpectedWorkingDays = isCustomDateRange
+      ? rangeWorkingDays
+      : (editingEmpShift?.workingDaysPerMonth ?? company.workingDaysPerMonth ?? 26);
     const isEditing100Pct =
       editingExpectedWorkingDays > 0 &&
       editingRecord.daysWorked >= editingExpectedWorkingDays;

@@ -574,7 +574,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
           );
           const scheduled = getScheduledShiftForDate(emp, d.dateStr);
           const punct = evaluatePunctuality(rec, scheduled, emp, d.dateStr);
-          const recHours = getRecordHours(rec, company.workingHoursPerDay || 9);
+          const recHours = getRecordHours(rec, scheduled.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
 
           const hasPunch = Boolean(rec?.checkIn || rec?.clockIn || rec?.checkOut || rec?.clockOut);
           const isOdd = isOddPunch(rec, d.dateStr);
@@ -673,7 +673,7 @@ Employee ID,Employee Name,Branch,Total Days,Present,Paid Leave,Absent,Odd Punch,
           );
           const scheduled = getScheduledShiftForDate(emp, d.dateStr);
           const punct = evaluatePunctuality(rec, scheduled, emp, d.dateStr);
-          const recHours = getRecordHours(rec, company.workingHoursPerDay || 9);
+          const recHours = getRecordHours(rec, scheduled.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
 
           const hasPunch = Boolean(rec?.checkIn || rec?.clockIn || rec?.checkOut || rec?.clockOut);
           const isOdd = isOddPunch(rec, d.dateStr);
@@ -734,7 +734,7 @@ Employee ID,Employee Name,Department,Branch,Date,First-In,Last-Out,Total Hours,P
           );
           const scheduled = getScheduledShiftForDate(emp, d.dateStr);
           const punct = evaluatePunctuality(rec, scheduled, emp, d.dateStr);
-          const recHours = getRecordHours(rec, company.workingHoursPerDay || 9);
+          const recHours = getRecordHours(rec, scheduled.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
 
           const firstIn = formatTimeWithAmPm(rec?.checkIn || rec?.clockIn);
           const lastOut = formatTimeWithAmPm(rec?.checkOut || rec?.clockOut);
@@ -781,7 +781,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
           );
           const scheduled = getScheduledShiftForDate(emp, d.dateStr);
           const punct = evaluatePunctuality(rec, scheduled, emp, d.dateStr);
-          const recHours = getRecordHours(rec, company.workingHoursPerDay || 9);
+          const recHours = getRecordHours(rec, scheduled.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
 
           const hasPunch = Boolean(rec?.checkIn || rec?.clockIn || rec?.checkOut || rec?.clockOut);
           const isOdd = isOddPunch(rec, d.dateStr);
@@ -858,7 +858,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
         );
         const scheduled = getScheduledShiftForDate(emp, d.dateStr);
         const punct = evaluatePunctuality(rec, scheduled, emp, d.dateStr);
-        const recHours = getRecordHours(rec, company.workingHoursPerDay || 9);
+        const recHours = getRecordHours(rec, scheduled.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
         const isOdd = isOddPunch(rec, d.dateStr);
         const isExtra = (scheduled.isHoliday || scheduled.isWeeklyOff) && recHours.hoursWorked > 0;
 
@@ -1312,7 +1312,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                       );
                       const scheduled = getScheduledShiftForDate(emp, d.dateStr);
                       const punct = evaluatePunctuality(rec, scheduled, emp, d.dateStr);
-                      const recHours = getRecordHours(rec, company.workingHoursPerDay || 9);
+                      const recHours = getRecordHours(rec, scheduled.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
 
                       const hasPunch = Boolean(rec?.checkIn || rec?.clockIn || rec?.checkOut || rec?.clockOut);
                       const isOdd = isOddPunch(rec, d.dateStr);
@@ -1670,7 +1670,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                           );
                           const scheduled = getScheduledShiftForDate(emp, d.dateStr);
                           const punct = evaluatePunctuality(rec, scheduled, emp, d.dateStr);
-                          const recHours = getRecordHours(rec, company.workingHoursPerDay || 9);
+                          const recHours = getRecordHours(rec, scheduled.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
 
                           const isOdd = isOddPunch(rec, d.dateStr);
                           const isInformedLeave =
@@ -1935,7 +1935,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                           );
                           const scheduled = getScheduledShiftForDate(emp, d.dateStr);
                           const punct = evaluatePunctuality(rec, scheduled, emp, d.dateStr);
-                          const recHours = getRecordHours(rec, company.workingHoursPerDay || 9);
+                          const recHours = getRecordHours(rec, scheduled.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
 
                           const hasPunch = Boolean(rec?.checkIn || rec?.clockIn || rec?.checkOut || rec?.clockOut);
                           const isOdd = isOddPunch(rec, d.dateStr);

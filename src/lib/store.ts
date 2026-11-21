@@ -362,6 +362,8 @@ export type ShiftType = {
   halfDayLoginTime?: string;
   color?: string;
   description?: string;
+  workingHours?: number;
+  workingDaysPerMonth?: number;
 };
 
 export type ShiftAssignment = {
@@ -380,6 +382,8 @@ export type ShiftAssignment = {
   afternoonGraceTime?: "always" | "10" | "15" | "20" | "25" | "30";
   allowHalfDayLogin?: boolean;
   halfDayLoginTime?: string;
+  workingHours?: number;
+  workingDaysPerMonth?: number;
   note?: string;
   assignedBy?: string;
   updatedAt?: string;
@@ -1554,8 +1558,8 @@ const defaultCompany: Company = {
     { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true },
   ],
   shifts: [
-    { id: "gen", name: "General", start: "09:00", end: "18:00", allowancePerDay: 0 },
-    { id: "night", name: "Night", start: "22:00", end: "06:00", allowancePerDay: 250 },
+    { id: "gen", name: "General", start: "09:00", end: "18:00", allowancePerDay: 0, workingHours: 8, workingDaysPerMonth: 26 },
+    { id: "night", name: "Night", start: "22:00", end: "06:00", allowancePerDay: 250, workingHours: 8, workingDaysPerMonth: 26 },
   ],
   branches: [
     { id: "br-hq", name: "Head Office", code: "HQ", address: "123 Business Ave", city: "Erode", state: "Tamil Nadu", isHead: true, lat: 11.30564, lng: 77.70347, radiusMeters: 50, shiftStart: "09:00", shiftEnd: "18:00", weeklyOff: ["Sun"], allowedBSSIDs: [] },

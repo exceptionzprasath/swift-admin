@@ -202,14 +202,16 @@ export function computePayroll(opts: {
   employee: Employee;
 } & PayrollInputs) {
   const { company: c, employee: e, ...inputs } = opts;
-  const wd = c.workingDaysPerMonth || 26;
+  const empShift = c.shifts?.find((s) => s.id === e.shiftId);
+  const wd = empShift?.workingDaysPerMonth ?? c.workingDaysPerMonth ?? 26;
+  const stdHours = empShift?.workingHours ?? c.workingHoursPerDay ?? 8;
   const paidDays = Math.max(0, inputs.daysWorked !== undefined ? inputs.daysWorked : wd);
   const prorateFactor = wd > 0 ? paidDays / wd : 1;
 
   // The employee's monthly fixed gross salary (e.g. ₹25,000 or ₹30,000)
   const rawGross = e.fixedSalary ?? e.basic ?? e.salary ?? 0;
   const fixedGross = typeof rawGross === "number" && !isNaN(rawGross) ? rawGross : 0;
-  const hourly = wd > 0 && (c.workingHoursPerDay || 8) > 0 && fixedGross > 0 ? fixedGross / (wd * (c.workingHoursPerDay || 8)) : 0;
+  const hourly = wd > 0 && stdHours > 0 && fixedGross > 0 ? fixedGross / (wd * stdHours) : 0;
 
   // 1. Resolve Salary Structure Components according to Company Master & Toggles
   // Merged Basic + DA (Core Mandatory Wage Head)

@@ -193,6 +193,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
       code: "",
       start: "09:00",
       end: "18:00",
+      workingHours: company.workingHoursPerDay ?? 8,
+      workingDaysPerMonth: company.workingDaysPerMonth ?? 26,
       allowancePerDay: 0,
       graceTime: "15",
       afternoonGraceTime: "15",
@@ -211,6 +213,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
       code: s.code || "",
       start: s.start,
       end: s.end,
+      workingHours: s.workingHours ?? company.workingHoursPerDay ?? 8,
+      workingDaysPerMonth: s.workingDaysPerMonth ?? company.workingDaysPerMonth ?? 26,
       allowancePerDay: s.allowancePerDay || 0,
       graceTime: s.graceTime || "15",
       afternoonGraceTime: s.afternoonGraceTime || "15",
@@ -239,8 +243,11 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
         code: shiftForm.code?.trim().toUpperCase() || shiftForm.name.slice(0, 3).toUpperCase(),
         start: shiftForm.start,
         end: shiftForm.end,
+        workingHours: shiftForm.workingHours ? +shiftForm.workingHours : (company.workingHoursPerDay ?? 8),
+        workingDaysPerMonth: shiftForm.workingDaysPerMonth ? +shiftForm.workingDaysPerMonth : (company.workingDaysPerMonth ?? 26),
         allowancePerDay: +(shiftForm.allowancePerDay || 0),
         graceTime: shiftForm.graceTime,
+        afternoonGraceTime: shiftForm.afternoonGraceTime,
         allowHalfDayLogin: shiftForm.allowHalfDayLogin,
         halfDayLoginTime: shiftForm.halfDayLoginTime,
         color: shiftForm.color || "indigo",
@@ -253,8 +260,11 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
         code: shiftForm.code?.trim().toUpperCase() || shiftForm.name.slice(0, 3).toUpperCase(),
         start: shiftForm.start,
         end: shiftForm.end,
+        workingHours: shiftForm.workingHours ? +shiftForm.workingHours : (company.workingHoursPerDay ?? 8),
+        workingDaysPerMonth: shiftForm.workingDaysPerMonth ? +shiftForm.workingDaysPerMonth : (company.workingDaysPerMonth ?? 26),
         allowancePerDay: +(shiftForm.allowancePerDay || 0),
         graceTime: shiftForm.graceTime,
+        afternoonGraceTime: shiftForm.afternoonGraceTime,
         allowHalfDayLogin: shiftForm.allowHalfDayLogin,
         halfDayLoginTime: shiftForm.halfDayLoginTime,
         color: shiftForm.color || "indigo",
@@ -897,6 +907,20 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
 
                     <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/70">
                       <div className="space-y-0.5">
+                        <span className="text-[10px] text-muted-foreground uppercase font-semibold">Standard Hours</span>
+                        <div className="font-bold text-foreground">
+                          {s.workingHours ?? company.workingHoursPerDay ?? 8} hrs/day
+                        </div>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] text-muted-foreground uppercase font-semibold">Target Work Days</span>
+                        <div className="font-bold text-foreground">
+                          {s.workingDaysPerMonth ?? company.workingDaysPerMonth ?? 26} days/mo
+                        </div>
+                      </div>
+
+                      <div className="space-y-0.5">
                         <span className="text-[10px] text-muted-foreground uppercase font-semibold">Morning Grace</span>
                         <div className="font-bold text-foreground">
                           {s.graceTime === "always" ? "Flexible (Always)" : `${s.graceTime || "15"} mins`}
@@ -1304,6 +1328,38 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                   required
                   className="text-xs"
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Standard Work Hours / Day</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="1"
+                  max="24"
+                  placeholder={String(company.workingHoursPerDay ?? 8)}
+                  value={shiftForm.workingHours ?? ""}
+                  onChange={(e) => setShiftForm({ ...shiftForm, workingHours: e.target.value ? +e.target.value : undefined })}
+                  className="text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground">Default: {company.workingHoursPerDay ?? 8} hrs (e.g. 4 for part-time)</p>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Target Work Days / Month</Label>
+                <Input
+                  type="number"
+                  step="1"
+                  min="1"
+                  max="31"
+                  placeholder={String(company.workingDaysPerMonth ?? 26)}
+                  value={shiftForm.workingDaysPerMonth ?? ""}
+                  onChange={(e) => setShiftForm({ ...shiftForm, workingDaysPerMonth: e.target.value ? +e.target.value : undefined })}
+                  className="text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground">Default: {company.workingDaysPerMonth ?? 26} days (e.g. 22 for part-time/5-day)</p>
               </div>
             </div>
 

@@ -231,7 +231,7 @@ function getRecordHours(
     status?: string;
     regularized?: boolean;
   },
-  standardHours: number = 9
+  standardHours: number = 8
 ): EffectiveRecordHours {
   if (!rec || rec.status === "absent" || rec.status === "leave") {
     return { hoursWorked: 0, otHours: 0 };
@@ -1191,7 +1191,7 @@ function AttendancePage() {
     let totalWorkingHours = 0;
     let totalOTHours = 0;
 
-    dailyRows.forEach(({ rec, punctuality }) => {
+    dailyRows.forEach(({ rec, punctuality, scheduled }) => {
       if (punctuality.status === "present") {
         presentCount++;
         if (punctuality.label.includes("Grace")) graceCount++;
@@ -1209,7 +1209,7 @@ function AttendancePage() {
         absentCount++;
       }
 
-      const recH = getRecordHours(rec, company.workingHoursPerDay || 9);
+      const recH = getRecordHours(rec, scheduled?.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
       totalWorkingHours += recH.hoursWorked;
       totalOTHours += recH.otHours;
     });
@@ -1566,6 +1566,8 @@ function AttendancePage() {
     const csvRows = [headers.join(",")];
 
     dailyRows.forEach(({ emp, rec, scheduled, punctuality, branch }) => {
+      const stdH = scheduled?.shift?.workingHours ?? company.workingHoursPerDay ?? 8;
+      const recH = getRecordHours(rec, stdH);
       const row = [
         `"${selectedDate}"`,
         `"${emp.empCode || ""}"`,
@@ -1575,8 +1577,8 @@ function AttendancePage() {
         `"${scheduled.shift.name || "General"}"`,
         `"${rec?.checkIn || rec?.clockIn || "-"}"`,
         `"${rec?.checkOut || rec?.clockOut || "-"}"`,
-        getRecordHours(rec, company.workingHoursPerDay || 9).hoursWorked,
-        getRecordHours(rec, company.workingHoursPerDay || 9).otHours,
+        recH.hoursWorked,
+        recH.otHours,
         `"${getExportAttendanceStatus(punctuality)}"`,
         `"${punctuality.label}"`,
         rec?.faceVerified ? "Yes" : "No",
@@ -2547,7 +2549,7 @@ function AttendancePage() {
                         {/* Work Hours & OT */}
                         <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
                           {(() => {
-                            const hrs = getRecordHours(rec, company.workingHoursPerDay || 9);
+                            const hrs = getRecordHours(rec, scheduled.shift.workingHours ?? company.workingHoursPerDay ?? 8);
                             return (
                               <div className="space-y-0.5">
                                 <div className="font-medium text-xs text-foreground">
@@ -3734,7 +3736,7 @@ function EmployeeAttendanceDossierModal({
     let totalHours = 0;
     let totalOT = 0;
 
-    employeeHistory.forEach(({ rec, punctuality }) => {
+    employeeHistory.forEach(({ rec, punctuality, scheduled }) => {
       if (punctuality.status === "present") {
         presentDays++;
         if (punctuality.label.includes("Grace")) graceDays++;
@@ -3752,7 +3754,7 @@ function EmployeeAttendanceDossierModal({
         absentDays++;
       }
 
-      const recH = getRecordHours(rec, company.workingHoursPerDay || 9);
+      const recH = getRecordHours(rec, scheduled?.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
       totalHours += recH.hoursWorked;
       totalOT += recH.otHours;
     });
@@ -3799,14 +3801,16 @@ function EmployeeAttendanceDossierModal({
     const csvRows = [headers.join(",")];
 
     filteredHistory.forEach(({ dateStr, dayName, scheduled, rec, punctuality }) => {
+      const stdH = scheduled?.shift?.workingHours ?? company.workingHoursPerDay ?? 8;
+      const recH = getRecordHours(rec, stdH);
       const row = [
         `"${dateStr}"`,
         `"${dayName}"`,
         `"${scheduled?.shift?.name || "General"}"`,
         `"${rec?.checkIn || rec?.clockIn || "-"}"`,
         `"${rec?.checkOut || rec?.clockOut || "-"}"`,
-        (() => { const h = getRecordHours(rec); return h.hoursWorked; })(),
-        (() => { const h = getRecordHours(rec); return h.otHours; })(),
+        recH.hoursWorked,
+        recH.otHours,
         `"${getExportAttendanceStatus(punctuality)}"`,
         `"${punctuality.label}"`,
         rec?.faceVerified ? "Yes" : "No",
@@ -4174,7 +4178,7 @@ function EmployeeAttendanceDossierModal({
 
                       <td className="p-3">
                         {(() => {
-                          const hrs = getRecordHours(rec, company.workingHoursPerDay || 9);
+                          const hrs = getRecordHours(rec, scheduled?.shift?.workingHours ?? company.workingHoursPerDay ?? 8);
                           return (
                             <>
                               <div className="font-medium">

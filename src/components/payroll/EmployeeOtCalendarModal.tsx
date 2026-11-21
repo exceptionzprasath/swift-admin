@@ -194,7 +194,8 @@ export function EmployeeOtCalendarModal({
       status: string;
     }> = [];
 
-    const stdHours = company.workingHoursPerDay || 9;
+    const empShift = company.shifts?.find(s => s.id === employee.shiftId);
+    const stdHours = empShift?.workingHours ?? company.workingHoursPerDay ?? 8;
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -287,7 +288,7 @@ export function EmployeeOtCalendarModal({
 
     // Potential OT Pay Calculation
     const fixedGross = employee.fixedSalary ?? employee.basic ?? employee.salary ?? 0;
-    const wd = company.workingDaysPerMonth || 26;
+    const wd = empShift?.workingDaysPerMonth ?? company.workingDaysPerMonth ?? 26;
     const hourlyRate = fixedGross / (wd * stdHours);
     const otMult = company.otMultiplier || 2;
     const otPay = Math.round(hourlyRate * approvedHours * otMult);
