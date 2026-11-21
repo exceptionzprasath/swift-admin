@@ -918,24 +918,6 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                 >
                   This Month
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleSetPreset("last_month")}
-                  className="h-7 text-[11px] px-2.5 rounded-md"
-                >
-                  Last Month
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleSetPreset("last_30")}
-                  className="h-7 text-[11px] px-2.5 rounded-md"
-                >
-                  Last 30 Days
-                </Button>
               </div>
             </div>
 
@@ -972,20 +954,16 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
 
             {/* Order By */}
             <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-[11px] text-muted-foreground font-medium">Order By</Label>
-                <button
-                  type="button"
-                  onClick={() => setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))}
-                  className="text-[10px] text-primary hover:underline inline-flex items-center gap-0.5"
-                  title="Toggle Asc/Desc"
-                >
-                  <ArrowUpDown className="h-2.5 w-2.5" />
-                  {sortDirection.toUpperCase()}
-                </button>
-              </div>
+              <Label className="text-[11px] text-muted-foreground font-medium">Order By</Label>
               <Select value={orderBy} onValueChange={(v) => setOrderBy(v as OrderByOption)}>
-                <SelectTrigger className="h-8 text-xs rounded-lg">
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs rounded-lg transition-all",
+                    orderBy !== "name"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1071,29 +1049,7 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
               </Select>
             </div>
 
-            {/* Employee Status Filter */}
-            <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-medium">Employee Status</Label>
-              <Select value={employeeStatus} onValueChange={(v: "active" | "all" | "inactive") => setEmployeeStatus(v)}>
-                <SelectTrigger
-                  className={cn(
-                    "h-8 text-xs rounded-lg transition-all",
-                    employeeStatus !== "active"
-                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
-                      : "bg-background"
-                  )}
-                >
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active Only</SelectItem>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="inactive">Inactive Only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Search Input */}
+            {/* Search Input (Employee Name / ID) */}
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground font-medium">Employee Name / ID</Label>
               <div className="relative">
@@ -1121,6 +1077,27 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
                 )}
               </div>
             </div>
+
+            {/* Sort Order Dropdown (Ascending / Descending) */}
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground font-medium">Sort Order</Label>
+              <Select value={sortDirection} onValueChange={(v: "asc" | "desc") => setSortDirection(v)}>
+                <SelectTrigger
+                  className={cn(
+                    "h-8 text-xs rounded-lg transition-all",
+                    sortDirection !== "asc"
+                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                      : "bg-background"
+                  )}
+                >
+                  <SelectValue placeholder="Sort order" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="asc">Ascending (A → Z)</SelectItem>
+                  <SelectItem value="desc">Descending (Z → A)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Quick Info bar */}
@@ -1135,15 +1112,16 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
               </span>
             </div>
 
-            {(selectedDepartment !== "all" || selectedShift !== "all" || selectedBranch !== "all" || employeeStatus !== "active" || searchQuery.trim()) && (
+            {(selectedDepartment !== "all" || selectedShift !== "all" || selectedBranch !== "all" || searchQuery.trim() || sortDirection !== "asc" || orderBy !== "name") && (
               <button
                 type="button"
                 onClick={() => {
                   setSelectedDepartment("all");
                   setSelectedShift("all");
                   setSelectedBranch("all");
-                  setEmployeeStatus("active");
                   setSearchQuery("");
+                  setOrderBy("name");
+                  setSortDirection("asc");
                 }}
                 className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-semibold cursor-pointer animate-in fade-in"
               >
