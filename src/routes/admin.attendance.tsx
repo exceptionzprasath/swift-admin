@@ -1674,42 +1674,6 @@ function AttendancePage() {
 
           <button
             type="button"
-            onClick={() => handleNavTabChange("ot-approvals")}
-            className={cn(
-              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              activeNavTab === "ot-approvals"
-                ? "text-primary-foreground font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {activeNavTab === "ot-approvals" && (
-              <motion.div
-                layoutId="attendanceSectionActivePill"
-                className="absolute inset-0 bg-primary rounded-full shadow-sm"
-                transition={{ type: "spring", stiffness: 450, damping: 32 }}
-              />
-            )}
-            <span className="relative z-10 flex items-center gap-2">
-              <Timer className="h-4 w-4 shrink-0" />
-              <span>OT Approvals</span>
-              {pendingOtRestCount > 0 && (
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "ml-0.5 px-1.5 py-0 text-[10px] font-bold rounded-full",
-                    activeNavTab === "ot-approvals"
-                      ? "bg-white/20 text-white"
-                      : "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
-                  )}
-                >
-                  {pendingOtRestCount}
-                </Badge>
-              )}
-            </span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => handleNavTabChange("leave-calendar")}
             className={cn(
               "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1774,6 +1738,42 @@ function AttendancePage() {
             <span className="relative z-10 flex items-center gap-2">
               <ScanFace className="h-4 w-4 shrink-0" />
               <span>Attendance Kiosk</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavTabChange("ot-approvals")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeNavTab === "ot-approvals"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeNavTab === "ot-approvals" && (
+              <motion.div
+                layoutId="attendanceSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <Timer className="h-4 w-4 shrink-0" />
+              <span>OT Approvals</span>
+              {pendingOtRestCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "ml-0.5 px-1.5 py-0 text-[10px] font-bold rounded-full",
+                    activeNavTab === "ot-approvals"
+                      ? "bg-white/20 text-white"
+                      : "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                  )}
+                >
+                  {pendingOtRestCount}
+                </Badge>
+              )}
             </span>
           </button>
         </div>
