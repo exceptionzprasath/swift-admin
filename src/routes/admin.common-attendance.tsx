@@ -266,7 +266,7 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
   // Search & Selected employee state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [punchMode, setPunchMode] = useState<"auto" | "check-in" | "check-out">("auto");
+  const [punchMode, setPunchMode] = useState<"check-in" | "check-out">("check-in");
 
   // Camera stream state
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -517,8 +517,6 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
       let isCheckIn: boolean;
       if (forcedMode) {
         isCheckIn = forcedMode === "check-in";
-      } else if (punchMode === "auto") {
-        isCheckIn = !existingRecord?.clockIn;
       } else {
         isCheckIn = punchMode === "check-in";
       }
@@ -610,60 +608,76 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
   };
 
   const currentShift = company.shifts?.[0];
+  const terminalTitle = company.commonPortal?.portalTitle?.trim() || "Common Attendance";
 
   return (
-    <div className="min-h-screen bg-slate-100/70 dark:bg-background text-foreground flex flex-col font-sans select-none overflow-x-hidden p-3 sm:p-5 lg:p-6 transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5 text-foreground flex flex-col font-sans select-none overflow-x-hidden p-3 sm:p-5 lg:p-6 transition-colors duration-300 relative">
       {/* Hidden canvas for image capture */}
       <canvas ref={canvasRef} className="hidden" />
 
-      <div className="max-w-7xl mx-auto w-full flex flex-col gap-4 sm:gap-5 flex-1">
-        {/* Top Header Card: Common Attendance | 02:10 PM shift_name | Settings Fullscreen */}
-        <header className="rounded-2xl sm:rounded-3xl bg-slate-200/80 dark:bg-muted/70 border border-slate-300/80 dark:border-border/80 px-5 sm:px-7 py-3.5 sm:py-4 flex items-center justify-between gap-4 shadow-xs">
-          {/* Left: Common Attendance */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <h1 className="font-display text-lg sm:text-xl font-bold tracking-tight text-foreground">
-              Common Attendance
-            </h1>
+      <div className="max-w-7xl mx-auto w-full flex flex-col gap-4 sm:gap-5 flex-1 relative z-10">
+        {/* Top Header Card: Terminal Title | Live Clock & Shift | Settings & Fullscreen */}
+        <header className="rounded-2xl sm:rounded-3xl bg-card/85 backdrop-blur-md border border-primary/20 px-5 sm:px-7 py-3.5 sm:py-4 flex items-center justify-between gap-4 shadow-soft">
+          {/* Left: Terminal Title given in settings */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="h-11 w-11 rounded-2xl bg-gradient-brand text-primary-foreground flex items-center justify-center shadow-md shadow-primary/25">
+              <ScanFace className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="font-display text-lg sm:text-xl font-bold tracking-tight text-foreground">
+                {terminalTitle}
+              </h1>
+              <p className="text-[11px] text-muted-foreground hidden sm:block">
+                Face Recognition & Biometric Punch Terminal
+              </p>
+            </div>
           </div>
 
           {/* Center: Live Time & Shift */}
           <div className="flex items-center gap-2 sm:gap-3 text-center">
-            <span className="text-base sm:text-xl font-bold font-mono tracking-tight text-foreground">
-              {currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
-            </span>
-            <span className="text-xs text-muted-foreground font-medium hidden sm:inline-block bg-background/70 dark:bg-card/70 border border-border/70 px-2.5 py-0.5 rounded-full">
+            <div className="bg-primary/10 border border-primary/25 px-4 py-1.5 rounded-2xl shadow-inner">
+              <span className="text-base sm:text-xl font-bold font-mono tracking-wider text-primary">
+                {currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+              </span>
+            </div>
+            <span className="text-xs font-semibold text-primary/90 hidden sm:inline-flex items-center gap-1.5 bg-gradient-to-r from-primary/15 to-accent/15 border border-primary/25 px-3 py-1.5 rounded-full shadow-2xs">
+              <Clock className="h-3.5 w-3.5 text-primary" />
               {currentShift ? `${currentShift.name} (${currentShift.start} - ${currentShift.end})` : "General Shift"}
             </span>
           </div>
 
-          {/* Right: Settings & Fullscreen (no dark toggle, no exit button) */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Right: Settings & Fullscreen */}
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setIsKioskSettingsOpen(true)}
-              className="h-9 w-9 rounded-xl bg-card/90 hover:bg-card text-foreground border border-border/80 flex items-center justify-center transition-colors cursor-pointer shadow-2xs hover:border-primary/50"
+              className="h-10 w-10 rounded-2xl bg-card hover:bg-primary/10 text-foreground border border-primary/20 hover:border-primary/50 flex items-center justify-center transition-all cursor-pointer shadow-2xs group"
               title="Attendance Kiosk Settings"
             >
-              <SlidersHorizontal className="h-4 w-4 text-foreground" />
+              <SlidersHorizontal className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
             </button>
 
             <button
               type="button"
               onClick={toggleFullscreen}
-              className="h-9 w-9 rounded-xl bg-card/90 hover:bg-card text-foreground border border-border/80 flex items-center justify-center transition-colors cursor-pointer shadow-2xs hover:border-primary/50"
+              className="h-10 w-10 rounded-2xl bg-card hover:bg-primary/10 text-foreground border border-primary/20 hover:border-primary/50 flex items-center justify-center transition-all cursor-pointer shadow-2xs group"
               title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
             >
-              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {isFullscreen ? (
+                <Minimize2 className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
+              ) : (
+                <Maximize2 className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
+              )}
             </button>
           </div>
         </header>
 
         {/* Middle 2-Column Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-stretch">
-          {/* Left Column: Camera + check in / check out / punch */}
-          <div className="lg:col-span-7 rounded-2xl sm:rounded-3xl bg-slate-200/80 dark:bg-muted/70 border border-slate-300/80 dark:border-border/80 p-4 sm:p-5 flex flex-col gap-4 shadow-xs">
+          {/* Left Column: Camera + Clock In / Clock Out Toggle + Punch */}
+          <div className="lg:col-span-7 rounded-2xl sm:rounded-3xl bg-card/85 backdrop-blur-md border border-primary/20 p-4 sm:p-5 flex flex-col gap-4 shadow-soft">
             {/* Viewfinder Area */}
-            <div className="relative aspect-[4/3] sm:aspect-[16/11] bg-card rounded-2xl border border-border/80 overflow-hidden flex items-center justify-center shadow-xs">
+            <div className="relative aspect-[4/3] sm:aspect-[16/11] bg-slate-950 rounded-2xl border-2 border-primary/30 overflow-hidden flex items-center justify-center shadow-card group">
               <video
                 ref={videoRef}
                 playsInline
@@ -673,11 +687,11 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
 
               {/* Center icon / guide overlay */}
               {!cameraActive ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/40 p-6 text-center">
-                  <div className="h-16 w-16 rounded-full bg-background border border-border flex items-center justify-center shadow-xs">
-                    <Camera className="h-8 w-8 text-muted-foreground" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground bg-slate-950/90 p-6 text-center">
+                  <div className="h-16 w-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center shadow-glow">
+                    <Camera className="h-8 w-8 text-primary" />
                   </div>
-                  <span className="text-xs font-medium">Camera initializing...</span>
+                  <span className="text-xs font-semibold text-primary">Camera Initializing...</span>
                 </div>
               ) : (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -686,8 +700,8 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                       isVerifying
                         ? "border-primary shadow-[0_0_25px_var(--primary)]"
                         : selectedEmployee
-                        ? "border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
-                        : "border-primary/40"
+                        ? "border-emerald-500 shadow-[0_0_18px_rgba(16,185,129,0.4)]"
+                        : "border-primary/50 shadow-[0_0_12px_rgba(139,92,246,0.25)]"
                     } transition-all duration-300`}
                   >
                     {/* Laser scan beam */}
@@ -708,7 +722,7 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                 <div className="absolute inset-0 bg-background/95 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center z-10">
                   <AlertCircle className="h-10 w-10 text-destructive mb-2" />
                   <p className="text-xs font-semibold text-foreground mb-3 max-w-sm">{cameraError}</p>
-                  <Button size="sm" onClick={() => startCamera()} className="h-8 text-xs font-semibold">
+                  <Button size="sm" onClick={() => startCamera()} className="h-8 text-xs font-semibold bg-primary text-primary-foreground">
                     Retry Camera
                   </Button>
                 </div>
@@ -716,18 +730,18 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
 
               {/* Status pill on top of viewfinder */}
               <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
-                <div className="bg-background/90 dark:bg-card/90 backdrop-blur-md px-3 py-1 rounded-full text-[11px] text-foreground border border-border/80 flex items-center gap-1.5 shadow-xs">
+                <div className="bg-card/90 text-foreground backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-semibold border border-emerald-500/40 flex items-center gap-2 shadow-md">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">AWS Rekognition Live</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">AWS Rekognition Live</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setFacingMode((prev) => (prev === "user" ? "environment" : "user"))}
-                  className="pointer-events-auto h-7 px-2.5 rounded-full bg-background/90 dark:bg-card/90 backdrop-blur-md border border-border/80 text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 shadow-xs cursor-pointer"
+                  className="pointer-events-auto h-7 px-3 rounded-full bg-card/90 text-foreground hover:bg-card border border-border/80 text-[11px] font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
                   title="Switch camera"
                 >
-                  <RefreshCw className="h-3 w-3" />
-                  <span className="hidden sm:inline">Flip</span>
+                  <RefreshCw className="h-3 w-3 text-primary" />
+                  <span className="hidden sm:inline">Flip Camera</span>
                 </button>
               </div>
 
@@ -739,7 +753,7 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                     <span className="truncate">{lastErrorMessage}</span>
                   </div>
                 ) : (
-                  <div className="bg-background/90 dark:bg-card/90 backdrop-blur-md px-4 py-1 rounded-full text-[11px] text-muted-foreground border border-border/80 text-center shadow-xs font-medium">
+                  <div className="bg-card/90 text-foreground backdrop-blur-md px-4 py-1.5 rounded-full text-[11px] text-muted-foreground border border-border/80 text-center shadow-xs font-medium">
                     {selectedEmployee
                       ? `Align face & tap punch for ${selectedEmployee.name.split(" ")[0]}`
                       : "Align face inside frame & tap punch to auto-detect"}
@@ -748,31 +762,33 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
               </div>
             </div>
 
-            {/* Bottom Controls Bar: [check in] [check out] ... [punch] */}
+            {/* Bottom Controls Bar: Clock In / Clock Out Toggle + Punch Button */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              {/* Check-In / Check-Out pills */}
-              <div className="inline-flex items-center gap-2">
+              {/* Clock In / Clock Out Segmented Toggle */}
+              <div className="inline-flex p-1.5 rounded-2xl bg-muted/80 dark:bg-muted/40 border border-primary/20 shadow-inner">
                 <button
                   type="button"
                   onClick={() => setPunchMode("check-in")}
-                  className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all cursor-pointer border ${
+                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer flex items-center gap-2 ${
                     punchMode === "check-in"
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                      : "bg-card text-foreground border-border/80 hover:bg-muted/70"
+                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 scale-[1.02]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card/50"
                   }`}
                 >
-                  check in
+                  <span className={`h-2.5 w-2.5 rounded-full transition-all ${punchMode === "check-in" ? "bg-white shadow-xs" : "bg-emerald-500/60"}`} />
+                  <span>Clock In</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPunchMode("check-out")}
-                  className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all cursor-pointer border ${
+                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer flex items-center gap-2 ${
                     punchMode === "check-out"
-                      ? "bg-sky-600 text-white border-sky-600 shadow-xs"
-                      : "bg-card text-foreground border-border/80 hover:bg-muted/70"
+                      ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.02]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card/50"
                   }`}
                 >
-                  check out
+                  <span className={`h-2.5 w-2.5 rounded-full transition-all ${punchMode === "check-out" ? "bg-white shadow-xs" : "bg-sky-500/60"}`} />
+                  <span>Clock Out</span>
                 </button>
               </div>
 
@@ -781,41 +797,49 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                 type="button"
                 onClick={() => handleCaptureAndPunch()}
                 disabled={isVerifying || !cameraActive}
-                className="px-6 sm:px-8 py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-card text-foreground border border-border/80 hover:border-primary hover:text-primary transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="h-12 px-8 sm:px-10 rounded-2xl text-sm sm:text-base font-bold bg-gradient-brand text-primary-foreground hover:opacity-95 shadow-glow disabled:opacity-50 disabled:shadow-none transition-all duration-200 cursor-pointer flex items-center gap-2.5 group active:scale-[0.98]"
               >
                 {isVerifying ? (
                   <>
-                    <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-                    <span>verifying...</span>
+                    <RefreshCw className="h-5 w-5 animate-spin text-primary-foreground" />
+                    <span>Verifying Face...</span>
                   </>
                 ) : (
-                  <span>punch</span>
+                  <>
+                    <ScanFace className="h-5 w-5 text-primary-foreground group-hover:scale-110 transition-transform" />
+                    <span>{punchMode === "check-in" ? "Punch In" : "Punch Out"}</span>
+                  </>
                 )}
               </button>
             </div>
           </div>
 
           {/* Right Column: Search + Employee Details */}
-          <div className="lg:col-span-5 rounded-2xl sm:rounded-3xl bg-slate-200/80 dark:bg-muted/70 border border-slate-300/80 dark:border-border/80 p-4 sm:p-5 flex flex-col gap-4 shadow-xs">
+          <div className="lg:col-span-5 rounded-2xl sm:rounded-3xl bg-card/85 backdrop-blur-md border border-primary/20 p-4 sm:p-5 flex flex-col gap-4 shadow-soft">
             {/* Search Box */}
-            <div className="bg-card rounded-2xl border border-border/80 p-3.5 sm:p-4 shadow-xs relative">
-              <h2 className="text-xs font-bold tracking-tight text-foreground lowercase mb-2">
-                search
-              </h2>
+            <div className="bg-gradient-to-br from-card via-primary/[0.03] to-muted/40 rounded-2xl border border-primary/20 p-4 shadow-2xs relative">
+              <div className="flex items-center gap-2 mb-2.5">
+                <div className="h-6 w-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <Search className="h-3.5 w-3.5" />
+                </div>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                  Search Employee
+                </h2>
+              </div>
               <div className="relative">
-                <Search className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-primary" />
                 <Input
                   type="text"
-                  placeholder="Search staff name, code, phone..."
+                  placeholder="Search staff by name, code (e.g. SWF001), phone..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-8 h-10 text-xs sm:text-sm bg-background border-border/80 rounded-xl"
+                  className="pl-10 pr-9 h-11 text-xs sm:text-sm bg-card border-primary/25 focus-visible:ring-primary rounded-xl shadow-2xs"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                    className="absolute right-3 top-3.5 text-muted-foreground hover:text-foreground cursor-pointer"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -829,16 +853,16 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
-                    className="absolute left-3.5 right-3.5 top-[85px] z-30 bg-popover border border-border rounded-xl shadow-xl overflow-hidden divide-y divide-border"
+                    className="absolute left-4 right-4 top-[95px] z-30 bg-popover border border-primary/25 rounded-2xl shadow-xl overflow-hidden divide-y divide-border"
                   >
                     {filteredEmployees.map((emp) => (
                       <div
                         key={emp.id}
                         onClick={() => handleSelectEmployee(emp)}
-                        className="p-2.5 hover:bg-accent/40 transition-colors cursor-pointer flex items-center justify-between group"
+                        className="p-3 hover:bg-primary/10 transition-colors cursor-pointer flex items-center justify-between group"
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="h-8 w-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-xs text-primary shrink-0 overflow-hidden">
+                          <div className="h-9 w-9 rounded-full bg-primary/10 border border-primary/25 flex items-center justify-center font-bold text-xs text-primary shrink-0 overflow-hidden">
                             {emp.photoDataUrl ? (
                               <img src={emp.photoDataUrl} alt={emp.name} className="h-full w-full object-cover" />
                             ) : (
@@ -857,7 +881,7 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                             </div>
                           </div>
                         </div>
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
                       </div>
                     ))}
                   </motion.div>
@@ -866,19 +890,24 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
             </div>
 
             {/* Employee Details Box */}
-            <div className="bg-card rounded-2xl border border-border/80 p-4 sm:p-5 shadow-xs flex-1 flex flex-col justify-between">
+            <div className="bg-gradient-to-br from-card via-primary/[0.03] to-muted/40 rounded-2xl border border-primary/20 p-4 sm:p-5 shadow-2xs flex-1 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-xs font-bold tracking-tight text-foreground lowercase">
-                    employee details
-                  </h2>
+                <div className="flex items-center justify-between mb-3.5">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                      <User className="h-3.5 w-3.5" />
+                    </div>
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                      Employee Details
+                    </h2>
+                  </div>
                   {selectedEmployee && (
                     <button
                       type="button"
                       onClick={() => setSelectedEmployee(null)}
-                      className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
+                      className="text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1 cursor-pointer bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-full transition-colors"
                     >
-                      <X className="h-3 w-3" /> clear
+                      <X className="h-3.5 w-3.5" /> Clear
                     </button>
                   )}
                 </div>
@@ -886,8 +915,8 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                 {selectedEmployee ? (
                   <div className="space-y-3.5">
                     {/* Header info */}
-                    <div className="flex items-center gap-3.5 p-3 rounded-xl bg-muted/40 border border-border/70">
-                      <div className="h-14 w-14 rounded-xl bg-primary/10 border-2 border-primary/30 flex items-center justify-center font-bold text-lg text-primary shrink-0 overflow-hidden shadow-2xs">
+                    <div className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-primary/10 via-card to-accent/10 border border-primary/25 shadow-2xs">
+                      <div className="h-14 w-14 rounded-2xl bg-primary/10 border-2 border-primary/30 flex items-center justify-center font-bold text-lg text-primary shrink-0 overflow-hidden shadow-xs ring-2 ring-primary/20">
                         {selectedEmployee.photoDataUrl ? (
                           <img
                             src={selectedEmployee.photoDataUrl}
@@ -903,7 +932,7 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                           <span className="font-bold text-sm text-foreground truncate">
                             {selectedEmployee.name}
                           </span>
-                          <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
+                          <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/30 shrink-0">
                             {selectedEmployee.empCode}
                           </span>
                         </div>
@@ -915,30 +944,31 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
 
                     {/* Metadata grid */}
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/60">
-                        <span className="text-[11px] text-muted-foreground block">Department</span>
-                        <span className="font-semibold text-foreground truncate block">
+                      <div className="p-3 rounded-xl bg-card border border-primary/20 shadow-2xs">
+                        <span className="text-[11px] text-primary/80 block font-medium">Department</span>
+                        <span className="font-semibold text-foreground truncate block mt-0.5">
                           {selectedEmployee.department || "General"}
                         </span>
                       </div>
-                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/60">
-                        <span className="text-[11px] text-muted-foreground block">Assigned Shift</span>
-                        <span className="font-semibold text-foreground truncate block">
+                      <div className="p-3 rounded-xl bg-card border border-primary/20 shadow-2xs">
+                        <span className="text-[11px] text-primary/80 block font-medium">Assigned Shift</span>
+                        <span className="font-semibold text-foreground truncate block mt-0.5">
                           {currentShift ? `${currentShift.name}` : "General"}
                         </span>
                       </div>
                     </div>
 
                     {/* Today's Punch State */}
-                    <div className="p-3 rounded-xl border border-border/80 bg-muted/30">
-                      <div className="text-[11px] font-semibold text-muted-foreground mb-1">
-                        Today's Status ({todayStr})
+                    <div className="p-3.5 rounded-xl border border-primary/20 bg-card shadow-2xs">
+                      <div className="text-[11px] font-bold text-primary mb-1.5 flex items-center justify-between">
+                        <span>Today's Status</span>
+                        <span className="font-mono text-muted-foreground font-normal">{todayStr}</span>
                       </div>
                       {selectedEmpTodayAttendance?.clockIn ? (
-                        <div className="space-y-1 text-xs">
+                        <div className="space-y-1.5 text-xs">
                           <div className="flex items-center justify-between">
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Clocked IN:
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5">
+                              <CheckCircle2 className="h-4 w-4" /> Clocked IN:
                             </span>
                             <span className="font-mono font-bold text-foreground">
                               {selectedEmpTodayAttendance.clockIn}
@@ -946,8 +976,8 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                           </div>
                           {selectedEmpTodayAttendance.clockOut && (
                             <div className="flex items-center justify-between">
-                              <span className="text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Clocked OUT:
+                              <span className="text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1.5">
+                                <CheckCircle2 className="h-4 w-4" /> Clocked OUT:
                               </span>
                               <span className="font-mono font-bold text-foreground">
                                 {selectedEmpTodayAttendance.clockOut}
@@ -956,18 +986,21 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                           )}
                         </div>
                       ) : (
-                        <div className="text-xs text-muted-foreground">
-                          Not punched in today yet.
+                        <div className="text-xs text-muted-foreground flex items-center gap-2 py-1">
+                          <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                          <span>Not punched in today yet. Ready for Clock In.</span>
                         </div>
                       )}
                     </div>
                   </div>
                 ) : (
-                  <div className="py-10 text-center flex flex-col items-center justify-center text-muted-foreground">
-                    <User className="h-10 w-10 text-muted-foreground/50 mb-2" />
-                    <span className="text-xs font-medium text-foreground">No Employee Selected</span>
-                    <span className="text-[11px] text-muted-foreground mt-1 max-w-[200px]">
-                      Search an employee above or align face in the camera frame.
+                  <div className="py-12 text-center flex flex-col items-center justify-center text-muted-foreground">
+                    <div className="h-12 w-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-3">
+                      <User className="h-6 w-6" />
+                    </div>
+                    <span className="text-sm font-semibold text-foreground">No Employee Selected</span>
+                    <span className="text-xs text-muted-foreground mt-1 max-w-[220px]">
+                      Search an employee above or align face in the camera frame to auto-detect.
                     </span>
                   </div>
                 )}
@@ -977,12 +1010,17 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
         </div>
 
         {/* Bottom Full-Width History Card */}
-        <div className="rounded-2xl sm:rounded-3xl bg-slate-200/80 dark:bg-muted/70 border border-slate-300/80 dark:border-border/80 p-4 sm:p-6 flex flex-col gap-3.5 shadow-xs">
+        <div className="rounded-2xl sm:rounded-3xl bg-card/85 backdrop-blur-md border border-primary/20 p-4 sm:p-6 flex flex-col gap-4 shadow-soft">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground lowercase">
-              history
-            </h2>
-            <span className="text-xs text-muted-foreground font-mono font-medium">
+            <div className="flex items-center gap-2.5">
+              <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                <History className="h-4 w-4" />
+              </div>
+              <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground">
+                Today's Punch History
+              </h2>
+            </div>
+            <span className="text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-3.5 py-1 rounded-full font-mono">
               {todayKioskLogs.length} Records Today
             </span>
           </div>
@@ -996,10 +1034,10 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                 return (
                   <div
                     key={log.id}
-                    className="bg-card border border-border/80 rounded-2xl sm:rounded-full px-4 sm:px-6 py-3 flex items-center justify-between gap-3 shadow-2xs hover:shadow-xs transition-shadow"
+                    className="bg-card hover:bg-primary/[0.04] border border-primary/15 hover:border-primary/40 rounded-2xl sm:rounded-full px-5 py-3.5 flex items-center justify-between gap-3 shadow-2xs hover:shadow-xs transition-all"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-9 w-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-xs text-primary shrink-0 overflow-hidden">
+                      <div className="h-9 w-9 rounded-full bg-primary/10 border border-primary/25 flex items-center justify-center font-bold text-xs text-primary shrink-0 overflow-hidden ring-1 ring-primary/20">
                         {log.photoDataUrl || emp?.photoDataUrl ? (
                           <img
                             src={log.photoDataUrl || emp?.photoDataUrl}
@@ -1013,7 +1051,7 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                       <div className="min-w-0">
                         <div className="font-semibold text-xs sm:text-sm text-foreground truncate flex items-center gap-2">
                           <span>{log.employeeName || emp?.name || "Staff Member"}</span>
-                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-muted border border-border text-muted-foreground font-normal">
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary font-semibold">
                             {log.empCode || emp?.empCode}
                           </span>
                         </div>
@@ -1029,13 +1067,13 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                         <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">AWS Verified</div>
                       </div>
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                        className={`px-3.5 py-1 rounded-full text-xs font-bold border ${
                           isOut
                             ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30"
                             : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                         }`}
                       >
-                        {isOut ? "Check-Out" : "Check-In"}
+                        {isOut ? "Clock Out" : "Clock In"}
                       </span>
                     </div>
                   </div>
@@ -1046,7 +1084,7 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                 {[1, 2, 3, 4].map((i) => (
                   <div
                     key={i}
-                    className="bg-card/70 border border-dashed border-border/80 rounded-2xl sm:rounded-full px-4 sm:px-6 py-3 flex items-center justify-between text-xs text-muted-foreground"
+                    className="bg-card/70 border border-dashed border-primary/20 rounded-2xl sm:rounded-full px-5 py-3.5 flex items-center justify-between text-xs text-muted-foreground"
                   >
                     <span>No punch recorded in slot #{i}</span>
                     <span className="font-mono">--:--</span>
