@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { ThemeToggle } from "@/components/theme";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
@@ -17,6 +16,7 @@ import {
   Search,
   ScanFace,
   Settings,
+  SlidersHorizontal,
   Eye,
   EyeOff,
   Camera,
@@ -27,8 +27,7 @@ import {
   Briefcase,
   AlertCircle,
   RefreshCw,
-  LogOut,
-  Maximize2,
+    Maximize2,
   Minimize2,
   Sparkles,
   ArrowRight,
@@ -258,7 +257,7 @@ function computePunctualityAndStatus(
 
 export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const nav = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const { company, setCompany, saveAllCompanySettings, employees, attendance, upsertAttendance } = useStore();
   const [isKioskSettingsOpen, setIsKioskSettingsOpen] = useState(false);
   const [savingKioskSettings, setSavingKioskSettings] = useState(false);
@@ -613,207 +612,58 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
   const currentShift = company.shifts?.[0];
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans select-none overflow-x-hidden transition-colors duration-300">
+    <div className="min-h-screen bg-slate-100/70 dark:bg-background text-foreground flex flex-col font-sans select-none overflow-x-hidden p-3 sm:p-5 lg:p-6 transition-colors duration-300">
       {/* Hidden canvas for image capture */}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Top Kiosk Navigation & Status Bar */}
-      <header className="h-20 px-6 sm:px-8 border-b border-border bg-card/85 backdrop-blur-md flex items-center justify-between shrink-0 shadow-xs relative z-20 transition-colors">
-        <div className="flex items-center gap-4">
-          <div className="h-11 w-11 rounded-xl bg-gradient-brand text-primary-foreground flex items-center justify-center shadow-md shadow-primary/20">
-            <ScanFace className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="font-display text-lg sm:text-xl font-bold tracking-tight text-foreground">
-                {company.commonPortal?.portalTitle || `${company.name || "CreatonsHR"} Attendance Kiosk`}
-              </h1>
-            </div>
-            <p className="text-xs text-muted-foreground hidden sm:block">
-              Face Recognition & Employee Code Biometric Punch Terminal
-            </p>
-          </div>
-        </div>
-
-        {/* Live Clock & Shift Badge */}
-        <div className="flex items-center gap-3 sm:gap-6">
-          <div className="text-right hidden md:block">
-            <div className="text-xs font-medium text-primary flex items-center justify-end gap-1.5">
-              <Clock className="h-3.5 w-3.5" />
-              {currentShift ? `${currentShift.name} Shift (${currentShift.start} - ${currentShift.end})` : "General Shift"}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {currentTime.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" })}
-            </div>
+      <div className="max-w-7xl mx-auto w-full flex flex-col gap-4 sm:gap-5 flex-1">
+        {/* Top Header Card: Common Attendance | 02:10 PM shift_name | Settings Fullscreen */}
+        <header className="rounded-2xl sm:rounded-3xl bg-slate-200/80 dark:bg-muted/70 border border-slate-300/80 dark:border-border/80 px-5 sm:px-7 py-3.5 sm:py-4 flex items-center justify-between gap-4 shadow-xs">
+          {/* Left: Common Attendance */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <h1 className="font-display text-lg sm:text-xl font-bold tracking-tight text-foreground">
+              Common Attendance
+            </h1>
           </div>
 
-          <div className="bg-muted/70 border border-border px-4 py-1.5 rounded-xl text-center shadow-inner">
-            <div className="text-xl sm:text-2xl font-mono font-bold tracking-wider text-foreground">
-              {currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}
-            </div>
+          {/* Center: Live Time & Shift */}
+          <div className="flex items-center gap-2 sm:gap-3 text-center">
+            <span className="text-base sm:text-xl font-bold font-mono tracking-tight text-foreground">
+              {currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+            </span>
+            <span className="text-xs text-muted-foreground font-medium hidden sm:inline-block bg-background/70 dark:bg-card/70 border border-border/70 px-2.5 py-0.5 rounded-full">
+              {currentShift ? `${currentShift.name} (${currentShift.start} - ${currentShift.end})` : "General Shift"}
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <ThemeToggle className="h-10 w-10 border border-border bg-card hover:bg-muted text-foreground rounded-xl flex items-center justify-center transition-colors cursor-pointer shadow-2xs" />
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-10 border-border bg-card hover:bg-muted text-foreground gap-1.5 rounded-xl transition-colors cursor-pointer shadow-2xs text-xs"
+          {/* Right: Settings & Fullscreen (no dark toggle, no exit button) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button
+              type="button"
               onClick={() => setIsKioskSettingsOpen(true)}
+              className="h-9 w-9 rounded-xl bg-card/90 hover:bg-card text-foreground border border-border/80 flex items-center justify-center transition-colors cursor-pointer shadow-2xs hover:border-primary/50"
               title="Attendance Kiosk Settings"
             >
-              <Settings className="h-4 w-4 text-primary" />
-              <span className="hidden sm:inline">Settings</span>
-            </Button>
+              <SlidersHorizontal className="h-4 w-4 text-foreground" />
+            </button>
 
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 border-border bg-card hover:bg-muted text-foreground rounded-xl transition-colors cursor-pointer shadow-2xs"
+            <button
+              type="button"
               onClick={toggleFullscreen}
+              className="h-9 w-9 rounded-xl bg-card/90 hover:bg-card text-foreground border border-border/80 flex items-center justify-center transition-colors cursor-pointer shadow-2xs hover:border-primary/50"
               title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
             >
               {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-10 border-destructive/30 text-destructive bg-destructive/10 hover:bg-destructive/20 hover:text-destructive gap-1.5 rounded-xl transition-colors cursor-pointer shadow-2xs"
-              onClick={() => {
-                if (window.confirm("Exit the attendance kiosk portal?")) {
-                  signOut().then(() => nav({ to: "/login" }));
-                }
-              }}
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Exit Kiosk</span>
-            </Button>
+            </button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Content Layout */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto w-full">
-        {/* Left Column: Search & Camera Scanner (7 cols) */}
-        <section className="lg:col-span-7 flex flex-col gap-6">
-          {/* Employee Code Search Bar */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-xs relative transition-colors">
-            <label className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2 flex items-center justify-between">
-              <span>Step 1: Fetch Employee Code</span>
-              <span className="text-[11px] text-primary font-normal">Type Code or Name to Select</span>
-            </label>
-
-            <div className="relative">
-              <Search className="absolute left-4 top-3.5 h-5 w-5 text-muted-foreground" />
-              <Input
-                type="text"
-                autoFocus
-                placeholder="Search Employee Code (e.g. SWF001, HR001) or Full Name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-10 h-12 text-base bg-background border border-input text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary rounded-xl shadow-2xs transition-colors"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3.5 top-3.5 text-muted-foreground hover:text-foreground cursor-pointer"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              )}
-            </div>
-
-            {/* Quick Suggestions Dropdown */}
-            <AnimatePresence>
-              {filteredEmployees.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  className="absolute left-5 right-5 top-[95px] z-30 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden divide-y divide-border"
-                >
-                  {filteredEmployees.map((emp) => (
-                    <div
-                      key={emp.id}
-                      onClick={() => handleSelectEmployee(emp)}
-                      className="p-3.5 hover:bg-accent/40 transition-colors cursor-pointer flex items-center justify-between group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary shrink-0 overflow-hidden">
-                          {emp.photoDataUrl ? (
-                            <img src={emp.photoDataUrl} alt={emp.name} className="h-full w-full object-cover" />
-                          ) : (
-                            emp.name.slice(0, 2).toUpperCase()
-                          )}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-foreground group-hover:text-primary flex items-center gap-2">
-                            {emp.name}
-                            <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-primary/10 text-primary border border-primary/20">
-                              {emp.empCode}
-                            </span>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {emp.designation} · {emp.department}
-                          </div>
-                        </div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
-                    </div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Quick Selection Chips */}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-muted-foreground">Quick Test:</span>
-              {employees.slice(0, 4).map((emp) => (
-                <button
-                  key={emp.id}
-                  type="button"
-                  onClick={() => handleSelectEmployee(emp)}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                    selectedEmployee?.id === emp.id
-                      ? "bg-primary/15 border-primary text-primary font-semibold"
-                      : "bg-muted/60 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  {emp.empCode} - {emp.name.split(" ")[0]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Camera Face Recognition Viewport */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-xs flex-1 flex flex-col transition-colors">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Camera className="h-4 w-4 text-primary" />
-                <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                  Step 2: Live Face Recognition Scanner
-                </h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => setFacingMode((prev) => (prev === "user" ? "environment" : "user"))}
-                >
-                  <RefreshCw className="h-3 w-3 mr-1" /> Switch Cam
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  {cameraActive ? "Camera Live" : "Camera Initializing"}
-                </span>
-              </div>
-            </div>
-
-            {/* Video Viewport Container */}
-            <div className="relative aspect-[4/3] sm:aspect-[16/10] bg-black/95 rounded-xl overflow-hidden border-2 border-border flex items-center justify-center shadow-inner">
+        {/* Middle 2-Column Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-stretch">
+          {/* Left Column: Camera + check in / check out / punch */}
+          <div className="lg:col-span-7 rounded-2xl sm:rounded-3xl bg-slate-200/80 dark:bg-muted/70 border border-slate-300/80 dark:border-border/80 p-4 sm:p-5 flex flex-col gap-4 shadow-xs">
+            {/* Viewfinder Area */}
+            <div className="relative aspect-[4/3] sm:aspect-[16/11] bg-card rounded-2xl border border-border/80 overflow-hidden flex items-center justify-center shadow-xs">
               <video
                 ref={videoRef}
                 playsInline
@@ -821,374 +671,393 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
                 className="w-full h-full object-cover -scale-x-100"
               />
 
-              {/* Facial Alignment Target Overlay */}
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div
-                  className={`relative h-56 w-48 sm:h-64 sm:w-52 rounded-[50%] border-2 ${
-                    isVerifying
-                      ? "border-primary shadow-[0_0_25px_var(--primary)]"
-                      : selectedEmployee
-                      ? "border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
-                      : "border-primary/50"
-                  } transition-all duration-300`}
-                >
-                  {/* Four Corner Marks */}
-                  <div className="absolute -top-2 -left-2 h-4 w-4 border-t-2 border-l-2 border-primary" />
-                  <div className="absolute -top-2 -right-2 h-4 w-4 border-t-2 border-r-2 border-primary" />
-                  <div className="absolute -bottom-2 -left-2 h-4 w-4 border-b-2 border-l-2 border-primary" />
-                  <div className="absolute -bottom-2 -right-2 h-4 w-4 border-b-2 border-r-2 border-primary" />
-
-                  {/* Scanning Laser Beam */}
-                  {isVerifying && (
-                    <motion.div
-                      initial={{ top: "0%" }}
-                      animate={{ top: "100%" }}
-                      transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
-                      className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent shadow-[0_0_12px_var(--primary)]"
-                    />
-                  )}
+              {/* Center icon / guide overlay */}
+              {!cameraActive ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/40 p-6 text-center">
+                  <div className="h-16 w-16 rounded-full bg-background border border-border flex items-center justify-center shadow-xs">
+                    <Camera className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <span className="text-xs font-medium">Camera initializing...</span>
                 </div>
-              </div>
+              ) : (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div
+                    className={`relative h-56 w-48 sm:h-64 sm:w-52 rounded-[50%] border-2 ${
+                      isVerifying
+                        ? "border-primary shadow-[0_0_25px_var(--primary)]"
+                        : selectedEmployee
+                        ? "border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                        : "border-primary/40"
+                    } transition-all duration-300`}
+                  >
+                    {/* Laser scan beam */}
+                    {isVerifying && (
+                      <motion.div
+                        initial={{ top: "0%" }}
+                        animate={{ top: "100%" }}
+                        transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+                        className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent shadow-[0_0_12px_var(--primary)]"
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Camera Error overlay */}
               {cameraError && (
-                <div className="absolute inset-0 bg-background/90 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center z-10">
-                  <AlertCircle className="h-10 w-10 text-destructive mb-3" />
-                  <p className="text-sm font-semibold text-foreground mb-2">{cameraError}</p>
-                  <Button
-                    size="sm"
-                    onClick={() => startCamera()}
-                    className="bg-primary text-primary-foreground font-semibold"
-                  >
+                <div className="absolute inset-0 bg-background/95 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center z-10">
+                  <AlertCircle className="h-10 w-10 text-destructive mb-2" />
+                  <p className="text-xs font-semibold text-foreground mb-3 max-w-sm">{cameraError}</p>
+                  <Button size="sm" onClick={() => startCamera()} className="h-8 text-xs font-semibold">
                     Retry Camera
                   </Button>
                 </div>
               )}
 
-              {/* Top overlay badge */}
-              <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
-                <div className="bg-card/90 backdrop-blur-md px-3 py-1 rounded-full text-xs text-foreground border border-emerald-500/30 flex items-center gap-1.5 shadow-md">
+              {/* Status pill on top of viewfinder */}
+              <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+                <div className="bg-background/90 dark:bg-card/90 backdrop-blur-md px-3 py-1 rounded-full text-[11px] text-foreground border border-border/80 flex items-center gap-1.5 shadow-xs">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400">AWS Rekognition Live</span>
-                  <span className="text-muted-foreground text-[10px]">ap-south-1</span>
                 </div>
-                <div className="bg-card/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[11px] text-primary border border-primary/30 font-semibold shadow-md">
-                  {selectedEmployee ? `1:1 Match Mode (${selectedEmployee.empCode})` : "1:N Auto-Identify Mode"}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setFacingMode((prev) => (prev === "user" ? "environment" : "user"))}
+                  className="pointer-events-auto h-7 px-2.5 rounded-full bg-background/90 dark:bg-card/90 backdrop-blur-md border border-border/80 text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 shadow-xs cursor-pointer"
+                  title="Switch camera"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  <span className="hidden sm:inline">Flip</span>
+                </button>
               </div>
 
-              {/* Bottom Instructions / Error badge */}
-              <div className="absolute bottom-3 inset-x-0 flex justify-center px-4">
+              {/* Bottom error or guidance badge */}
+              <div className="absolute bottom-3 inset-x-0 flex justify-center px-4 pointer-events-none">
                 {lastErrorMessage ? (
-                  <div className="bg-destructive/90 border border-destructive text-destructive-foreground backdrop-blur-md px-4 py-1.5 rounded-full text-xs flex items-center gap-1.5 shadow-lg max-w-md text-center font-medium">
+                  <div className="bg-destructive/95 border border-destructive text-destructive-foreground backdrop-blur-md px-4 py-1.5 rounded-full text-xs flex items-center gap-1.5 shadow-lg max-w-md text-center font-medium pointer-events-auto">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                     <span className="truncate">{lastErrorMessage}</span>
                   </div>
                 ) : (
-                  <div className="bg-card/90 backdrop-blur-md px-4 py-1.5 rounded-full text-xs text-foreground border border-border text-center shadow-lg font-medium">
+                  <div className="bg-background/90 dark:bg-card/90 backdrop-blur-md px-4 py-1 rounded-full text-[11px] text-muted-foreground border border-border/80 text-center shadow-xs font-medium">
                     {selectedEmployee
-                      ? `Align face inside oval frame & tap Authenticate for ${selectedEmployee.name}`
-                      : "Align face inside oval frame & tap 1-Tap Facial Punch (Auto-Detects Employee)"}
+                      ? `Align face & tap punch for ${selectedEmployee.name.split(" ")[0]}`
+                      : "Align face inside frame & tap punch to auto-detect"}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Action Punch Trigger Controls */}
-            <div className="mt-4 pt-4 border-t border-border flex flex-col sm:flex-row items-center gap-4">
-              {/* Check-In / Check-Out Toggle */}
-              <div className="flex items-center bg-muted/70 p-1 rounded-xl border border-border w-full sm:w-auto shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setPunchMode("auto")}
-                  className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    punchMode === "auto"
-                      ? "bg-primary text-primary-foreground shadow-xs font-bold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  title="Auto detects Check-In or Check-Out based on today's attendance"
-                >
-                  ⚡ Auto
-                </button>
+            {/* Bottom Controls Bar: [check in] [check out] ... [punch] */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+              {/* Check-In / Check-Out pills */}
+              <div className="inline-flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setPunchMode("check-in")}
-                  className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all cursor-pointer border ${
                     punchMode === "check-in"
-                      ? "bg-emerald-600 text-white shadow-xs font-bold"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                      : "bg-card text-foreground border-border/80 hover:bg-muted/70"
                   }`}
                 >
-                  Check-IN
+                  check in
                 </button>
                 <button
                   type="button"
                   onClick={() => setPunchMode("check-out")}
-                  className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all cursor-pointer border ${
                     punchMode === "check-out"
-                      ? "bg-sky-600 text-white shadow-xs font-bold"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "bg-sky-600 text-white border-sky-600 shadow-xs"
+                      : "bg-card text-foreground border-border/80 hover:bg-muted/70"
                   }`}
                 >
-                  Check-OUT
+                  check out
                 </button>
               </div>
 
-              {/* Main Punch Trigger Button */}
-              <Button
-                size="lg"
+              {/* Punch trigger button */}
+              <button
+                type="button"
                 onClick={() => handleCaptureAndPunch()}
                 disabled={isVerifying || !cameraActive}
-                className="w-full h-12 bg-gradient-brand text-primary-foreground hover:opacity-95 font-bold text-base shadow-glow disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2.5 rounded-xl transition-all cursor-pointer"
+                className="px-6 sm:px-8 py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-card text-foreground border border-border/80 hover:border-primary hover:text-primary transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {isVerifying ? (
                   <>
-                    <RefreshCw className="h-5 w-5 animate-spin" />
-                    <span>Transmitting Biometric Packet to AWS Rekognition...</span>
+                    <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                    <span>verifying...</span>
                   </>
                 ) : (
-                  <>
-                    <ScanFace className="h-5 w-5" />
-                    <span>
-                      {selectedEmployee
-                        ? `Authenticate ${selectedEmployee.name.split(" ")[0]} (${punchMode === "auto" ? "Smart Punch" : punchMode.toUpperCase()})`
-                        : `1-Tap Facial Punch (${punchMode === "auto" ? "AWS Auto-Detect" : punchMode.toUpperCase()})`}
-                    </span>
-                  </>
+                  <span>punch</span>
                 )}
-              </Button>
+              </button>
             </div>
           </div>
-        </section>
 
-        {/* Right Column: Selected Employee Verification Details & Today's Logs (5 cols) */}
-        <section className="lg:col-span-5 flex flex-col gap-6">
-          {/* Selected Employee Details Card */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-xs relative overflow-hidden transition-colors">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <User className="h-4 w-4 text-primary" />
-                Employee Verification Details
+          {/* Right Column: Search + Employee Details */}
+          <div className="lg:col-span-5 rounded-2xl sm:rounded-3xl bg-slate-200/80 dark:bg-muted/70 border border-slate-300/80 dark:border-border/80 p-4 sm:p-5 flex flex-col gap-4 shadow-xs">
+            {/* Search Box */}
+            <div className="bg-card rounded-2xl border border-border/80 p-3.5 sm:p-4 shadow-xs relative">
+              <h2 className="text-xs font-bold tracking-tight text-foreground lowercase mb-2">
+                search
               </h2>
-              {selectedEmployee && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedEmployee(null)}
-                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
-                >
-                  <X className="h-3.5 w-3.5" /> Clear
-                </button>
-              )}
+              <div className="relative">
+                <Search className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search staff name, code, phone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-8 h-10 text-xs sm:text-sm bg-background border-border/80 rounded-xl"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Suggestions Dropdown */}
+              <AnimatePresence>
+                {filteredEmployees.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="absolute left-3.5 right-3.5 top-[85px] z-30 bg-popover border border-border rounded-xl shadow-xl overflow-hidden divide-y divide-border"
+                  >
+                    {filteredEmployees.map((emp) => (
+                      <div
+                        key={emp.id}
+                        onClick={() => handleSelectEmployee(emp)}
+                        className="p-2.5 hover:bg-accent/40 transition-colors cursor-pointer flex items-center justify-between group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-8 w-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-xs text-primary shrink-0 overflow-hidden">
+                            {emp.photoDataUrl ? (
+                              <img src={emp.photoDataUrl} alt={emp.name} className="h-full w-full object-cover" />
+                            ) : (
+                              emp.name.slice(0, 2).toUpperCase()
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-xs text-foreground group-hover:text-primary flex items-center gap-1.5">
+                              {emp.name}
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-primary/10 text-primary border border-primary/20">
+                                {emp.empCode}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground">
+                              {emp.designation || emp.department || "Staff"}
+                            </div>
+                          </div>
+                        </div>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {selectedEmployee ? (
-              <div className="space-y-4">
-                {/* Employee Header Profile */}
-                <div className="flex items-center gap-4 p-4 rounded-xl bg-muted/40 border border-border">
-                  <div className="relative h-16 w-16 rounded-xl bg-primary/10 border-2 border-primary/40 flex items-center justify-center font-bold text-xl text-primary shrink-0 overflow-hidden shadow-xs">
-                    {selectedEmployee.photoDataUrl ? (
-                      <img
-                        src={selectedEmployee.photoDataUrl}
-                        alt={selectedEmployee.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      selectedEmployee.name.slice(0, 2).toUpperCase()
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-foreground truncate">
-                        {selectedEmployee.name}
-                      </h3>
-                      <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-primary/10 text-primary border border-primary/20 shrink-0">
-                        {selectedEmployee.empCode}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {selectedEmployee.designation || "Staff Member"}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                        <Check className="h-3 w-3" /> Active Employee
-                      </span>
-                      {selectedEmployee.faceRegistered ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-primary/10 text-primary border border-primary/20">
-                          <ScanFace className="h-3 w-3" /> Face Enrolled
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                          Auto-Enroll on Punch
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Details Grid */}
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 rounded-xl bg-muted/30 border border-border/80">
-                    <span className="text-muted-foreground flex items-center gap-1 mb-1">
-                      <Building2 className="h-3.5 w-3.5" /> Department
-                    </span>
-                    <span className="font-semibold text-foreground">
-                      {selectedEmployee.department || "General"}
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-muted/30 border border-border/80">
-                    <span className="text-muted-foreground flex items-center gap-1 mb-1">
-                      <Clock className="h-3.5 w-3.5" /> Assigned Shift
-                    </span>
-                    <span className="font-semibold text-foreground">
-                      {currentShift ? `${currentShift.name} (${currentShift.start})` : "General (09:00)"}
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-muted/30 border border-border/80">
-                    <span className="text-muted-foreground flex items-center gap-1 mb-1">
-                      <Phone className="h-3.5 w-3.5" /> Contact Phone
-                    </span>
-                    <span className="font-semibold text-foreground font-mono">
-                      {selectedEmployee.phone || "Not Provided"}
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-muted/30 border border-border/80">
-                    <span className="text-muted-foreground flex items-center gap-1 mb-1">
-                      <Calendar className="h-3.5 w-3.5" /> Date of Joining
-                    </span>
-                    <span className="font-semibold text-foreground">
-                      {selectedEmployee.doj || "Confirmed"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Today's Punch Status Banner */}
-                <div className="p-4 rounded-xl border border-border bg-muted/40 space-y-2">
-                  <div className="text-xs font-semibold text-foreground flex items-center justify-between">
-                    <span>Today's Attendance Status</span>
-                    <span className="text-[11px] text-muted-foreground font-mono">{todayStr}</span>
-                  </div>
-
-                  {selectedEmpTodayAttendance?.clockIn ? (
-                    <div className="space-y-1.5 pt-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5">
-                          <CheckCircle2 className="h-4 w-4" /> Clocked IN
-                        </span>
-                        <span className="font-mono font-bold text-foreground">
-                          {selectedEmpTodayAttendance.clockIn}
-                        </span>
-                      </div>
-
-                      {selectedEmpTodayAttendance.clockOut ? (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1.5">
-                            <CheckCircle2 className="h-4 w-4" /> Clocked OUT
-                          </span>
-                          <span className="font-mono font-bold text-foreground">
-                            {selectedEmpTodayAttendance.clockOut}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="text-[11px] text-primary bg-primary/10 p-2 rounded-lg border border-primary/20">
-                          Active shift in progress. Next suggested action is <strong>Mark Check-Out</strong>.
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="py-2 text-xs text-muted-foreground flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-muted-foreground" />
-                      <span>Not punched in today. Next action: <strong>Mark Check-In</strong>.</span>
-                    </div>
+            {/* Employee Details Box */}
+            <div className="bg-card rounded-2xl border border-border/80 p-4 sm:p-5 shadow-xs flex-1 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-bold tracking-tight text-foreground lowercase">
+                    employee details
+                  </h2>
+                  {selectedEmployee && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmployee(null)}
+                      className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
+                    >
+                      <X className="h-3 w-3" /> clear
+                    </button>
                   )}
                 </div>
+
+                {selectedEmployee ? (
+                  <div className="space-y-3.5">
+                    {/* Header info */}
+                    <div className="flex items-center gap-3.5 p-3 rounded-xl bg-muted/40 border border-border/70">
+                      <div className="h-14 w-14 rounded-xl bg-primary/10 border-2 border-primary/30 flex items-center justify-center font-bold text-lg text-primary shrink-0 overflow-hidden shadow-2xs">
+                        {selectedEmployee.photoDataUrl ? (
+                          <img
+                            src={selectedEmployee.photoDataUrl}
+                            alt={selectedEmployee.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          selectedEmployee.name.slice(0, 2).toUpperCase()
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-foreground truncate">
+                            {selectedEmployee.name}
+                          </span>
+                          <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
+                            {selectedEmployee.empCode}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {selectedEmployee.designation || "Staff Member"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Metadata grid */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/60">
+                        <span className="text-[11px] text-muted-foreground block">Department</span>
+                        <span className="font-semibold text-foreground truncate block">
+                          {selectedEmployee.department || "General"}
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/60">
+                        <span className="text-[11px] text-muted-foreground block">Assigned Shift</span>
+                        <span className="font-semibold text-foreground truncate block">
+                          {currentShift ? `${currentShift.name}` : "General"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Today's Punch State */}
+                    <div className="p-3 rounded-xl border border-border/80 bg-muted/30">
+                      <div className="text-[11px] font-semibold text-muted-foreground mb-1">
+                        Today's Status ({todayStr})
+                      </div>
+                      {selectedEmpTodayAttendance?.clockIn ? (
+                        <div className="space-y-1 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Clocked IN:
+                            </span>
+                            <span className="font-mono font-bold text-foreground">
+                              {selectedEmpTodayAttendance.clockIn}
+                            </span>
+                          </div>
+                          {selectedEmpTodayAttendance.clockOut && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Clocked OUT:
+                              </span>
+                              <span className="font-mono font-bold text-foreground">
+                                {selectedEmpTodayAttendance.clockOut}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          Not punched in today yet.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-10 text-center flex flex-col items-center justify-center text-muted-foreground">
+                    <User className="h-10 w-10 text-muted-foreground/50 mb-2" />
+                    <span className="text-xs font-medium text-foreground">No Employee Selected</span>
+                    <span className="text-[11px] text-muted-foreground mt-1 max-w-[200px]">
+                      Search an employee above or align face in the camera frame.
+                    </span>
+                  </div>
+                )}
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Full-Width History Card */}
+        <div className="rounded-2xl sm:rounded-3xl bg-slate-200/80 dark:bg-muted/70 border border-slate-300/80 dark:border-border/80 p-4 sm:p-6 flex flex-col gap-3.5 shadow-xs">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground lowercase">
+              history
+            </h2>
+            <span className="text-xs text-muted-foreground font-mono font-medium">
+              {todayKioskLogs.length} Records Today
+            </span>
+          </div>
+
+          <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+            {todayKioskLogs.length > 0 ? (
+              todayKioskLogs.map((log) => {
+                const emp = employees.find((e) => e.id === log.employeeId);
+                const isOut = Boolean(log.clockOut);
+                const time = log.clockOut || log.clockIn || log.checkIn || "--:--";
+                return (
+                  <div
+                    key={log.id}
+                    className="bg-card border border-border/80 rounded-2xl sm:rounded-full px-4 sm:px-6 py-3 flex items-center justify-between gap-3 shadow-2xs hover:shadow-xs transition-shadow"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-9 w-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-xs text-primary shrink-0 overflow-hidden">
+                        {log.photoDataUrl || emp?.photoDataUrl ? (
+                          <img
+                            src={log.photoDataUrl || emp?.photoDataUrl}
+                            alt={log.employeeName || "Employee"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          (log.employeeName || "EM").slice(0, 2).toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-xs sm:text-sm text-foreground truncate flex items-center gap-2">
+                          <span>{log.employeeName || emp?.name || "Staff Member"}</span>
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-muted border border-border text-muted-foreground font-normal">
+                            {log.empCode || emp?.empCode}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-muted-foreground truncate">
+                          {emp?.designation || log.department || "Staff"} · {log.shiftName || currentShift?.name || "General Shift"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right hidden sm:block">
+                        <span className="text-xs font-mono font-semibold text-foreground">{time}</span>
+                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">AWS Verified</div>
+                      </div>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                          isOut
+                            ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30"
+                            : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                        }`}
+                      >
+                        {isOut ? "Check-Out" : "Check-In"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
             ) : (
-              <div className="py-12 px-4 text-center rounded-xl border-2 border-dashed border-border bg-muted/20 flex flex-col items-center justify-center">
-                <div className="h-12 w-12 rounded-full bg-muted/60 flex items-center justify-center text-muted-foreground mb-3">
-                  <Search className="h-6 w-6" />
-                </div>
-                <h4 className="text-sm font-semibold text-foreground">No Employee Selected</h4>
-                <p className="text-xs text-muted-foreground max-w-xs mt-1">
-                  Type an Employee Code (e.g. SWF001) in the search box or use 1-Tap Facial Punch for instant auto-recognition.
-                </p>
+              <div className="space-y-2.5">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="bg-card/70 border border-dashed border-border/80 rounded-2xl sm:rounded-full px-4 sm:px-6 py-3 flex items-center justify-between text-xs text-muted-foreground"
+                  >
+                    <span>No punch recorded in slot #{i}</span>
+                    <span className="font-mono">--:--</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
+        </div>
+      </div>
 
-          {/* Today's Live Kiosk Punches Feed */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-[300px] transition-colors">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-primary" />
-                <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                  Today's Kiosk Activity Feed
-                </h2>
-              </div>
-              <span className="text-xs text-muted-foreground font-mono font-semibold">
-                {todayKioskLogs.length} Records
-              </span>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[360px] divide-y divide-border">
-              {todayKioskLogs.length > 0 ? (
-                todayKioskLogs.map((log) => {
-                  const emp = employees.find((e) => e.id === log.employeeId);
-                  const isOut = Boolean(log.clockOut);
-                  return (
-                    <div
-                      key={log.id}
-                      className="pt-2.5 first:pt-0 flex items-center justify-between text-xs hover:bg-muted/50 p-2 rounded-xl transition-colors"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="h-9 w-9 rounded-lg bg-primary/10 border border-border flex items-center justify-center font-bold text-primary shrink-0 overflow-hidden">
-                          {log.photoDataUrl || emp?.photoDataUrl ? (
-                            <img
-                              src={log.photoDataUrl || emp?.photoDataUrl}
-                              alt={log.employeeName || "Employee"}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            (log.employeeName || "EM").slice(0, 2).toUpperCase()
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-semibold text-foreground truncate">
-                            {log.employeeName || emp?.name || "Staff Member"}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5">
-                            <span>{log.empCode || emp?.empCode}</span>
-                            <span>•</span>
-                            <span className="text-emerald-600 dark:text-emerald-400">Match {log.similarity || 98.4}%</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${
-                            isOut
-                              ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30"
-                              : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                          }`}
-                        >
-                          {isOut ? "OUT" : "IN"} {log.clockOut || log.clockIn || log.checkIn}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="py-10 text-center text-xs text-muted-foreground">
-                  No kiosk scans recorded today yet.
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      </main>
 
       {/* Celebratory Verification Modal / Dialog */}
       <AnimatePresence>
@@ -1416,7 +1285,7 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
               onClick={async () => {
                 setSavingKioskSettings(true);
                 try {
-                  await saveAllCompanySettings();
+                  await saveAllCompanySettings?.();
                   toast.success("Attendance Kiosk settings saved to cloud database!");
                   setIsKioskSettingsOpen(false);
                 } catch (e: any) {
