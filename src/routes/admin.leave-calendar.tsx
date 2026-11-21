@@ -510,10 +510,10 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
               </span>
             </div>
 
-            {/* Next Upcoming */}
+            {/* Next */}
             <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-amber-500/40 hover:border-amber-500/80 transition-all">
               <span className="text-sm font-medium text-foreground/85 truncate">
-                Next Upcoming
+                Next
               </span>
               <span className="text-sm sm:text-base font-semibold text-foreground shrink-0 ml-2 truncate max-w-[55%] text-right" title={stats.upcoming?.name}>
                 {stats.upcoming
