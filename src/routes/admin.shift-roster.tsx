@@ -185,6 +185,28 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
     return map;
   }, [roster]);
 
+  // Helper: Calculate duration between start and end times (handles overnight shifts)
+  const getClockSpanHours = (start?: string, end?: string): number => {
+    if (!start || !end) return 0;
+    const [sH, sM] = start.split(":").map((v) => parseInt(v, 10) || 0);
+    const [eH, eM] = end.split(":").map((v) => parseInt(v, 10) || 0);
+    let sTotal = sH * 60 + sM;
+    let eTotal = eH * 60 + eM;
+    let diff = eTotal - sTotal;
+    if (diff <= 0) diff += 1440;
+    return Math.round((diff / 60) * 10) / 10;
+  };
+
+  // Helper: Calculate end time from start time and target hours
+  const getEndTimeFromHours = (start?: string, hours?: number): string => {
+    if (!start || hours == null || hours <= 0) return "";
+    const [sH, sM] = start.split(":").map((v) => parseInt(v, 10) || 0);
+    const totalMins = (sH * 60 + sM + Math.round(hours * 60)) % 1440;
+    const outH = Math.floor(totalMins / 60);
+    const outM = totalMins % 60;
+    return `${String(outH).padStart(2, "0")}:${String(outM).padStart(2, "0")}`;
+  };
+
   // Handlers for Shift Master
   const handleOpenNewShift = () => {
     setEditingShiftId(null);
@@ -1320,11 +1342,39 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs">Shift End Time *</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Shift End Time *</Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const computedEnd = getEndTimeFromHours(
+                        shiftForm.start || "09:00",
+                        shiftForm.workingHours ?? company.workingHoursPerDay ?? 8
+                      );
+                      if (computedEnd) {
+                        setShiftForm((prev) => ({ ...prev, end: computedEnd }));
+                        toast.info(`End time set to ${computedEnd} from standard work hours.`);
+                      }
+                    }}
+                    className="text-[10px] text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+                    title="Auto-calculate End Time from Start Time + Work Hours"
+                  >
+                    <span>⚡ Auto-calc End</span>
+                  </button>
+                </div>
                 <Input
                   type="time"
                   value={shiftForm.end || "18:00"}
-                  onChange={(e) => setShiftForm({ ...shiftForm, end: e.target.value })}
+                  onChange={(e) => {
+                    const newEnd = e.target.value;
+                    const span = getClockSpanHours(shiftForm.start || "09:00", newEnd);
+                    const autoWorkHours = span === 9 ? 8 : span;
+                    setShiftForm((prev) => ({
+                      ...prev,
+                      end: newEnd,
+                      workingHours: autoWorkHours,
+                    }));
+                  }}
                   required
                   className="text-xs"
                 />
@@ -1333,7 +1383,22 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Standard Work Hours / Day</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Standard Work Hours / Day</Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const span = getClockSpanHours(shiftForm.start || "09:00", shiftForm.end || "18:00");
+                      const autoWorkHours = span === 9 ? 8 : span;
+                      setShiftForm((prev) => ({ ...prev, workingHours: autoWorkHours }));
+                      toast.info(`Standard hours set to ${autoWorkHours} hrs from clock span.`);
+                    }}
+                    className="text-[10px] text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+                    title="Auto-calculate Standard Work Hours from Start & End Times"
+                  >
+                    <span>⚡ Auto-calc Hours</span>
+                  </button>
+                </div>
                 <Input
                   type="number"
                   step="0.5"
@@ -1341,7 +1406,19 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                   max="24"
                   placeholder={String(company.workingHoursPerDay ?? 8)}
                   value={shiftForm.workingHours ?? ""}
-                  onChange={(e) => setShiftForm({ ...shiftForm, workingHours: e.target.value ? +e.target.value : undefined })}
+                  onChange={(e) => {
+                    const val = e.target.value ? +e.target.value : undefined;
+                    setShiftForm((prev) => {
+                      const next = { ...prev, workingHours: val };
+                      if (val && val > 0) {
+                        const computedEnd = getEndTimeFromHours(prev.start || "09:00", val);
+                        if (computedEnd) {
+                          next.end = computedEnd;
+                        }
+                      }
+                      return next;
+                    });
+                  }}
                   className="text-xs"
                 />
                 <p className="text-[10px] text-muted-foreground">Default: {company.workingHoursPerDay ?? 8} hrs (e.g. 4 for part-time)</p>
@@ -1362,6 +1439,34 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                 <p className="text-[10px] text-muted-foreground">Default: {company.workingDaysPerMonth ?? 26} days (e.g. 22 for part-time/5-day)</p>
               </div>
             </div>
+
+            {/* Live Calculation & Break Breakdown Banner */}
+            {(() => {
+              const span = getClockSpanHours(shiftForm.start || "09:00", shiftForm.end || "18:00");
+              const workH = shiftForm.workingHours ?? company.workingHoursPerDay ?? 8;
+              const breakH = Math.max(0, Math.round((span - workH) * 10) / 10);
+              return (
+                <div className="rounded-lg bg-primary/5 border border-primary/20 p-2.5 text-xs space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-medium text-foreground">
+                      <Clock className="h-3.5 w-3.5 text-primary" />
+                      <span>Clock Span: <strong>{shiftForm.start || "09:00"} → {shiftForm.end || "18:00"} ({span}h)</strong></span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-semibold bg-background border-primary/30 text-primary">
+                      {workH}h Paid Work
+                    </Badge>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground flex items-center justify-between">
+                    <span>
+                      {breakH > 0
+                        ? `Includes ${breakH}h unpaid break/lunch (${span}h presence = ${workH}h work)`
+                        : `Continuous work without scheduled breaks (${workH}h)`}
+                    </span>
+                    <span className="text-primary font-medium">⚡ Smart Bi-Directional Sync</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
