@@ -401,13 +401,16 @@ function AttendancePage() {
   const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
   const { activeTenantId } = useAuth();
 
-  const [activeNavTab, setActiveNavTab] = useState<"attendance" | "leave-calendar" | "shift-roster" | "kiosk">(() => {
+  const [activeNavTab, setActiveNavTab] = useState<
+    "attendance" | "leave-calendar" | "shift-roster" | "kiosk" | "ot-approvals"
+  >(() => {
     if (typeof window !== "undefined") {
       const sp = new URLSearchParams(window.location.search);
       const t = sp.get("tab");
       if (t === "leave-calendar" || t === "leaves") return "leave-calendar";
       if (t === "shift-roster" || t === "roster" || t === "shifts") return "shift-roster";
       if (t === "kiosk" || t === "common-attendance") return "kiosk";
+      if (t === "ot-approvals" || t === "ot" || t === "overtime") return "ot-approvals";
     }
     return "attendance";
   });
@@ -422,6 +425,8 @@ function AttendancePage() {
         setActiveNavTab("shift-roster");
       } else if (t === "kiosk" || t === "common-attendance") {
         setActiveNavTab("kiosk");
+      } else if (t === "ot-approvals" || t === "ot" || t === "overtime") {
+        setActiveNavTab("ot-approvals");
       } else {
         setActiveNavTab("attendance");
       }
@@ -430,7 +435,9 @@ function AttendancePage() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const handleNavTabChange = (tab: "attendance" | "leave-calendar" | "shift-roster" | "kiosk") => {
+  const handleNavTabChange = (
+    tab: "attendance" | "leave-calendar" | "shift-roster" | "kiosk" | "ot-approvals"
+  ) => {
     setActiveNavTab(tab);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -442,6 +449,18 @@ function AttendancePage() {
       window.history.pushState({}, "", url.toString());
     }
   };
+
+  const pendingOtRestCount = useMemo(() => {
+    return (attendance || []).filter((a) => {
+      if (!a || !a.date || (!a.checkIn && !a.clockIn && !a.isRestDayWork)) return false;
+      const isSun = new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
+      return (
+        (isSun || a.isRestDayWork) &&
+        a.restDayWorkStatus !== "approved" &&
+        a.restDayWorkStatus !== "rejected"
+      );
+    }).length;
+  }, [attendance]);
 
   // Primary Selected Date for Daily View
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -1655,6 +1674,42 @@ function AttendancePage() {
 
           <button
             type="button"
+            onClick={() => handleNavTabChange("ot-approvals")}
+            className={cn(
+              "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              activeNavTab === "ot-approvals"
+                ? "text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {activeNavTab === "ot-approvals" && (
+              <motion.div
+                layoutId="attendanceSectionActivePill"
+                className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <Timer className="h-4 w-4 shrink-0" />
+              <span>OT Approvals</span>
+              {pendingOtRestCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "ml-0.5 px-1.5 py-0 text-[10px] font-bold rounded-full",
+                    activeNavTab === "ot-approvals"
+                      ? "bg-white/20 text-white"
+                      : "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                  )}
+                >
+                  {pendingOtRestCount}
+                </Badge>
+              )}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => handleNavTabChange("leave-calendar")}
             className={cn(
               "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1754,6 +1809,22 @@ function AttendancePage() {
             transition={{ duration: 0.18 }}
           >
             <CommonAttendancePage isEmbedded />
+          </motion.div>
+        ) : activeNavTab === "ot-approvals" ? (
+          <motion.div
+            key="ot-approvals-tab"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            <OtApprovalsHub
+              getScheduledShiftForDate={getScheduledShiftForDate}
+              onInspectRecord={(data) => {
+                setSelectedDate(data.date);
+                setInspectRecord(data);
+              }}
+            />
           </motion.div>
         ) : (
           <motion.div
@@ -1926,22 +1997,6 @@ function AttendancePage() {
             <TabsTrigger value="matrix" className="rounded-lg gap-1.5 text-xs font-medium">
               <CalendarIcon className="h-3.5 w-3.5" />
               Monthly Staff Matrix
-            </TabsTrigger>
-            <TabsTrigger value="ot-approvals" className="rounded-lg gap-1.5 text-xs font-medium">
-              <Timer className="h-3.5 w-3.5 text-primary" />
-              OT Approvals
-              {(() => {
-                const pendingRestCount = (attendance || []).filter((a) => {
-                  if (!a || !a.date || (!a.checkIn && !a.clockIn && !a.isRestDayWork)) return false;
-                  const isSun = new Date(a.date + "T12:00:00Z").getUTCDay() === 0;
-                  return (isSun || a.isRestDayWork) && a.restDayWorkStatus !== "approved" && a.restDayWorkStatus !== "rejected";
-                }).length;
-                return pendingRestCount > 0 ? (
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold">
-                    {pendingRestCount}
-                  </Badge>
-                ) : null;
-              })()}
             </TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-lg gap-1.5 text-xs font-medium">
               <TrendingUp className="h-3.5 w-3.5" />
@@ -2744,17 +2799,6 @@ function AttendancePage() {
             getScheduledShiftForDate={getScheduledShiftForDate}
             evaluatePunctuality={evaluatePunctuality}
             getRecordHours={getRecordHours}
-          />
-        </TabsContent>
-
-        {/* TAB 3: OT & REST DAY APPROVALS HUB */}
-        <TabsContent value="ot-approvals" className="space-y-4 m-0">
-          <OtApprovalsHub
-            getScheduledShiftForDate={getScheduledShiftForDate}
-            onInspectRecord={(data) => {
-              setSelectedDate(data.date);
-              setInspectRecord(data);
-            }}
           />
         </TabsContent>
 
