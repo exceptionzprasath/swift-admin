@@ -9,7 +9,7 @@ import {
   Trash2, Edit2, Sparkles, Filter, Check, ArrowRight,
   Sun, Moon, Sunrise, Sunset, Layers, RefreshCw,
   FileSpreadsheet, Upload, Download, FileDown, AlertTriangle, FileText,
-  Sliders, Timer
+  Sliders, Timer, Settings
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -512,8 +512,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                 />
               )}
               <span className="relative z-10 flex items-center gap-2 whitespace-nowrap">
-                <Sliders className="h-4 w-4 shrink-0" />
-                <span>Shift &amp; Workday Policies</span>
+                <Settings className="h-4 w-4 shrink-0" />
+                <span>Settings</span>
               </span>
             </button>
           </div>
@@ -986,10 +986,10 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
         </div>
       )}
 
-      {/* TAB 3: SHIFT & WORKDAY POLICIES (Work Day Settings & Late Come Restrictions) */}
+      {/* TAB 3: SETTINGS (Fallback Work Day Settings & Late Restriction Settings) */}
       {activeTab === "policies" && (
         <div className="space-y-6 max-w-5xl">
-          {/* Section 1: Work Day Settings */}
+          {/* Section 1: Work Day Settings - Company Default Fallback */}
           <Card className="rounded-2xl border-border bg-card shadow-xs">
             <CardHeader className="pb-3 border-b border-border/60">
               <div className="flex items-center justify-between">
@@ -1000,12 +1000,12 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                   <div>
                     <CardTitle className="text-base font-bold">Work Day &amp; Operating Hours Settings</CardTitle>
                     <CardDescription className="text-xs">
-                      Define standard company working days per month and daily scheduled working hours used across payroll and roster.
+                      Default baseline used as a company fallback for any employees or shifts without custom hours in Shift Master.
                     </CardDescription>
                   </div>
                 </div>
-                <Badge variant="outline" className="text-xs font-semibold">
-                  Standard Baseline
+                <Badge variant="outline" className="text-xs font-semibold bg-muted/40">
+                  Company Default Fallback
                 </Badge>
               </div>
             </CardHeader>
@@ -1013,8 +1013,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold text-foreground flex items-center justify-between">
-                    <span>Working Days / Month</span>
-                    <span className="text-[11px] text-muted-foreground font-normal">Standard: 26 or 30 days</span>
+                    <span>Default Working Days / Month</span>
+                    <span className="text-[11px] text-muted-foreground font-normal">Standard: 26 days</span>
                   </Label>
                   <Input
                     type="number"
@@ -1028,29 +1028,29 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                     className="font-semibold text-sm"
                   />
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Used for per-day salary divisor in Loss of Pay (LOP) and daily shift allowance computations.
+                    Fallback divisor for Loss of Pay (LOP) calculations. Note: Each shift profile in Shift Master overrides this per employee.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold text-foreground flex items-center justify-between">
-                    <span>Working Hours / Day</span>
-                    <span className="text-[11px] text-muted-foreground font-normal">Standard: 8 or 9 hours</span>
+                    <span>Default Working Hours / Day</span>
+                    <span className="text-[11px] text-muted-foreground font-normal">Standard: 8 hours</span>
                   </Label>
                   <Input
                     type="number"
                     min={1}
                     max={24}
                     step={0.5}
-                    value={company.workingHoursPerDay ?? 9}
+                    value={company.workingHoursPerDay ?? 8}
                     onChange={(e) => {
-                      const val = Math.max(1, Math.min(24, Number(e.target.value) || 9));
+                      const val = Math.max(1, Math.min(24, Number(e.target.value) || 8));
                       setCompany({ workingHoursPerDay: val });
                     }}
                     className="font-semibold text-sm"
                   />
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Scheduled work hours per full shift. Used to compute short permissions, OT hours, and half-day thresholds.
+                    Fallback scheduled hours for overtime/permissions when not defined on the employee&apos;s shift profile.
                   </p>
                 </div>
               </div>
@@ -1059,13 +1059,14 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                 <div className="flex items-center gap-3">
                   <Clock className="h-5 w-5 text-primary shrink-0" />
                   <div>
-                    <span className="font-semibold text-foreground">Monthly Working Baseline: </span>
+                    <span className="font-semibold text-foreground">Company Baseline Fallback: </span>
                     <span className="text-muted-foreground">
-                      {(company.workingDaysPerMonth ?? 26)} Days × {(company.workingHoursPerDay ?? 9)} Hours ={" "}
-                      <strong className="text-foreground">{(company.workingDaysPerMonth ?? 26) * (company.workingHoursPerDay ?? 9)} Scheduled Working Hours / Month</strong>
+                      {(company.workingDaysPerMonth ?? 26)} Days × {(company.workingHoursPerDay ?? 8)} Hours ={" "}
+                      <strong className="text-foreground">{(company.workingDaysPerMonth ?? 26) * (company.workingHoursPerDay ?? 8)} Scheduled Hours / Month</strong>
                     </span>
                   </div>
                 </div>
+                <span className="text-[11px] text-primary font-medium">Shifts in Shift Master override this</span>
               </div>
             </CardContent>
           </Card>
@@ -1288,9 +1289,9 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                 setSavingPolicies(true);
                 try {
                   await saveAllCompanySettings();
-                  toast.success("Work day & late restriction policies saved to cloud database!");
+                  toast.success("Roster and workday settings saved to cloud database!");
                 } catch (e: any) {
-                  toast.error("Failed to save policies: " + (e?.message || e));
+                  toast.error("Failed to save settings: " + (e?.message || e));
                 } finally {
                   setSavingPolicies(false);
                 }
@@ -1299,7 +1300,7 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
               className="gap-2 bg-primary text-primary-foreground font-semibold px-6 h-10 rounded-xl shadow-xs"
             >
               {savingPolicies ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              <span>{savingPolicies ? "Saving Policies..." : "Save Shift & Workday Policies"}</span>
+              <span>{savingPolicies ? "Saving Settings..." : "Save Settings"}</span>
             </Button>
           </div>
         </div>
