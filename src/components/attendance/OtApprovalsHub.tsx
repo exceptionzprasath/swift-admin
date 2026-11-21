@@ -413,7 +413,7 @@ export const OtApprovalsHub: React.FC<OtApprovalsHubProps> = ({
       {/* 1. TOP CONTROLS & SUB-NAVIGATOR */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3 rounded-2xl border border-border shadow-xs">
         {/* Segmented Sub-View Toggle (OT vs Rest Day Work) */}
-        <div className="flex items-center gap-1.5 bg-muted/60 p-1 rounded-xl">
+        <div className="flex items-center gap-1.5 bg-muted/60 p-1 rounded-xl border border-primary/30 shadow-xs shadow-primary/5">
           <button
             type="button"
             onClick={() => setSubTab("overtime")}

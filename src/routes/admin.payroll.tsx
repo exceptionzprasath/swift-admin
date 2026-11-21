@@ -1255,7 +1255,8 @@ export function PayrollPage() {
       unexcusedAbsentDays: (editingRecord as any).unexcusedAbsentDays ?? 0,
     });
   }, [editingRecord, company, isCustomDateRange, rangeWorkingDays]);
-  // Computed summaries for Tab 2 (Monthly Payroll Run)
+
+  // Computed summaries for Tab 2 (Monthly Payroll Run)
   const runTotals = useMemo(() => {
     return monthlyRegister.reduce(
       (acc, item) => ({
@@ -1856,7 +1857,7 @@ export function PayrollPage() {
       {/* Main Navigation Tabs */}
       <Tabs value={mainTab} onValueChange={(v: any) => setMainTab(v)} className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-2.5">
-          <TabsList className="bg-muted/60 p-1 rounded-xl h-auto">
+          <TabsList className="bg-muted/60 p-1 rounded-xl h-auto border border-primary/30 shadow-xs shadow-primary/5">
             <TabsTrigger value="structure" className="rounded-lg gap-2 text-xs font-semibold py-1.5 px-3">
               <Coins className="h-3.5 w-3.5" />
               <span>Salary Structure & Live Payslip</span>

@@ -403,7 +403,7 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
         )}        {/* Unified Control Bar: Tabs on Left, Actions on Right */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 flex-wrap">
           {/* Frosted Capsule Tab Switcher - Sleek, Balanced & Non-wrapping */}
-          <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/80 bg-card/85 dark:bg-card/50 backdrop-blur-xl shadow-xs shrink-0 max-w-full overflow-x-auto">
+          <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-primary/35 dark:border-primary/45 bg-card/85 dark:bg-card/50 backdrop-blur-xl shadow-xs shadow-primary/5 shrink-0 max-w-full overflow-x-auto">
             <button
               type="button"
               onClick={() => setActiveTab("planner")}

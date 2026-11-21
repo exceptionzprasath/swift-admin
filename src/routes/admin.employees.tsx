@@ -467,7 +467,7 @@ function EmployeesPage() {
     <div className="space-y-6">
       {/* Top Section Frosted Pill Tab Bar */}
       <div className="flex items-center justify-between flex-wrap gap-4 pb-1">
-        <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/60 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs">
+        <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-primary/35 dark:border-primary/45 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs shadow-primary/5">
           <button
             type="button"
             onClick={() => handleTabChange("active")}
