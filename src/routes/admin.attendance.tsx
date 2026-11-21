@@ -104,7 +104,6 @@ import { DeviceManagerHub } from "@/components/biometric/DeviceManagerHub";
 import { StaffBiometricDirectory } from "@/components/biometric/StaffBiometricDirectory";
 import { MonthlyStaffMatrixHub, getExportAttendanceStatus } from "@/components/attendance/MonthlyStaffMatrixHub";
 import { AwolAlertBanner } from "@/components/attendance/AwolAlertBanner";
-import { RestDayWorkApprovalHub } from "@/components/attendance/RestDayWorkApprovalHub";
 import { OtApprovalsHub } from "@/components/attendance/OtApprovalsHub";
 import { evaluateMonthlyLatePunches } from "@/lib/late-punch";
 import { UniversalUsbUploadModal } from "@/components/biometric/UniversalUsbUploadModal";
@@ -395,8 +394,6 @@ function AttendancePage() {
     updateDevice,
     deleteDevice,
     loadCompanyState,
-    approveRestDayWork,
-    rejectRestDayWork,
   } = useStore();
   const employees = useMemo(() => (rawEmployees || []).filter(isActiveEmployee), [rawEmployees]);
   const { activeTenantId } = useAuth();
@@ -1235,34 +1232,6 @@ function AttendancePage() {
       attendancePercentage,
     };
   }, [dailyRows, activeEmployees.length]);
-
-  // Quick Approve & Reject Rest Day / Sunday Work Handlers
-  const handleApproveRestDay = useCallback(
-    async (rec?: AttendanceRecord, emp?: Employee) => {
-      if (!rec || !emp) return;
-      try {
-        const hrs = rec.hoursWorked || 8;
-        await approveRestDayWork(rec.id, hrs, "Admin");
-        toast.success(`✨ Approved ${hrs}h Sunday work for ${emp.name}!`);
-      } catch (err: any) {
-        toast.error(err?.message || "Failed to approve Sunday work");
-      }
-    },
-    [approveRestDayWork]
-  );
-
-  const handleRejectRestDay = useCallback(
-    async (rec?: AttendanceRecord, emp?: Employee) => {
-      if (!rec || !emp) return;
-      try {
-        await rejectRestDayWork(rec.id, "Declined by Admin", "Admin");
-        toast.info(`Declined Sunday work for ${emp.name}.`);
-      } catch (err: any) {
-        toast.error(err?.message || "Failed to decline Sunday work");
-      }
-    },
-    [rejectRestDayWork]
-  );
 
   // Open Manual Edit Punch / Regularization Dialog for specific employee & date
   const handleOpenRegularize = useCallback(
@@ -2613,32 +2582,6 @@ function AttendancePage() {
                                 );
                               })()
                             )}
-                            {rec &&
-                              (punctuality.label.includes("Rest Day Work") ||
-                                punctuality.label.includes("Holiday Work") ||
-                                rec.isRestDayWork) &&
-                              rec.restDayWorkStatus !== "approved" &&
-                              rec.restDayWorkStatus !== "rejected" && (
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleApproveRestDay(rec, emp)}
-                                    className="h-6 px-2 text-[10px] rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1"
-                                  >
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleRejectRestDay(rec, emp)}
-                                    className="h-6 px-2 text-[10px] rounded-md border-rose-500/30 text-rose-600 hover:bg-rose-500/10 font-semibold gap-1"
-                                  >
-                                    <XCircle className="h-3 w-3" />
-                                    Decline
-                                  </Button>
-                                </div>
-                              )}
                           </div>
                         </td>
 
@@ -2709,29 +2652,6 @@ function AttendancePage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-44 rounded-xl shadow-lg">
-                                {rec && (punctuality.label.includes("Work") || punctuality.label.includes("Pending Approval") || rec.isRestDayWork) && (
-                                  <>
-                                    {rec.restDayWorkStatus !== "approved" && (
-                                      <DropdownMenuItem
-                                        onClick={() => handleApproveRestDay(rec, emp)}
-                                        className="font-semibold text-emerald-600 focus:text-emerald-700 cursor-pointer"
-                                      >
-                                        <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-emerald-600" />
-                                        Approve {punctuality.label.includes("Holiday") ? "Holiday" : "Sunday"} Work
-                                      </DropdownMenuItem>
-                                    )}
-                                    {rec.restDayWorkStatus !== "rejected" && (
-                                      <DropdownMenuItem
-                                        onClick={() => handleRejectRestDay(rec, emp)}
-                                        className="font-semibold text-rose-600 focus:text-rose-700 cursor-pointer"
-                                      >
-                                        <XCircle className="h-3.5 w-3.5 mr-2 text-rose-600" />
-                                        Decline {punctuality.label.includes("Holiday") ? "Holiday" : "Sunday"} Work
-                                      </DropdownMenuItem>
-                                    )}
-                                    <DropdownMenuSeparator />
-                                  </>
-                                )}
                                 <DropdownMenuItem
                                   onClick={() => handleOpenRegularize(emp, selectedDate, rec)}
                                   className="font-semibold text-amber-600 cursor-pointer"
