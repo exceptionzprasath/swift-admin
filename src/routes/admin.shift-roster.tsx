@@ -1,5 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useMemo, useRef, useEffect } from "react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import { useStore, ShiftType, ShiftAssignment, Employee, isMockEmployee, isFrozenEmployee, isActiveEmployee } from "@/lib/store";
 import {
   Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus,
@@ -385,82 +387,148 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
 
   return (
     <div className="space-y-6">
-      {/* Top Header & Stat Badges */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-              Live Scheduler
-            </Badge>
+      {/* Shift Roster Header & Navigation Toolbar */}
+      <div className="space-y-4">
+        {!isEmbedded && (
+          <div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                Live Scheduler
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Configure custom company shifts, manage advance rotational rosters, and assign monthly shift timings with grace periods.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure custom company shifts, manage advance rotational rosters, and assign monthly shift timings with grace periods.
-          </p>
-        </div>
+        )}
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <Button
-            variant={activeTab === "planner" ? "default" : "outline"}
-            onClick={() => setActiveTab("planner")}
-            className="gap-2"
-          >
-            <CalendarDays className="h-4 w-4" />
-            <span>Monthly Roster Planner</span>
-          </Button>
+        {/* Unified Control Bar: Tabs on Left, Quick Actions on Right */}
+        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 pb-1">
+          {/* Frosted Capsule Tab Switcher */}
+          <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/70 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs self-start">
+            <button
+              type="button"
+              onClick={() => setActiveTab("planner")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeTab === "planner"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeTab === "planner" && (
+                <motion.div
+                  layoutId="shiftRosterActiveTabPill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 shrink-0" />
+                <span>Monthly Roster Planner</span>
+              </span>
+            </button>
 
-          <Button
-            variant={activeTab === "shifts" ? "default" : "outline"}
-            onClick={() => setActiveTab("shifts")}
-            className="gap-2"
-          >
-            <Layers className="h-4 w-4" />
-            <span>Shift Master ({shifts.length})</span>
-          </Button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("shifts")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeTab === "shifts"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeTab === "shifts" && (
+                <motion.div
+                  layoutId="shiftRosterActiveTabPill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <Layers className="h-4 w-4 shrink-0" />
+                <span>Shift Master</span>
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "ml-0.5 px-1.5 py-0 text-[10px] font-bold rounded-full",
+                    activeTab === "shifts"
+                      ? "bg-white/20 text-white"
+                      : "bg-primary/10 text-primary"
+                  )}
+                >
+                  {shifts.length}
+                </Badge>
+              </span>
+            </button>
 
-          <Button
-            variant={activeTab === "policies" ? "default" : "outline"}
-            onClick={() => setActiveTab("policies")}
-            className="gap-2"
-          >
-            <Sliders className="h-4 w-4" />
-            <span>Shift &amp; Workday Policies</span>
-          </Button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("policies")}
+              className={cn(
+                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeTab === "policies"
+                  ? "text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {activeTab === "policies" && (
+                <motion.div
+                  layoutId="shiftRosterActiveTabPill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <Sliders className="h-4 w-4 shrink-0" />
+                <span>Shift &amp; Workday Policies</span>
+              </span>
+            </button>
+          </div>
 
-          {activeTab === "planner" && (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => setBulkUploadOpen(true)}
-                className="gap-2 border-primary/30 text-primary hover:bg-primary/5 shadow-xs"
-              >
-                <Upload className="h-4 w-4" />
-                <span>Bulk Upload Roster (Excel / CSV)</span>
-              </Button>
-
-              <Button
-                onClick={() => {
-                  setBulkForm((prev) => ({
-                    ...prev,
-                    employeeId: employees[0]?.id || "",
-                  }));
-                  setBulkAssignOpen(true);
-                }}
-                className="gap-2 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 text-white shadow-sm"
-              >
-                <Sparkles className="h-4 w-4" />
-                <span>+ Bulk Assign Month Shifts</span>
-              </Button>
-            </>
-          )}
-
-          {activeTab === "shifts" && (
-            <Button onClick={handleOpenNewShift} className="gap-2 bg-primary text-primary-foreground">
-              <Plus className="h-4 w-4" />
-              <span>+ Create New Shift</span>
+          {/* Action Buttons: Bulk Upload, Bulk Assign, Create Shift */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkUploadOpen(true)}
+              className="h-9 px-3.5 text-xs font-semibold rounded-xl gap-2 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary shadow-2xs transition-all cursor-pointer"
+            >
+              <Upload className="h-4 w-4 shrink-0" />
+              <span>Bulk Upload Roster (Excel / CSV)</span>
             </Button>
-          )}
+
+            <Button
+              size="sm"
+              onClick={() => {
+                setBulkForm((prev) => ({
+                  ...prev,
+                  employeeId: employees[0]?.id || "",
+                }));
+                setBulkAssignOpen(true);
+              }}
+              className="h-9 px-3.5 text-xs font-semibold rounded-xl gap-2 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 text-white shadow-sm transition-all cursor-pointer"
+            >
+              <Sparkles className="h-4 w-4 shrink-0" />
+              <span>+ Bulk Assign Month Shifts</span>
+            </Button>
+
+            {activeTab === "shifts" && (
+              <Button
+                size="sm"
+                onClick={handleOpenNewShift}
+                className="h-9 px-3.5 text-xs font-semibold rounded-xl gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer"
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+                <span>+ Create New Shift</span>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
+
+
 
       {/* TAB 1: MONTHLY ROSTER PLANNER */}
       {activeTab === "planner" && (
