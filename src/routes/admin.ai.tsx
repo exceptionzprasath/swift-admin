@@ -8,9 +8,11 @@ import { checkOpenAiStatus } from "@/lib/ai.functions";
 import { useUnifiedAiStore } from "@/lib/ai-unified-store";
 import { aiOrchestrator } from "@/lib/ai-orchestrator";
 import { AIResponseRenderer } from "@/components/ai/AIResponseRenderer";
+import { PunctualityInsightsView } from "@/components/ai/PunctualityInsightsView";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CreatonsAiIcon } from "@/components/icons/creatons-ai-icon";
+import { cn } from "@/lib/utils";
 import {
   Send,
   Loader2,
@@ -31,6 +33,7 @@ import {
   Compass,
   Smile,
   MessageSquare,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -88,6 +91,8 @@ export const Route = createFileRoute("/admin/ai")({
 function SwiftAiCommandCenter() {
   const { user, isSuperAdmin, activeTenantId, memberships } = useAuth();
   const { company, employees, attendance, payrolls, leaves, docRequests } = useStore();
+
+  const [activeTab, setActiveTab] = useState<"copilot" | "punctuality">("copilot");
 
   const authContext = useMemo(() => {
     return resolveUserContext(user, isSuperAdmin, memberships, employees, company);
@@ -338,9 +343,10 @@ function SwiftAiCommandCenter() {
   };
 
   const filterPills = [
+    { label: "Punctuality", icon: TrendingUp, query: "Show company punctuality trends and top punctual champions." },
     { label: "Fast", icon: Zap, query: "Show today's workforce overview and live attendance stats." },
     { label: "In-depth", icon: Lightbulb, query: "Provide an in-depth analysis of employee attendance and pending leave trends this month." },
-    { label: "In-depth", icon: Layers, query: "Audit recent payroll calculations, bonuses, and tax deductions." },
+    { label: "Audit", icon: Layers, query: "Audit recent payroll calculations, bonuses, and tax deductions." },
     { label: "Holistic", icon: Compass, query: "Give a holistic summary of HR operations, active headcount, and compliance readiness." },
   ];
 
@@ -373,12 +379,46 @@ function SwiftAiCommandCenter() {
       </div>
 
       {/* ======================================================== */}
-      {/* 2. TOP ACTION BAR (ONLY WHEN IN ACTIVE CONVERSATION)     */}
+      {/* 2. TOP ACTION & TAB SWITCHER BAR                         */}
       {/* ======================================================== */}
-      {hasConversation && (
-        <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-row flex-nowrap items-center justify-between gap-4 z-20">
-          {/* Left: Model Indicator & Message Count */}
-          <div className="flex items-center gap-2 whitespace-nowrap">
+      <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-row flex-wrap items-center justify-between gap-3 z-30">
+        {/* Capsule Navigation Switcher: Copilot vs Punctuality Insights */}
+        <div className="inline-flex items-center gap-1 p-1 rounded-full border border-border/80 bg-background/80 shadow-xs backdrop-blur-md">
+          <button
+            type="button"
+            onClick={() => setActiveTab("copilot")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
+              activeTab === "copilot"
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <CreatonsAiIcon className="h-3.5 w-3.5" />
+            <span>AI Copilot</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("punctuality")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
+              activeTab === "punctuality"
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <TrendingUp className="h-3.5 w-3.5" />
+            <span>Punctuality Insights</span>
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-current font-bold">
+              AI
+            </Badge>
+          </button>
+        </div>
+
+        {/* Right Tools: Model Indicator + Actions (when in active conversation) */}
+        {activeTab === "copilot" && hasConversation && (
+          <div className="flex items-center gap-2 shrink-0">
             <Badge
               variant="outline"
               className="border-white/50 text-primary text-xs font-semibold py-1 px-3 shadow-xs"
@@ -389,13 +429,6 @@ function SwiftAiCommandCenter() {
             >
               {selectedModel === "gpt-4o" ? "GPT-4o Deep Reasoning" : "GPT-4o Mini Fast"}
             </Badge>
-            <span className="text-xs text-muted-foreground">
-              {company.name} · {conversationMessages.length} messages
-            </span>
-          </div>
-
-          {/* Right Tools: Clean Horizontal Actions */}
-          <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
@@ -421,13 +454,26 @@ function SwiftAiCommandCenter() {
               <Download className="h-3.5 w-3.5" /> Export
             </Button>
           </div>
-        </header>
-      )}
+        )}
+      </header>
 
       {/* ======================================================== */}
-      {/* 3. MAIN HERO VIEW OR FULL CHAT VIEW                      */}
+      {/* 3. MAIN CONTENT: PUNCTUALITY INSIGHTS VS COPILOT          */}
       {/* ======================================================== */}
-      {!hasConversation ? (
+      {activeTab === "punctuality" ? (
+        <main className="flex-1 w-full max-w-7xl mx-auto py-2 z-20 overflow-y-auto">
+          <PunctualityInsightsView
+            employees={employees}
+            shifts={company.shifts || []}
+            company={company}
+            attendance={attendance}
+            onAskAi={(query) => {
+              setActiveTab("copilot");
+              handleSend(query);
+            }}
+          />
+        </main>
+      ) : !hasConversation ? (
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col justify-center items-center relative py-6 md:py-10">
           {/* Clean Creatons AI Microchip Icon */}
           <motion.div

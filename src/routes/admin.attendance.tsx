@@ -46,7 +46,6 @@ import {
   Eye,
   Edit3,
   Sparkles,
-  TrendingUp,
   ShieldCheck,
   ShieldAlert,
   ChevronLeft,
@@ -59,7 +58,6 @@ import {
   Activity,
   Layers,
   AlertTriangle,
-  Award,
   ArrowUpRight,
   Sparkle,
   Flame,
@@ -1971,10 +1969,6 @@ function AttendancePage() {
               <CalendarIcon className="h-3.5 w-3.5" />
               Monthly Staff Matrix
             </TabsTrigger>
-            <TabsTrigger value="analytics" className="rounded-lg gap-1.5 text-xs font-medium">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Punctuality Insights
-            </TabsTrigger>
             <TabsTrigger value="devices" className="rounded-lg gap-1.5 text-xs font-medium">
               <Cpu className="h-3.5 w-3.5" />
               Biometric Hardware Terminals
@@ -2726,105 +2720,7 @@ function AttendancePage() {
           />
         </TabsContent>
 
-        {/* TAB 3: PUNCTUALITY INSIGHTS & LEADERBOARD */}
-        <TabsContent value="analytics" className="space-y-4 m-0">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Punctuality Leaderboard */}
-            <Card className="rounded-2xl border-border bg-card">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Award className="h-5 w-5 text-amber-500" />
-                  Top Punctual Champions
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Highest on-time arrival rate this month
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {employees.slice(0, 5).map((emp, i) => (
-                  <div
-                    key={emp.id}
-                    className="flex items-center justify-between p-2 rounded-xl hover:bg-muted/40 transition-colors cursor-pointer"
-                    onClick={() => setDossierEmployee(emp)}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className={`h-6 w-6 rounded-full flex items-center justify-center font-bold text-xs ${
-                        i === 0 ? "bg-amber-500/20 text-amber-600" : i === 1 ? "bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300" : "bg-orange-500/20 text-orange-600"
-                      }`}>
-                        #{i + 1}
-                      </span>
-                      <div>
-                        <div className="font-semibold text-sm flex items-center gap-1.5">
-                          <span>{emp.name}</span>
-                          <EmploymentTypeBadge type={emp.employmentType} />
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">{emp.department}</div>
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-semibold">
-                      98.{9 - i}% On-Time
-                    </Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Shift Distribution */}
-            <Card className="rounded-2xl border-border bg-card">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Layers className="h-5 w-5 text-primary" />
-                  Shift Attendance Spread
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Daily participation across registered shifts
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {shifts.map((shift) => (
-                  <div key={shift.id} className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium">{shift.name} ({shift.start}-{shift.end})</span>
-                      <span className="text-muted-foreground font-semibold">88% Present</span>
-                    </div>
-                    <Progress value={88} className="h-2" />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Face & Biometric Verification Coverage */}
-            <Card className="rounded-2xl border-border bg-card">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ShieldCheck className="h-5 w-5 text-emerald-500" />
-                  Biometric Verification Health
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Rekognition & Geofencing Integrity
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
-                  <div>
-                    <div className="text-xs text-muted-foreground">Face Verification Success</div>
-                    <div className="font-bold text-lg text-emerald-600">99.4%</div>
-                  </div>
-                  <Camera className="h-6 w-6 text-emerald-500" />
-                </div>
-                <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between">
-                  <div>
-                    <div className="text-xs text-muted-foreground">Geofence Compliance</div>
-                    <div className="font-bold text-lg text-primary">97.8%</div>
-                  </div>
-                  <MapPin className="h-6 w-6 text-primary" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* TAB 4: BIOMETRIC HARDWARE TERMINALS & ADMS HUB */}
+        {/* TAB 3: BIOMETRIC HARDWARE TERMINALS & ADMS HUB */}
         <TabsContent value="devices" className="space-y-4 m-0">
           {/* Sub-view switcher for Terminals vs Staff Directory vs Live Feed */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-2.5">
