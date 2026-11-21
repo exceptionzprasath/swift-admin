@@ -1915,8 +1915,8 @@ function AttendancePage() {
 
       {/* Main Tabs (Daily Roster, Monthly Matrix, Analytics) */}
       <Tabs defaultValue="daily" className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-2">
-          <TabsList className="bg-muted/60 p-1 rounded-xl">
+        <div className="border-b border-border pb-2">
+          <TabsList className="bg-muted/60 p-1 rounded-xl h-auto flex flex-wrap gap-1">
             <TabsTrigger value="daily" className="rounded-lg gap-1.5 text-xs font-medium">
               <Activity className="h-3.5 w-3.5" />
               Daily Live Roster
@@ -1955,10 +1955,6 @@ function AttendancePage() {
               )}
             </TabsTrigger>
           </TabsList>
-
-          <span className="text-xs text-muted-foreground">
-            Showing <strong className="text-foreground">{filteredDailyRows.length}</strong> of {activeEmployees.length} employees
-          </span>
         </div>
 
         {/* TAB 1: DAILY LIVE ROSTER */}
