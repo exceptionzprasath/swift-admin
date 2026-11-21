@@ -400,19 +400,17 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
               Configure custom company shifts, manage advance rotational rosters, and assign monthly shift timings with grace periods.
             </p>
           </div>
-        )}
-
-        {/* Unified Control Bar: Tabs on Left, Quick Actions on Right */}
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 pb-1">
-          {/* Frosted Capsule Tab Switcher */}
-          <div className="inline-flex items-center gap-1 p-1 sm:gap-1.5 sm:p-1.5 rounded-full border border-border/70 bg-card/75 dark:bg-card/50 backdrop-blur-xl shadow-xs self-start">
+        )}        {/* Unified Control Bar: Tabs on Left, Quick Actions on Right */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-2 flex-wrap">
+          {/* Frosted Capsule Tab Switcher - Spacious, Enlarged & Non-wrapping */}
+          <div className="inline-flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-full border border-border/80 bg-card/85 dark:bg-card/50 backdrop-blur-xl shadow-xs shrink-0 max-w-full overflow-x-auto">
             <button
               type="button"
               onClick={() => setActiveTab("planner")}
               className={cn(
-                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "relative px-5 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-[15px] font-semibold rounded-full transition-colors flex items-center gap-2.5 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring whitespace-nowrap shrink-0",
                 activeTab === "planner"
-                  ? "text-primary-foreground font-semibold"
+                  ? "text-primary-foreground font-bold shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -423,8 +421,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                   transition={{ type: "spring", stiffness: 450, damping: 32 }}
                 />
               )}
-              <span className="relative z-10 flex items-center gap-2">
-                <CalendarDays className="h-4 w-4 shrink-0" />
+              <span className="relative z-10 flex items-center gap-2.5 whitespace-nowrap">
+                <CalendarDays className="h-4.5 w-4.5 sm:h-5 sm:w-5 shrink-0" />
                 <span>Monthly Roster Planner</span>
               </span>
             </button>
@@ -433,9 +431,9 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
               type="button"
               onClick={() => setActiveTab("shifts")}
               className={cn(
-                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "relative px-5 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-[15px] font-semibold rounded-full transition-colors flex items-center gap-2.5 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring whitespace-nowrap shrink-0",
                 activeTab === "shifts"
-                  ? "text-primary-foreground font-semibold"
+                  ? "text-primary-foreground font-bold shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -446,13 +444,13 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                   transition={{ type: "spring", stiffness: 450, damping: 32 }}
                 />
               )}
-              <span className="relative z-10 flex items-center gap-2">
-                <Layers className="h-4 w-4 shrink-0" />
+              <span className="relative z-10 flex items-center gap-2.5 whitespace-nowrap">
+                <Layers className="h-4.5 w-4.5 sm:h-5 sm:w-5 shrink-0" />
                 <span>Shift Master</span>
                 <Badge
                   variant="secondary"
                   className={cn(
-                    "ml-0.5 px-1.5 py-0 text-[10px] font-bold rounded-full",
+                    "ml-1 px-2 py-0.5 text-xs font-bold rounded-full",
                     activeTab === "shifts"
                       ? "bg-white/20 text-white"
                       : "bg-primary/10 text-primary"
@@ -467,9 +465,9 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
               type="button"
               onClick={() => setActiveTab("policies")}
               className={cn(
-                "relative px-4 sm:px-5 py-2 text-xs sm:text-sm font-medium rounded-full transition-colors flex items-center gap-2 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "relative px-5 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-[15px] font-semibold rounded-full transition-colors flex items-center gap-2.5 select-none cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring whitespace-nowrap shrink-0",
                 activeTab === "policies"
-                  ? "text-primary-foreground font-semibold"
+                  ? "text-primary-foreground font-bold shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -480,20 +478,20 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                   transition={{ type: "spring", stiffness: 450, damping: 32 }}
                 />
               )}
-              <span className="relative z-10 flex items-center gap-2">
-                <Sliders className="h-4 w-4 shrink-0" />
+              <span className="relative z-10 flex items-center gap-2.5 whitespace-nowrap">
+                <Sliders className="h-4.5 w-4.5 sm:h-5 sm:w-5 shrink-0" />
                 <span>Shift &amp; Workday Policies</span>
               </span>
             </button>
           </div>
 
           {/* Action Buttons: Bulk Upload, Bulk Assign, Create Shift */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap shrink-0">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setBulkUploadOpen(true)}
-              className="h-9 px-3.5 text-xs font-semibold rounded-xl gap-2 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary shadow-2xs transition-all cursor-pointer"
+              className="h-10 px-4 text-xs sm:text-sm font-semibold rounded-xl gap-2 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary shadow-2xs transition-all cursor-pointer whitespace-nowrap"
             >
               <Upload className="h-4 w-4 shrink-0" />
               <span>Bulk Upload Roster (Excel / CSV)</span>
@@ -508,7 +506,7 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
                 }));
                 setBulkAssignOpen(true);
               }}
-              className="h-9 px-3.5 text-xs font-semibold rounded-xl gap-2 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 text-white shadow-sm transition-all cursor-pointer"
+              className="h-10 px-4 text-xs sm:text-sm font-semibold rounded-xl gap-2 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 text-white shadow-sm transition-all cursor-pointer whitespace-nowrap"
             >
               <Sparkles className="h-4 w-4 shrink-0" />
               <span>+ Bulk Assign Month Shifts</span>
@@ -518,7 +516,7 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
               <Button
                 size="sm"
                 onClick={handleOpenNewShift}
-                className="h-9 px-3.5 text-xs font-semibold rounded-xl gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer"
+                className="h-10 px-4 text-xs sm:text-sm font-semibold rounded-xl gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer whitespace-nowrap"
               >
                 <Plus className="h-4 w-4 shrink-0" />
                 <span>+ Create New Shift</span>
@@ -527,6 +525,8 @@ export function ShiftRosterPage({ isEmbedded = false }: { isEmbedded?: boolean }
           </div>
         </div>
       </div>
+
+
 
 
 
