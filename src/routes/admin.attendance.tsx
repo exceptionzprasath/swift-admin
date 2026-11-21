@@ -105,6 +105,7 @@ import { StaffBiometricDirectory } from "@/components/biometric/StaffBiometricDi
 import { MonthlyStaffMatrixHub, getExportAttendanceStatus } from "@/components/attendance/MonthlyStaffMatrixHub";
 import { AwolAlertBanner } from "@/components/attendance/AwolAlertBanner";
 import { RestDayWorkApprovalHub } from "@/components/attendance/RestDayWorkApprovalHub";
+import { OtApprovalsHub } from "@/components/attendance/OtApprovalsHub";
 import { evaluateMonthlyLatePunches } from "@/lib/late-punch";
 import { UniversalUsbUploadModal } from "@/components/biometric/UniversalUsbUploadModal";
 
@@ -1926,9 +1927,9 @@ function AttendancePage() {
               <CalendarIcon className="h-3.5 w-3.5" />
               Monthly Staff Matrix
             </TabsTrigger>
-            <TabsTrigger value="rest-day" className="rounded-lg gap-1.5 text-xs font-medium">
-              <CalendarCheck className="h-3.5 w-3.5" />
-              Rest Day Work Approvals
+            <TabsTrigger value="ot-approvals" className="rounded-lg gap-1.5 text-xs font-medium">
+              <Timer className="h-3.5 w-3.5 text-primary" />
+              OT Approvals
               {(() => {
                 const pendingRestCount = (attendance || []).filter((a) => {
                   if (!a || !a.date || (!a.checkIn && !a.clockIn && !a.isRestDayWork)) return false;
@@ -1936,7 +1937,7 @@ function AttendancePage() {
                   return (isSun || a.isRestDayWork) && a.restDayWorkStatus !== "approved" && a.restDayWorkStatus !== "rejected";
                 }).length;
                 return pendingRestCount > 0 ? (
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold">
                     {pendingRestCount}
                   </Badge>
                 ) : null;
@@ -2746,9 +2747,9 @@ function AttendancePage() {
           />
         </TabsContent>
 
-        {/* TAB 2B: REST DAY & HOLIDAY WORK APPROVALS */}
-        <TabsContent value="rest-day" className="space-y-4 m-0">
-          <RestDayWorkApprovalHub
+        {/* TAB 3: OT & REST DAY APPROVALS HUB */}
+        <TabsContent value="ot-approvals" className="space-y-4 m-0">
+          <OtApprovalsHub
             getScheduledShiftForDate={getScheduledShiftForDate}
             onInspectRecord={(data) => {
               setSelectedDate(data.date);
