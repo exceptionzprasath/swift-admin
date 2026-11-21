@@ -1,3 +1,4 @@
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import React, { useMemo, useState, useCallback } from "react";
 import { useStore, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type LeaveRequest } from "@/lib/store";
@@ -24,6 +25,7 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Eye,
   Edit3,
   CalendarCheck,
@@ -259,9 +261,24 @@ export function MonthlyStaffMatrixHub({
   const [employeeStatus, setEmployeeStatus] = useState<"active" | "all" | "inactive">("active");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
 
+  // Filter visibility toggle (hidden by default)
+  const [showFilters, setShowFilters] = useState<boolean>(false);
+
   // Pagination for Detailed Report
   const [detailedPage, setDetailedPage] = useState<number>(1);
   const [detailedPageSize, setDetailedPageSize] = useState<number>(50);
+
+  // Count active non-default filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (selectedDepartment !== "all") count++;
+    if (selectedShift !== "all") count++;
+    if (selectedBranch !== "all") count++;
+    if (searchQuery.trim()) count++;
+    if (orderBy !== "name") count++;
+    if (sortDirection !== "asc") count++;
+    return count;
+  }, [selectedDepartment, selectedShift, selectedBranch, searchQuery, orderBy, sortDirection]);
 
   // Departments list
   const departments = useMemo(() => {
@@ -921,8 +938,32 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
               </div>
             </div>
 
-            {/* Export Action */}
+            {/* Export & Filter Actions */}
             <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFilters((prev) => !prev)}
+                className={cn(
+                  "h-8 text-xs gap-1.5 rounded-lg font-medium transition-all cursor-pointer",
+                  showFilters
+                    ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90 shadow-2xs"
+                    : activeFilterCount > 0
+                    ? "bg-primary/15 border-primary/50 text-primary hover:bg-primary/20 shadow-2xs"
+                    : "bg-background hover:bg-muted text-foreground"
+                )}
+              >
+                <Filter className="h-3.5 w-3.5" />
+                <span>Filter</span>
+                {activeFilterCount > 0 && (
+                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4 bg-primary/20 text-primary font-bold rounded-full">
+                    {activeFilterCount}
+                  </Badge>
+                )}
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-300 ease-out", showFilters && "rotate-180")} />
+              </Button>
+
               <Button
                 type="button"
                 onClick={handleExportCSV}
@@ -934,204 +975,208 @@ Attendance Matrix Report from : ${fromDate} to ${toDate},,,,,,,,,,,,,,,,,,,,,,,,
             </div>
           </div>
 
-          {/* Second row: Report Type, Order By, Department, Shift, Branch, Status, Search */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5">
-            {/* Report Type Selector */}
-            <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-medium">Report Type</Label>
-              <Select value={reportType} onValueChange={(v) => { setReportType(v as ReportTypeOption); setDetailedPage(1); }}>
-                <SelectTrigger className="h-8 text-xs rounded-lg font-medium">
-                  <SelectValue placeholder="Report Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="matrix_status">Attendance Matrix By Status</SelectItem>
-                  <SelectItem value="matrix_hours">Attendance Matrix By Hours</SelectItem>
-                  <SelectItem value="consolidated">Consolidated Report</SelectItem>
-                  <SelectItem value="detailed">Detailed Report</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Order By */}
-            <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-medium">Order By</Label>
-              <Select value={orderBy} onValueChange={(v) => setOrderBy(v as OrderByOption)}>
-                <SelectTrigger
-                  className={cn(
-                    "h-8 text-xs rounded-lg transition-all",
-                    orderBy !== "name"
-                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
-                      : "bg-background"
-                  )}
-                >
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name">Employee Name</SelectItem>
-                  <SelectItem value="department">Department</SelectItem>
-                  <SelectItem value="empCode">Employee ID</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Department Filter */}
-            <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-medium">Department</Label>
-              <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                <SelectTrigger
-                  className={cn(
-                    "h-8 text-xs rounded-lg transition-all",
-                    selectedDepartment !== "all"
-                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
-                      : "bg-background"
-                  )}
-                >
-                  <SelectValue placeholder="Department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Departments</SelectItem>
-                  {departments.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Shift Filter */}
-            <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-medium">Shift</Label>
-              <Select value={selectedShift} onValueChange={setSelectedShift}>
-                <SelectTrigger
-                  className={cn(
-                    "h-8 text-xs rounded-lg transition-all",
-                    selectedShift !== "all"
-                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
-                      : "bg-background"
-                  )}
-                >
-                  <SelectValue placeholder="Shift" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Shifts</SelectItem>
-                  {shifts.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} ({s.start}-{s.end})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Branch Filter */}
-            <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-medium">Branch</Label>
-              <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                <SelectTrigger
-                  className={cn(
-                    "h-8 text-xs rounded-lg transition-all",
-                    selectedBranch !== "all"
-                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
-                      : "bg-background"
-                  )}
-                >
-                  <SelectValue placeholder="Branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Branches</SelectItem>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Search Input (Employee Name / ID) */}
-            <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-medium">Employee Name / ID</Label>
-              <div className="relative">
-                <Search className={cn("absolute left-2.5 top-2.5 h-3.5 w-3.5 transition-colors", searchQuery.trim() ? "text-primary" : "text-muted-foreground")} />
-                <Input
-                  placeholder="Search staff..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={cn(
-                    "pl-8 pr-7 h-8 text-xs rounded-lg transition-all",
-                    searchQuery.trim()
-                      ? "bg-primary/10 border-primary/50 text-foreground font-medium ring-1 ring-primary/25 shadow-2xs"
-                      : "bg-background"
-                  )}
-                />
-                {searchQuery.trim() && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2 top-2 text-muted-foreground hover:text-foreground cursor-pointer"
-                    title="Clear search"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Sort Order Dropdown (Ascending / Descending) */}
-            <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-medium">Sort Order</Label>
-              <Select value={sortDirection} onValueChange={(v: "asc" | "desc") => setSortDirection(v)}>
-                <SelectTrigger
-                  className={cn(
-                    "h-8 text-xs rounded-lg transition-all",
-                    sortDirection !== "asc"
-                      ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
-                      : "bg-background"
-                  )}
-                >
-                  <SelectValue placeholder="Sort order" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="asc">Ascending (A → Z)</SelectItem>
-                  <SelectItem value="desc">Descending (Z → A)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Quick Info bar */}
-          <div className="flex flex-wrap items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/50">
-            <div className="flex items-center gap-3">
-              <span>
-                Employees: <strong className="text-foreground">{filteredEmployees.length}</strong>
-              </span>
-              <span>•</span>
-              <span>
-                Days in Range: <strong className="text-foreground">{daysInRange.length}</strong> ({fromDate} → {toDate})
-              </span>
-            </div>
-
-            {(selectedDepartment !== "all" || selectedShift !== "all" || selectedBranch !== "all" || searchQuery.trim() || sortDirection !== "asc" || orderBy !== "name") && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedDepartment("all");
-                  setSelectedShift("all");
-                  setSelectedBranch("all");
-                  setSearchQuery("");
-                  setOrderBy("name");
-                  setSortDirection("asc");
-                }}
-                className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-semibold cursor-pointer animate-in fade-in"
+          {/* Collapsible Second row: Filters Grid with Smooth Transition */}
+          <AnimatePresence initial={false}>
+            {showFilters && (
+              <motion.div
+                key="monthly-matrix-filters-panel"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                className="overflow-hidden"
               >
-                <RotateCcw className="h-3 w-3" />
-                <span>Reset Filters</span>
-              </button>
-            )}
+                <div className="pt-3 border-t border-border/60 space-y-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5">
+                    {/* Report Type Selector */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground font-medium">Report Type</Label>
+                      <Select value={reportType} onValueChange={(v) => { setReportType(v as ReportTypeOption); setDetailedPage(1); }}>
+                        <SelectTrigger className="h-8 text-xs rounded-lg font-medium">
+                          <SelectValue placeholder="Report Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="matrix_status">Attendance Matrix By Status</SelectItem>
+                          <SelectItem value="matrix_hours">Attendance Matrix By Hours</SelectItem>
+                          <SelectItem value="consolidated">Consolidated Report</SelectItem>
+                          <SelectItem value="detailed">Detailed Report</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-{/* Badges removed from Date Range settings box as requested */}
-          </div>
+                    {/* Order By */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground font-medium">Order By</Label>
+                      <Select value={orderBy} onValueChange={(v) => setOrderBy(v as OrderByOption)}>
+                        <SelectTrigger
+                          className={cn(
+                            "h-8 text-xs rounded-lg transition-all",
+                            orderBy !== "name"
+                              ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                              : "bg-background"
+                          )}
+                        >
+                          <SelectValue placeholder="Sort by" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="name">Employee Name</SelectItem>
+                          <SelectItem value="department">Department</SelectItem>
+                          <SelectItem value="empCode">Employee ID</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Department Filter */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground font-medium">Department</Label>
+                      <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                        <SelectTrigger
+                          className={cn(
+                            "h-8 text-xs rounded-lg transition-all",
+                            selectedDepartment !== "all"
+                              ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                              : "bg-background"
+                          )}
+                        >
+                          <SelectValue placeholder="Department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Departments</SelectItem>
+                          {departments.map((d) => (
+                            <SelectItem key={d} value={d}>
+                              {d}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Shift Filter */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground font-medium">Shift</Label>
+                      <Select value={selectedShift} onValueChange={setSelectedShift}>
+                        <SelectTrigger
+                          className={cn(
+                            "h-8 text-xs rounded-lg transition-all",
+                            selectedShift !== "all"
+                              ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                              : "bg-background"
+                          )}
+                        >
+                          <SelectValue placeholder="Shift" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Shifts</SelectItem>
+                          {shifts.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name} ({s.start}-{s.end})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Branch Filter */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground font-medium">Branch</Label>
+                      <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                        <SelectTrigger
+                          className={cn(
+                            "h-8 text-xs rounded-lg transition-all",
+                            selectedBranch !== "all"
+                              ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                              : "bg-background"
+                          )}
+                        >
+                          <SelectValue placeholder="Branch" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Branches</SelectItem>
+                          {branches.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Search Input (Employee Name / ID) */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground font-medium">Employee Name / ID</Label>
+                      <div className="relative">
+                        <Search className={cn("absolute left-2.5 top-2.5 h-3.5 w-3.5 transition-colors", searchQuery.trim() ? "text-primary" : "text-muted-foreground")} />
+                        <Input
+                          placeholder="Search staff..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className={cn(
+                            "pl-8 pr-7 h-8 text-xs rounded-lg transition-all",
+                            searchQuery.trim()
+                              ? "bg-primary/10 border-primary/50 text-foreground font-medium ring-1 ring-primary/25 shadow-2xs"
+                              : "bg-background"
+                          )}
+                        />
+                        {searchQuery.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchQuery("")}
+                            className="absolute right-2 top-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                            title="Clear search"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Sort Order Dropdown (Ascending / Descending) */}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-muted-foreground font-medium">Sort Order</Label>
+                      <Select value={sortDirection} onValueChange={(v: "asc" | "desc") => setSortDirection(v)}>
+                        <SelectTrigger
+                          className={cn(
+                            "h-8 text-xs rounded-lg transition-all",
+                            sortDirection !== "asc"
+                              ? "bg-primary/15 border-primary/50 text-primary font-semibold ring-1 ring-primary/25 shadow-2xs [&>svg]:text-primary [&>svg]:opacity-100"
+                              : "bg-background"
+                          )}
+                        >
+                          <SelectValue placeholder="Sort order" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="asc">Ascending (A → Z)</SelectItem>
+                          <SelectItem value="desc">Descending (Z → A)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Reset Filters Action */}
+                  {activeFilterCount > 0 && (
+                    <div className="flex items-center justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDepartment("all");
+                          setSelectedShift("all");
+                          setSelectedBranch("all");
+                          setSearchQuery("");
+                          setOrderBy("name");
+                          setSortDirection("asc");
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-destructive font-semibold px-2 py-1 rounded-md hover:bg-destructive/10 transition-colors cursor-pointer"
+                        title="Reset all filters"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        <span>Reset Filters</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </CardContent>
       </Card>
 
