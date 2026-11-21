@@ -75,6 +75,7 @@ import {
   XCircle,
   CheckCheck,
   MoreHorizontal,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { type RevisionTarget, type RevisionReason } from "@/lib/salary-revision";

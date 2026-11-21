@@ -95,6 +95,7 @@ import {
   CheckCheck,
   UploadCloud,
   ScanFace,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { HardwareBridgeModal } from "@/components/biometric/HardwareBridgeModal";

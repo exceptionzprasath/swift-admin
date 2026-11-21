@@ -31,6 +31,8 @@ import {
   Timer,
   Award,
   Sparkles,
+  X,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmploymentTypeBadge } from "@/components/employment-type-badge";
