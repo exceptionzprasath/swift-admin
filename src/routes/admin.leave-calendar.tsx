@@ -1293,7 +1293,6 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                         const totalPaid = el + cl + sl;
                         const threshold = company.elWorkingDaysThreshold ?? 20;
                         const cycleDays = emp.qualifyingWorkingDaysCounter ?? 0;
-                        const progressPct = Math.min(100, Math.round((cycleDays / threshold) * 100));
 
                         return (
                           <tr key={emp.id} className="hover:bg-muted/20 transition-colors">
@@ -1335,24 +1334,13 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                             </td>
 
                             <td className="py-3 px-3">
-                              <div className="space-y-1.5 min-w-[150px]">
-                                <div className="flex items-center justify-between">
-                                  <Badge className="bg-primary/10 text-primary hover:bg-primary/15 border-primary/20 text-xs font-bold px-2 py-0.5">
-                                    {el} Days EL
-                                  </Badge>
-                                  <span className="text-[10px] text-muted-foreground font-medium">
-                                    {cycleDays}/{threshold} days
-                                  </span>
-                                </div>
-                                <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                                  <div
-                                    className="bg-primary h-1.5 rounded-full transition-all duration-300"
-                                    style={{ width: `${progressPct}%` }}
-                                  />
-                                </div>
-                                <p className="text-[9px] text-muted-foreground">
-                                  +{company.elDaysEarnedPerCycle ?? 2} EL on {threshold} working days
-                                </p>
+                              <div className="flex items-center gap-2">
+                                <Badge className="bg-primary/10 text-primary hover:bg-primary/15 border-primary/20 text-xs font-bold px-2.5 py-0.5">
+                                  {el} Days
+                                </Badge>
+                                <span className="font-mono text-xs font-semibold text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-md border border-border/60">
+                                  {cycleDays}/{threshold}
+                                </span>
                               </div>
                             </td>
 
