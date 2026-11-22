@@ -45,6 +45,9 @@ import {
   parseBulkHolidayCSV,
   ParsedHolidayRow,
 } from "@/lib/bulk-holiday";
+import { PeriodicLeavePolicyCard } from "@/components/payroll/PeriodicLeavePolicyCard";
+import { LeaveRenewalModal } from "@/components/payroll/LeaveRenewalModal";
+import { DEFAULT_LEAVE_POLICIES } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/leave-calendar")({
   head: () => ({ meta: [{ title: "Leave Management · CreatonsHR" }] }),
@@ -158,6 +161,8 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
   const [savingELPolicy, setSavingELPolicy] = useState(false);
   const [rolloverConfirmOpen, setRolloverConfirmOpen] = useState(false);
   const [confirmAutoTerminateOpen, setConfirmAutoTerminateOpen] = useState(false);
+  const [renewalModalOpen, setRenewalModalOpen] = useState(false);
+  const [renewalModalType, setRenewalModalType] = useState<"ALL" | "CL" | "SL">("ALL");
 
   // ==========================================
   // EMPLOYEE LEAVE BALANCES STATE
@@ -1811,6 +1816,54 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
               </div>
             </CardContent>
           </Card>
+
+          {/* 3. Casual Leave (CL) Policy Card */}
+          <PeriodicLeavePolicyCard
+            leaveType="CL"
+            title="Casual Leave (CL) Policy"
+            description="Configure periodic allocation frequency (quarterly, half-yearly, annual), rollover carry-forward rules, and new joiner proration."
+            policy={company.leavePolicies?.CL || DEFAULT_LEAVE_POLICIES.CL}
+            onUpdate={(updated) =>
+              setCompany({
+                leavePolicies: {
+                  ...(company.leavePolicies || DEFAULT_LEAVE_POLICIES),
+                  CL: updated,
+                },
+              })
+            }
+            onSave={async () => {
+              await saveAllCompanySettings();
+              toast.success("Casual Leave (CL) policy saved successfully!");
+            }}
+            onPreviewRun={(type) => {
+              setRenewalModalType(type);
+              setRenewalModalOpen(true);
+            }}
+          />
+
+          {/* 4. Sick Leave (SL) Policy Card */}
+          <PeriodicLeavePolicyCard
+            leaveType="SL"
+            title="Sick Leave (SL) Policy"
+            description="Configure periodic allocation frequency (quarterly, half-yearly, annual), rollover carry-forward rules, and new joiner proration."
+            policy={company.leavePolicies?.SL || DEFAULT_LEAVE_POLICIES.SL}
+            onUpdate={(updated) =>
+              setCompany({
+                leavePolicies: {
+                  ...(company.leavePolicies || DEFAULT_LEAVE_POLICIES),
+                  SL: updated,
+                },
+              })
+            }
+            onSave={async () => {
+              await saveAllCompanySettings();
+              toast.success("Sick Leave (SL) policy saved successfully!");
+            }}
+            onPreviewRun={(type) => {
+              setRenewalModalType(type);
+              setRenewalModalOpen(true);
+            }}
+          />
         </div>
       )}
 
@@ -2639,6 +2692,13 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* PERIODIC LEAVE CYCLE RENEWAL PREVIEW & RUN MODAL */}
+      <LeaveRenewalModal
+        open={renewalModalOpen}
+        onOpenChange={setRenewalModalOpen}
+        defaultType={renewalModalType}
+      />
     </div>
   );
 }

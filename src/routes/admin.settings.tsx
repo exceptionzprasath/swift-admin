@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useStore, uploadToS3, type DashboardBannerItem } from "@/lib/store";
+import { useStore, uploadToS3, type DashboardBannerItem, DEFAULT_LEAVE_POLICIES } from "@/lib/store";
+import { PeriodicLeavePolicyCard } from "@/components/payroll/PeriodicLeavePolicyCard";
+import { LeaveRenewalModal } from "@/components/payroll/LeaveRenewalModal";
 import { useAuth } from "@/lib/auth";
 import { PALETTES, getPalette, type ThemePaletteId } from "@/lib/palettes";
 import { Button } from "@/components/ui/button";
@@ -84,6 +86,8 @@ function SettingsPage() {
   const [confirmAutoTerminateOpen, setConfirmAutoTerminateOpen] = useState(false);
   const [rolloverConfirmOpen, setRolloverConfirmOpen] = useState(false);
   const [rollingOver, setRollingOver] = useState(false);
+  const [renewalModalOpen, setRenewalModalOpen] = useState(false);
+  const [renewalModalType, setRenewalModalType] = useState<"ALL" | "CL" | "SL">("ALL");
 
   const activePaletteId = company.themePalette || "swift-teal";
   const activePalette = getPalette(activePaletteId);
@@ -1439,6 +1443,54 @@ function SettingsPage() {
         </div>
       </Card>
 
+      {/* Casual Leave (CL) Policy Card */}
+      <PeriodicLeavePolicyCard
+        leaveType="CL"
+        title="Casual Leave (CL) Policy"
+        description="Configure periodic allocation frequency (quarterly, half-yearly, annual), rollover carry-forward rules, and new joiner proration."
+        policy={company.leavePolicies?.CL || DEFAULT_LEAVE_POLICIES.CL}
+        onUpdate={(updated) =>
+          setCompany({
+            leavePolicies: {
+              ...(company.leavePolicies || DEFAULT_LEAVE_POLICIES),
+              CL: updated,
+            },
+          })
+        }
+        onSave={async () => {
+          await saveAllCompanySettings();
+          toast.success("Casual Leave (CL) policy saved successfully!");
+        }}
+        onPreviewRun={(type) => {
+          setRenewalModalType(type);
+          setRenewalModalOpen(true);
+        }}
+      />
+
+      {/* Sick Leave (SL) Policy Card */}
+      <PeriodicLeavePolicyCard
+        leaveType="SL"
+        title="Sick Leave (SL) Policy"
+        description="Configure periodic allocation frequency (quarterly, half-yearly, annual), rollover carry-forward rules, and new joiner proration."
+        policy={company.leavePolicies?.SL || DEFAULT_LEAVE_POLICIES.SL}
+        onUpdate={(updated) =>
+          setCompany({
+            leavePolicies: {
+              ...(company.leavePolicies || DEFAULT_LEAVE_POLICIES),
+              SL: updated,
+            },
+          })
+        }
+        onSave={async () => {
+          await saveAllCompanySettings();
+          toast.success("Sick Leave (SL) policy saved successfully!");
+        }}
+        onPreviewRun={(type) => {
+          setRenewalModalType(type);
+          setRenewalModalOpen(true);
+        }}
+      />
+
       {/* Leave Types (Other Entitlements: CL, SL, etc.) */}
       <Card title="Other Leave Entitlements (CL, SL, etc.)">
         <div className="col-span-3 space-y-3">
@@ -1998,6 +2050,13 @@ function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* PERIODIC LEAVE CYCLE RENEWAL PREVIEW & RUN MODAL */}
+      <LeaveRenewalModal
+        open={renewalModalOpen}
+        onOpenChange={setRenewalModalOpen}
+        defaultType={renewalModalType}
+      />
 
       {/* Late Punch Deductions & Restriction Settings */}
       <div className="rounded-2xl border border-amber-500/25 bg-card p-6 shadow-xs space-y-5">

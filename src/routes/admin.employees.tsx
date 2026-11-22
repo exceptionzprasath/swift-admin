@@ -255,6 +255,7 @@ function EmployeesPage() {
   const [actionEmp, setActionEmp] = useState<Employee | null>(null);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [docsEmp, setDocsEmp] = useState<Employee | null>(null);
+  const [docsTab, setDocsTab] = useState<"signed" | "uploads" | "leave-ledger">("signed");
   const [deleteConfirmEmp, setDeleteConfirmEmp] = useState<Employee | null>(null);
   const [freezeConfirmEmp, setFreezeConfirmEmp] = useState<Employee | null>(null);
   const [freezeReasonNote, setFreezeReasonNote] = useState<string>("");
@@ -987,11 +988,25 @@ function EmployeesPage() {
                           </DropdownMenuItem>
 
                           <DropdownMenuItem
-                            onClick={() => setDocsEmp(e)}
+                            onClick={() => {
+                              setDocsTab("signed");
+                              setDocsEmp(e);
+                            }}
                             className="gap-2 cursor-pointer"
                           >
                             <FileText className="h-4 w-4 text-sky-600" />
                             <span>Documents & Signatures</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setDocsTab("leave-ledger");
+                              setDocsEmp(e);
+                            }}
+                            className="gap-2 cursor-pointer font-medium text-amber-700 dark:text-amber-400"
+                          >
+                            <Clock className="h-4 w-4 text-amber-600" />
+                            <span>Leave & Accrual Ledger</span>
                           </DropdownMenuItem>
 
                           <DropdownMenuItem
@@ -1108,6 +1123,7 @@ function EmployeesPage() {
         employee={docsEmp}
         open={!!docsEmp}
         onClose={() => setDocsEmp(null)}
+        initialTab={docsTab}
       />
       <DeleteEmployeeDialog
         employee={deleteConfirmEmp}
@@ -3320,9 +3336,26 @@ function RegistrationWizard({ onDone, draftId }: { onDone: () => void; draftId?:
 }
 
 
-function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employee | null; open: boolean; onClose: () => void }) {
-  const { company, docAssets, updateEmployee } = useStore();
-  const [activeTab, setActiveTab] = useState<"signed" | "uploads">("signed");
+function EmployeeDocumentsDialog({
+  employee,
+  open,
+  onClose,
+  initialTab = "signed",
+}: {
+  employee: Employee | null;
+  open: boolean;
+  onClose: () => void;
+  initialTab?: "signed" | "uploads" | "leave-ledger";
+}) {
+  const { company, docAssets, updateEmployee, leaveLedger } = useStore();
+  const [activeTab, setActiveTab] = useState<"signed" | "uploads" | "leave-ledger">(initialTab);
+  const [ledgerTypeFilter, setLedgerTypeFilter] = useState<"ALL" | "CL" | "SL" | "EL">("ALL");
+
+  useEffect(() => {
+    if (open) {
+      setActiveTab(initialTab);
+    }
+  }, [open, initialTab]);
   const [uploadType, setUploadType] = useState("Aadhaar Card");
   const [uploadName, setUploadName] = useState("");
   const [previewDocModal, setPreviewDocModal] = useState<EmployeeDocument | null>(null);
@@ -3596,7 +3629,7 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
         </DialogHeader>
 
         {/* Tab Selector */}
-        <div className="flex items-center gap-2 border-b border-border pb-2 pt-2">
+        <div className="flex items-center gap-2 border-b border-border pb-2 pt-2 flex-wrap">
           <Button
             size="sm"
             variant={activeTab === "signed" ? "secondary" : "ghost"}
@@ -3615,6 +3648,16 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
           >
             <Upload className="h-3.5 w-3.5 text-sky-600" />
             <span>Employee Uploads &amp; KYC ({uploadedList.length})</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant={activeTab === "leave-ledger" ? "secondary" : "ghost"}
+            onClick={() => setActiveTab("leave-ledger")}
+            className="rounded-xl text-xs gap-1.5 font-semibold"
+          >
+            <Clock className="h-3.5 w-3.5 text-amber-600" />
+            <span>Leave &amp; Accrual Ledger</span>
           </Button>
         </div>
 
@@ -3808,6 +3851,211 @@ function EmployeeDocumentsDialog({ employee, open, onClose }: { employee: Employ
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Tab 3: Leave & Accrual Ledger */}
+        {activeTab === "leave-ledger" && (
+          <div className="space-y-4 py-2">
+            {/* Balance Overview Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Casual Leave */}
+              <div className="p-3 rounded-2xl border border-sky-500/30 bg-sky-500/5 space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-sky-700 dark:text-sky-300">Casual Leave (CL)</span>
+                  <Badge variant="outline" className="text-[10px] uppercase font-mono border-sky-500/40 text-sky-700 dark:text-sky-300">
+                    {company.leavePolicies?.CL?.renewalCycle || "quarterly"}
+                  </Badge>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-black text-sky-700 dark:text-sky-200">
+                    {employee.leaveBalances?.CL ?? 0}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium">Days Available</span>
+                </div>
+                <div className="text-[11px] text-muted-foreground flex items-center justify-between pt-1 border-t border-sky-500/20">
+                  <span>Quota: {company.leavePolicies?.CL?.cycleQuota ?? 3}d / cycle</span>
+                  <span className="font-medium text-foreground">
+                    {company.leavePolicies?.CL?.rolloverEnabled ? "Rollover ON" : "No Rollover"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Sick Leave */}
+              <div className="p-3 rounded-2xl border border-rose-500/30 bg-rose-500/5 space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-rose-700 dark:text-rose-300">Sick Leave (SL)</span>
+                  <Badge variant="outline" className="text-[10px] uppercase font-mono border-rose-500/40 text-rose-700 dark:text-rose-300">
+                    {company.leavePolicies?.SL?.renewalCycle || "quarterly"}
+                  </Badge>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-black text-rose-700 dark:text-rose-200">
+                    {employee.leaveBalances?.SL ?? 0}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium">Days Available</span>
+                </div>
+                <div className="text-[11px] text-muted-foreground flex items-center justify-between pt-1 border-t border-rose-500/20">
+                  <span>Quota: {company.leavePolicies?.SL?.cycleQuota ?? 3}d / cycle</span>
+                  <span className="font-medium text-foreground">
+                    {company.leavePolicies?.SL?.rolloverEnabled ? "Rollover ON" : "No Rollover"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Earned Leave */}
+              <div className="p-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-emerald-700 dark:text-emerald-300">Earned Leave (EL)</span>
+                  <Badge variant="outline" className="text-[10px] uppercase font-mono border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
+                    Accrual
+                  </Badge>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-black text-emerald-700 dark:text-emerald-200">
+                    {employee.leaveBalances?.EL ?? 0}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium">Days Available</span>
+                </div>
+                <div className="text-[11px] text-muted-foreground flex items-center justify-between pt-1 border-t border-emerald-500/20">
+                  <span>
+                    Progress: <b>{employee.qualifyingWorkingDaysCounter ?? 0}</b> / {company.elWorkingDaysThreshold ?? 20} days
+                  </span>
+                  <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                    +{company.elDaysEarnedPerCycle ?? 2}d / cycle
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ledger Transactions Header & Filter */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-2">
+              <div>
+                <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 text-primary" />
+                  <span>Audit Ledger Transactions</span>
+                </h4>
+                <p className="text-[11px] text-muted-foreground">
+                  Complete transparent history of periodic renewal credits, rollovers, accruals, and deductions.
+                </p>
+              </div>
+
+              {/* Filter pills */}
+              <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl shrink-0">
+                {(["ALL", "CL", "SL", "EL"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setLedgerTypeFilter(t)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-all ${
+                      ledgerTypeFilter === t
+                        ? "bg-background text-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Ledger Table */}
+            {(() => {
+              const empEntries = (leaveLedger || [])
+                .filter((e) => e.employeeId === employee.id)
+                .filter((e) => {
+                  if (ledgerTypeFilter === "ALL") return true;
+                  const eType = e.leaveType || "EL";
+                  return eType === ledgerTypeFilter;
+                })
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+              if (empEntries.length === 0) {
+                return (
+                  <div className="p-8 text-center rounded-2xl border-2 border-dashed border-border bg-muted/10 space-y-2">
+                    <Clock className="h-8 w-8 mx-auto text-muted-foreground/60" />
+                    <div className="text-xs font-semibold text-foreground">No Leave Ledger Transactions Yet</div>
+                    <div className="text-[11px] text-muted-foreground max-w-sm mx-auto">
+                      Transactions will automatically log here whenever periodic cycles renew, qualifying working days accrue, or leave requests are approved.
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="rounded-2xl border border-border/80 overflow-hidden bg-card">
+                  <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-muted/50 text-[10px] uppercase font-bold text-muted-foreground tracking-wider sticky top-0 backdrop-blur-xs">
+                        <tr>
+                          <th className="py-2.5 px-3">Date</th>
+                          <th className="py-2.5 px-3">Type</th>
+                          <th className="py-2.5 px-3">Action</th>
+                          <th className="py-2.5 px-3 text-right">Days</th>
+                          <th className="py-2.5 px-3">Details / Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {empEntries.map((item) => {
+                          const leaveType = item.leaveType || "EL";
+                          const isCredit = item.days > 0;
+                          return (
+                            <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                              <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px]">
+                                <div>{item.date}</div>
+                                {item.periodLabel && (
+                                  <span className="text-[9px] text-muted-foreground">{item.periodLabel}</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] font-bold font-mono ${
+                                    leaveType === "CL"
+                                      ? "border-sky-500/40 text-sky-600 dark:text-sky-400 bg-sky-500/10"
+                                      : leaveType === "SL"
+                                      ? "border-rose-500/40 text-rose-600 dark:text-rose-400 bg-rose-500/10"
+                                      : "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                                  }`}
+                                >
+                                  {leaveType}
+                                </Badge>
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <Badge
+                                  variant="secondary"
+                                  className={`text-[10px] font-semibold ${
+                                    item.type === "CYCLE_CREDIT" || item.type === "ACCRUAL"
+                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                      : item.type === "ROLLOVER"
+                                      ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                                      : item.type === "EXPIRED" || item.type === "LAPSED"
+                                      ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+                                      : item.type === "ENCASHMENT"
+                                      ? "bg-teal-500/15 text-teal-700 dark:text-teal-300"
+                                      : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                                  }`}
+                                >
+                                  {item.type}
+                                </Badge>
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap text-right font-mono font-bold">
+                                <span className={isCredit ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                                  {isCredit ? `+${item.days}` : item.days}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-muted-foreground text-[11px] max-w-xs truncate">
+                                {item.reason}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 

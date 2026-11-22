@@ -27,6 +27,7 @@ import {
   ArrowRight,
   ShieldCheck,
   Info,
+  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -77,10 +78,60 @@ export function EmployeeLeaveEncashmentView({ employee, readOnly = false }: Empl
   // Year-end warning if balance exceeds max cap
   const excessDaysAboveCap = carryForwardEnabled ? Math.max(0, availableEL - maxCarryForward) : availableEL;
 
+  // Periodic CL & SL policies & balances
+  const clPolicy = company.leavePolicies?.CL || { renewalCycle: "quarterly", cycleQuota: 3, rolloverEnabled: true };
+  const slPolicy = company.leavePolicies?.SL || { renewalCycle: "half_yearly", cycleQuota: 6, rolloverEnabled: true };
+  const availableCL = employee.leaveBalances?.CL ?? 10;
+  const availableSL = employee.leaveBalances?.SL ?? 8;
+
+  const [ledgerFilter, setLedgerFilter] = useState<"ALL" | "CL" | "SL" | "EL">("ALL");
+
+  const getNextRenewalInfo = (policy: any, type: "CL" | "SL") => {
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1;
+    const year = today.getFullYear();
+    let nextMonth = 1;
+    let nextYear = year;
+
+    if (policy.renewalCycle === "quarterly") {
+      if (currentMonth < 4) nextMonth = 4;
+      else if (currentMonth < 7) nextMonth = 7;
+      else if (currentMonth < 10) nextMonth = 10;
+      else { nextMonth = 1; nextYear = year + 1; }
+    } else if (policy.renewalCycle === "half_yearly") {
+      if (currentMonth < 7) nextMonth = 7;
+      else { nextMonth = 1; nextYear = year + 1; }
+    } else {
+      nextMonth = 1;
+      nextYear = year + 1;
+    }
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const renewalDateStr = `${monthNames[nextMonth - 1]} 1, ${nextYear}`;
+    const prevDateStr = `${monthNames[nextMonth === 1 ? 11 : nextMonth - 2]} ${nextMonth === 1 ? 31 : nextMonth === 4 ? 31 : nextMonth === 7 ? 30 : 30}`;
+
+    return {
+      dateStr: renewalDateStr,
+      prevDateStr,
+      rolloverMessage: policy.rolloverEnabled
+        ? `Next credit (+${policy.cycleQuota} ${type}) on ${renewalDateStr} · Unused balance rolls over`
+        : `Resets to ${policy.cycleQuota} ${type} on ${renewalDateStr} · Use remaining balance before ${prevDateStr}`,
+    };
+  };
+
+  const clRenewalInfo = useMemo(() => getNextRenewalInfo(clPolicy, "CL"), [clPolicy]);
+  const slRenewalInfo = useMemo(() => getNextRenewalInfo(slPolicy, "SL"), [slPolicy]);
+
   // Ledger history for this employee
   const employeeLedger = useMemo(() => {
-    return (leaveLedger || []).filter((l) => l.employeeId === employee.id);
-  }, [leaveLedger, employee.id]);
+    return (leaveLedger || [])
+      .filter((l) => l.employeeId === employee.id)
+      .filter((l) => {
+        if (ledgerFilter === "ALL") return true;
+        if (ledgerFilter === "EL") return !l.leaveType || l.leaveType === "EL";
+        return l.leaveType === ledgerFilter;
+      });
+  }, [leaveLedger, employee.id, ledgerFilter]);
 
   const handleApplyEncashment = async () => {
     if (availableEL <= 0) {
@@ -120,6 +171,85 @@ export function EmployeeLeaveEncashmentView({ employee, readOnly = false }: Empl
 
   return (
     <div className="space-y-6">
+      {/* 0. Periodic Leave Balances Cards: Casual Leave (CL) & Sick Leave (SL) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Casual Leave (CL) Card */}
+        <Card className="rounded-3xl border-emerald-500/25 bg-gradient-to-br from-card via-card to-emerald-500/5 shadow-xs overflow-hidden">
+          <CardHeader className="pb-3 border-b border-border/60">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                  <Tag className="h-4 w-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm font-bold font-display">Casual Leave (CL)</CardTitle>
+                  <CardDescription className="text-[11px]">Routine personal &amp; family needs</CardDescription>
+                </div>
+              </div>
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-[10px] font-semibold">
+                {clPolicy.renewalCycle === "quarterly" ? `Quarterly (${clPolicy.cycleQuota} Days/Qtr)` : clPolicy.renewalCycle === "half_yearly" ? `Half-Yearly (${clPolicy.cycleQuota} Days/6M)` : `Annual (${clPolicy.cycleQuota} Days/Yr)`}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5 space-y-3.5">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <span className="text-2xl font-black text-foreground font-display">{availableCL}</span>
+                <span className="text-xs text-muted-foreground ml-1.5 font-medium">Days Available</span>
+              </div>
+              <Badge variant="secondary" className="font-mono text-xs">
+                {clPolicy.rolloverEnabled ? "Rollover ON" : "No Rollover"}
+              </Badge>
+            </div>
+            <div className="p-3 rounded-2xl border border-border/60 bg-muted/30 text-xs leading-relaxed text-muted-foreground">
+              <div className="font-medium text-foreground flex items-center gap-1.5 pb-0.5">
+                <Calendar className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Next Renewal &amp; Rollover Status</span>
+              </div>
+              <p className="text-[11px]">{clRenewalInfo.rolloverMessage}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sick Leave (SL) Card */}
+        <Card className="rounded-3xl border-sky-500/25 bg-gradient-to-br from-card via-card to-sky-500/5 shadow-xs overflow-hidden">
+          <CardHeader className="pb-3 border-b border-border/60">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-2xl bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold">
+                  <ShieldCheck className="h-4 w-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm font-bold font-display">Sick Leave (SL)</CardTitle>
+                  <CardDescription className="text-[11px]">Medical recovery &amp; health rest</CardDescription>
+                </div>
+              </div>
+              <Badge variant="outline" className="bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/30 text-[10px] font-semibold">
+                {slPolicy.renewalCycle === "quarterly" ? `Quarterly (${slPolicy.cycleQuota} Days/Qtr)` : slPolicy.renewalCycle === "half_yearly" ? `Half-Yearly (${slPolicy.cycleQuota} Days/6M)` : `Annual (${slPolicy.cycleQuota} Days/Yr)`}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5 space-y-3.5">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <span className="text-2xl font-black text-foreground font-display">{availableSL}</span>
+                <span className="text-xs text-muted-foreground ml-1.5 font-medium">Days Available</span>
+              </div>
+              <Badge variant="secondary" className="font-mono text-xs">
+                {slPolicy.rolloverEnabled ? "Rollover ON" : "No Rollover"}
+              </Badge>
+            </div>
+            <div className="p-3 rounded-2xl border border-border/60 bg-muted/30 text-xs leading-relaxed text-muted-foreground">
+              <div className="font-medium text-foreground flex items-center gap-1.5 pb-0.5">
+                <Calendar className="h-3.5 w-3.5 text-sky-600" />
+                <span>Next Renewal &amp; Rollover Status</span>
+              </div>
+              <p className="text-[11px]">{slRenewalInfo.rolloverMessage}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* 1. Main EL Balance & Live Progress Card */}
       <Card className="rounded-3xl border-border bg-gradient-to-br from-card via-card to-primary/5 shadow-xs overflow-hidden">
         <CardHeader className="pb-3 border-b border-border/60">
@@ -231,26 +361,62 @@ export function EmployeeLeaveEncashmentView({ employee, readOnly = false }: Empl
       {/* 2. Immutable Leave Ledger Audit History */}
       <Card className="rounded-3xl border-border bg-card shadow-xs">
         <CardHeader className="pb-3 border-b border-border/60">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <Clock className="h-4 w-4 text-primary" />
-                Earned Leave Ledger & Audit History
+                Leave &amp; Accrual Ledger Audit History
               </CardTitle>
               <CardDescription className="text-xs">
-                Real-time record of all EL accruals, rollovers, encashments, and deductions.
+                Real-time record of all CL/SL cycle renewals, rollovers, EL accruals, encashments, and leave deductions.
               </CardDescription>
             </div>
-            <Badge variant="secondary" className="text-xs font-semibold">
-              {employeeLedger.length} Ledger Events
-            </Badge>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Button
+                type="button"
+                size="sm"
+                variant={ledgerFilter === "ALL" ? "secondary" : "ghost"}
+                onClick={() => setLedgerFilter("ALL")}
+                className="h-7 text-[11px] px-2.5 rounded-lg font-semibold"
+              >
+                All Events
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={ledgerFilter === "CL" ? "secondary" : "ghost"}
+                onClick={() => setLedgerFilter("CL")}
+                className="h-7 text-[11px] px-2.5 rounded-lg font-semibold text-emerald-600 dark:text-emerald-400"
+              >
+                CL
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={ledgerFilter === "SL" ? "secondary" : "ghost"}
+                onClick={() => setLedgerFilter("SL")}
+                className="h-7 text-[11px] px-2.5 rounded-lg font-semibold text-sky-600 dark:text-sky-400"
+              >
+                SL
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={ledgerFilter === "EL" ? "secondary" : "ghost"}
+                onClick={() => setLedgerFilter("EL")}
+                className="h-7 text-[11px] px-2.5 rounded-lg font-semibold text-primary"
+              >
+                EL
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
           {employeeLedger.length === 0 ? (
             <div className="p-8 text-center text-xs text-muted-foreground space-y-1">
               <Coins className="h-6 w-6 text-muted-foreground/40 mx-auto" />
-              <p>No leave ledger transactions recorded yet for this employee.</p>
+              <p>No leave ledger transactions recorded yet for this filter.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -258,7 +424,8 @@ export function EmployeeLeaveEncashmentView({ employee, readOnly = false }: Empl
                 <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase text-[10px] font-semibold">
                   <tr>
                     <th className="p-3">Date</th>
-                    <th className="p-3">Transaction Type</th>
+                    <th className="p-3">Leave</th>
+                    <th className="p-3">Transaction</th>
                     <th className="p-3 text-right">Days</th>
                     <th className="p-3 text-right">Balance After</th>
                     <th className="p-3">Reason / Details</th>
@@ -272,14 +439,30 @@ export function EmployeeLeaveEncashmentView({ employee, readOnly = false }: Empl
                         <Badge
                           variant="outline"
                           className={`text-[10px] px-2 py-0.5 font-bold ${
-                            item.type === "ACCRUAL"
+                            item.leaveType === "CL"
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                              : item.leaveType === "SL"
+                              ? "bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/30"
+                              : "bg-primary/10 text-primary border-primary/20"
+                          }`}
+                        >
+                          {item.leaveType || "EL"}
+                        </Badge>
+                      </td>
+                      <td className="p-3">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-2 py-0.5 font-bold ${
+                            item.type === "CYCLE_CREDIT" || item.type === "ACCRUAL"
                               ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                              : item.type === "ROLLOVER" || item.type === "CARRY_FORWARD"
+                              ? "bg-primary/10 text-primary border-primary/20"
                               : item.type === "ENCASHMENT"
                               ? "bg-blue-500/10 text-blue-600 border-blue-500/20"
-                              : item.type === "CARRY_FORWARD"
-                              ? "bg-primary/10 text-primary border-primary/20"
-                              : item.type === "LAPSED"
+                              : item.type === "EXPIRED" || item.type === "LAPSED"
                               ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                              : item.type === "AVAILED" || item.type === "USED"
+                              ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
                               : "bg-muted text-muted-foreground"
                           }`}
                         >
@@ -292,13 +475,18 @@ export function EmployeeLeaveEncashmentView({ employee, readOnly = false }: Empl
                         {item.days > 0 ? `+${item.days}` : item.days}
                       </td>
                       <td className="p-3 text-right font-mono font-semibold text-foreground">
-                        {item.balanceAfter !== undefined ? `${item.balanceAfter} EL` : "—"}
+                        {item.balanceAfter !== undefined ? `${item.balanceAfter} d` : "—"}
                       </td>
                       <td className="p-3 text-muted-foreground max-w-sm truncate" title={item.reason}>
                         {item.reason}
                         {item.payrollMonth && (
                           <span className="ml-1 text-[10px] font-mono font-bold text-primary">
                             ({item.payrollMonth})
+                          </span>
+                        )}
+                        {item.periodLabel && (
+                          <span className="ml-1 text-[10px] font-mono text-muted-foreground">
+                            [{item.periodLabel}]
                           </span>
                         )}
                       </td>

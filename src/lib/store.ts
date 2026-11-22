@@ -470,6 +470,36 @@ export type Notice = {
   popupCta?: string;
 };
 
+export type PeriodicLeavePolicy = {
+  renewalCycle: "quarterly" | "half_yearly" | "annual";
+  cycleQuota: number; // default: 3 for quarterly, 6 for half_yearly, 12 for annual
+  rolloverEnabled: boolean; // default: true
+  maxRolloverDays?: number; // optional cap
+  prorateNewJoiners?: boolean; // default: true
+};
+
+export type LeavePoliciesConfig = {
+  CL: PeriodicLeavePolicy;
+  SL: PeriodicLeavePolicy;
+};
+
+export const DEFAULT_LEAVE_POLICIES: LeavePoliciesConfig = {
+  CL: {
+    renewalCycle: "quarterly",
+    cycleQuota: 3,
+    rolloverEnabled: true,
+    maxRolloverDays: undefined,
+    prorateNewJoiners: true,
+  },
+  SL: {
+    renewalCycle: "half_yearly",
+    cycleQuota: 6,
+    rolloverEnabled: true,
+    maxRolloverDays: undefined,
+    prorateNewJoiners: true,
+  },
+};
+
 export type Company = {
   themePalette?: ThemePaletteId;
   name: string;
@@ -555,6 +585,8 @@ export type Company = {
   elEncashmentEnabled?: boolean;
   elEncashmentCalculationBase?: "basic_plus_da" | "gross_salary"; // default: "basic_plus_da"
   elEncashmentMinBalanceRequired?: number; // default: 0
+  /** Configurable Periodic CL & SL Leave Policies */
+  leavePolicies?: LeavePoliciesConfig;
   earnings: EarningComponent[];
   deductions: DeductionComponent[];
   pfRules: { enabled: boolean; employeePct: number; employerPct: number; ceiling: number };
@@ -1295,6 +1327,8 @@ export type UnifiedRequest = {
   date?: string;
   fromDate?: string;
   toDate?: string;
+  startDate?: string;
+  endDate?: string;
   details?: string;
   reason?: string;
   notes?: string;
@@ -1321,10 +1355,12 @@ export type LeaveLedgerEntry = {
   employeeId: string;
   employeeName?: string;
   date: string;
-  type: "ACCRUAL" | "CARRY_FORWARD" | "LAPSED" | "ENCASHMENT" | "AVAILED" | "ADJUSTMENT";
+  type: "ACCRUAL" | "CARRY_FORWARD" | "LAPSED" | "ENCASHMENT" | "AVAILED" | "ADJUSTMENT" | "CYCLE_CREDIT" | "ROLLOVER" | "EXPIRED" | "USED";
   days: number;
   balanceAfter?: number;
   reason: string;
+  leaveType?: "EL" | "CL" | "SL" | string;
+  periodLabel?: string;
   payrollMonth?: string;
   requestId?: string;
   createdAt: string;
@@ -1472,6 +1508,26 @@ type State = {
   addLeaveLedgerEntry: (entry: Omit<LeaveLedgerEntry, "id" | "createdAt">) => void;
   evaluateEarnedLeaveAccrual: (employeeId?: string) => { creditedCount: number; affectedEmployees: number };
   processYearEndLeaveRollover: () => { rolledOverEmployees: number; totalLapsedDays: number; totalCarriedDays: number };
+  processPeriodicLeaveRenewals: (
+    targetType?: "CL" | "SL",
+    forceDate?: string
+  ) => {
+    affectedEmployees: number;
+    totalCreditedDays: number;
+    totalRolloverDays: number;
+    totalExpiredDays: number;
+    periodLabel: string;
+    details: {
+      employeeId: string;
+      employeeName: string;
+      leaveType: string;
+      previousBalance: number;
+      credited: number;
+      rolledOver: number;
+      expired: number;
+      newBalance: number;
+    }[];
+  };
   applyLeaveEncashment: (req: {
     employeeId: string;
     requestedDays: number;
@@ -1607,6 +1663,7 @@ const defaultCompany: Company = {
   elEncashmentEnabled: true,
   elEncashmentCalculationBase: "basic_plus_da",
   elEncashmentMinBalanceRequired: 0,
+  leavePolicies: DEFAULT_LEAVE_POLICIES,
   permissionTypes: [
     { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true },
   ],
@@ -4578,6 +4635,107 @@ export const useStore = create<State>()(
           }
         }
 
+        // If leave application is approved, validate balance and deduct CL, SL, or EL (with Informed Leave IL overflow)
+        if (
+          newStatus === "Approved" &&
+          (targetReq.category === "leave" ||
+            (targetReq as any).category === "time_off" ||
+            targetReq.workflowId?.includes("leave") ||
+            (targetReq.type && targetReq.type.toLowerCase().includes("leave")))
+        ) {
+          const reqTypeRaw = (targetReq.type || targetReq.metadata?.leaveType || "").toUpperCase();
+          const leaveKey: "CL" | "SL" | "EL" | string = reqTypeRaw.includes("SICK") || reqTypeRaw === "SL"
+            ? "SL"
+            : reqTypeRaw.includes("CASUAL") || reqTypeRaw === "CL"
+            ? "CL"
+            : reqTypeRaw.includes("EARNED") || reqTypeRaw === "EL"
+            ? "EL"
+            : "CL";
+
+          const requestedDays =
+            targetReq.requestedDays ||
+            (typeof targetReq.amountOrDays === "string" ? parseFloat(targetReq.amountOrDays) : Number(targetReq.amountOrDays)) ||
+            (targetReq.metadata?.days) ||
+            1;
+          const targetEmpId = targetReq.employeeId;
+
+          if (targetEmpId && requestedDays > 0) {
+            set((s) => {
+              let balanceAfter = 0;
+              let paidDaysDeducted = 0;
+              let unpaidDays = 0;
+
+              const nextEmployees = s.employees.map((e) => {
+                if (e.id === targetEmpId) {
+                  const currentBal = e.leaveBalances?.[leaveKey] ?? (leaveKey === "CL" ? 10 : leaveKey === "SL" ? 8 : 15);
+                  if (requestedDays <= currentBal) {
+                    paidDaysDeducted = requestedDays;
+                    unpaidDays = 0;
+                    balanceAfter = currentBal - requestedDays;
+                  } else {
+                    paidDaysDeducted = Math.max(0, currentBal);
+                    unpaidDays = requestedDays - paidDaysDeducted;
+                    balanceAfter = 0;
+                  }
+                  return {
+                    ...e,
+                    leaveBalances: {
+                      ...(e.leaveBalances || {}),
+                      [leaveKey]: balanceAfter,
+                    },
+                    updatedAt: now,
+                  };
+                }
+                return e;
+              });
+
+              const ledgerEntry: LeaveLedgerEntry = {
+                id: crypto.randomUUID(),
+                employeeId: targetEmpId,
+                employeeName: targetReq.employeeName,
+                date: now.slice(0, 10),
+                type: "AVAILED",
+                days: -paidDaysDeducted,
+                balanceAfter,
+                leaveType: leaveKey,
+                reason: unpaidDays > 0
+                  ? `Approved ${paidDaysDeducted} ${leaveKey} paid days + ${unpaidDays} excess days marked as Informed Leave (Loss of Pay)`
+                  : `Approved leave application of ${paidDaysDeducted} ${leaveKey} days`,
+                requestId: targetReq.id,
+                createdAt: now,
+              };
+
+              // Mark attendance records
+              const reqDate = targetReq.date || targetReq.fromDate || targetReq.startDate || now.slice(0, 10);
+              const attRecord: AttendanceRecord = {
+                id: `att-${targetEmpId}-${reqDate}`,
+                employeeId: targetEmpId,
+                employeeName: targetReq.employeeName,
+                empCode: targetReq.empCode,
+                department: targetReq.department,
+                date: reqDate,
+                status: unpaidDays > 0 && paidDaysDeducted === 0 ? "informed_leave" : "leave",
+                leaveType: leaveKey,
+                regularized: true,
+                regularizedBy: actorName || "Admin",
+                regularizedReason: `Approved Leave Request: ${targetReq.type || leaveKey}${unpaidDays > 0 ? ` (${unpaidDays} days marked IL - Loss of Pay)` : ""}`,
+                updatedAt: now,
+              };
+
+              const existingIdx = s.attendance.findIndex((a) => a.employeeId === targetEmpId && a.date === reqDate);
+              const nextAtt = [...s.attendance];
+              if (existingIdx >= 0) nextAtt[existingIdx] = { ...nextAtt[existingIdx], ...attRecord };
+              else nextAtt.push(attRecord);
+
+              return {
+                employees: nextEmployees,
+                leaveLedger: [ledgerEntry, ...(s.leaveLedger || [])],
+                attendance: nextAtt,
+              };
+            });
+          }
+        }
+
         set((s) => ({
           requests: s.requests.map((r) => (r.id === id ? updatedReq : r)),
         }));
@@ -4771,6 +4929,207 @@ export const useStore = create<State>()(
         }));
 
         return { rolledOverEmployees, totalLapsedDays, totalCarriedDays };
+      },
+      processPeriodicLeaveRenewals: (targetType?: "CL" | "SL", forceDate?: string) => {
+        const state = get();
+        const company = state.company;
+        const now = new Date();
+        const targetDate = forceDate ? new Date(forceDate) : now;
+        const month = targetDate.getMonth() + 1; // 1-12
+        const year = targetDate.getFullYear();
+        const todayStr = targetDate.toISOString().slice(0, 10);
+        const isoNow = now.toISOString();
+
+        const policies = company.leavePolicies || DEFAULT_LEAVE_POLICIES;
+        const leaveTypesToProcess: ("CL" | "SL")[] = targetType ? [targetType] : ["CL", "SL"];
+
+        let affectedEmployees = 0;
+        let totalCreditedDays = 0;
+        let totalRolloverDays = 0;
+        let totalExpiredDays = 0;
+        const details: any[] = [];
+        const newLedgerEntries: LeaveLedgerEntry[] = [];
+
+        // Check each leave type eligibility
+        const typesEligible: { type: "CL" | "SL"; policy: PeriodicLeavePolicy; periodLabel: string }[] = [];
+
+        for (const lt of leaveTypesToProcess) {
+          const policy = policies[lt] || DEFAULT_LEAVE_POLICIES[lt];
+          let isBoundary = false;
+          let periodLabel = "";
+
+          if (policy.renewalCycle === "quarterly") {
+            if ([1, 4, 7, 10].includes(month) || forceDate) {
+              isBoundary = true;
+              const qtr = Math.floor((month - 1) / 3) + 1;
+              periodLabel = `Q${qtr} ${year} Renewal`;
+            }
+          } else if (policy.renewalCycle === "half_yearly") {
+            if ([1, 7].includes(month) || forceDate) {
+              isBoundary = true;
+              const half = month <= 6 ? 1 : 2;
+              periodLabel = `H${half} ${year} Renewal`;
+            }
+          } else if (policy.renewalCycle === "annual") {
+            if (month === 1 || forceDate) {
+              isBoundary = true;
+              periodLabel = `${year} Annual Renewal`;
+            }
+          }
+
+          if (isBoundary) {
+            typesEligible.push({ type: lt, policy, periodLabel });
+          }
+        }
+
+        if (typesEligible.length === 0) {
+          return {
+            affectedEmployees: 0,
+            totalCreditedDays: 0,
+            totalRolloverDays: 0,
+            totalExpiredDays: 0,
+            periodLabel: "No cycle boundary matching selected date",
+            details: [],
+          };
+        }
+
+        const nextEmployees = state.employees.map((emp) => {
+          if (emp.status !== "active") return emp;
+
+          let empBalances = { ...(emp.leaveBalances || {}) };
+          let changed = false;
+
+          for (const item of typesEligible) {
+            const { type, policy, periodLabel } = item;
+            const previousBalance = empBalances[type] ?? (type === "CL" ? 10 : 8);
+            let cycleQuota = policy.cycleQuota;
+
+            // Mid-cycle joiner proration
+            if (policy.prorateNewJoiners !== false && emp.doj) {
+              const dojDate = new Date(emp.doj);
+              const diffMs = targetDate.getTime() - dojDate.getTime();
+              const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+              const cycleLengthDays = policy.renewalCycle === "quarterly" ? 90 : policy.renewalCycle === "half_yearly" ? 182 : 365;
+              if (diffDays >= 0 && diffDays < cycleLengthDays) {
+                const fraction = Math.max(0.2, (cycleLengthDays - diffDays) / cycleLengthDays);
+                cycleQuota = Math.round(cycleQuota * fraction * 2) / 2;
+              }
+            }
+
+            let carriedOver = 0;
+            let expiredDays = 0;
+            let newBalance = 0;
+
+            if (policy.rolloverEnabled) {
+              carriedOver = (policy.maxRolloverDays && policy.maxRolloverDays > 0)
+                ? Math.min(previousBalance, policy.maxRolloverDays)
+                : Math.max(0, previousBalance);
+              expiredDays = Math.max(0, previousBalance - carriedOver);
+              newBalance = carriedOver + cycleQuota;
+            } else {
+              carriedOver = 0;
+              expiredDays = Math.max(0, previousBalance);
+              newBalance = cycleQuota;
+            }
+
+            empBalances[type] = newBalance;
+            changed = true;
+            totalCreditedDays += cycleQuota;
+            totalRolloverDays += carriedOver;
+            totalExpiredDays += expiredDays;
+
+            details.push({
+              employeeId: emp.id,
+              employeeName: emp.name,
+              leaveType: type,
+              previousBalance,
+              credited: cycleQuota,
+              rolledOver: carriedOver,
+              expired: expiredDays,
+              newBalance,
+            });
+
+            if (expiredDays > 0) {
+              newLedgerEntries.push({
+                id: crypto.randomUUID(),
+                employeeId: emp.id,
+                employeeName: emp.name,
+                date: todayStr,
+                type: "EXPIRED",
+                days: -expiredDays,
+                balanceAfter: carriedOver,
+                leaveType: type,
+                periodLabel,
+                reason: `${type} expired at end of cycle (${periodLabel})`,
+                createdAt: isoNow,
+              });
+            }
+
+            if (carriedOver > 0) {
+              newLedgerEntries.push({
+                id: crypto.randomUUID(),
+                employeeId: emp.id,
+                employeeName: emp.name,
+                date: todayStr,
+                type: "ROLLOVER",
+                days: carriedOver,
+                balanceAfter: carriedOver,
+                leaveType: type,
+                periodLabel,
+                reason: `${type} carried forward from previous period into ${periodLabel}`,
+                createdAt: isoNow,
+              });
+            }
+
+            newLedgerEntries.push({
+              id: crypto.randomUUID(),
+              employeeId: emp.id,
+              employeeName: emp.name,
+              date: todayStr,
+              type: "CYCLE_CREDIT",
+              days: cycleQuota,
+              balanceAfter: newBalance,
+              leaveType: type,
+              periodLabel,
+              reason: `${periodLabel} ${type} renewal credit (+${cycleQuota} days)`,
+              createdAt: isoNow,
+            });
+          }
+
+          if (changed) {
+            affectedEmployees++;
+            return {
+              ...emp,
+              leaveBalances: empBalances,
+              updatedAt: isoNow,
+            };
+          }
+          return emp;
+        });
+
+        if (affectedEmployees > 0) {
+          set((s) => ({
+            employees: nextEmployees,
+            leaveLedger: [...newLedgerEntries, ...(s.leaveLedger || [])],
+          }));
+
+          const tenantId = typeof window !== "undefined" ? localStorage.getItem("swift-active-tenant") : null;
+          if (tenantId && !state.demoMode) {
+            nextEmployees.forEach((emp) => {
+              syncItem("employees", { tenantId, ...emp });
+            });
+          }
+        }
+
+        const primaryPeriodLabel = typesEligible.map((t) => `${t.type}: ${t.periodLabel}`).join(" | ");
+        return {
+          affectedEmployees,
+          totalCreditedDays,
+          totalRolloverDays,
+          totalExpiredDays,
+          periodLabel: primaryPeriodLabel,
+          details,
+        };
       },
       applyLeaveEncashment: async (req) => {
         const state = get();
