@@ -74,12 +74,16 @@ function SettingsPage() {
     docAssets,
     setDocAssets,
     saveAllCompanySettings,
+    evaluateEarnedLeaveAccrual,
+    processYearEndLeaveRollover,
   } = useStore();
   const { theme, setTheme, setThemePalette } = useStore();
   const [saving, setSaving] = useState(false);
   const [paletteDropdownOpen, setPaletteDropdownOpen] = useState(false);
   const [showKioskPassword, setShowKioskPassword] = useState(false);
   const [confirmAutoTerminateOpen, setConfirmAutoTerminateOpen] = useState(false);
+  const [rolloverConfirmOpen, setRolloverConfirmOpen] = useState(false);
+  const [rollingOver, setRollingOver] = useState(false);
 
   const activePaletteId = company.themePalette || "swift-teal";
   const activePalette = getPalette(activePaletteId);
@@ -1196,8 +1200,247 @@ function SettingsPage() {
         </div>
       </Card>
 
-      {/* Leave Types */}
-      <Card title="Leave Policy Types">
+      {/* Earned Leave (EL) Policy Engine */}
+      <Card title="Earned Leave (EL) Policy Engine">
+        <div className="col-span-3 space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-border">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm text-foreground">Dynamic Working-Day Accrual, Rollover & Encashment Engine</span>
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px]">
+                  Intelligent Leave Engine
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Replaces static annual EL quotas with automated working-day accrual, year-end carry forward limits, and payroll encashment.
+              </p>
+            </div>
+          </div>
+
+          {/* Sub-section A: Dynamic Working-Day Accrual Rule */}
+          <div className="p-4 rounded-2xl border border-border bg-card/60 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-xs font-bold text-foreground flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-primary" />
+                  Sub-section A: Dynamic Working-Day Accrual Rule
+                </Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Credits EL automatically after an employee completes qualifying working days.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {company.elAccrualEnabled !== false ? "Enabled" : "Disabled"}
+                </span>
+                <Switch
+                  checked={company.elAccrualEnabled !== false}
+                  onCheckedChange={(checked) => setCompany({ elAccrualEnabled: checked })}
+                />
+              </div>
+            </div>
+
+            {company.elAccrualEnabled !== false && (
+              <div className="space-y-3 pt-2 border-t border-border/60">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Qualifying Working Days Required</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        value={company.elWorkingDaysThreshold ?? 20}
+                        onChange={(e) => setCompany({ elWorkingDaysThreshold: Math.max(1, +e.target.value || 20) })}
+                        className="text-xs h-9"
+                      />
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">Days</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Earned Leave Days Credited</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        step="0.5"
+                        min={0.5}
+                        value={company.elDaysEarnedPerCycle ?? 2}
+                        onChange={(e) => setCompany({ elDaysEarnedPerCycle: Math.max(0.5, +e.target.value || 2) })}
+                        className="text-xs h-9"
+                      />
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">Days</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-primary/5 border border-primary/15 text-[11px] text-primary/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="leading-relaxed">
+                    <span className="font-semibold">Helper Rule: </span>
+                    For every <strong className="font-bold underline">{company.elWorkingDaysThreshold ?? 20}</strong> actual working days completed (excluding Sundays, roster week-offs, holiday Saturdays, and public holidays), <strong className="font-bold underline">{company.elDaysEarnedPerCycle ?? 2}</strong> Earned Leave day(s) will be credited to the employee&apos;s EL balance.
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const res = evaluateEarnedLeaveAccrual();
+                      if (res.affectedEmployees > 0) {
+                        toast.success(`Accrued +${res.creditedCount} EL days across ${res.affectedEmployees} employees!`);
+                      } else {
+                        toast.info("All employee working day counters are currently evaluated.");
+                      }
+                    }}
+                    className="h-8 text-[11px] shrink-0 font-semibold"
+                  >
+                    Evaluate & Accrue Now
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sub-section B: Year-End Leave Carry Forward Rule */}
+          <div className="p-4 rounded-2xl border border-border bg-card/60 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-xs font-bold text-foreground flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-emerald-600" />
+                  Sub-section B: Year-End Leave Carry Forward Rule
+                </Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Controls year-end rollover caps and automatic lapsing of accumulated EL.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {company.elCarryForwardEnabled !== false ? "Enabled" : "Disabled"}
+                </span>
+                <Switch
+                  checked={company.elCarryForwardEnabled !== false}
+                  onCheckedChange={(checked) => setCompany({ elCarryForwardEnabled: checked })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-border/60">
+              {company.elCarryForwardEnabled !== false ? (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Maximum Carry Forward Cap (Days)</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={company.elMaxCarryForwardDays ?? 20}
+                          onChange={(e) => setCompany({ elMaxCarryForwardDays: Math.max(0, +e.target.value || 0) })}
+                          className="text-xs h-9"
+                        />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">Days Cap</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-end justify-start sm:justify-end">
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setRolloverConfirmOpen(true)}
+                        className="h-9 text-xs rounded-xl font-bold shadow-xs gap-1.5"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Run Year-End Rollover
+                      </Button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    At year-end reset, remaining EL balance is carried forward up to this cap (e.g., if cap is {company.elMaxCarryForwardDays ?? 20} and remaining balance is 32, employee starts next year with {company.elMaxCarryForwardDays ?? 20} EL; if remaining balance is 17, all 17 carry forward). Any balance above the cap lapses unless encashed.
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                    All unused Earned Leave balances expire at year-end. Employees start the new leave year with 0 EL.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setRolloverConfirmOpen(true)}
+                    className="h-8 text-xs rounded-xl font-bold shrink-0"
+                  >
+                    Run Year-End Reset
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sub-section C: Leave Encashment Policy */}
+          <div className="p-4 rounded-2xl border border-border bg-card/60 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-xs font-bold text-foreground flex items-center gap-2">
+                  <IndianRupee className="h-4 w-4 text-amber-600" />
+                  Sub-section C: Leave Encashment Policy
+                </Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Allows employees to encash unused EL for direct monetary payout in monthly payroll.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {company.elEncashmentEnabled !== false ? "Enabled" : "Disabled"}
+                </span>
+                <Switch
+                  checked={company.elEncashmentEnabled !== false}
+                  onCheckedChange={(checked) => setCompany({ elEncashmentEnabled: checked })}
+                />
+              </div>
+            </div>
+
+            {company.elEncashmentEnabled !== false && (
+              <div className="space-y-3 pt-2 border-t border-border/60">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Daily Encashment Rate Basis</Label>
+                    <select
+                      value={company.elEncashmentCalculationBase || "basic_plus_da"}
+                      onChange={(e) => setCompany({ elEncashmentCalculationBase: e.target.value as any })}
+                      className="w-full text-xs h-9 rounded-md border border-input bg-background px-3 py-1 font-medium shadow-xs"
+                    >
+                      <option value="basic_plus_da">Basic + DA (Recommended statutory standard)</option>
+                      <option value="gross_salary">Gross Salary (Fixed Monthly CTC Gross)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Minimum EL Balance Required to Apply</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={company.elEncashmentMinBalanceRequired ?? 0}
+                        onChange={(e) => setCompany({ elEncashmentMinBalanceRequired: Math.max(0, +e.target.value || 0) })}
+                        className="text-xs h-9"
+                      />
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">Days</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Employees can apply to encash either their entire available EL balance or any custom number of EL days for direct monetary payout in monthly payroll.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Leave Types (Other Entitlements: CL, SL, etc.) */}
+      <Card title="Other Leave Entitlements (CL, SL, etc.)">
         <div className="col-span-3 space-y-3">
           {/* Column header */}
           <div className="grid grid-cols-[1fr_130px_100px_36px] gap-3 text-xs text-muted-foreground font-medium px-1">
@@ -1206,7 +1449,7 @@ function SettingsPage() {
             <span className="text-center">Type</span>
             <span />
           </div>
-          {company.leaveTypes.map((l, i) => (
+          {company.leaveTypes.filter((l) => !l.name.toLowerCase().includes("earned leave") && l.id !== "el").map((l, i) => (
             <div key={l.id} className="grid grid-cols-[1fr_130px_100px_36px] gap-3 items-center">
               {/* Name */}
               <Input
@@ -1214,7 +1457,8 @@ function SettingsPage() {
                 placeholder="e.g. Casual Leave"
                 onChange={(e) => {
                   const copy = [...company.leaveTypes];
-                  copy[i] = { ...l, name: e.target.value };
+                  const realIdx = copy.findIndex((x) => x.id === l.id);
+                  if (realIdx >= 0) copy[realIdx] = { ...l, name: e.target.value };
                   setCompany({ leaveTypes: copy });
                 }}
               />
@@ -1227,7 +1471,8 @@ function SettingsPage() {
                   placeholder="12"
                   onChange={(e) => {
                     const copy = [...company.leaveTypes];
-                    copy[i] = { ...l, days: +e.target.value || 0 };
+                    const realIdx = copy.findIndex((x) => x.id === l.id);
+                    if (realIdx >= 0) copy[realIdx] = { ...l, days: +e.target.value || 0 };
                     setCompany({ leaveTypes: copy });
                   }}
                 />
@@ -1238,7 +1483,8 @@ function SettingsPage() {
                 type="button"
                 onClick={() => {
                   const copy = [...company.leaveTypes];
-                  copy[i] = { ...l, paid: l.paid === false ? true : false };
+                  const realIdx = copy.findIndex((x) => x.id === l.id);
+                  if (realIdx >= 0) copy[realIdx] = { ...l, paid: l.paid === false ? true : false };
                   setCompany({ leaveTypes: copy });
                 }}
                 className={`py-1.5 px-3 rounded-lg border text-xs font-semibold transition-colors ${
@@ -1254,14 +1500,14 @@ function SettingsPage() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-destructive hover:text-destructive"
-                onClick={() => setCompany({ leaveTypes: company.leaveTypes.filter((_, j) => j !== i) })}
+                onClick={() => setCompany({ leaveTypes: company.leaveTypes.filter((x) => x.id !== l.id) })}
               >
                 ×
               </Button>
             </div>
           ))}
           <p className="text-[11px] text-muted-foreground">
-            Define annual day-based leave quotas for employees. Employees can apply for full-day or half-day leaves against these entitlements.
+            Define annual fixed quotas for other leave categories such as Casual Leave (CL) and Sick Leave (SL).
           </p>
           <Button
             variant="outline"
@@ -1686,6 +1932,68 @@ function SettingsPage() {
               }}
             >
               Yes, Enable Auto-Terminate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Modal for Year-End Rollover */}
+      <Dialog open={rolloverConfirmOpen} onOpenChange={setRolloverConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              <RotateCcw className="h-5 w-5" />
+              Execute Year-End Earned Leave Rollover?
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-xs leading-relaxed text-muted-foreground">
+              {company.elCarryForwardEnabled !== false ? (
+                <>
+                  This will process all active employee EL balances against the configured{" "}
+                  <strong>Carry Forward Cap of {company.elMaxCarryForwardDays ?? 20} days</strong>.
+                  Balances up to {company.elMaxCarryForwardDays ?? 20} will roll over into the new year opening balance; any excess will lapse into the audit ledger.
+                </>
+              ) : (
+                <>
+                  Year-End Carry Forward is currently <strong>Disabled</strong>. Running this rollover will reset all employee Earned Leave balances to <strong>0 days</strong>.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-foreground space-y-1">
+            <div className="font-semibold">Policy in effect:</div>
+            <div className="text-[11px] text-muted-foreground">
+              {company.elCarryForwardEnabled !== false
+                ? `Max carry forward: ${company.elMaxCarryForwardDays ?? 20} days. Excess balance lapses.`
+                : "Zero carry forward. All unused balances expire."}
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              disabled={rollingOver}
+              onClick={() => setRolloverConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
+              disabled={rollingOver}
+              onClick={() => {
+                setRollingOver(true);
+                try {
+                  const res = processYearEndLeaveRollover();
+                  toast.success(
+                    `Year-end rollover complete! Processed ${res.rolledOverEmployees} employees (${res.totalCarriedDays} days carried forward, ${res.totalLapsedDays} days lapsed).`
+                  );
+                  setRolloverConfirmOpen(false);
+                } catch (err: any) {
+                  toast.error(err?.message || "Failed to run year-end rollover.");
+                } finally {
+                  setRollingOver(false);
+                }
+              }}
+            >
+              {rollingOver ? "Processing..." : "Confirm & Execute Rollover"}
             </Button>
           </DialogFooter>
         </DialogContent>

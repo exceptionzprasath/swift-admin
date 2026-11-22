@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { LeaveCalendarPage } from "./admin.leave-calendar";
 import { ShiftRosterPage } from "./admin.shift-roster";
 import { CommonAttendancePage } from "./admin.common-attendance";
+import { EmployeeLeaveEncashmentView } from "@/components/payroll/EmployeeLeaveEncashmentView";
 import { cn } from "@/lib/utils";
 import { useStore, isMockEmployee, isFrozenEmployee, isActiveEmployee, getEmployeeBranchIds, type AttendanceRecord, type Employee, type ShiftType, type Device } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
@@ -68,6 +69,8 @@ import {
   Timer,
   Building2,
   Check,
+  Coins,
+  Banknote,
   Zap,
   Plus,
   Minus,
@@ -3534,6 +3537,7 @@ function EmployeeAttendanceDossierModal({
   const [statusFilter, setStatusFilter] = useState("all");
   const [punctualityFilter, setPunctualityFilter] = useState("all");
   const [activeTab, setActiveTab] = useState<"table" | "calendar">("table");
+  const [dossierTab, setDossierTab] = useState<"attendance" | "earned-leave">("attendance");
 
   // Calculate Start & End Date based on Preset
   const { startDate, endDate } = useMemo(() => {
@@ -3805,7 +3809,37 @@ function EmployeeAttendanceDossierModal({
           </div>
         </div>
 
-        {/* Date Range Presets & Filter Ribbon */}
+        {/* Dossier Sub-Navigation Bar */}
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <Button
+            size="sm"
+            variant={dossierTab === "attendance" ? "default" : "outline"}
+            onClick={() => setDossierTab("attendance")}
+            className="text-xs h-9 rounded-xl font-semibold gap-1.5"
+          >
+            <Clock className="h-4 w-4" />
+            <span>Attendance & Punch Log</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant={dossierTab === "earned-leave" ? "default" : "outline"}
+            onClick={() => setDossierTab("earned-leave")}
+            className="text-xs h-9 rounded-xl font-semibold gap-1.5"
+          >
+            <Coins className="h-4 w-4 text-amber-500" />
+            <span>Earned Leave & Encashment</span>
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 font-bold">
+              {employee.leaveBalances?.EL ?? 15} EL
+            </Badge>
+          </Button>
+        </div>
+
+        {dossierTab === "earned-leave" ? (
+          <EmployeeLeaveEncashmentView employee={employee} />
+        ) : (
+          <>
+            {/* Date Range Presets & Filter Ribbon */}
         <div className="space-y-3 bg-muted/30 p-4 rounded-2xl border border-border">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -4147,7 +4181,9 @@ function EmployeeAttendanceDossierModal({
             </table>
           </div>
         </div>
-      </DialogContent>
+      </>
+    )}
+  </DialogContent>
     </Dialog>
   );
 }

@@ -25,6 +25,8 @@ export type PayrollInputs = {
   nightHours?: number;
   variablePay?: number;
   otherEarnings?: number;
+  leaveEncashmentPay?: number;
+  leaveEncashmentDays?: number;
   otherDeductions?: DeductionInput;
   tds?: DeductionInput;
   fineAndDamages?: DeductionInput;
@@ -372,6 +374,24 @@ export function computePayroll(opts: {
     });
   }
 
+  // 12. Leave Encashment Payout
+  let encashmentPayout = inputs.leaveEncashmentPay || 0;
+  if (!encashmentPayout && (inputs.leaveEncashmentDays || 0) > 0) {
+    const encashDays = inputs.leaveEncashmentDays!;
+    const calcBase = c.elEncashmentCalculationBase || "basic_plus_da";
+    const baseAmount = calcBase === "gross_salary" ? fixedGross : (monthlyBasic + (c.daEnabled !== false ? Math.round(fixedGross * ((c.daPct ?? 13.33) / 100)) : 0));
+    const dailyRate = wd > 0 ? baseAmount / wd : 0;
+    encashmentPayout = Math.round(dailyRate * encashDays);
+  }
+  if (encashmentPayout > 0) {
+    earningsList.push({
+      id: "leaveEncashment",
+      name: "Leave Encashment",
+      amount: encashmentPayout,
+      c: { id: "leaveEncashment", name: "Leave Encashment", formula: "input", value: 0, prorate: false, taxable: true, includeInPf: false, includeInEsi: false, includeInGratuity: false },
+    });
+  }
+
   // TOTAL GROSS EARNINGS (Earned for this month based on days present)
   const gross = earningsList.reduce((sum, item) => sum + item.amount, 0);
 
@@ -599,6 +619,7 @@ export function computePayroll(opts: {
     shiftAllowance: 0,
     night: 0,
     variablePay: inputs.variablePay || 0,
+    leaveEncashment: encashmentPayout,
   };
 
   const deductionsList: { id: string; name: string; amount: number }[] = [];
@@ -648,6 +669,7 @@ export function computePayroll(opts: {
     lopAmount,
     prorateFactor,
     fixedGross,
+    leaveEncashment: encashmentPayout,
     structureId: structure?.id,
     structureName: structure?.name,
     lwfSource: lwfInfo.source,

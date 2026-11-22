@@ -174,6 +174,7 @@ function UnifiedRequestsHubPage() {
         if (activeCategoryTab === "grievance" && item.category !== "grievance") return false;
         if (activeCategoryTab === "compoff" && item.category !== "compoff" && item.category !== "shift_swap") return false;
         if (activeCategoryTab === "team_group" && item.category !== "team_group") return false;
+        if (activeCategoryTab === "leave_encashment" && item.category !== "leave_encashment" && item.type !== "leave_encashment") return false;
       }
 
       // 2. Status Filter
@@ -223,6 +224,7 @@ function UnifiedRequestsHubPage() {
     const attPending = normalizedRequests.filter((r) => r.category === "attendance" && r.status === "Pending").length;
     const grvPending = normalizedRequests.filter((r) => r.category === "grievance" && r.status === "Pending").length;
     const groupsPending = normalizedRequests.filter((r) => (r.category === "team_group" || (r.category as any) === "group") && r.status === "Pending").length;
+    const encashmentPending = normalizedRequests.filter((r) => (r.category === "leave_encashment" || r.type === "leave_encashment") && r.status === "Pending").length;
 
     return {
       total,
@@ -236,6 +238,7 @@ function UnifiedRequestsHubPage() {
       attPending,
       grvPending,
       groupsPending,
+      encashmentPending,
     };
   }, [normalizedRequests]);
 
@@ -342,6 +345,19 @@ function UnifiedRequestsHubPage() {
     if (!emp) return;
 
     try {
+      const isEncashment = raiseForm.category === "leave_encashment";
+      const requestedDays = isEncashment ? (parseFloat(raiseForm.amountOrDays) || 1) : undefined;
+      const currentEL = emp.leaveBalances?.EL ?? 15;
+      const wd = company.workingDaysPerMonth || 26;
+      const rawGross = emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0;
+      const fixedGross = typeof rawGross === "number" && !isNaN(rawGross) ? rawGross : 0;
+      const basicPct = company.basicPct ?? (company.daPct ? (company.basicPct ?? 20) + company.daPct : 33.33);
+      const monthlyBasic = Math.round(fixedGross * (basicPct / 100));
+      const baseRate = company.elEncashmentCalculationBase === "gross_salary" ? fixedGross : monthlyBasic;
+      const dailyRate = wd > 0 ? baseRate / wd : 0;
+      const estimatedPayout = isEncashment && requestedDays ? Math.round(dailyRate * requestedDays) : undefined;
+      const payrollMonth = new Date().toISOString().slice(0, 7);
+
       await addRequest({
         employeeId: emp.id,
         employeeName: emp.name,
@@ -350,8 +366,15 @@ function UnifiedRequestsHubPage() {
         branchName: emp.branchId || "Head Office",
         category: raiseForm.category,
         type: raiseForm.type,
-        title: `${raiseForm.type}: ${raiseForm.amountOrDays}`,
-        amountOrDays: raiseForm.amountOrDays,
+        title: isEncashment
+          ? `Leave Encashment: ${requestedDays} Days (${requestedDays && requestedDays >= currentEL ? "Full" : "Partial"})`
+          : `${raiseForm.type}: ${raiseForm.amountOrDays}`,
+        amountOrDays: isEncashment ? `${requestedDays} Days (₹${(estimatedPayout || 0).toLocaleString()})` : raiseForm.amountOrDays,
+        amount: estimatedPayout,
+        requestedDays,
+        encashmentMode: isEncashment ? (requestedDays && requestedDays >= currentEL ? "full" : "partial") : undefined,
+        estimatedPayoutAmount: estimatedPayout,
+        payrollMonth: isEncashment ? payrollMonth : undefined,
         details: raiseForm.reason,
         reason: raiseForm.reason,
         notes: raiseForm.notes,
@@ -756,6 +779,26 @@ function UnifiedRequestsHubPage() {
                   </Badge>
                 )}
               </TabsTrigger>
+
+              <TabsTrigger
+                value="leave_encashment"
+                title="Earned Leave Encashment Requests"
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-medium whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:-translate-y-0.5 data-[state=active]:font-semibold"
+              >
+                Encashment
+                {kpis.encashmentPending > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className={`ml-1.5 px-1.5 py-0 text-[10px] font-bold rounded-full transition-colors ${
+                      activeCategoryTab === "leave_encashment"
+                        ? "bg-primary-foreground/25 text-primary-foreground"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    {kpis.encashmentPending}
+                  </Badge>
+                )}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -992,10 +1035,31 @@ function UnifiedRequestsHubPage() {
 
                         {/* Timeline / Value Column */}
                         <td className="p-3.5 whitespace-nowrap">
-                          <div className="space-y-0.5 text-xs">
-                            <div className="font-semibold text-foreground">{item.amountOrDays || "—"}</div>
-                            <div className="text-[11px] text-muted-foreground">{item.dateStr}</div>
-                          </div>
+                          {item.category === "leave_encashment" || item.type === "leave_encashment" ? (
+                            <div className="space-y-0.5 text-xs">
+                              <div className="font-bold text-foreground flex items-center gap-1">
+                                <span className="text-primary">{item.requestedDays || Number(item.amountOrDays) || 0} Days</span>
+                                <span>•</span>
+                                <span className="text-emerald-600">₹{(item.estimatedPayoutAmount || (item as any).amount || 0).toLocaleString()}</span>
+                              </div>
+                              {(() => {
+                                const emp = employees.find((e) => e.id === item.employeeId);
+                                const currentEL = emp?.leaveBalances?.EL ?? 15;
+                                const encashDays = item.requestedDays || Number(item.amountOrDays) || 0;
+                                const remainingEL = Math.max(0, currentEL - encashDays);
+                                return (
+                                  <div className="text-[11px] text-muted-foreground">
+                                    EL: {currentEL} → <strong className="text-foreground">{remainingEL} left</strong>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="space-y-0.5 text-xs">
+                              <div className="font-semibold text-foreground">{item.amountOrDays || "—"}</div>
+                              <div className="text-[11px] text-muted-foreground">{item.dateStr}</div>
+                            </div>
+                          )}
                         </td>
 
                         {/* Status Column */}
@@ -1381,6 +1445,55 @@ function UnifiedRequestsHubPage() {
                   </div>
                 )}
 
+                {/* Leave Encashment Inspection Card */}
+                {(inspectItem.category === "leave_encashment" || inspectItem.type === "leave_encashment") && (
+                  <div className="p-4 rounded-2xl border border-primary/20 bg-primary/5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-primary flex items-center gap-1.5">
+                        <Banknote className="h-4 w-4" />
+                        Leave Encashment Payout Breakdown
+                      </span>
+                      <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                        {inspectItem.encashmentMode === "full" ? "Full Encashment" : "Partial Encashment"}
+                      </Badge>
+                    </div>
+
+                    {(() => {
+                      const emp = employees.find((e) => e.id === inspectItem.employeeId);
+                      const currentEL = emp?.leaveBalances?.EL ?? 15;
+                      const encashDays = inspectItem.requestedDays || Number(inspectItem.amountOrDays) || 0;
+                      const remainingEL = Math.max(0, currentEL - encashDays);
+                      const payout = inspectItem.estimatedPayoutAmount || (inspectItem as any).amount || 0;
+
+                      return (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                          <div className="p-2.5 rounded-xl bg-card border border-border">
+                            <span className="text-[10px] text-muted-foreground block">Current EL Balance</span>
+                            <span className="font-bold text-foreground text-sm">{currentEL} Days</span>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-card border border-border">
+                            <span className="text-[10px] text-muted-foreground block">Requested Days</span>
+                            <span className="font-bold text-primary text-sm">{encashDays} Days</span>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-card border border-border">
+                            <span className="text-[10px] text-muted-foreground block">Remaining EL</span>
+                            <span className="font-bold text-emerald-600 text-sm">{remainingEL} Days</span>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-card border border-border">
+                            <span className="text-[10px] text-muted-foreground block">Estimated Payout</span>
+                            <span className="font-bold text-foreground text-sm">₹{Number(payout).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="text-[11px] text-muted-foreground leading-relaxed">
+                      Target Payroll Month: <strong className="text-foreground">{inspectItem.payrollMonth || new Date().toISOString().slice(0, 7)}</strong>.
+                      Upon admin approval, {inspectItem.requestedDays || 0} day(s) will be deducted immediately from the employee&apos;s EL balance and queued for payment in the monthly payroll run.
+                    </div>
+                  </div>
+                )}
+
                 {/* Multi-Level Approval Stepper */}
                 <div className="space-y-3">
                   <Label className="text-xs font-semibold flex items-center gap-1.5">
@@ -1596,11 +1709,13 @@ function UnifiedRequestsHubPage() {
                     value={raiseForm.category}
                     onValueChange={(val) => {
                       let defaultType = "Salary Advance (Monthly)";
-                      if (val === "attendance") defaultType = "Missing Punch Correction";
-                      else if (val === "document") defaultType = "Experience Certificate";
-                      else if (val === "compoff") defaultType = "Compensatory Off Claim";
-                      else if (val === "grievance") defaultType = "Payroll Discrepancy";
-                      setRaiseForm((prev) => ({ ...prev, category: val, type: defaultType }));
+                      let defaultAmount = "15000";
+                      if (val === "attendance") { defaultType = "Missing Punch Correction"; defaultAmount = "1 Day"; }
+                      else if (val === "document") { defaultType = "Experience Certificate"; defaultAmount = "1 Doc"; }
+                      else if (val === "compoff") { defaultType = "Compensatory Off Claim"; defaultAmount = "1 Day"; }
+                      else if (val === "grievance") { defaultType = "Payroll Discrepancy"; defaultAmount = "-"; }
+                      else if (val === "leave_encashment") { defaultType = "Earned Leave Encashment"; defaultAmount = "5"; }
+                      setRaiseForm((prev) => ({ ...prev, category: val, type: defaultType, amountOrDays: defaultAmount }));
                     }}
                   >
                     <SelectTrigger className="h-9 text-xs rounded-xl">
@@ -1612,6 +1727,7 @@ function UnifiedRequestsHubPage() {
                       <SelectItem value="document">Document Certificate</SelectItem>
                       <SelectItem value="compoff">Comp-Off & Swap</SelectItem>
                       <SelectItem value="grievance">Grievance Ticket</SelectItem>
+                      <SelectItem value="leave_encashment">Earned Leave Encashment</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1628,14 +1744,45 @@ function UnifiedRequestsHubPage() {
 
               {/* Amount or Value */}
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Amount / Days / Value</Label>
+                <Label className="text-xs font-semibold">
+                  {raiseForm.category === "leave_encashment" ? "Days to Encash" : "Amount / Days / Value"}
+                </Label>
                 <Input
-                  placeholder="e.g. ₹15,000 or 1 Day"
+                  placeholder={raiseForm.category === "leave_encashment" ? "e.g. 5" : "e.g. ₹15,000 or 1 Day"}
                   value={raiseForm.amountOrDays}
                   onChange={(e) => setRaiseForm((prev) => ({ ...prev, amountOrDays: e.target.value }))}
                   className="h-9 text-xs rounded-xl"
                 />
               </div>
+
+              {/* Live Leave Encashment Preview */}
+              {raiseForm.category === "leave_encashment" && raiseForm.employeeId && (() => {
+                const targetEmp = employees.find((e) => e.id === raiseForm.employeeId);
+                const currentEL = targetEmp?.leaveBalances?.EL ?? 15;
+                const reqDays = parseFloat(raiseForm.amountOrDays) || 0;
+                const remaining = Math.max(0, currentEL - reqDays);
+                const wd = company.workingDaysPerMonth || 26;
+                const rawGross = targetEmp?.fixedSalary ?? targetEmp?.basic ?? targetEmp?.salary ?? 0;
+                const fixedGross = typeof rawGross === "number" && !isNaN(rawGross) ? rawGross : 0;
+                const basicPct = company.basicPct ?? (company.daPct ? (company.basicPct ?? 20) + company.daPct : 33.33);
+                const monthlyBasic = Math.round(fixedGross * (basicPct / 100));
+                const baseRate = company.elEncashmentCalculationBase === "gross_salary" ? fixedGross : monthlyBasic;
+                const dailyRate = wd > 0 ? baseRate / wd : 0;
+                const estimatedPayout = Math.round(dailyRate * reqDays);
+
+                return (
+                  <div className="p-3 rounded-xl border border-primary/20 bg-primary/5 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between font-medium">
+                      <span>Available EL Balance: <strong className="text-foreground">{currentEL} Days</strong></span>
+                      <span>Remaining: <strong className={remaining < 0 ? "text-rose-600" : "text-emerald-600"}>{remaining} Days</strong></span>
+                    </div>
+                    <div className="text-[11px] text-primary flex items-center justify-between font-semibold">
+                      <span>Daily Rate: ₹{Math.round(dailyRate).toLocaleString()} / day</span>
+                      <span>Estimated Payout: ₹{estimatedPayout.toLocaleString()}</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Reason */}
               <div className="space-y-1">

@@ -16,7 +16,7 @@ export type NormalizedRequest = {
   department: string;
   branchName: string;
   avatarUrl?: string;
-  category: "leave" | "attendance" | "document" | "loan" | "grievance" | "compoff" | "shift_swap" | "general" | "profile" | "team_group";
+  category: "leave" | "attendance" | "document" | "loan" | "grievance" | "compoff" | "shift_swap" | "general" | "profile" | "team_group" | "leave_encashment";
   categoryLabel: string;
   type: string;
   title: string;
@@ -31,6 +31,10 @@ export type NormalizedRequest = {
   attachments?: string[];
   rejectionReason?: string;
   approvedBy?: string;
+  requestedDays?: number;
+  encashmentMode?: "full" | "partial";
+  estimatedPayoutAmount?: number;
+  payrollMonth?: string;
   updatedAt: string;
 };
 
@@ -88,7 +92,9 @@ export function getNormalizedRequests(params: {
       avatarUrl: emp?.photoDataUrl,
       category: (r.category as any) || "general",
       categoryLabel:
-        r.category === "team_group" || (r.category as any) === "group"
+        r.category === "leave_encashment" || r.type === "leave_encashment"
+          ? "Leave Encashment"
+          : r.category === "team_group" || (r.category as any) === "group"
           ? "Team Group Creation"
           : r.category === "loan"
           ? "Salary Advance & Loan"
@@ -115,6 +121,10 @@ export function getNormalizedRequests(params: {
       attachments: r.attachments || (Array.isArray(r.metadata?.attachments) ? r.metadata.attachments : []),
       rejectionReason: r.rejectionReason,
       approvedBy: r.approvedBy,
+      requestedDays: r.requestedDays || r.metadata?.requestedDays,
+      encashmentMode: r.encashmentMode || r.metadata?.encashmentMode,
+      estimatedPayoutAmount: r.estimatedPayoutAmount || r.metadata?.estimatedPayoutAmount,
+      payrollMonth: r.payrollMonth || r.metadata?.payrollMonth,
       updatedAt: r.updatedAt || r.createdAt || new Date().toISOString(),
     });
   });

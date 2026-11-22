@@ -207,6 +207,8 @@ interface MonthlyOverrideData {
   bonus?: number;
   variablePay?: number;
   otherEarnings?: number;
+  leaveEncashmentDays?: number;
+  leaveEncashmentPay?: number;
   // Deductions (Separate Employee and Employer PF & ESI)
   pfEnabled?: boolean;
   pfEmployeeEnabled?: boolean;
@@ -1142,6 +1144,24 @@ export function PayrollPage() {
       const effectiveVariablePay = ov.variablePay !== undefined ? ov.variablePay : 0;
       const effectiveOtherEarnings = ov.otherEarnings !== undefined ? ov.otherEarnings : 0;
 
+      // Find approved leave encashment requests for this employee and active payroll month
+      const activeEncashmentReqs = (requests || []).filter((r: any) => {
+        if (r.employeeId !== emp.id) return false;
+        const isEncash = r.category === "leave_encashment" || r.type === "leave_encashment" || r.metadata?.category === "leave_encashment";
+        if (!isEncash) return false;
+        const isApproved = (r.status || "").toLowerCase() === "approved";
+        if (!isApproved) return false;
+        const reqMonth = r.payrollMonth || r.metadata?.payrollMonth || (r.date ? r.date.slice(0, 7) : selectedMonth);
+        return reqMonth === selectedMonth;
+      });
+
+      const approvedEncashmentDays = activeEncashmentReqs.reduce((sum: number, r: any) => {
+        const days = r.requestedDays || Number(r.amountOrDays) || r.metadata?.requestedDays || 0;
+        return sum + (typeof days === "number" && !isNaN(days) ? days : 0);
+      }, 0);
+
+      const effectiveEncashmentDays = ov.leaveEncashmentDays !== undefined ? ov.leaveEncashmentDays : approvedEncashmentDays;
+
       const deductionInputs = buildDeductionInputs(ov, company);
       const effectiveEmp = ov.customBasic !== undefined ? { ...emp, basic: ov.customBasic, fixedSalary: ov.customBasic, salary: ov.customBasic } : emp;
 
@@ -1155,6 +1175,7 @@ export function PayrollPage() {
         loan: effectiveLoan,
         advance: effectiveAdvance,
         bonus: effectiveBonus,
+        leaveEncashmentDays: effectiveEncashmentDays,
         tds: deductionInputs.tds,
         fineAndDamages: deductionInputs.fineAndDamages,
         lwf: deductionInputs.lwf,
@@ -1195,6 +1216,8 @@ export function PayrollPage() {
         otHours: effectiveOtHours,
         dailyOtRecords,
         comp,
+        approvedEncashmentDays,
+        leaveEncashmentPay: comp.leaveEncashment || 0,
         monthAttCount: monthAtt.length,
         hasOverride: !!monthlyOverrides[overrideKey],
         overrideData: ov,
@@ -1206,6 +1229,7 @@ export function PayrollPage() {
     attendance,
     roster,
     leaves,
+    requests,
     holidays,
     selectedMonth,
     company,

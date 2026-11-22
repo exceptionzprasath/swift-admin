@@ -546,6 +546,15 @@ export type Company = {
   shifts: ShiftType[];
   appointmentTemplate: string;
   branches: Branch[];
+  /** Dynamic Earned Leave (EL) Policy Engine */
+  elAccrualEnabled?: boolean;
+  elWorkingDaysThreshold?: number; // default: 20
+  elDaysEarnedPerCycle?: number;   // default: 2
+  elCarryForwardEnabled?: boolean;
+  elMaxCarryForwardDays?: number;  // default: 20
+  elEncashmentEnabled?: boolean;
+  elEncashmentCalculationBase?: "basic_plus_da" | "gross_salary"; // default: "basic_plus_da"
+  elEncashmentMinBalanceRequired?: number; // default: 0
   earnings: EarningComponent[];
   deductions: DeductionComponent[];
   pfRules: { enabled: boolean; employeePct: number; employerPct: number; ceiling: number };
@@ -787,6 +796,8 @@ export type Employee = {
   approvalSettings?: EmployeeApprovalSettings;
   appointmentLetterSent?: boolean;
   appointmentLetterSentAt?: string;
+  leaveBalances?: Record<string, number>;
+  qualifyingWorkingDaysCounter?: number;
 };
 
 export type BiometricDeviceMapping = {
@@ -1297,8 +1308,26 @@ export type UnifiedRequest = {
   attachments?: string[];
   rejectionReason?: string;
   approvedBy?: string;
+  requestedDays?: number;
+  encashmentMode?: "full" | "partial";
+  estimatedPayoutAmount?: number;
+  payrollMonth?: string;
   createdAt: string;
   updatedAt?: string;
+};
+
+export type LeaveLedgerEntry = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+  date: string;
+  type: "ACCRUAL" | "CARRY_FORWARD" | "LAPSED" | "ENCASHMENT" | "AVAILED" | "ADJUSTMENT";
+  days: number;
+  balanceAfter?: number;
+  reason: string;
+  payrollMonth?: string;
+  requestId?: string;
+  createdAt: string;
 };
 
 type State = {
@@ -1438,6 +1467,18 @@ type State = {
   updateRequest: (id: string, patch: Partial<UnifiedRequest>) => void;
   deleteRequest: (id: string) => void;
   actOnUnifiedRequest: (id: string, action: "approve" | "reject" | "forward" | "escalate", comment: string, actorName: string, actorRole: string) => Promise<boolean>;
+  // Earned Leave Ledger & Accrual Engine
+  leaveLedger: LeaveLedgerEntry[];
+  addLeaveLedgerEntry: (entry: Omit<LeaveLedgerEntry, "id" | "createdAt">) => void;
+  evaluateEarnedLeaveAccrual: (employeeId?: string) => { creditedCount: number; affectedEmployees: number };
+  processYearEndLeaveRollover: () => { rolledOverEmployees: number; totalLapsedDays: number; totalCarriedDays: number };
+  applyLeaveEncashment: (req: {
+    employeeId: string;
+    requestedDays: number;
+    encashmentMode?: "full" | "partial";
+    payrollMonth?: string;
+    reason?: string;
+  }) => Promise<UnifiedRequest>;
 };
 
 export interface VaultFolder {
@@ -1558,6 +1599,14 @@ const defaultCompany: Company = {
     { id: "sl", name: "Sick Leave", days: 12, paid: true },
     { id: "el", name: "Earned Leave", days: 15, paid: true },
   ],
+  elAccrualEnabled: true,
+  elWorkingDaysThreshold: 20,
+  elDaysEarnedPerCycle: 2,
+  elCarryForwardEnabled: true,
+  elMaxCarryForwardDays: 20,
+  elEncashmentEnabled: true,
+  elEncashmentCalculationBase: "basic_plus_da",
+  elEncashmentMinBalanceRequired: 0,
   permissionTypes: [
     { id: "perm-gen", name: "Standard Permission", maxHours: 2, period: "month", maxRequestsPerMonth: 2, paid: true },
   ],
@@ -1717,10 +1766,10 @@ HR Department
 function buildDemoData() {
   const empIds = ["demo-emp-1", "demo-emp-2", "demo-emp-3", "demo-emp-4"];
   const employees: Employee[] = [
-    { id: empIds[0], empCode: "SWF001", password: "demo123", name: "Aarav Sharma", email: "aarav@demo.swift", phone: "+91 98765 43210", department: "Engineering", designation: "Senior Engineer", doj: "2023-04-01", basic: 45000, pan: "ABCDE1234F", aadhaar: "1234 5678 9012", bankAcc: "50100123456789", bankIfsc: "HDFC0001234", shiftId: "gen", faceRegistered: true, status: "active", managerId: empIds[1], about: "Full-stack engineer leading the payroll module. 4 yrs experience with React & Node." },
-    { id: empIds[1], empCode: "SWF002", password: "demo123", name: "Priya Iyer", email: "priya@demo.swift", phone: "+91 98765 43211", department: "HR", designation: "HR Manager", doj: "2022-08-15", basic: 55000, pan: "PQRST5678K", aadhaar: "2345 6789 0123", bankAcc: "50100987654321", bankIfsc: "ICIC0004321", shiftId: "gen", faceRegistered: true, status: "active", about: "Head of People. Owns compliance, hiring pipeline, and employee experience." },
-    { id: empIds[2], empCode: "SWF003", password: "demo123", name: "Rahul Verma", email: "rahul@demo.swift", phone: "+91 98765 43212", department: "Sales", designation: "Sales Executive", doj: "2024-01-10", basic: 28000, pan: "LMNOP9012Q", aadhaar: "3456 7890 1234", bankAcc: "50100555512345", bankIfsc: "SBIN0001111", shiftId: "gen", faceRegistered: true, status: "active", managerId: empIds[3], about: "SMB sales — southern territory. Top performer last quarter." },
-    { id: empIds[3], empCode: "SWF004", password: "demo123", name: "Meera Nair", email: "meera@demo.swift", phone: "+91 98765 43213", department: "Operations", designation: "Ops Lead", doj: "2023-11-20", basic: 38000, pan: "XYZAB3456C", aadhaar: "4567 8901 2345", bankAcc: "50100444498765", bankIfsc: "AXIS0002222", shiftId: "night", faceRegistered: true, status: "active", managerId: empIds[1], about: "Runs 24×7 ops shift. Coordinates vendor SLAs and night-shift roster." },
+    { id: empIds[0], empCode: "SWF001", password: "demo123", name: "Aarav Sharma", email: "aarav@demo.swift", phone: "+91 98765 43210", department: "Engineering", designation: "Senior Engineer", doj: "2023-04-01", basic: 45000, pan: "ABCDE1234F", aadhaar: "1234 5678 9012", bankAcc: "50100123456789", bankIfsc: "HDFC0001234", shiftId: "gen", faceRegistered: true, status: "active", managerId: empIds[1], about: "Full-stack engineer leading the payroll module. 4 yrs experience with React & Node.", leaveBalances: { EL: 24, CL: 10, SL: 8 }, qualifyingWorkingDaysCounter: 14 },
+    { id: empIds[1], empCode: "SWF002", password: "demo123", name: "Priya Iyer", email: "priya@demo.swift", phone: "+91 98765 43211", department: "HR", designation: "HR Manager", doj: "2022-08-15", basic: 55000, pan: "PQRST5678K", aadhaar: "2345 6789 0123", bankAcc: "50100987654321", bankIfsc: "ICIC0004321", shiftId: "gen", faceRegistered: true, status: "active", about: "Head of People. Owns compliance, hiring pipeline, and employee experience.", leaveBalances: { EL: 28, CL: 12, SL: 10 }, qualifyingWorkingDaysCounter: 8 },
+    { id: empIds[2], empCode: "SWF003", password: "demo123", name: "Rahul Verma", email: "rahul@demo.swift", phone: "+91 98765 43212", department: "Sales", designation: "Sales Executive", doj: "2024-01-10", basic: 28000, pan: "LMNOP9012Q", aadhaar: "3456 7890 1234", bankAcc: "50100555512345", bankIfsc: "SBIN0001111", shiftId: "gen", faceRegistered: true, status: "active", managerId: empIds[3], about: "SMB sales — southern territory. Top performer last quarter.", leaveBalances: { EL: 16, CL: 6, SL: 6 }, qualifyingWorkingDaysCounter: 18 },
+    { id: empIds[3], empCode: "SWF004", password: "demo123", name: "Meera Nair", email: "meera@demo.swift", phone: "+91 98765 43213", department: "Operations", designation: "Ops Lead", doj: "2023-11-20", basic: 38000, pan: "XYZAB3456C", aadhaar: "4567 8901 2345", bankAcc: "50100444498765", bankIfsc: "AXIS0002222", shiftId: "night", faceRegistered: true, status: "active", managerId: empIds[1], about: "Runs 24×7 ops shift. Coordinates vendor SLAs and night-shift roster.", leaveBalances: { EL: 20, CL: 8, SL: 7 }, qualifyingWorkingDaysCounter: 12 },
   ];
   const attendance: AttendanceRecord[] = [];
   const today = new Date();
@@ -1748,7 +1797,42 @@ function buildDemoData() {
     { id: crypto.randomUUID(), employeeId: empIds[2], type: "Casual Leave", from: "2026-07-08", to: "2026-07-09", reason: "Family function", status: "pending" },
     { id: crypto.randomUUID(), employeeId: empIds[0], type: "Sick Leave", from: "2026-06-20", to: "2026-06-20", reason: "Fever", status: "approved" },
   ];
-  return { employees, attendance, leaves };
+  const leaveLedger: LeaveLedgerEntry[] = [
+    {
+      id: "led-1",
+      employeeId: empIds[0],
+      employeeName: "Aarav Sharma",
+      date: "2026-06-01",
+      type: "CARRY_FORWARD",
+      days: 20,
+      balanceAfter: 20,
+      reason: "Financial year-end carry forward (Cap: 20 days)",
+      createdAt: "2026-06-01T00:00:00.000Z",
+    },
+    {
+      id: "led-2",
+      employeeId: empIds[0],
+      employeeName: "Aarav Sharma",
+      date: "2026-06-30",
+      type: "ACCRUAL",
+      days: 2,
+      balanceAfter: 22,
+      reason: "Completed 20 qualifying working days (+2 EL)",
+      createdAt: "2026-06-30T18:00:00.000Z",
+    },
+    {
+      id: "led-3",
+      employeeId: empIds[0],
+      employeeName: "Aarav Sharma",
+      date: "2026-07-31",
+      type: "ACCRUAL",
+      days: 2,
+      balanceAfter: 24,
+      reason: "Completed 20 qualifying working days (+2 EL)",
+      createdAt: "2026-07-31T18:00:00.000Z",
+    },
+  ];
+  return { employees, attendance, leaves, leaveLedger };
 }
 
 export const DEFAULT_PREDEFINED_ROLES: PredefinedRole[] = [
@@ -2222,6 +2306,7 @@ export const useStore = create<State>()(
       vaultFiles: DEFAULT_VAULT_FILES,
       grievances: [],
       requests: [],
+      leaveLedger: [],
       addVaultFolder: (f) => {
         const folder: VaultFolder = {
           ...f,
@@ -2787,6 +2872,7 @@ export const useStore = create<State>()(
               vaultFiles: Array.isArray(data.vaultFiles) && data.vaultFiles.length ? data.vaultFiles : (get().vaultFiles?.length ? get().vaultFiles : DEFAULT_VAULT_FILES),
               grievances: data.grievances || [],
               requests: data.requests || [],
+              leaveLedger: data.leaveLedger || [],
               devices: Array.isArray(loadedDevices) ? loadedDevices : get().devices,
               demoMode: false,
             });
@@ -2947,6 +3033,7 @@ export const useStore = create<State>()(
           vaultFiles: DEFAULT_VAULT_FILES,
           grievances: [],
           requests: [],
+          leaveLedger: [],
           devices: [],
           salaryRevisions: [],
           auditLog: [],
@@ -4033,7 +4120,7 @@ export const useStore = create<State>()(
         }
       },
       seedDemo: (asRole) => {
-        const { employees, attendance, leaves } = buildDemoData();
+        const { employees, attendance, leaves, leaveLedger } = buildDemoData();
         const company = get().company;
         const month = new Date().toISOString().slice(0, 7);
         const payrolls: PayrollRun[] = employees.map((e) => {
@@ -4053,7 +4140,7 @@ export const useStore = create<State>()(
           asRole === "admin"
             ? { role: "admin", name: "Demo Admin" }
             : { role: "employee", employeeId: employees[0].id, name: employees[0].name };
-        set({ employees, attendance, leaves, payrolls, currentUser, demoMode: true });
+        set({ employees, attendance, leaves, leaveLedger, payrolls, currentUser, demoMode: true });
       },
       seedSuperDemo: () => {
         const now = new Date();
@@ -4441,6 +4528,56 @@ export const useStore = create<State>()(
           });
         }
 
+        // If leave encashment request is approved, immediately deduct requestedDays from employee EL balance and log to leave ledger
+        if (
+          newStatus === "Approved" &&
+          (targetReq.category === "leave_encashment" || targetReq.type === "leave_encashment" || targetReq.metadata?.category === "leave_encashment")
+        ) {
+          const encashDays = targetReq.requestedDays || Number(targetReq.amountOrDays) || (targetReq.metadata?.requestedDays) || 0;
+          const targetEmpId = targetReq.employeeId;
+          const payrollMonth = targetReq.payrollMonth || targetReq.metadata?.payrollMonth || now.slice(0, 7);
+
+          if (encashDays > 0 && targetEmpId) {
+            set((s) => {
+              let balanceAfter = 0;
+              const nextEmployees = s.employees.map((e) => {
+                if (e.id === targetEmpId) {
+                  const currentEL = e.leaveBalances?.EL ?? 15;
+                  balanceAfter = Math.max(0, currentEL - encashDays);
+                  return {
+                    ...e,
+                    leaveBalances: {
+                      ...(e.leaveBalances || {}),
+                      EL: balanceAfter,
+                    },
+                    updatedAt: now,
+                  };
+                }
+                return e;
+              });
+
+              const ledgerEntry: LeaveLedgerEntry = {
+                id: crypto.randomUUID(),
+                employeeId: targetEmpId,
+                employeeName: targetReq.employeeName,
+                date: now.slice(0, 10),
+                type: "ENCASHMENT",
+                days: -encashDays,
+                balanceAfter,
+                reason: `Approved encashment of ${encashDays} EL days for ${payrollMonth}`,
+                payrollMonth,
+                requestId: targetReq.id,
+                createdAt: now,
+              };
+
+              return {
+                employees: nextEmployees,
+                leaveLedger: [ledgerEntry, ...(s.leaveLedger || [])],
+              };
+            });
+          }
+        }
+
         set((s) => ({
           requests: s.requests.map((r) => (r.id === id ? updatedReq : r)),
         }));
@@ -4464,6 +4601,228 @@ export const useStore = create<State>()(
           }
         }
         return true;
+      },
+      addLeaveLedgerEntry: (entry) => {
+        const id = crypto.randomUUID();
+        const createdAt = new Date().toISOString();
+        const fullEntry: LeaveLedgerEntry = { id, createdAt, ...entry };
+        set((s) => ({ leaveLedger: [fullEntry, ...(s.leaveLedger || [])] }));
+      },
+      evaluateEarnedLeaveAccrual: (targetEmployeeId?: string) => {
+        const state = get();
+        const company = state.company;
+        if (company.elAccrualEnabled === false) return { creditedCount: 0, affectedEmployees: 0 };
+
+        const threshold = company.elWorkingDaysThreshold ?? 20;
+        const daysPerCycle = company.elDaysEarnedPerCycle ?? 2;
+        const now = new Date().toISOString();
+        const todayStr = now.slice(0, 10);
+
+        let totalCreditedDays = 0;
+        let affectedCount = 0;
+        const newLedgerEntries: LeaveLedgerEntry[] = [];
+
+        const targetEmps = targetEmployeeId
+          ? state.employees.filter((e) => e.id === targetEmployeeId)
+          : state.employees.filter((e) => e.status === "active");
+
+        const nextEmployees = state.employees.map((emp) => {
+          if (!targetEmps.some((te) => te.id === emp.id)) return emp;
+
+          // Count qualifying working days:
+          // Include: Present (1), Half-Day (0.5)
+          // Exclude: Sundays, W/O, A/H, Leaves, Absent
+          const empAttendance = state.attendance.filter((a) => a.employeeId === emp.id);
+          let qualifyingDays = 0;
+          for (const a of empAttendance) {
+            const dateObj = new Date(a.date);
+            if (dateObj.getDay() === 0) continue; // Sunday strictly excluded
+
+            const st = (a.status || "").toLowerCase();
+            if (st === "present" || st === "p") {
+              qualifyingDays += 1;
+            } else if (st === "half_day" || st === "half-day" || st === "hd") {
+              qualifyingDays += 0.5;
+            }
+          }
+
+          // Use employee running counter or fallback to qualifyingDays
+          const currentCounter = (emp.qualifyingWorkingDaysCounter !== undefined && emp.qualifyingWorkingDaysCounter > 0)
+            ? emp.qualifyingWorkingDaysCounter
+            : (qualifyingDays > 0 ? qualifyingDays : 14);
+
+          if (currentCounter >= threshold) {
+            const cycles = Math.floor(currentCounter / threshold);
+            const creditDays = cycles * daysPerCycle;
+            const remainder = currentCounter % threshold;
+            const currentEL = emp.leaveBalances?.EL ?? 15;
+            const newEL = currentEL + creditDays;
+
+            totalCreditedDays += creditDays;
+            affectedCount += 1;
+
+            newLedgerEntries.push({
+              id: crypto.randomUUID(),
+              employeeId: emp.id,
+              employeeName: emp.name,
+              date: todayStr,
+              type: "ACCRUAL",
+              days: creditDays,
+              balanceAfter: newEL,
+              reason: `Completed ${cycles * threshold} qualifying working days (+${creditDays} EL credited)`,
+              createdAt: now,
+            });
+
+            return {
+              ...emp,
+              qualifyingWorkingDaysCounter: remainder,
+              leaveBalances: {
+                ...(emp.leaveBalances || {}),
+                EL: newEL,
+              },
+              updatedAt: now,
+            };
+          }
+
+          return emp;
+        });
+
+        if (affectedCount > 0) {
+          set((s) => ({
+            employees: nextEmployees,
+            leaveLedger: [...newLedgerEntries, ...(s.leaveLedger || [])],
+          }));
+        }
+
+        return { creditedCount: totalCreditedDays, affectedEmployees: affectedCount };
+      },
+      processYearEndLeaveRollover: () => {
+        const state = get();
+        const company = state.company;
+        const now = new Date().toISOString();
+        const todayStr = now.slice(0, 10);
+        const carryForwardEnabled = company.elCarryForwardEnabled !== false;
+        const maxCap = company.elMaxCarryForwardDays ?? 20;
+
+        let rolledOverEmployees = 0;
+        let totalLapsedDays = 0;
+        let totalCarriedDays = 0;
+        const newLedgerEntries: LeaveLedgerEntry[] = [];
+
+        const nextEmployees = state.employees.map((emp) => {
+          if (emp.status !== "active") return emp;
+          const currentEL = emp.leaveBalances?.EL ?? 15;
+          let nextYearOpeningEL = 0;
+          let lapsedDays = 0;
+
+          if (!carryForwardEnabled) {
+            nextYearOpeningEL = 0;
+            lapsedDays = currentEL;
+          } else {
+            nextYearOpeningEL = Math.min(currentEL, maxCap);
+            lapsedDays = Math.max(0, currentEL - maxCap);
+          }
+
+          if (nextYearOpeningEL > 0) {
+            totalCarriedDays += nextYearOpeningEL;
+            newLedgerEntries.push({
+              id: crypto.randomUUID(),
+              employeeId: emp.id,
+              employeeName: emp.name,
+              date: todayStr,
+              type: "CARRY_FORWARD",
+              days: nextYearOpeningEL,
+              balanceAfter: nextYearOpeningEL,
+              reason: `Year-end rollover carry forward (Cap: ${maxCap} days)`,
+              createdAt: now,
+            });
+          }
+
+          if (lapsedDays > 0) {
+            totalLapsedDays += lapsedDays;
+            newLedgerEntries.push({
+              id: crypto.randomUUID(),
+              employeeId: emp.id,
+              employeeName: emp.name,
+              date: todayStr,
+              type: "LAPSED",
+              days: -lapsedDays,
+              balanceAfter: nextYearOpeningEL,
+              reason: `Year-end unused EL exceeded carry forward cap of ${maxCap} days`,
+              createdAt: now,
+            });
+          }
+
+          rolledOverEmployees += 1;
+
+          return {
+            ...emp,
+            leaveBalances: {
+              ...(emp.leaveBalances || {}),
+              EL: nextYearOpeningEL,
+            },
+            updatedAt: now,
+          };
+        });
+
+        set((s) => ({
+          employees: nextEmployees,
+          leaveLedger: [...newLedgerEntries, ...(s.leaveLedger || [])],
+        }));
+
+        return { rolledOverEmployees, totalLapsedDays, totalCarriedDays };
+      },
+      applyLeaveEncashment: async (req) => {
+        const state = get();
+        const emp = state.employees.find((e) => e.id === req.employeeId);
+        if (!emp) throw new Error("Employee not found");
+
+        const availableEL = emp.leaveBalances?.EL ?? 15;
+        if (req.requestedDays < 1) throw new Error("Requested encashment days must be at least 1 day");
+        if (req.requestedDays > availableEL) {
+          throw new Error(`Requested days (${req.requestedDays}) exceeds available EL balance (${availableEL})`);
+        }
+
+        const wd = state.company.workingDaysPerMonth || 26;
+        const rawGross = emp.fixedSalary ?? emp.basic ?? emp.salary ?? 0;
+        const fixedGross = typeof rawGross === "number" && !isNaN(rawGross) ? rawGross : 0;
+        const basicPct = state.company.basicPct ?? (state.company.daPct ? (state.company.basicPct ?? 20) + state.company.daPct : 33.33);
+        const monthlyBasic = Math.round(fixedGross * (basicPct / 100));
+
+        const baseRate = state.company.elEncashmentCalculationBase === "gross_salary" ? fixedGross : monthlyBasic;
+        const dailyRate = wd > 0 ? baseRate / wd : 0;
+        const estimatedPayoutAmount = Math.round(dailyRate * req.requestedDays);
+        const payrollMonth = req.payrollMonth || new Date().toISOString().slice(0, 7);
+
+        const newReq: Omit<UnifiedRequest, "id" | "createdAt" | "updatedAt"> = {
+          employeeId: emp.id,
+          employeeName: emp.name,
+          empCode: emp.empCode,
+          department: emp.department,
+          category: "leave_encashment",
+          type: "leave_encashment",
+          title: `Leave Encashment: ${req.requestedDays} Days (${req.encashmentMode === "full" ? "Full" : "Partial"})`,
+          amount: estimatedPayoutAmount,
+          amountOrDays: `${req.requestedDays} Days (₹${estimatedPayoutAmount.toLocaleString()})`,
+          requestedDays: req.requestedDays,
+          encashmentMode: req.encashmentMode || (req.requestedDays >= availableEL ? "full" : "partial"),
+          estimatedPayoutAmount,
+          payrollMonth,
+          reason: req.reason || `Leave encashment application for ${req.requestedDays} days in payroll month ${payrollMonth}`,
+          status: "Pending",
+          currentLevel: 1,
+          totalLevels: 1,
+          approvalSteps: [
+            {
+              id: crypto.randomUUID(),
+              level: 1,
+              roleName: "HR Administrator",
+              status: "Pending",
+            },
+          ],
+        };
+
+        return await state.addRequest(newReq);
       },
       exitDemo: () => set({ currentUser: null, demoMode: false, demoSuper: false }),
     }),

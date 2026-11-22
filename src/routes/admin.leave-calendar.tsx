@@ -11,6 +11,7 @@ import {
   MoreVertical,
   X,
   RotateCcw,
+  Coins,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -141,6 +142,8 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
     setCompany,
     saveAllCompanySettings,
   } = useStore();
+
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<"holidays" | "leave-policy" | "permission-policy" | "awol-control">("holidays");
   const [savingLeavePolicy, setSavingLeavePolicy] = useState(false);
@@ -1002,6 +1005,63 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
       {/* TAB 2: LEAVE POLICY TYPES */}
       {activeTab === "leave-policy" && (
         <div className="space-y-6 max-w-5xl">
+          {/* EL Policy Engine Banner Card */}
+          <Card className="rounded-2xl border-primary/25 bg-gradient-to-br from-card via-card to-primary/5 shadow-xs">
+            <CardHeader className="pb-3 border-b border-border/60">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
+                      <Coins className="h-4 w-4" />
+                    </div>
+                    <CardTitle className="text-base font-bold">Earned Leave (EL) Policy Engine</CardTitle>
+                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-semibold">
+                      Working-Day Rule
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Earned Leave is dynamically evaluated from qualifying present days (excludes Sundays, week-offs, and public holidays).
+                  </CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate({ to: "/admin/settings" })}
+                  className="text-xs h-8 rounded-xl font-semibold gap-1.5"
+                >
+                  <Tag className="h-3.5 w-3.5" />
+                  <span>Configure in Settings</span>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                <span className="text-[11px] text-muted-foreground block font-medium">A. Working-Day Accrual</span>
+                <span className="font-bold text-foreground">
+                  {company.elAccrualEnabled !== false
+                    ? `Every ${company.elWorkingDaysThreshold ?? 20} days → +${company.elDaysEarnedPerCycle ?? 2} EL`
+                    : "Disabled"}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                <span className="text-[11px] text-muted-foreground block font-medium">B. Year-End Carry Forward</span>
+                <span className="font-bold text-foreground">
+                  {company.elCarryForwardEnabled !== false
+                    ? `Cap: ${company.elMaxCarryForwardDays ?? 20} Days`
+                    : "Lapses to 0"}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                <span className="text-[11px] text-muted-foreground block font-medium">C. Leave Encashment</span>
+                <span className="font-bold text-foreground">
+                  {company.elEncashmentEnabled !== false
+                    ? `Active (${company.elEncashmentCalculationBase === "gross_salary" ? "Gross Salary" : "Basic + DA"})`
+                    : "Disabled"}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="rounded-2xl border-border bg-card shadow-xs">
             <CardHeader className="pb-4 border-b border-border/60">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
