@@ -12,6 +12,10 @@ import {
   X,
   RotateCcw,
   Coins,
+  Users,
+  SlidersHorizontal,
+  Filter,
+  Sparkles,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -141,13 +145,32 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
     company,
     setCompany,
     saveAllCompanySettings,
+    employees,
+    updateEmployee,
+    evaluateEarnedLeaveAccrual,
+    processYearEndLeaveRollover,
   } = useStore();
 
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<"holidays" | "leave-policy" | "permission-policy" | "awol-control">("holidays");
+  const [activeTab, setActiveTab] = useState<"holidays" | "employee-balances" | "leave-policy" | "permission-policy" | "awol-control">("holidays");
   const [savingLeavePolicy, setSavingLeavePolicy] = useState(false);
+  const [savingELPolicy, setSavingELPolicy] = useState(false);
+  const [rolloverConfirmOpen, setRolloverConfirmOpen] = useState(false);
   const [confirmAutoTerminateOpen, setConfirmAutoTerminateOpen] = useState(false);
+
+  // ==========================================
+  // EMPLOYEE LEAVE BALANCES STATE
+  // ==========================================
+  const [empSearch, setEmpSearch] = useState("");
+  const [deptFilter, setDeptFilter] = useState("all");
+  const [adjustingEmp, setAdjustingEmp] = useState<any | null>(null);
+  const [adjustForm, setAdjustForm] = useState<{
+    el: number;
+    cl: number;
+    sl: number;
+    workingDays: number;
+  }>({ el: 15, cl: 10, sl: 8, workingDays: 0 });
 
   // ==========================================
   // OFFICE HOLIDAY CALENDAR STATE
@@ -306,6 +329,99 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
     return { totalCount, mandatoryCount, optionalCount, upcoming, daysRemaining };
   }, [filteredHolidays]);
 
+  // Employee leave balances filtered data
+  const filteredEmpLeaves = useMemo(() => {
+    return (employees || []).filter((emp) => {
+      if (deptFilter !== "all" && emp.department !== deptFilter) return false;
+      if (empSearch.trim()) {
+        const q = empSearch.toLowerCase();
+        const matchesName = (emp.name || "").toLowerCase().includes(q);
+        const matchesCode = (emp.empCode || "").toLowerCase().includes(q);
+        const matchesDept = (emp.department || "").toLowerCase().includes(q);
+        const matchesDesig = (emp.designation || "").toLowerCase().includes(q);
+        if (!matchesName && !matchesCode && !matchesDept && !matchesDesig) return false;
+      }
+      return true;
+    });
+  }, [employees, deptFilter, empSearch]);
+
+  const uniqueDepartments = useMemo(() => {
+    const set = new Set<string>();
+    (employees || []).forEach((e) => {
+      if (e.department) set.add(e.department);
+    });
+    return Array.from(set);
+  }, [employees]);
+
+  const empLeaveMetrics = useMemo(() => {
+    let totalEL = 0;
+    let totalCL = 0;
+    let totalSL = 0;
+    let nearAccrualCount = 0;
+    const threshold = company.elWorkingDaysThreshold ?? 20;
+
+    (employees || []).forEach((e) => {
+      const el = e.leaveBalances?.EL ?? 15;
+      const cl = e.leaveBalances?.CL ?? 10;
+      const sl = e.leaveBalances?.SL ?? 8;
+      const counter = e.qualifyingWorkingDaysCounter ?? 0;
+      totalEL += el;
+      totalCL += cl;
+      totalSL += sl;
+      if (counter >= Math.max(1, threshold - 5)) {
+        nearAccrualCount++;
+      }
+    });
+
+    return {
+      totalEmployees: (employees || []).length,
+      totalEL,
+      totalCL,
+      totalSL,
+      totalPaid: totalEL + totalCL + totalSL,
+      nearAccrualCount,
+    };
+  }, [employees, company.elWorkingDaysThreshold]);
+
+  const handleExportLeaveCSV = () => {
+    const headers = [
+      "Employee Code",
+      "Employee Name",
+      "Department",
+      "Designation",
+      "Earned Leave (EL)",
+      "Qualifying Working Days Counter",
+      "Casual Leave (CL)",
+      "Sick Leave (SL)",
+      "Total Available Paid Leaves",
+    ];
+    const rows = filteredEmpLeaves.map((e) => [
+      e.empCode || "",
+      `"${e.name}"`,
+      `"${e.department || ""}"`,
+      `"${e.designation || ""}"`,
+      e.leaveBalances?.EL ?? 15,
+      e.qualifyingWorkingDaysCounter ?? 0,
+      e.leaveBalances?.CL ?? 10,
+      e.leaveBalances?.SL ?? 8,
+      (e.leaveBalances?.EL ?? 15) + (e.leaveBalances?.CL ?? 10) + (e.leaveBalances?.SL ?? 8),
+    ]);
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute(
+      "download",
+      `employee_leave_balances_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Employee leave balances exported to CSV!");
+  };
+
   const handleOpenAdd = () => {
     setEditingId(null);
     setHolidayName("");
@@ -445,6 +561,16 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
         >
           <CalendarDays className="h-4 w-4" />
           <span>Office Holidays ({stats.totalCount})</span>
+        </Button>
+
+        <Button
+          variant={activeTab === "employee-balances" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setActiveTab("employee-balances")}
+          className="text-xs h-9 gap-1.5 rounded-xl font-semibold"
+        >
+          <Users className="h-4 w-4" />
+          <span>Employee Leave Balances ({(employees || []).length})</span>
         </Button>
 
         <Button
@@ -1002,66 +1128,287 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
         </div>
       )}
 
-      {/* TAB 2: LEAVE POLICY TYPES */}
-      {activeTab === "leave-policy" && (
-        <div className="space-y-6 max-w-5xl">
-          {/* EL Policy Engine Banner Card */}
-          <Card className="rounded-2xl border-primary/25 bg-gradient-to-br from-card via-card to-primary/5 shadow-xs">
-            <CardHeader className="pb-3 border-b border-border/60">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* TAB 2: EMPLOYEE LEAVE BALANCES */}
+      {activeTab === "employee-balances" && (
+        <div className="space-y-6">
+          {/* Quick Metrics Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-muted/80 hover:bg-muted dark:bg-muted/50 dark:hover:bg-muted/70 border border-border/80 transition-all">
+              <div>
+                <span className="text-[11px] text-muted-foreground block font-medium">Total Staff</span>
+                <span className="text-lg font-bold text-foreground">{empLeaveMetrics.totalEmployees}</span>
+              </div>
+              <Users className="h-5 w-5 text-muted-foreground/70" />
+            </div>
+
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-primary/5 hover:bg-primary/10 border border-primary/30 transition-all">
+              <div>
+                <span className="text-[11px] text-primary block font-medium">Available EL</span>
+                <span className="text-lg font-bold text-primary">{empLeaveMetrics.totalEL} Days</span>
+              </div>
+              <Coins className="h-5 w-5 text-primary" />
+            </div>
+
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/30 transition-all">
+              <div>
+                <span className="text-[11px] text-emerald-700 dark:text-emerald-400 block font-medium">Available CL</span>
+                <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{empLeaveMetrics.totalCL} Days</span>
+              </div>
+              <Tag className="h-5 w-5 text-emerald-600" />
+            </div>
+
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/30 transition-all">
+              <div>
+                <span className="text-[11px] text-sky-700 dark:text-sky-400 block font-medium">Available SL</span>
+                <span className="text-lg font-bold text-sky-700 dark:text-sky-400">{empLeaveMetrics.totalSL} Days</span>
+              </div>
+              <ShieldCheck className="h-5 w-5 text-sky-600" />
+            </div>
+
+            <div className="col-span-2 lg:col-span-1 flex items-center justify-between px-4 py-3 rounded-xl bg-purple-500/10 hover:bg-purple-500/15 border border-purple-500/30 transition-all">
+              <div>
+                <span className="text-[11px] text-purple-700 dark:text-purple-400 block font-medium">Total Paid Pool</span>
+                <span className="text-lg font-bold text-purple-700 dark:text-purple-400">{empLeaveMetrics.totalPaid} Days</span>
+              </div>
+              <Sparkles className="h-5 w-5 text-purple-600" />
+            </div>
+          </div>
+
+          {/* Table Container Card */}
+          <Card className="rounded-2xl border-border bg-card shadow-xs">
+            <CardHeader className="pb-4 border-b border-border/60">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
-                      <Coins className="h-4 w-4" />
+                    <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                      <Users className="h-4 w-4" />
                     </div>
-                    <CardTitle className="text-base font-bold">Earned Leave (EL) Policy Engine</CardTitle>
-                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-semibold">
-                      Working-Day Rule
+                    <CardTitle className="text-base font-bold">Employee Leave Balances</CardTitle>
+                    <Badge variant="outline" className="text-xs font-semibold">
+                      {filteredEmpLeaves.length} Employees
                     </Badge>
                   </div>
                   <CardDescription className="text-xs">
-                    Earned Leave is dynamically evaluated from qualifying present days (excludes Sundays, week-offs, and public holidays).
+                    Live balance overview of Earned Leave (EL), Casual Leave (CL), Sick Leave (SL), and working-day accrual progress.
                   </CardDescription>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => navigate({ to: "/admin/settings" })}
-                  className="text-xs h-8 rounded-xl font-semibold gap-1.5"
-                >
-                  <Tag className="h-3.5 w-3.5" />
-                  <span>Configure in Settings</span>
-                </Button>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const res = evaluateEarnedLeaveAccrual();
+                      if (res.affectedEmployees > 0) {
+                        toast.success(`Accrued +${res.creditedCount} EL days across ${res.affectedEmployees} employees!`);
+                      } else {
+                        toast.info("All employee working day counters are currently evaluated.");
+                      }
+                    }}
+                    className="h-9 text-xs rounded-xl font-semibold gap-1.5"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 text-primary" />
+                    <span>Evaluate & Accrue Now</span>
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleExportLeaveCSV}
+                    className="h-9 text-xs rounded-xl font-semibold gap-1.5"
+                  >
+                    <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span>Export CSV</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Filters bar */}
+              <div className="pt-3 flex flex-col sm:flex-row items-center gap-3">
+                <div className="relative flex-1 w-full">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by employee name, code, designation..."
+                    value={empSearch}
+                    onChange={(e) => setEmpSearch(e.target.value)}
+                    className="pl-9 h-9 text-xs rounded-xl"
+                  />
+                  {empSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setEmpSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="w-full sm:w-56 shrink-0">
+                  <Select value={deptFilter} onValueChange={setDeptFilter}>
+                    <SelectTrigger className="h-9 text-xs rounded-xl">
+                      <SelectValue placeholder="All Departments" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      {uniqueDepartments.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardHeader>
-            <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              <div className="p-3 rounded-xl border border-border bg-card space-y-1">
-                <span className="text-[11px] text-muted-foreground block font-medium">A. Working-Day Accrual</span>
-                <span className="font-bold text-foreground">
-                  {company.elAccrualEnabled !== false
-                    ? `Every ${company.elWorkingDaysThreshold ?? 20} days → +${company.elDaysEarnedPerCycle ?? 2} EL`
-                    : "Disabled"}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl border border-border bg-card space-y-1">
-                <span className="text-[11px] text-muted-foreground block font-medium">B. Year-End Carry Forward</span>
-                <span className="font-bold text-foreground">
-                  {company.elCarryForwardEnabled !== false
-                    ? `Cap: ${company.elMaxCarryForwardDays ?? 20} Days`
-                    : "Lapses to 0"}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl border border-border bg-card space-y-1">
-                <span className="text-[11px] text-muted-foreground block font-medium">C. Leave Encashment</span>
-                <span className="font-bold text-foreground">
-                  {company.elEncashmentEnabled !== false
-                    ? `Active (${company.elEncashmentCalculationBase === "gross_salary" ? "Gross Salary" : "Basic + DA"})`
-                    : "Disabled"}
-                </span>
+
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] tracking-wider border-b border-border/60">
+                    <tr>
+                      <th className="py-3 px-4 font-semibold">Employee</th>
+                      <th className="py-3 px-3 font-semibold">Department & Role</th>
+                      <th className="py-3 px-3 font-semibold">Earned Leave (EL)</th>
+                      <th className="py-3 px-3 font-semibold">Casual Leave (CL)</th>
+                      <th className="py-3 px-3 font-semibold">Sick Leave (SL)</th>
+                      <th className="py-3 px-3 font-semibold">Total Paid Available</th>
+                      <th className="py-3 px-4 font-semibold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {filteredEmpLeaves.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                          <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                          <p className="text-sm font-medium">No matching employees found</p>
+                          <p className="text-xs">Try clearing the search query or department filter</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredEmpLeaves.map((emp) => {
+                        const el = emp.leaveBalances?.EL ?? 15;
+                        const cl = emp.leaveBalances?.CL ?? 10;
+                        const sl = emp.leaveBalances?.SL ?? 8;
+                        const totalPaid = el + cl + sl;
+                        const threshold = company.elWorkingDaysThreshold ?? 20;
+                        const cycleDays = emp.qualifyingWorkingDaysCounter ?? 0;
+                        const progressPct = Math.min(100, Math.round((cycleDays / threshold) * 100));
+
+                        return (
+                          <tr key={emp.id} className="hover:bg-muted/20 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-3">
+                                <div className="h-8 w-8 rounded-full bg-gradient-brand text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                                  {emp.name
+                                    ? emp.name
+                                        .split(" ")
+                                        .map((n: string) => n[0])
+                                        .join("")
+                                        .slice(0, 2)
+                                        .toUpperCase()
+                                    : "EM"}
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className="font-semibold text-foreground flex items-center gap-1.5">
+                                    <span>{emp.name}</span>
+                                    <Badge variant="outline" className="font-mono text-[9px] px-1.5 py-0 border-border">
+                                      {emp.empCode}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">
+                                    {emp.email}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-3">
+                              <div className="space-y-0.5">
+                                <Badge variant="secondary" className="text-[10px] font-medium">
+                                  {emp.department || "General"}
+                                </Badge>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {emp.designation || "Staff Member"}
+                                </p>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-3">
+                              <div className="space-y-1.5 min-w-[150px]">
+                                <div className="flex items-center justify-between">
+                                  <Badge className="bg-primary/10 text-primary hover:bg-primary/15 border-primary/20 text-xs font-bold px-2 py-0.5">
+                                    {el} Days EL
+                                  </Badge>
+                                  <span className="text-[10px] text-muted-foreground font-medium">
+                                    {cycleDays}/{threshold} days
+                                  </span>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                                    style={{ width: `${progressPct}%` }}
+                                  />
+                                </div>
+                                <p className="text-[9px] text-muted-foreground">
+                                  +{company.elDaysEarnedPerCycle ?? 2} EL on {threshold} working days
+                                </p>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-3">
+                              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-bold px-2 py-0.5">
+                                {cl} Days
+                              </Badge>
+                            </td>
+
+                            <td className="py-3 px-3">
+                              <Badge variant="outline" className="bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/30 font-bold px-2 py-0.5">
+                                {sl} Days
+                              </Badge>
+                            </td>
+
+                            <td className="py-3 px-3">
+                              <Badge className="bg-foreground text-background font-bold px-2.5 py-0.5 shadow-xs">
+                                {totalPaid} Days
+                              </Badge>
+                            </td>
+
+                            <td className="py-3 px-4 text-right">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setAdjustingEmp(emp);
+                                  setAdjustForm({
+                                    el: emp.leaveBalances?.EL ?? 15,
+                                    cl: emp.leaveBalances?.CL ?? 10,
+                                    sl: emp.leaveBalances?.SL ?? 8,
+                                    workingDays: emp.qualifyingWorkingDaysCounter ?? 0,
+                                  });
+                                }}
+                                className="h-8 text-xs font-semibold rounded-xl gap-1"
+                              >
+                                <SlidersHorizontal className="h-3 w-3 text-primary" />
+                                <span>Adjust</span>
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
 
+      {/* TAB 3: LEAVE POLICY TYPES & EARNED LEAVE SETTINGS */}
+      {activeTab === "leave-policy" && (
+        <div className="space-y-6 max-w-5xl">
+          {/* 1. Leave Policy Types Card */}
           <Card className="rounded-2xl border-border bg-card shadow-xs">
             <CardHeader className="pb-4 border-b border-border/60">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1190,6 +1537,288 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
                 >
                   {savingLeavePolicy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                   <span>{savingLeavePolicy ? "Saving Policy..." : "Save Leave Policy"}</span>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 2. Earned Leave (EL) Policy Engine (Directly below Leave Policy Types) */}
+          <Card className="rounded-2xl border-primary/25 bg-gradient-to-br from-card via-card to-primary/5 shadow-xs">
+            <CardHeader className="pb-4 border-b border-border/60">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
+                      <Coins className="h-5 w-5" />
+                    </div>
+                    <CardTitle className="text-base font-bold">Earned Leave (EL) Policy Engine</CardTitle>
+                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-semibold">
+                      Intelligent Leave Engine
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Replaces static annual EL quotas with automated working-day accrual, year-end carry forward limits, and payroll encashment.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-6 space-y-6">
+              {/* Sub-section A: Dynamic Working-Day Accrual Rule */}
+              <div className="p-4 rounded-2xl border border-border bg-card/60 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-xs font-bold text-foreground flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-primary" />
+                      Sub-section A: Dynamic Working-Day Accrual Rule
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Credits EL automatically after an employee completes qualifying working days.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {company.elAccrualEnabled !== false ? "Enabled" : "Disabled"}
+                    </span>
+                    <Switch
+                      checked={company.elAccrualEnabled !== false}
+                      onCheckedChange={(checked) => setCompany({ elAccrualEnabled: checked })}
+                    />
+                  </div>
+                </div>
+
+                {company.elAccrualEnabled !== false && (
+                  <div className="space-y-3 pt-2 border-t border-border/60">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Qualifying Working Days Required</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={company.elWorkingDaysThreshold ?? 20}
+                            onChange={(e) =>
+                              setCompany({ elWorkingDaysThreshold: Math.max(1, +e.target.value || 20) })
+                            }
+                            className="text-xs h-9"
+                          />
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">Days</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Earned Leave Days Credited</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            step="0.5"
+                            min={0.5}
+                            value={company.elDaysEarnedPerCycle ?? 2}
+                            onChange={(e) =>
+                              setCompany({ elDaysEarnedPerCycle: Math.max(0.5, +e.target.value || 2) })
+                            }
+                            className="text-xs h-9"
+                          />
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">Days</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-primary/5 border border-primary/15 text-[11px] text-primary/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="leading-relaxed">
+                        <span className="font-semibold">Helper Rule: </span>
+                        For every <strong className="font-bold underline">{company.elWorkingDaysThreshold ?? 20}</strong> actual working days completed (excluding Sundays, roster week-offs, holiday Saturdays, and public holidays), <strong className="font-bold underline">{company.elDaysEarnedPerCycle ?? 2}</strong> Earned Leave day(s) will be credited to the employee&apos;s EL balance.
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const res = evaluateEarnedLeaveAccrual();
+                          if (res.affectedEmployees > 0) {
+                            toast.success(`Accrued +${res.creditedCount} EL days across ${res.affectedEmployees} employees!`);
+                          } else {
+                            toast.info("All employee working day counters are currently evaluated.");
+                          }
+                        }}
+                        className="h-8 text-[11px] shrink-0 font-semibold"
+                      >
+                        Evaluate & Accrue Now
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sub-section B: Year-End Leave Carry Forward Rule */}
+              <div className="p-4 rounded-2xl border border-border bg-card/60 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-xs font-bold text-foreground flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-emerald-600" />
+                      Sub-section B: Year-End Leave Carry Forward Rule
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Controls year-end rollover caps and automatic lapsing of accumulated EL.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {company.elCarryForwardEnabled !== false ? "Enabled" : "Disabled"}
+                    </span>
+                    <Switch
+                      checked={company.elCarryForwardEnabled !== false}
+                      onCheckedChange={(checked) => setCompany({ elCarryForwardEnabled: checked })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-2 border-t border-border/60">
+                  {company.elCarryForwardEnabled !== false ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium">Maximum Carry Forward Cap (Days)</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min={0}
+                              value={company.elMaxCarryForwardDays ?? 20}
+                              onChange={(e) =>
+                                setCompany({ elMaxCarryForwardDays: Math.max(0, +e.target.value || 0) })
+                              }
+                              className="text-xs h-9"
+                            />
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">Days Cap</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-end justify-start sm:justify-end">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => setRolloverConfirmOpen(true)}
+                            className="h-9 text-xs rounded-xl font-bold shadow-xs gap-1.5"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Run Year-End Rollover
+                          </Button>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        At year-end reset, remaining EL balance is carried forward up to this cap (e.g., if cap is {company.elMaxCarryForwardDays ?? 20} and remaining balance is 32, employee starts next year with {company.elMaxCarryForwardDays ?? 20} EL; if remaining balance is 17, all 17 carry forward). Any balance above the cap lapses unless encashed.
+                      </p>
+                    </>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                        All unused Earned Leave balances expire at year-end. Employees start the new leave year with 0 EL.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setRolloverConfirmOpen(true)}
+                        className="h-8 text-xs rounded-xl font-bold shrink-0"
+                      >
+                        Run Year-End Reset
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Sub-section C: Leave Encashment Policy */}
+              <div className="p-4 rounded-2xl border border-border bg-card/60 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-xs font-bold text-foreground flex items-center gap-2">
+                      <IndianRupee className="h-4 w-4 text-amber-600" />
+                      Sub-section C: Leave Encashment Policy
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Allows employees to encash unused EL for direct monetary payout in monthly payroll.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {company.elEncashmentEnabled !== false ? "Enabled" : "Disabled"}
+                    </span>
+                    <Switch
+                      checked={company.elEncashmentEnabled !== false}
+                      onCheckedChange={(checked) => setCompany({ elEncashmentEnabled: checked })}
+                    />
+                  </div>
+                </div>
+
+                {company.elEncashmentEnabled !== false && (
+                  <div className="space-y-3 pt-2 border-t border-border/60">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Daily Encashment Rate Basis</Label>
+                        <select
+                          value={company.elEncashmentCalculationBase || "basic_plus_da"}
+                          onChange={(e) =>
+                            setCompany({ elEncashmentCalculationBase: e.target.value as any })
+                          }
+                          className="w-full text-xs h-9 rounded-md border border-input bg-background px-3 py-1 font-medium shadow-xs"
+                        >
+                          <option value="basic_plus_da">Basic + DA (Recommended statutory standard)</option>
+                          <option value="gross_salary">Gross Salary (Fixed Monthly CTC Gross)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Minimum EL Balance Required to Apply</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            value={company.elEncashmentMinBalanceRequired ?? 0}
+                            onChange={(e) =>
+                              setCompany({
+                                elEncashmentMinBalanceRequired: Math.max(0, +e.target.value || 0),
+                              })
+                            }
+                            className="text-xs h-9"
+                          />
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">Days</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Employees can apply to encash either their entire available EL balance or any custom number of EL days for direct monetary payout in monthly payroll.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Save EL Settings Button */}
+              <div className="flex items-center justify-between pt-4 border-t border-border/60">
+                <p className="text-[11px] text-muted-foreground">
+                  EL accruals, rollover limits, and encashment parameters sync directly across payroll and requests portals.
+                </p>
+
+                <Button
+                  onClick={async () => {
+                    setSavingELPolicy(true);
+                    try {
+                      await saveAllCompanySettings();
+                      toast.success("Earned Leave (EL) settings saved successfully!");
+                    } catch (e: any) {
+                      toast.error("Failed to save EL settings: " + (e?.message || e));
+                    } finally {
+                      setSavingELPolicy(false);
+                    }
+                  }}
+                  disabled={savingELPolicy}
+                  className="gap-2 bg-primary text-primary-foreground font-semibold px-6 h-9 rounded-xl shadow-xs"
+                >
+                  {savingELPolicy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  <span>{savingELPolicy ? "Saving EL Settings..." : "Save EL Settings"}</span>
                 </Button>
               </div>
             </CardContent>
@@ -1877,6 +2506,147 @@ export function LeaveCalendarPage({ isEmbedded = false }: { isEmbedded?: boolean
               className="bg-gradient-brand text-white font-bold"
             >
               {importing ? "Importing..." : `Import ${parsedBulk?.validCount || 0} Holidays`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ADJUST EMPLOYEE LEAVE BALANCES DIALOG */}
+      <Dialog open={Boolean(adjustingEmp)} onOpenChange={(open) => !open && setAdjustingEmp(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <SlidersHorizontal className="h-5 w-5 text-primary" />
+              <span>Adjust Leave Balances</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Manually modify available leave quotas or working-day counter for{" "}
+              <strong className="text-foreground">{adjustingEmp?.name}</strong> ({adjustingEmp?.empCode}).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-primary">Earned Leave (EL)</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={adjustForm.el}
+                  onChange={(e) => setAdjustForm((p) => ({ ...p, el: +e.target.value || 0 }))}
+                  className="text-xs h-9 text-center font-bold"
+                />
+                <span className="text-[10px] text-muted-foreground block text-center">Days</span>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Casual Leave (CL)</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={adjustForm.cl}
+                  onChange={(e) => setAdjustForm((p) => ({ ...p, cl: +e.target.value || 0 }))}
+                  className="text-xs h-9 text-center font-bold"
+                />
+                <span className="text-[10px] text-muted-foreground block text-center">Days</span>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-sky-600 dark:text-sky-400">Sick Leave (SL)</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={adjustForm.sl}
+                  onChange={(e) => setAdjustForm((p) => ({ ...p, sl: +e.target.value || 0 }))}
+                  className="text-xs h-9 text-center font-bold"
+                />
+                <span className="text-[10px] text-muted-foreground block text-center">Days</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 p-3 rounded-xl border border-border bg-muted/20">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Qualifying Working Days Counter</Label>
+                <span className="text-[11px] font-bold text-primary font-mono">
+                  {adjustForm.workingDays} / {company.elWorkingDaysThreshold ?? 20} days
+                </span>
+              </div>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                value={adjustForm.workingDays}
+                onChange={(e) => setAdjustForm((p) => ({ ...p, workingDays: Math.max(0, +e.target.value || 0) }))}
+                className="text-xs h-8"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Progress towards next cycle (+{company.elDaysEarnedPerCycle ?? 2} EL upon reaching {company.elWorkingDaysThreshold ?? 20} qualifying days).
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => setAdjustingEmp(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (!adjustingEmp) return;
+                updateEmployee(adjustingEmp.id, {
+                  leaveBalances: {
+                    ...(adjustingEmp.leaveBalances || {}),
+                    EL: Math.max(0, adjustForm.el),
+                    CL: Math.max(0, adjustForm.cl),
+                    SL: Math.max(0, adjustForm.sl),
+                  },
+                  qualifyingWorkingDaysCounter: Math.max(0, adjustForm.workingDays),
+                });
+                toast.success(`Updated leave balances for ${adjustingEmp.name}`);
+                setAdjustingEmp(null);
+              }}
+              className="bg-primary text-primary-foreground font-semibold"
+            >
+              Save Balances
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* YEAR-END LEAVE ROLLOVER CONFIRMATION MODAL */}
+      <Dialog open={rolloverConfirmOpen} onOpenChange={setRolloverConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              <span>Confirm Year-End Leave Rollover</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {company.elCarryForwardEnabled !== false
+                ? `This will process all employee EL balances. Unused EL above ${company.elMaxCarryForwardDays ?? 20} days will lapse, and up to ${company.elMaxCarryForwardDays ?? 20} days will carry forward into opening balance for next year.`
+                : "Carry forward is disabled. All employee EL balances will lapse to 0 days for next year."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => setRolloverConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={async () => {
+                const res = processYearEndLeaveRollover();
+                setRolloverConfirmOpen(false);
+                toast.success(
+                  `Year-end rollover complete: ${res.rolledOverEmployees} employees processed (${res.totalCarriedDays} days carried forward, ${res.totalLapsedDays} days lapsed).`
+                );
+                await saveAllCompanySettings();
+              }}
+            >
+              Execute Year-End Rollover
             </Button>
           </DialogFooter>
         </DialogContent>
