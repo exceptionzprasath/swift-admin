@@ -501,6 +501,8 @@ export const DEFAULT_LEAVE_POLICIES: LeavePoliciesConfig = {
 };
 
 export type Company = {
+  id?: string;
+  tenantId?: string;
   themePalette?: ThemePaletteId;
   name: string;
   legalName: string;

@@ -444,9 +444,13 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
 
       // 2. Perform Real Face Authentication via Backend AWS Rekognition
       const tenantId =
+        company.tenantId ||
+        company.id ||
         useAuth.getState().activeTenantId ||
         localStorage.getItem("swift-active-tenant") ||
         "demo-tenant-1";
+
+      const isFaceMatchRequired = company.commonPortal?.requireFaceMatch ?? true;
 
       const verifyRes = await safeFetch("/api/companies/face-verify", {
         method: "POST",
@@ -460,13 +464,15 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
 
       if (!verifyRes || !verifyRes.ok) {
         const errData = verifyRes ? await verifyRes.json().catch(() => null) : null;
-        throw new Error(errData?.error || errData?.reason || "Failed to reach AWS Rekognition biometric server.");
+        if (isFaceMatchRequired) {
+          throw new Error(errData?.error || errData?.reason || "Failed to reach AWS Rekognition biometric server.");
+        }
       }
 
-      const resData = await verifyRes.json();
+      const resData = verifyRes ? await verifyRes.json().catch(() => ({})) : {};
 
-      // Strict enforcement: if Rekognition rejects, abort immediately
-      if (resData.success === false) {
+      // Strict enforcement if requireFaceMatch is enabled
+      if (isFaceMatchRequired && resData.success === false) {
         playPunchErrorSound();
         const reasonMsg = resData.reason || resData.error || "AWS Rekognition failed: Captured face does not match biometric profile.";
         setLastErrorMessage(reasonMsg);
@@ -484,18 +490,21 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
 
       if (!targetEmp) {
         playPunchErrorSound();
-        const msg = `Face recognized as ID "${resData.employeeId}", but no corresponding employee was found in active directory.`;
+        const msg = resData.employeeId
+          ? `Face recognized as ID "${resData.employeeId}", but no corresponding employee was found in active directory.`
+          : "Please select an employee or stand directly in front of camera to identify face.";
         setLastErrorMessage(msg);
         toast.error(msg);
         return;
       }
 
-      // Double-check 1-to-1 match integrity if an employee was pre-selected
-      if (selectedEmployee && resData.employeeId) {
+      // Double-check 1-to-1 match integrity if an employee was pre-selected and face matching is required
+      if (isFaceMatchRequired && selectedEmployee && resData.employeeId) {
         const isMatched =
           selectedEmployee.id === resData.employeeId ||
           selectedEmployee.empCode === resData.employeeId ||
-          (selectedEmployee as any).code === resData.employeeId;
+          (selectedEmployee as any).code === resData.employeeId ||
+          resData.success === true;
         if (!isMatched) {
           playPunchErrorSound();
           const mismatchMsg = `Biometric Mismatch: Face matches "${resData.employeeId}", not selected employee "${selectedEmployee.name}".`;
