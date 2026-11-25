@@ -1068,7 +1068,7 @@ function SettingsPage() {
                   <ScanFace className="h-3.5 w-3.5 text-primary" />
                   <span>Configure Kiosk</span>
                 </Button>
-                <Link to="/admin/common-attendance">
+                <Link to="/admin/common-attendance" search={{ from: "admin" } as any}>
                   <Button variant="outline" size="sm" className="h-8 text-xs font-semibold gap-1.5 rounded-xl border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10">
                     <span>Launch Terminal</span>
                     <ArrowRight className="h-3.5 w-3.5" />
