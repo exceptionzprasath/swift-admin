@@ -43,15 +43,8 @@ import {
   LogOut,
 } from "lucide-react";
 
-type CommonAttendanceSearch = {
-  from?: string;
-};
-
 export const Route = createFileRoute("/admin/common-attendance")({
   head: () => ({ meta: [{ title: "Common Attendance Kiosk · CreatonsHR" }] }),
-  validateSearch: (search: Record<string, unknown>): CommonAttendanceSearch => ({
-    from: search.from as string | undefined,
-  }),
   component: CommonAttendanceRouteComponent,
 });
 
@@ -262,7 +255,6 @@ function computePunctualityAndStatus(
 
 export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const nav = useNavigate();
-  const search = Route.useSearch();
   const { user, memberships, signOut } = useAuth();
   const { company, setCompany, saveAllCompanySettings, employees, attendance, upsertAttendance } = useStore();
   const [isKioskSettingsOpen, setIsKioskSettingsOpen] = useState(false);
@@ -272,7 +264,8 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
   // Kiosk settings are ONLY available when opened through the Admin panel (Admin session or from=admin)
   const isKioskSession = Boolean(user?.isKiosk || user?.roleId === "role-kiosk" || String(user?.email || "").toLowerCase().includes("kiosk"));
   const isAdminSession = !isKioskSession && Boolean(memberships.some((m) => m.role === "owner" || m.role === "hr") || !user?.isEmployeeLogin);
-  const showSettings = (isAdminSession || search.from === "admin") && !isKioskSession;
+  const urlFromAdmin = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "admin";
+  const showSettings = isEmbedded || ((isAdminSession || urlFromAdmin) && !isKioskSession);
 
   // Search & Selected employee state
   const [searchQuery, setSearchQuery] = useState("");
