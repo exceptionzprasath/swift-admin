@@ -10,6 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { Loader2, Sparkles, ShieldCheck, User as UserIcon, Crown, ScanFace } from "lucide-react";
@@ -45,6 +53,9 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [isKioskModalOpen, setIsKioskModalOpen] = useState(false);
+  const [kioskUsername, setKioskUsername] = useState("");
+  const [kioskPassword, setKioskPassword] = useState("");
 
   useEffect(() => {
     if (impersonateTenantId) {
@@ -195,6 +206,30 @@ function LoginPage() {
     }
   };
 
+  const handleKioskSignIn = async (customUser?: string, customPass?: string) => {
+    const targetUser = (customUser ?? email).trim();
+    const targetPass = (customPass ?? password).trim();
+
+    if (!targetUser || !targetPass) {
+      setKioskUsername(email);
+      setKioskPassword(password);
+      setIsKioskModalOpen(true);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await authSignIn(targetUser, "employee", targetPass);
+      const currentUser = useAuth.getState().user;
+      toast.success(`Opening Common Face Attendance Kiosk (${currentUser?.name || targetUser})...`);
+      nav({ to: "/admin/common-attendance" });
+    } catch (e: any) {
+      toast.error(e.message ?? "Kiosk authentication failed. Please verify terminal credentials.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-background bg-gradient-mesh">
       <div className="hidden lg:flex flex-col justify-between p-10 bg-gradient-brand text-white relative overflow-hidden">
@@ -270,20 +305,10 @@ function LoginPage() {
               type="button"
               variant="outline"
               className="w-full h-11 border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold flex items-center justify-center gap-2 rounded-xl transition-all shadow-xs"
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await authSignIn("kiosk@creatonshr.com", "employee", "kiosk123");
-                  toast.success("Opening Common Face Attendance Kiosk...");
-                  nav({ to: "/admin/common-attendance" });
-                } catch {
-                  nav({ to: "/admin/common-attendance" });
-                } finally {
-                  setBusy(false);
-                }
-              }}
+              onClick={() => handleKioskSignIn()}
+              disabled={busy}
             >
-              <ScanFace className="h-4 w-4 text-amber-500 shrink-0" />
+              {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ScanFace className="h-4 w-4 text-amber-500 shrink-0" />}
               <span>Face Attendance Kiosk (Check-In / Out)</span>
             </Button>
           </div>
@@ -376,6 +401,80 @@ function LoginPage() {
           </div>
         </motion.div>
       </div>
+
+      {/* Attendance Kiosk Credentials Dialog */}
+      <Dialog open={isKioskModalOpen} onOpenChange={setIsKioskModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <div className="h-9 w-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                <ScanFace className="h-5 w-5" />
+              </div>
+              <span>Attendance Kiosk Sign-In</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Enter the Terminal ID / Username and Password configured for this company's attendance kiosk.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Terminal Username / Kiosk ID</Label>
+              <Input
+                type="text"
+                placeholder="e.g. inkpen.in, kiosk@creatonshr.com"
+                value={kioskUsername}
+                onChange={(e) => setKioskUsername(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Terminal Password</Label>
+              <Input
+                type="password"
+                placeholder="Enter terminal password"
+                value={kioskPassword}
+                onChange={(e) => setKioskPassword(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setIsKioskModalOpen(false);
+                handleKioskSignIn("kiosk@creatonshr.com", "kiosk123");
+              }}
+            >
+              Use Demo Kiosk
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsKioskModalOpen(false)} className="text-xs">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!kioskUsername.trim() || !kioskPassword.trim()) {
+                    toast.error("Enter Terminal ID and Password");
+                    return;
+                  }
+                  setIsKioskModalOpen(false);
+                  handleKioskSignIn(kioskUsername, kioskPassword);
+                }}
+                disabled={busy}
+                className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1.5"
+              >
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanFace className="h-3.5 w-3.5" />}
+                <span>Launch Kiosk</span>
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
