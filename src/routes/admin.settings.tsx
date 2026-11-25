@@ -7,6 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_SIDEBAR_ITEMS,
@@ -69,6 +78,9 @@ function SettingsPage() {
   const { theme, setTheme, setThemePalette } = useStore();
   const [saving, setSaving] = useState(false);
   const [paletteDropdownOpen, setPaletteDropdownOpen] = useState(false);
+  const [isKioskConfigOpen, setIsKioskConfigOpen] = useState(false);
+  const [savingKioskConfig, setSavingKioskConfig] = useState(false);
+  const [showKioskPass, setShowKioskPass] = useState(false);
 
   const activePaletteId = company.themePalette || "swift-teal";
   const activePalette = getPalette(activePaletteId);
@@ -1045,16 +1057,192 @@ function SettingsPage() {
             </div>
             <div className="flex items-center justify-between pt-2 border-t border-border/60">
               <span className="text-[11px] text-muted-foreground font-mono">Attendance &gt; Kiosk Portal</span>
-              <Link to="/admin/common-attendance">
-                <Button variant="outline" size="sm" className="h-8 text-xs font-semibold gap-1.5 rounded-xl border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10">
-                  <span>Launch Kiosk Terminal</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsKioskConfigOpen(true)}
+                  className="h-8 text-xs font-semibold gap-1.5 rounded-xl border-border hover:bg-muted"
+                >
+                  <ScanFace className="h-3.5 w-3.5 text-primary" />
+                  <span>Configure Kiosk</span>
                 </Button>
-              </Link>
+                <Link to="/admin/common-attendance">
+                  <Button variant="outline" size="sm" className="h-8 text-xs font-semibold gap-1.5 rounded-xl border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10">
+                    <span>Launch Terminal</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Attendance Kiosk Settings Dialog (Admin Protected) */}
+      <Dialog open={isKioskConfigOpen} onOpenChange={setIsKioskConfigOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ScanFace className="h-5 w-5 text-primary" />
+              <span>Attendance Kiosk Settings</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Configure credentials, gate title, and authentication rules for this company's common attendance terminal.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            {/* Kiosk Enable Toggle */}
+            <div className="flex items-center justify-between p-3.5 rounded-xl border border-primary/20 bg-primary/5">
+              <div className="space-y-0.5">
+                <span className="font-semibold text-foreground text-xs">Kiosk Portal Status</span>
+                <p className="text-[11px] text-muted-foreground">
+                  Allow shared terminal authentication on login page
+                </p>
+              </div>
+              <Switch
+                checked={Boolean(company.commonPortal?.enabled || company.commonPortalEnabled)}
+                onCheckedChange={(checked) => {
+                  setCompany({
+                    commonPortalEnabled: checked,
+                    commonPortal: {
+                      ...(company.commonPortal || {}),
+                      enabled: checked,
+                      username: company.commonPortal?.username || company.commonPortalUsername || "kiosk@creatonshr.com",
+                      password: company.commonPortal?.password || company.commonPortalPassword || "kiosk123",
+                      portalTitle: company.commonPortal?.portalTitle || "Common Attendance Kiosk",
+                      requireFaceMatch: company.commonPortal?.requireFaceMatch ?? true,
+                    },
+                    commonPortalUsername: company.commonPortal?.username || company.commonPortalUsername || "kiosk@creatonshr.com",
+                    commonPortalPassword: company.commonPortal?.password || company.commonPortalPassword || "kiosk123",
+                  });
+                }}
+              />
+            </div>
+
+            {/* Username & Password */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Kiosk Username / Terminal ID</Label>
+                <Input
+                  placeholder="e.g. inkpen.in, kiosk@creatonshr.com"
+                  value={company.commonPortal?.username || company.commonPortalUsername || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCompany({
+                      commonPortalUsername: val,
+                      commonPortal: {
+                        ...(company.commonPortal || { enabled: true }),
+                        username: val,
+                      },
+                    });
+                  }}
+                  className="text-xs font-medium"
+                />
+                <p className="text-[10px] text-muted-foreground">Used on login page to launch kiosk.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Kiosk Password</Label>
+                <div className="relative">
+                  <Input
+                    type={showKioskPass ? "text" : "password"}
+                    placeholder="Terminal password"
+                    value={company.commonPortal?.password || company.commonPortalPassword || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCompany({
+                        commonPortalPassword: val,
+                        commonPortal: {
+                          ...(company.commonPortal || { enabled: true }),
+                          password: val,
+                        },
+                      });
+                    }}
+                    className="text-xs font-medium pr-8"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKioskPass(!showKioskPass)}
+                    className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    {showKioskPass ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Authenticate shared terminal.</p>
+              </div>
+            </div>
+
+            {/* Terminal Banner / Title */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-foreground">Terminal Title / Gate Location</Label>
+              <Input
+                placeholder="e.g. Main Factory Gate 1 Kiosk / Reception Terminal"
+                value={company.commonPortal?.portalTitle || ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCompany({
+                    commonPortal: {
+                      ...(company.commonPortal || { enabled: true }),
+                      portalTitle: val,
+                    },
+                  });
+                }}
+                className="text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">Displayed at top header of the kiosk screen.</p>
+            </div>
+
+            {/* Face Match Requirement */}
+            <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/20">
+              <div className="space-y-0.5">
+                <span className="font-semibold text-foreground text-xs">Biometric Face Matching</span>
+                <p className="text-[10px] text-muted-foreground">
+                  Verify captured live face with enrolled employee profile before marking punch
+                </p>
+              </div>
+              <Switch
+                checked={company.commonPortal?.requireFaceMatch ?? true}
+                onCheckedChange={(checked) => {
+                  setCompany({
+                    commonPortal: {
+                      ...(company.commonPortal || { enabled: true }),
+                      requireFaceMatch: checked,
+                    },
+                  });
+                }}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsKioskConfigOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                setSavingKioskConfig(true);
+                try {
+                  await saveAllCompanySettings?.();
+                  toast.success("Attendance Kiosk settings saved to cloud database!");
+                  setIsKioskConfigOpen(false);
+                } catch (e: any) {
+                  toast.error("Failed to save kiosk settings: " + (e?.message || e));
+                } finally {
+                  setSavingKioskConfig(false);
+                }
+              }}
+              disabled={savingKioskConfig}
+              className="gap-1.5 bg-primary text-primary-foreground font-semibold"
+            >
+              {savingKioskConfig ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              <span>{savingKioskConfig ? "Saving..." : "Save Kiosk Settings"}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
