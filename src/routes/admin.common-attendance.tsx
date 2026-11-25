@@ -39,20 +39,17 @@ import {
   Calendar,
   Layers,
   ChevronRight,
+  ArrowLeft,
+  LogOut,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/common-attendance")({
   head: () => ({ meta: [{ title: "Common Attendance Kiosk · CreatonsHR" }] }),
-  component: RedirectToAttendanceKiosk,
+  component: CommonAttendanceRouteComponent,
 });
 
-function RedirectToAttendanceKiosk() {
-  const navigate = useNavigate();
-  useEffect(() => {
-    navigate({ to: "/admin/attendance", search: (prev: any) => ({ ...prev, tab: "kiosk" }) as any, replace: true });
-  }, [navigate]);
-
-  return <CommonAttendancePage />;
+function CommonAttendanceRouteComponent() {
+  return <CommonAttendancePage isEmbedded={false} />;
 }
 
 /**
@@ -258,7 +255,7 @@ function computePunctualityAndStatus(
 
 export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const nav = useNavigate();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { company, setCompany, saveAllCompanySettings, employees, attendance, upsertAttendance } = useStore();
   const [isKioskSettingsOpen, setIsKioskSettingsOpen] = useState(false);
   const [savingKioskSettings, setSavingKioskSettings] = useState(false);
@@ -647,8 +644,39 @@ export function CommonAttendancePage({ isEmbedded = false }: { isEmbedded?: bool
             </span>
           </div>
 
-          {/* Right: Settings & Fullscreen */}
+          {/* Right: Actions, Settings & Fullscreen */}
           <div className="flex items-center gap-2 shrink-0">
+            {!isEmbedded && (
+              !user?.isKiosk && user?.roleId !== "role-kiosk" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => nav({ to: "/admin" })}
+                  className="rounded-2xl text-xs gap-1.5 h-10 border-primary/25 bg-card hover:bg-primary/10 text-foreground font-semibold px-3.5 shadow-2xs"
+                  title="Return to Admin Dashboard"
+                >
+                  <ArrowLeft className="h-4 w-4 text-primary" />
+                  <span className="hidden sm:inline">Admin Dashboard</span>
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    await signOut();
+                    nav({ to: "/login" });
+                  }}
+                  className="rounded-2xl text-xs gap-1.5 h-10 border-rose-500/30 bg-card hover:bg-rose-500/10 text-rose-500 hover:text-rose-600 font-semibold px-3.5 shadow-2xs"
+                  title="Sign out of Kiosk terminal"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="hidden sm:inline">Sign Out</span>
+                </Button>
+              )
+            )}
+
             <button
               type="button"
               onClick={() => setIsKioskSettingsOpen(true)}

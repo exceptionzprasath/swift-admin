@@ -102,7 +102,7 @@ export function getPathModuleKey(currentPath: string): ModuleKey | null {
   if (currentPath.startsWith("/admin/employees")) return "employees";
   if (currentPath.startsWith("/admin/past-employees")) return "pastEmployees";
   if (currentPath.startsWith("/admin/attendance")) return "attendance";
-  if (currentPath.startsWith("/admin/common-attendance")) return "attendance";
+  if (currentPath.startsWith("/admin/common-attendance")) return null;
   if (currentPath.startsWith("/admin/leave-calendar")) return "leaveCalendar";
   if (currentPath.startsWith("/admin/shift-roster")) return "shiftRoster";
   if (currentPath.startsWith("/admin/payroll")) return "payroll";
@@ -420,6 +420,15 @@ function AdminLayout() {
       );
     }
 
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <Outlet />
+      </div>
+    );
+  }
+
+  // Standalone Full-Screen Common Attendance Portal (Kiosk Terminal)
+  if (path === "/admin/common-attendance") {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col">
         <Outlet />
